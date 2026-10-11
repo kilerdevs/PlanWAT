@@ -101,6 +101,9 @@ class BuildRealSiteTest(unittest.TestCase):
             for block in re.findall(r'<style>(.*?)</style>', html, re.S):
                 self.assertIn(sha(block), csp, f'{page}: style hash missing')
             self.assertNotIn('frame-ancestors', csp, 'ignored in a meta CSP')
+            # Redundant here (every source is https or 'self'), and WebKit applies it to http://127.0.0.1,
+            # which breaks local previews and the browser tests. The header CSP keeps it.
+            self.assertNotIn('upgrade-insecure-requests', csp)
             self.assertIn("default-src 'none'", csp)
 
     def test_pages_have_no_inline_style_attributes_or_leftover_placeholders(self):
@@ -130,6 +133,7 @@ class BuildRealSiteTest(unittest.TestCase):
         conf = self.nginx.read_text()
         header = re.search(r'add_header Content-Security-Policy "([^"]+)"', conf).group(1)
         self.assertIn("frame-ancestors 'none'", header)
+        self.assertIn('upgrade-insecure-requests', header)
         for page in self.pages():
             html = page.read_text(encoding='utf-8')
             for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S):
