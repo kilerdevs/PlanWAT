@@ -47,6 +47,59 @@ test('the root lists the groups (or goes straight to the only one) and links to 
   await expect(page.locator('.lesson').first()).toBeVisible();
 });
 
+test('the root picks a faculty first, then searches the group', async ({ page }) => {
+  await page.clock.setFixedTime(THURSDAY_1030);
+  await page.goto('/');
+  for (const fac of ['WCY', 'WEL', 'WIG', 'WML', 'WTC']) {
+    await expect(page.locator(`[data-facbtn="${fac}"]`), fac).toBeVisible();
+  }
+  await expect(page.locator('[data-facbtn="WCY"]')).toContainText('Wydział Cybernetyki');
+
+  const search = page.locator('#groupSearch');
+  await search.fill('wcy26ky3s1');
+  await expect(page.locator('a.group[href="WCY26KY3S1/"]')).toBeVisible();
+  await expect(page.locator('#resultCount')).toContainText('1 grupa');
+
+  await search.fill('');
+  await page.locator('[data-facbtn="WEL"]').click();
+  await expect(page.locator('#noResults')).toBeVisible();
+  await page.locator('[data-facbtn="WCY"]').click();
+  await expect(page.locator('a.group[href="WCY26KY3S1/"]')).toBeVisible();
+  await expect(page.locator('#noResults')).toBeHidden();
+
+  await page.goto('/#wydzial=WEL');
+  await expect(page.locator('[data-facbtn="WEL"]')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('the root page has no serious or critical accessibility violations', async ({ page }) => {
+  await page.clock.setFixedTime(THURSDAY_1030);
+  await page.goto('/');
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  expect(serious).toEqual([]);
+});
+
+test('on a weekend without classes the next week is shown', async ({ page }) => {
+  const problems = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+
+  await page.clock.setFixedTime(new Date('2026-10-17T10:30:00+02:00')); // Saturday
+  await page.goto(GROUP);
+  await expect(page.locator('.lesson').first()).toBeVisible();
+  await expect(weekLabel(page)).toHaveText('19.10–24.10');
+
+  await page.clock.setFixedTime(new Date('2026-10-18T10:30:00+02:00')); // Sunday
+  await page.goto(GROUP);
+  await expect(page.locator('.lesson').first()).toBeVisible();
+  await expect(weekLabel(page)).toHaveText('19.10–24.10');
+
+  expect(problems).toEqual([]);
+});
+
 test('every group page renders its calendar without errors', async ({ page }) => {
   expect(GROUPS.length).toBeGreaterThan(0);
   const problems = [];

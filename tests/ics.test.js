@@ -193,46 +193,50 @@ test('rejects a file that is not an iCalendar', () => {
   assert.throws(() => PlanICS.parse('<html>not a calendar</html>'), /iCalendar/);
 });
 
-/* ---------- round trip: plan.ics must reproduce the original timetable exactly ---------- */
-function originalData() {
-  const html = fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'v1-page.html'), 'utf8');
-  const m = html.match(/<script type="application\/json" id="plan-data">([\s\S]*?)<\/script>/);
-  return JSON.parse(m[1]);
-}
-const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 };
-function oldLabel(label) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return String(label)
-    .replace(/(\d{1,2})\s+(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)\b/g, (m, d, r) => pad(d) + '.' + pad(ROMAN[r]))
-    .replace(/\s*[-–]\s*/, '–');
-}
+test('initialWeekIndex shows the week holding today, rolling over empty weekends', () => {
+  const weeks = [
+    { monday: '2026-10-05', days: {} },
+    { monday: '2026-10-12', days: {} },
+    { monday: '2026-10-19', days: {} },
+  ];
+  // Thursday -> the week holding today
+  assert.equal(PlanICS.initialWeekIndex(weeks, '2026-10-15', 4), 1);
+  // Saturday with no weekend lessons -> the following week
+  assert.equal(PlanICS.initialWeekIndex(weeks, '2026-10-17', 6), 2);
+  // Sunday with no weekend lessons -> the following week
+  assert.equal(PlanICS.initialWeekIndex(weeks, '2026-10-18', 0), 2);
+  // Saturday in the last week has nowhere to roll -> stays
+  assert.equal(PlanICS.initialWeekIndex(weeks, '2026-10-24', 6), 2);
+  // before the first week -> the first week
+  assert.equal(PlanICS.initialWeekIndex(weeks, '2026-09-01', 2), 0);
+  // after the last week -> the last week
+  assert.equal(PlanICS.initialWeekIndex(weeks, '2027-03-01', 1), 2);
+});
 
-test('the WCY26KY3S1 calendar reproduces the original timetable', () => {
-  const orig = originalData();
+test('initialWeekIndex stays on weekends that have lessons', () => {
+  const weeks = [
+    { monday: '2026-10-12', days: { SOBOTA: [{ subject_full: 'WF' }] } },
+    { monday: '2026-10-19', days: {} },
+  ];
+  assert.equal(PlanICS.initialWeekIndex(weeks, '2026-10-17', 6), 0);
+  assert.equal(PlanICS.initialWeekIndex(weeks, '2026-10-18', 0), 0);
+});
+
+/* ---------- snapshot: the WCY26KY3S1 calendar must parse into the pinned plan ----------
+   The timetables/ files are corrected over time (rooms, times, teachers), so the
+   frozen v1 export above is no longer byte-identical. This pins the current
+   truth instead: any correction fails loudly, then the snapshot is regenerated:
+     node -e "process.env.TZ='Europe/Warsaw';
+       const fs=require('fs'), P=require('./src/ics.js');
+       const p=P.toPlan(P.parse(fs.readFileSync(
+         'timetables/2026-27-zima/WCY26KY3S1.ics','utf8')));
+       fs.writeFileSync('tests/fixtures/wcy26ky3s1.plan.json',
+         JSON.stringify(p,null,2)+'\n')"
+   and committed alongside the timetable fix. */
+test('the WCY26KY3S1 calendar matches the pinned plan snapshot', () => {
   const p = PlanICS.toPlan(PlanICS.parse(fs.readFileSync(path.join(ROOT, 'timetables', '2026-27-zima', 'WCY26KY3S1.ics'), 'utf8')));
-
-  assert.equal(p.meta.group, orig.meta.group);
-  assert.equal(p.meta.generated, orig.meta.generated);
-  assert.equal(p.weeks.length, orig.weeks.length);
-
-  let count = 0;
-  orig.weeks.forEach((ow, i) => {
-    const w = p.weeks[i];
-    assert.equal(w.monday, ow.monday, `week ${i + 1} monday`);
-    assert.equal(w.label, oldLabel(ow.label), `week ${i + 1} label`);
-    assert.deepEqual(Object.keys(w.days).sort(), Object.keys(ow.days).sort(), `week ${i + 1} days`);
-    Object.keys(ow.days).forEach((k) => {
-      const want = ow.days[k].map((e) => ({
-        date: e.date, start: e.start, end: e.end,
-        subject_full: e.subject_full, type_full: e.type_full,
-        room: e.room === '-' ? '' : e.room, teachers_full: e.teachers_full,
-      }));
-      assert.deepEqual(w.days[k], want, `week ${i + 1} ${k}`);
-      count += want.length;
-    });
-  });
-  assert.equal(count, 216);
-
-  const used = new Set(allLessons(p).map((l) => l.subject_full));
-  used.forEach((s) => assert.equal(p.subjectColors[s], orig.subjectColors[s].toLowerCase(), `colour of ${s}`));
+  const snapshot = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'wcy26ky3s1.plan.json'), 'utf8'));
+  assert.equal(p.meta.group, 'WCY26KY3S1');
+  assert.equal(p.weeks.length, 22);
+  assert.deepEqual(p, snapshot);
 });

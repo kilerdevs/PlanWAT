@@ -6,7 +6,7 @@ Each timetable is a standard iCalendar file ([RFC 5545](https://www.rfc-editor.o
 ## File
 
 - UTF-8, **CRLF** line endings, lines folded at 75 octets (continuation lines start with one space).
-- `<GROUP>` (the file name) is the WAT group code: 2–32 uppercase letters and digits, e.g. `WCY26KY3S1`.
+- `<GROUP>` (the file name) is the WAT group code: 2–32 letters, digits and underscores, e.g. `WCY26KY3S1`.
 - `<term>` (the folder) is lowercase letters, digits and dashes, e.g. `2026-27-zima`.
 
 ## Calendar properties
