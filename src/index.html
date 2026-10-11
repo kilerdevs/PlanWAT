@@ -52,39 +52,34 @@
   .lead { margin: 8px 0 0; font-size: 1.0625rem; color: var(--t2); }
   h2 { margin: 40px 0 12px; padding: 0 4px; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }
   .step { margin: 32px 0 12px; padding: 0 4px; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--t3); }
-  .fac-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-  .fac {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas: "code pl n";
-    column-gap: 12px;
-    align-items: center;
-    min-height: 60px;
-    padding: 10px 16px;
-    border: 0;
+  .fac-sec {
+    margin-top: 12px;
     border-radius: 20px;
     background: var(--s2);
-    color: inherit;
-    font: inherit;
-    text-align: left;
+    box-shadow: var(--edge);
+    overflow: hidden;
+  }
+  .fac-sec summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 60px;
+    padding: 12px 16px;
+    list-style: none;
     cursor: pointer;
-    box-shadow: var(--edge), inset 0 0 0 1px transparent;
     outline: 2px solid transparent;
     outline-offset: -2px;
-    transition: background-color 150ms, box-shadow 150ms, outline-color 150ms;
+    transition: outline-color 150ms;
     touch-action: manipulation;
   }
-  .fac:active { background: var(--s3); }
-  .fac:focus-visible { outline-color: var(--accent); }
-  .fac[aria-pressed="true"] { box-shadow: var(--edge), inset 0 0 0 1px var(--accent-line); background: var(--accent-wash); }
-  .fac[aria-pressed="true"] .fac-n { color: var(--t2); }
-  .fac-code { grid-area: code; font-size: 1.0625rem; font-weight: 700; letter-spacing: 0.02em; color: var(--accent-text); }
-  .fac-pl { grid-area: pl; font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.01em; }
-  .fac-n { grid-area: n; font-size: 0.8125rem; color: var(--t3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .fac-sec summary::-webkit-details-marker { display: none; }
+  .fac-sec summary:focus-visible { outline-color: var(--accent); }
+  .fac-sec summary:active { background: var(--s3); }
+  .fac-title { flex: 1 1 auto; min-width: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em; }
+  .fac-sec .chev { transition: transform 200ms; }
+  .fac-sec[open] .chev { transform: rotate(90deg); }
+  .fac-sec ul { border-radius: 0; background: transparent; box-shadow: none; border-top: 1px solid var(--line); }
+  .fac-n { font-size: 0.8125rem; color: var(--t3); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .search {
     width: 100%;
     min-height: 52px;
@@ -154,7 +149,7 @@
   }
   footer { margin-top: 32px; padding: 0 4px; font-size: 0.8125rem; color: var(--t3); }
   footer a { color: var(--accent-text); }
-  @media (hover: hover) and (pointer: fine) { .group:hover { background: var(--s3); } }
+  @media (hover: hover) and (pointer: fine) { .group:hover { background: var(--s3); } .fac-sec summary:hover { background: var(--s3); } }
   @media (min-width: 768px) {
     main { padding-top: calc(env(safe-area-inset-top) + 96px); }
     h1 { font-size: 4rem; letter-spacing: -0.04em; }
@@ -164,16 +159,14 @@
 <body>
 <main>
   <h1>Plany zajęć</h1>
-  <p class="lead">Najpierw wybierz wydział, potem znajdź swoją grupę.</p>
-  <p class="step" id="stepFac">1. Wydział</p>
-@@FACULTIES@@
-  <p class="step"><label for="groupSearch">2. Grupa — szukaj</label></p>
+  <p class="lead">Znajdź swoją grupę.</p>
+  <p class="step"><label for="groupSearch">Szukaj grupy</label></p>
   <input class="search" id="groupSearch" type="search" placeholder="np. WCY26KY3S1" autocomplete="off" aria-describedby="resultCount">
   <p class="resultline" id="resultCount" aria-live="polite"></p>
   <div id="groupList">
 @@GROUPS@@
   </div>
-  <p class="empty" id="noResults" hidden>Brak grup dla wybranego wydziału i frazy. Zmień wydział lub wyczyść wyszukiwanie.</p>
+  <p class="empty" id="noResults" hidden>Brak grup dla podanej frazy. Wyczyść wyszukiwanie.</p>
   <footer>Nieoficjalny plan zajęć. Zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie.</footer>
 </main>
 <script>
@@ -185,52 +178,28 @@
     if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return n + ' grupy';
     return n + ' grup';
   }
-  var btns = Array.prototype.slice.call(document.querySelectorAll('[data-facbtn]'));
   var search = document.getElementById('groupSearch');
   var count = document.getElementById('resultCount');
   var empty = document.getElementById('noResults');
-  var sections = Array.prototype.slice.call(document.querySelectorAll('[data-fac-section]'));
+  var sections = Array.prototype.slice.call(document.querySelectorAll('details[data-fac-section]'));
   var items = Array.prototype.slice.call(document.querySelectorAll('#groupList li[data-group]'));
-  var active = 'ALL';
-  function readHash() {
-    var m = /^#wydzial=([A-Za-z]+)$/.exec(location.hash || '');
-    var v = m ? m[1].toUpperCase() : 'ALL';
-    if (v !== 'ALL' && !document.querySelector('[data-facbtn="' + v + '"]')) v = 'ALL';
-    return v;
-  }
   function apply() {
     var q = (search.value || '').trim().toUpperCase();
     var shown = 0;
     items.forEach(function (li) {
-      var okFac = active === 'ALL' || li.getAttribute('data-fac') === active;
-      var okQ = !q || li.getAttribute('data-group').toUpperCase().indexOf(q) !== -1;
-      var show = okFac && okQ;
+      var show = !q || li.getAttribute('data-group').toUpperCase().indexOf(q) !== -1;
       li.hidden = !show;
       if (show) shown++;
     });
     sections.forEach(function (sec) {
       var any = Array.prototype.some.call(sec.querySelectorAll('li[data-group]'), function (li) { return !li.hidden; });
       sec.hidden = !any;
+      if (any) sec.open = !!q;
     });
-    btns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-facbtn') === active)); });
     empty.hidden = shown !== 0;
-    count.textContent = 'Wyświetlono ' + plural(shown) + (active === 'ALL' ? '' : ' · wydział ' + active);
+    count.textContent = 'Wyświetlono ' + plural(shown);
   }
-  btns.forEach(function (b) {
-    b.addEventListener('click', function () {
-      var v = b.getAttribute('data-facbtn');
-      active = v === active ? 'ALL' : v;
-      try {
-        if (active === 'ALL') history.replaceState(null, '', location.pathname + location.search);
-        else history.replaceState(null, '', '#wydzial=' + active);
-      } catch (e) { /* file:// or old browser: selection still works */ }
-      apply();
-      search.focus({ preventScroll: true });
-    });
-  });
   search.addEventListener('input', apply);
-  window.addEventListener('hashchange', function () { active = readHash(); apply(); });
-  active = readHash();
   apply();
 })();
 </script>

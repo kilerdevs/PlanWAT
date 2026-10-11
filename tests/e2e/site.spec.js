@@ -41,34 +41,42 @@ test('the root lists the groups (or goes straight to the only one) and links to 
   }).toPass();
   if (!ON_GROUP.test(page.url())) {
     await expect(page.locator('a.group')).toHaveCount(GROUPS.length);
+    await page.locator('details[data-fac-section="WCY"] > summary').click();
     await link.click();
   }
   await expect(page).toHaveURL(ON_GROUP);
   await expect(page.locator('.lesson').first()).toBeVisible();
 });
 
-test('the root picks a faculty first, then searches the group', async ({ page }) => {
+test('the root searches groups in faculty sections collapsed by default', async ({ page }) => {
   await page.clock.setFixedTime(THURSDAY_1030);
   await page.goto('/');
-  for (const fac of ['WCY', 'WEL', 'WIG', 'WML', 'WTC']) {
-    await expect(page.locator(`[data-facbtn="${fac}"]`), fac).toBeVisible();
+  const sections = page.locator('details[data-fac-section]');
+  expect(await sections.count()).toBeGreaterThan(0);
+  for (const sec of await sections.all()) {
+    await expect(sec).not.toHaveAttribute('open', '');
   }
-  await expect(page.locator('[data-facbtn="WCY"]')).toContainText('Wydział Cybernetyki');
 
   const search = page.locator('#groupSearch');
   await search.fill('wcy26ky3s1');
   await expect(page.locator('a.group[href="WCY26KY3S1/"]')).toBeVisible();
   await expect(page.locator('#resultCount')).toContainText('1 grupa');
+  await expect(page.locator('details[data-fac-section="WCY"]')).toHaveAttribute('open', '');
+
+  await search.fill('zzz-no-such-group');
+  await expect(page.locator('#noResults')).toBeVisible();
 
   await search.fill('');
-  await page.locator('[data-facbtn="WEL"]').click();
-  await expect(page.locator('#noResults')).toBeVisible();
-  await page.locator('[data-facbtn="WCY"]').click();
-  await expect(page.locator('a.group[href="WCY26KY3S1/"]')).toBeVisible();
   await expect(page.locator('#noResults')).toBeHidden();
+  await expect(page.locator('#resultCount')).toContainText(String(GROUPS.length));
+  for (const sec of await sections.all()) {
+    await expect(sec).not.toHaveAttribute('open', '');
+  }
 
-  await page.goto('/#wydzial=WEL');
-  await expect(page.locator('[data-facbtn="WEL"]')).toHaveAttribute('aria-pressed', 'true');
+  // sections still open by hand
+  await page.locator('details[data-fac-section="WCY"] > summary').click();
+  await expect(page.locator('details[data-fac-section="WCY"]')).toHaveAttribute('open', '');
+  await expect(page.locator('a.group[href="WCY26KY3S1/"]')).toBeVisible();
 });
 
 test('the root page has no serious or critical accessibility violations', async ({ page }) => {
