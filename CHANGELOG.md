@@ -10,8 +10,8 @@ All notable changes to PlanWAT are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- Timetable for group WCY26KY1S1 (semestr zimowy 2026/27). With two groups, the root page now lists them instead of
-  redirecting.
+- Timetables for groups WCY26KY1S1, WCY26KY2S1, WCY26KY4S1, WCY26KY5S1 and WCY26KY6S1 (semestr zimowy 2026/27).
+  With several groups, the root page now lists them instead of redirecting.
 
 ### Changed
 - Tests follow the groups in `timetables/` instead of assuming one: every group must get a page and a byte-identical
