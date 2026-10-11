@@ -25,6 +25,9 @@
     --line: rgba(255, 255, 255, 0.08);
     --edge: inset 0 1px 0 rgba(255, 255, 255, 0.06);
     --accent: #0a84ff;
+    --accent-text: #4da3ff;
+    --accent-line: rgba(10, 132, 255, 0.5);
+    --accent-wash: rgba(10, 132, 255, 0.05);
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
     color-scheme: dark;
   }
@@ -48,6 +51,70 @@
   h1 { margin: 0; font-size: 2.5rem; font-weight: 700; line-height: 1.04; letter-spacing: -0.035em; }
   .lead { margin: 8px 0 0; font-size: 1.0625rem; color: var(--t2); }
   h2 { margin: 40px 0 12px; padding: 0 4px; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }
+  .step { margin: 32px 0 12px; padding: 0 4px; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--t3); }
+  .fac-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .fac {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "code pl n" "code en n";
+    column-gap: 12px;
+    align-items: center;
+    min-height: 60px;
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 20px;
+    background: var(--s2);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: var(--edge), inset 0 0 0 1px transparent;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    transition: background-color 150ms, box-shadow 150ms, outline-color 150ms;
+    touch-action: manipulation;
+  }
+  .fac:active { background: var(--s3); }
+  .fac:focus-visible { outline-color: var(--accent); }
+  .fac[aria-pressed="true"] { box-shadow: var(--edge), inset 0 0 0 1px var(--accent-line); background: var(--accent-wash); }
+  .fac[aria-pressed="true"] .fac-n { color: var(--t2); }
+  .fac-code { grid-area: code; font-size: 1.0625rem; font-weight: 700; letter-spacing: 0.02em; color: var(--accent-text); }
+  .fac-pl { grid-area: pl; font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.01em; }
+  .fac-en { grid-area: en; font-size: 0.8125rem; color: var(--t2); }
+  .fac-n { grid-area: n; font-size: 0.8125rem; color: var(--t3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .search {
+    width: 100%;
+    min-height: 52px;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 20px;
+    background: var(--s2);
+    color: var(--t1);
+    font: inherit;
+    font-size: 1.0625rem;
+    box-shadow: var(--edge), inset 0 0 0 1px transparent;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    caret-color: var(--accent);
+  }
+  .search::placeholder { color: var(--t3); }
+  .search:focus-visible { outline-color: var(--accent); }
+  .resultline { margin: 12px 4px 0; font-size: 0.8125rem; color: var(--t3); font-variant-numeric: tabular-nums; }
+  .empty {
+    margin-top: 12px;
+    padding: 24px 20px;
+    border-radius: 20px;
+    background: var(--s2);
+    box-shadow: var(--edge);
+    color: var(--t2);
+    font-size: 0.9375rem;
+    text-align: center;
+  }
+  [hidden] { display: none !important; }
   ul {
     margin: 0;
     padding: 0;
@@ -97,9 +164,75 @@
 <body>
 <main>
   <h1>Plany zajęć</h1>
-  <p class="lead">Wybierz swoją grupę.</p>
+  <p class="lead">Najpierw wybierz wydział, potem znajdź swoją grupę.</p>
+  <p class="step" id="stepFac">1. Wydział</p>
+@@FACULTIES@@
+  <p class="step"><label for="groupSearch">2. Grupa — szukaj</label></p>
+  <input class="search" id="groupSearch" type="search" placeholder="np. WCY26KY3S1" autocomplete="off" aria-describedby="resultCount">
+  <p class="resultline" id="resultCount" aria-live="polite"></p>
+  <div id="groupList">
 @@GROUPS@@
+  </div>
+  <p class="empty" id="noResults" hidden>Brak grup dla wybranego wydziału i frazy. Zmień wydział lub wyczyść wyszukiwanie.</p>
   <footer>Nieoficjalny plan zajęć. Zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie.</footer>
 </main>
+<script>
+(function () {
+  'use strict';
+  function plural(n) {
+    if (n === 1) return '1 grupa';
+    var m10 = n % 10, m100 = n % 100;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return n + ' grupy';
+    return n + ' grup';
+  }
+  var btns = Array.prototype.slice.call(document.querySelectorAll('[data-facbtn]'));
+  var search = document.getElementById('groupSearch');
+  var count = document.getElementById('resultCount');
+  var empty = document.getElementById('noResults');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('[data-fac-section]'));
+  var items = Array.prototype.slice.call(document.querySelectorAll('#groupList li[data-group]'));
+  var active = 'ALL';
+  function readHash() {
+    var m = /^#wydzial=([A-Za-z]+)$/.exec(location.hash || '');
+    var v = m ? m[1].toUpperCase() : 'ALL';
+    if (v !== 'ALL' && !document.querySelector('[data-facbtn="' + v + '"]')) v = 'ALL';
+    return v;
+  }
+  function apply() {
+    var q = (search.value || '').trim().toUpperCase();
+    var shown = 0;
+    items.forEach(function (li) {
+      var okFac = active === 'ALL' || li.getAttribute('data-fac') === active;
+      var okQ = !q || li.getAttribute('data-group').toUpperCase().indexOf(q) !== -1;
+      var show = okFac && okQ;
+      li.hidden = !show;
+      if (show) shown++;
+    });
+    sections.forEach(function (sec) {
+      var any = Array.prototype.some.call(sec.querySelectorAll('li[data-group]'), function (li) { return !li.hidden; });
+      sec.hidden = !any;
+    });
+    btns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-facbtn') === active)); });
+    empty.hidden = shown !== 0;
+    count.textContent = 'Wyświetlono ' + plural(shown) + (active === 'ALL' ? '' : ' · wydział ' + active);
+  }
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var v = b.getAttribute('data-facbtn');
+      active = v === active ? 'ALL' : v;
+      try {
+        if (active === 'ALL') history.replaceState(null, '', location.pathname + location.search);
+        else history.replaceState(null, '', '#wydzial=' + active);
+      } catch (e) { /* file:// or old browser: selection still works */ }
+      apply();
+      search.focus({ preventScroll: true });
+    });
+  });
+  search.addEventListener('input', apply);
+  window.addEventListener('hashchange', function () { active = readHash(); apply(); });
+  active = readHash();
+  apply();
+})();
+</script>
 </body>
 </html>

@@ -30,10 +30,36 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / 'src'
 MARKER = '.planwat-site'
-GROUP_RE = re.compile(r'^[A-Z0-9]{2,32}$')
+GROUP_RE = re.compile(r'^[A-Za-z0-9_]{2,32}$')
 TERM_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
 FONT_CSS = 'https://fonts.googleapis.com'
 FONT_FILES = 'https://fonts.gstatic.com'
+
+# Canonical faculties offered on the front page (code -> Polish / English names).
+# A group belongs to the faculty matching the first three letters of its code;
+# anything else is listed under "Pozostałe grupy".
+FACULTIES = [
+    ('WCY', 'Wydział Cybernetyki', 'Faculty of Cybernetics'),
+    ('WEL', 'Wydział Elektroniki', 'Faculty of Electronics'),
+    ('WIG', 'Wydział Inżynierii Lądowej i Geodezji', 'Faculty of Civil Engineering and Geodesy'),
+    ('WML', 'Wydział Mechatroniki, Uzbrojenia i Lotnictwa', 'Faculty of Mechatronics, Armament and Aviation'),
+    ('WTC', 'Wydział Nowych Technologii i Chemii', 'Faculty of New Technologies and Chemistry'),
+]
+FACULTY_CODES = {code for code, _, _ in FACULTIES}
+
+
+def faculty_of(group):
+    prefix = group[:3].upper()
+    return prefix if prefix in FACULTY_CODES else 'OTHER'
+
+
+def plural_grup(n):
+    if n == 1:
+        return '1 grupa'
+    m10, m100 = n % 10, n % 100
+    if 2 <= m10 <= 4 and not 12 <= m100 <= 14:
+        return f'{n} grupy'
+    return f'{n} grup'
 
 
 class BuildError(Exception):
@@ -108,7 +134,7 @@ def load_term(path):
     if not TERM_RE.match(term_id):
         raise BuildError(f'{path}: term folder "{term_id}" must be lowercase letters, digits and dashes')
     if not GROUP_RE.match(group):
-        raise BuildError(f'{path}: group code "{group}" must be 2-32 uppercase letters and digits')
+        raise BuildError(f'{path}: group code "{group}" must be 2-32 letters, digits and underscores')
     props, dates = read_calendar(path)
     declared = props.get('X-PLAN-GROUP')
     if declared and declared != group:
@@ -211,25 +237,52 @@ def render_group(template, ics_js, term):
 
 
 def render_index(template, current):
-    groups = sorted(current.items(), key=lambda kv: (kv[1].meta['faculty'].lower(), kv[0]))
-    sections, faculty, rows = [], None, []
+    names = {code: (pl, en) for code, pl, en in FACULTIES}
+    order = {code: i for i, (code, _, _) in enumerate(FACULTIES)}
+    groups = sorted(current.items(), key=lambda kv: (order.get(faculty_of(kv[0]), len(order)), kv[0]))
+
+    counts = {}
+    for code, _ in groups:
+        counts[faculty_of(code)] = counts.get(faculty_of(code), 0) + 1
+
+    picker = ['  <div class="fac-grid" role="group" aria-label="Wybierz wydział">']
+    picker.append('    <button class="fac is-all" type="button" data-facbtn="ALL" aria-pressed="true">'
+                  f'<span class="fac-code">Wszystkie</span>'
+                  f'<span class="fac-pl">Wszystkie wydziały</span>'
+                  f'<span class="fac-n">{plural_grup(len(groups))}</span></button>')
+    for code, pl, en in FACULTIES:
+        n = counts.get(code, 0)
+        picker.append(f'    <button class="fac" type="button" data-facbtn="{code}" aria-pressed="false">'
+                      f'<span class="fac-code">{code}</span>'
+                      f'<span class="fac-pl">{html.escape(pl)}</span>'
+                      f'<span class="fac-en">{html.escape(en)}</span>'
+                      f'<span class="fac-n">{plural_grup(n)}</span></button>')
+    picker.append('  </div>')
+
+    sections, fac, rows = [], None, []
 
     def flush():
         if rows:
-            title = f'Wydział {html.escape(faculty)}' if faculty else 'Pozostałe grupy'
-            sections.append(f'  <h2>{title}</h2>\n  <ul>\n' + '\n'.join(rows) + '\n  </ul>')
+            if fac == 'OTHER':
+                title = 'Pozostałe grupy'
+            else:
+                title = f'{fac} &middot; {html.escape(names[fac][0])}'
+            sections.append(f'  <section data-fac-section="{fac}">\n  <h2>{title}</h2>\n  <ul>\n'
+                            + '\n'.join(rows) + '\n  </ul>\n  </section>')
 
     for code, term in groups:
-        if term.meta['faculty'] != faculty:
+        if faculty_of(code) != fac:
             flush()
-            faculty, rows = term.meta['faculty'], []
+            fac, rows = faculty_of(code), []
         label = html.escape(term.meta['term'] or term.term_id)
-        rows.append(f'    <li><a class="group" href="{code}/"><span><span class="code">{code}</span>'
+        rows.append(f'    <li data-group="{code}" data-fac="{faculty_of(code)}">'
+                    f'<a class="group" href="{code}/"><span><span class="code">{code}</span>'
                     f'<span class="term">{label}</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true">'
                     '<path d="m9 18 6-6-6-6"/></svg></a></li>')
     flush()
     redirect = f'<meta http-equiv="refresh" content="0; url={groups[0][0]}/">' if len(groups) == 1 else ''
-    page = template.replace('@@GROUPS@@', '\n'.join(sections)).replace('@@REDIRECT@@', redirect)
+    page = template.replace('@@FACULTIES@@', '\n'.join(picker)).replace('@@GROUPS@@', '\n'.join(sections))
+    page = page.replace('@@REDIRECT@@', redirect)
     return finish(page, connect=False)
 
 

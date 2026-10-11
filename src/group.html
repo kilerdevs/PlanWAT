@@ -1685,14 +1685,7 @@
   }
 
   function findCurrentWeekIndex(data) {
-    var today = todayIso();
-    for (var i = 0; i < data.weeks.length; i++) {
-      var monday = data.weeks[i].monday;
-      var sunIso = isoOf(addDays(isoToLocalDate(monday), 6));
-      if (today >= monday && today <= sunIso) return i;
-      if (today < monday) return i;
-    }
-    return data.weeks.length - 1;
+    return window.PlanICS.initialWeekIndex(data.weeks, todayIso(), new Date().getDay());
   }
 
   /* ---------- week picker sheet ---------- */

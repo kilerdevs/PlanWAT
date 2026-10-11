@@ -58,7 +58,7 @@ The official WAT plan is a large table built for desktop. This site turns the sa
 
 ## Evidence on Hand
 
-- Real timetable data for WCY26KY3S1: 22 weeks, 216 class blocks, with subjects, types, rooms, teachers and per-subject colours, in `timetables/2026-27-zima/WCY26KY3S1.ics`. It was exported once by `tools/export_ics.py` from the original page, which is kept as `tests/fixtures/v1-page.html` for the round-trip test.
+- Real timetable data for WCY26KY3S1: 22 weeks, 216 class blocks, with subjects, types, rooms, teachers and per-subject colours, in `timetables/2026-27-zima/WCY26KY3S1.ics`. It was exported once by `tools/export_ics.py` from the original page, which is kept as `tests/fixtures/v1-page.html`; the parser output for the current calendar is pinned in `tests/fixtures/wcy26ky3s1.plan.json`.
 - None of the following exist; do not fabricate them: data for other groups, usage numbers, testimonials, endorsements, or any WAT-provided assets.
 
 ## Product Principles
