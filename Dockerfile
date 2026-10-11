@@ -2,7 +2,7 @@
 # Base images are digest-pinned: a moving tag must not change what ships. Dependabot proposes bumps.
 
 # Stage 1: build the static site from the timetables and pin its CSP hashes into nginx.conf.
-FROM python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a AS build
+FROM python:3.14-alpine@sha256:f6a589d43c42b9e7f7dc67a12d37132491f362859a5d750607710cc56da3bc72 AS build
 WORKDIR /src
 COPY build.py ./
 COPY src/ src/
