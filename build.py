@@ -241,22 +241,6 @@ def render_index(template, current):
     order = {code: i for i, (code, _) in enumerate(FACULTIES)}
     groups = sorted(current.items(), key=lambda kv: (order.get(faculty_of(kv[0]), len(order)), kv[0]))
 
-    counts = {}
-    for code, _ in groups:
-        counts[faculty_of(code)] = counts.get(faculty_of(code), 0) + 1
-
-    picker = ['  <div class="fac-grid" role="group" aria-label="Wybierz wydział">']
-    picker.append('    <button class="fac is-all" type="button" data-facbtn="ALL" aria-pressed="true">'
-                  f'<span class="fac-code">Wszystkie</span>'
-                  f'<span class="fac-n">{plural_grup(len(groups))}</span></button>')
-    for code, pl in FACULTIES:
-        n = counts.get(code, 0)
-        picker.append(f'    <button class="fac" type="button" data-facbtn="{code}" aria-pressed="false">'
-                      f'<span class="fac-code">{code}</span>'
-                      f'<span class="fac-pl">{html.escape(pl)}</span>'
-                      f'<span class="fac-n">{plural_grup(n)}</span></button>')
-    picker.append('  </div>')
-
     sections, fac, rows = [], None, []
 
     def flush():
@@ -265,8 +249,12 @@ def render_index(template, current):
                 title = 'Pozostałe grupy'
             else:
                 title = f'{fac} &middot; {html.escape(names[fac])}'
-            sections.append(f'  <section data-fac-section="{fac}">\n  <h2>{title}</h2>\n  <ul>\n'
-                            + '\n'.join(rows) + '\n  </ul>\n  </section>')
+            sections.append(f'  <details class="fac-sec" data-fac-section="{fac}">\n'
+                            f'    <summary><span class="fac-title">{title}</span>'
+                            f'<span class="fac-n">{plural_grup(len(rows))}</span>'
+                            '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true">'
+                            '<path d="m9 18 6-6-6-6"/></svg></summary>\n'
+                            '  <ul>\n' + '\n'.join(rows) + '\n  </ul>\n  </details>')
 
     for code, term in groups:
         if faculty_of(code) != fac:
@@ -279,7 +267,7 @@ def render_index(template, current):
                     '<path d="m9 18 6-6-6-6"/></svg></a></li>')
     flush()
     redirect = f'<meta http-equiv="refresh" content="0; url={groups[0][0]}/">' if len(groups) == 1 else ''
-    page = template.replace('@@FACULTIES@@', '\n'.join(picker)).replace('@@GROUPS@@', '\n'.join(sections))
+    page = template.replace('@@GROUPS@@', '\n'.join(sections))
     page = page.replace('@@REDIRECT@@', redirect)
     return finish(page, connect=False)
 
