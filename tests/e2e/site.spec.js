@@ -1,5 +1,7 @@
 // End-to-end checks of the built site in Chromium, Firefox and WebKit (desktop and phone sizes).
 // The browser clock is frozen at Thursday 15 Oct 2026, 10:30 (Matematyka II is on), Europe/Warsaw.
+const fs = require('node:fs');
+const path = require('node:path');
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 
@@ -24,10 +26,44 @@ async function openGroup(page, { at = THURSDAY_1030, path = GROUP } = {}) {
 }
 
 const weekLabel = (page) => page.locator('#weekLabel');
+const ON_GROUP = /\/WCY26KY3S1\/$/;
 
-test('the root link sends visitors to the only group', async ({ page }) => {
+/* Every group the build wrote into site/ (a directory holding plan.ics). */
+const SITE = path.join(__dirname, '..', '..', 'site');
+const GROUPS = fs.readdirSync(SITE).filter((d) => fs.existsSync(path.join(SITE, d, 'plan.ics'))).sort();
+
+test('the root lists the groups (or goes straight to the only one) and links to a group page', async ({ page }) => {
+  await page.clock.setFixedTime(THURSDAY_1030);
   await page.goto('/');
-  await expect(page).toHaveURL(/\/WCY26KY3S1\/$/);
+  const link = page.locator('a.group[href="WCY26KY3S1/"]');
+  await expect(async () => {
+    expect(ON_GROUP.test(page.url()) || (await link.count()) > 0).toBe(true);
+  }).toPass();
+  if (!ON_GROUP.test(page.url())) {
+    await expect(page.locator('a.group')).toHaveCount(GROUPS.length);
+    await link.click();
+  }
+  await expect(page).toHaveURL(ON_GROUP);
+  await expect(page.locator('.lesson').first()).toBeVisible();
+});
+
+test('every group page renders its calendar without errors', async ({ page }) => {
+  expect(GROUPS.length).toBeGreaterThan(0);
+  const problems = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    window.__csp = [];
+    document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective));
+  });
+  await page.clock.setFixedTime(THURSDAY_1030);
+  for (const group of GROUPS) {
+    await page.goto(`/${group}/`);
+    await expect(page.locator('h1'), group).toHaveText(group);
+    await expect(page.locator('.lesson, .session-banner').first(), group).toBeVisible();
+    await expect(page.locator('.session-banner', { hasText: 'Nie udało się' }), group).toHaveCount(0);
+    expect(await page.evaluate(() => window.__csp), group).toEqual([]);
+  }
+  expect(problems).toEqual([]);
 });
 
 test('renders the current week from plan.ics with live status and no CSP violations', async ({ page }) => {

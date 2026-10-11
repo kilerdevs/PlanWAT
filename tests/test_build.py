@@ -85,10 +85,24 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertEqual((self.out / 'WCY26KY3S1' / 'plan.ics').read_bytes(),
                          (ROOT / 'timetables' / '2026-27-zima' / 'WCY26KY3S1.ics').read_bytes())
 
-    def test_root_redirects_to_the_only_group(self):
+    def groups(self):
+        return sorted({p.stem for p in (ROOT / 'timetables').glob('*/*.ics')})
+
+    def test_every_group_in_the_repository_gets_a_page_and_its_calendar(self):
+        for group in self.groups():
+            self.assertTrue((self.out / group / 'index.html').is_file(), group)
+            calendar = (self.out / group / 'plan.ics').read_bytes()
+            self.assertIn(calendar, [p.read_bytes() for p in (ROOT / 'timetables').glob(f'*/{group}.ics')], group)
+
+    def test_root_links_every_group_and_redirects_only_when_there_is_one(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
-        self.assertIn('<meta http-equiv="refresh" content="0; url=WCY26KY3S1/">', html)
-        self.assertIn('href="WCY26KY3S1/"', html)
+        groups = self.groups()
+        for group in groups:
+            self.assertIn(f'href="{group}/"', html)
+        if len(groups) == 1:
+            self.assertIn(f'<meta http-equiv="refresh" content="0; url={groups[0]}/">', html)
+        else:
+            self.assertNotIn('http-equiv="refresh"', html)
 
     def test_every_page_pins_its_inline_code_in_a_meta_csp(self):
         for page in self.pages():
@@ -163,6 +177,14 @@ class BuildManyGroupsTest(unittest.TestCase):
         root = (out / 'index.html').read_text(encoding='utf-8')
         self.assertNotIn('http-equiv="refresh"', root)
         self.assertIn('href="WCY25IY1S1/"', root)
+        self.assertIn('href="WCY26KY3S1/"', root)
+
+    def test_a_single_group_root_redirects_straight_to_it(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        out = self.tmp / 'site'
+        build.build(self.tt, out, today=D(2026, 10, 15), nginx_conf=None)
+        root = (out / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('<meta http-equiv="refresh" content="0; url=WCY26KY3S1/">', root)
         self.assertIn('href="WCY26KY3S1/"', root)
 
     def test_rejects_a_file_whose_name_disagrees_with_its_group(self):
