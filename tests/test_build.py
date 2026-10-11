@@ -129,7 +129,7 @@ class BuildRealSiteTest(unittest.TestCase):
         for code in ('WCY', 'WEL', 'WIG', 'WML', 'WTC'):
             self.assertIn(f'data-facbtn="{code}"', html)
         self.assertIn('Wydział Cybernetyki', html)
-        self.assertIn('Faculty of Cybernetics', html)
+        self.assertNotIn('Faculty of', html)
         self.assertIn('id="groupSearch"', html)
         self.assertIn('id="noResults"', html)
         for group in self.groups():
