@@ -1,0 +1,31 @@
+# Changelog
+
+[![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?style=flat)](https://keepachangelog.com/en/1.1.0/)
+[![SemVer](https://img.shields.io/badge/versioning-SemVer-3F4551?style=flat)](https://semver.org/spec/v2.0.0.html)
+[![Latest tag](https://img.shields.io/github/v/tag/kilerdevs/PlanWAT?style=flat&label=latest)](https://github.com/kilerdevs/PlanWAT/tags)
+
+All notable changes to PlanWAT are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/); versioning is semver.
+
+## [Unreleased]
+
+## [1.0.0] - 2026-10-11
+
+First public release.
+
+### Added
+- Group timetable page: Live card for the class on now or next (room, time, teacher, progress), grouped day lists on
+  phones and a day × time-slot grid on wide screens, week picker sheet, arrows / swipe / keyboard navigation,
+  "Bieżący tydzień" pill, subject legend, phones scroll to the current class, `.ics` download.
+- Timetables as iCalendar files in `timetables/<term>/<GROUP>.ics`, read in the browser by `src/ics.js` (folded lines,
+  escaping, local and UTC times, weekly and daily repeats, excluded dates, cancelled and all-day events skipped).
+- `build.py`: one page per group at `/<GROUP>/` with its current term (picked by date), a group list at the root that
+  redirects while there is only one group, a 404 page, and a hash-pinned Content-Security-Policy in every page.
+- GitHub Pages deployment on every push to `master` and daily, so a new term goes live on its first day.
+- Self-hosted Docker image: two-stage build, read-only unprivileged nginx, security headers, header CSP generated from
+  the built pages.
+- CI: calendar-reader tests with coverage floors, build tests, Playwright browser tests (Chromium, Firefox, WebKit;
+  desktop and phone) with an axe WCAG scan, Docker image scan (Grype) and smoke test, CodeQL, Dependabot.
+
+[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/kilerdevs/PlanWAT/releases/tag/v1.0.0

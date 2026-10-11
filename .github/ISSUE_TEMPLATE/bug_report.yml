@@ -1,0 +1,87 @@
+name: Bug report
+description: Something on the site is broken or behaves unexpectedly (not wrong timetable data, not a vulnerability)
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        > **Wrong room, time or teacher?** Use the [timetable form](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml).
+        > **Found a security problem?** Use [private vulnerability reporting](https://github.com/kilerdevs/PlanWAT/security/advisories/new).
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      placeholder: When I tap …, the page …
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Tap …
+        3. See …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: input
+    id: url
+    attributes:
+      label: Page
+      description: The group page or URL where it happens.
+      placeholder: …/WCY26KY3S1/
+    validations:
+      required: true
+
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device and browser
+      options:
+        - iPhone / iPad — Safari
+        - iPhone / iPad — another browser
+        - Android — Chrome
+        - Android — another browser
+        - Desktop — Chrome / Edge
+        - Desktop — Firefox
+        - Desktop — Safari
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Browser and OS version
+      placeholder: iOS 26.1, Safari
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot or console output
+      description: Drag a screenshot here. For console errors, paste them; they are rendered as code.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues.
+          required: true
