@@ -83,7 +83,7 @@ calendar file and the page can never disagree.
 ## Adding or updating a timetable
 
 1. Put the calendar at `timetables/<term>/<GROUP>.ics`, for example `timetables/2027-lato/WCY26KY3S1.ics`.
-   - `<term>`: lowercase letters, digits and dashes. `<GROUP>`: the WAT group code, uppercase letters and digits.
+   - `<term>`: lowercase letters, digits and dashes. `<GROUP>`: the WAT group code, letters, digits and underscores.
    - The file must be UTF-8 with CRLF line endings (`.gitattributes` keeps them intact).
 2. Follow the [calendar format](docs/ICS-FORMAT.md): standard events plus a few `X-PLAN-*` properties for the header
    (group, faculty, term, semester dates).

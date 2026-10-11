@@ -256,7 +256,25 @@
     return { meta: meta, subjectColors: colors, weeks: weeks };
   }
 
-  var PlanICS = { decode: decode, parse: parse, toPlan: toPlan };
+  /* Which week to show first: the week holding today (or the next one when today
+     falls between/after them), except that on a Saturday/Sunday whose own week
+     has no weekend lessons the following week is shown straight away. */
+  function initialWeekIndex(weeks, today, dayOfWeek) {
+    var cur = weeks.length - 1, inside = false;
+    for (var i = 0; i < weeks.length; i++) {
+      var monday = weeks[i].monday;
+      var sunday = isoOf(addDays(fromIso(monday), 6));
+      if (today >= monday && today <= sunday) { cur = i; inside = true; break; }
+      if (today < monday) { cur = i; break; }
+    }
+    if (inside && cur < weeks.length - 1 && (dayOfWeek === 0 || dayOfWeek === 6)) {
+      var days = weeks[cur].days || {};
+      if (!((days.SOBOTA || []).length || (days.NIEDZIELA || []).length)) return cur + 1;
+    }
+    return cur;
+  }
+
+  var PlanICS = { decode: decode, parse: parse, toPlan: toPlan, initialWeekIndex: initialWeekIndex };
   if (typeof module === 'object' && module.exports) module.exports = PlanICS;
   else root.PlanICS = PlanICS;
 })(this);
