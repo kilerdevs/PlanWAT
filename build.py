@@ -42,6 +42,7 @@ FACULTIES = [
     ('WCY', 'Wydział Cybernetyki'),
     ('WEL', 'Wydział Elektroniki'),
     ('WIG', 'Wydział Inżynierii Lądowej i Geodezji'),
+    ('WLO', 'Wydział Bezpieczeństwa, Logistyki i Zarządzania'),
     ('WML', 'Wydział Mechatroniki, Uzbrojenia i Lotnictwa'),
     ('WTC', 'Wydział Nowych Technologii i Chemii'),
 ]
