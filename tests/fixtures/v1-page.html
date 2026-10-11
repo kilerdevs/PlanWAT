@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Plan zajęć WCY26KY3S1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f1e8;
+    --paper: #fbf9f2;
+    --surface: #ffffff;
+    --ink: #1c2733;
+    --ink-soft: #4d5a68;
+    --ink-faint: #8590a0;
+    --line: #ddd5bf;
+    --line-strong: #c7bd9e;
+    --accent: #0d5c63;
+    --accent-soft: #0d5c6318;
+    --accent-ink: #0a464b;
+    --amber: #c8862a;
+    --amber-soft: #c8862a22;
+    --shadow: 0 1px 2px rgba(28,39,51,0.06), 0 4px 14px rgba(28,39,51,0.06);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b2438;
+      --paper: #0e2c44;
+      --surface: #123655;
+      --ink: #eaf3f8;
+      --ink-soft: #b7cbdb;
+      --ink-faint: #7d97ab;
+      --line: #1f4d6f;
+      --line-strong: #2c6690;
+      --accent: #6fd3d9;
+      --accent-soft: #6fd3d922;
+      --accent-ink: #bdf0f3;
+      --amber: #f2b544;
+      --amber-soft: #f2b54422;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px rgba(0,0,0,0.35);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b2438;
+    --paper: #0e2c44;
+    --surface: #123655;
+    --ink: #eaf3f8;
+    --ink-soft: #b7cbdb;
+    --ink-faint: #7d97ab;
+    --line: #1f4d6f;
+    --line-strong: #2c6690;
+    --accent: #6fd3d9;
+    --accent-soft: #6fd3d922;
+    --accent-ink: #bdf0f3;
+    --amber: #f2b544;
+    --amber-soft: #f2b54422;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px rgba(0,0,0,0.35);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    color: var(--ink);
+    font-family: "IBM Plex Sans", Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 24px 16px;
+  }
+  h1, h2, h3, .display {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", "Roboto Condensed", Roboto, system-ui, sans-serif;
+    text-wrap: balance;
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, "Roboto Mono", "Droid Sans Mono", monospace; font-variant-numeric: tabular-nums; }
+
+  .sheet {
+    max-width: 760px;
+    margin: 0 auto;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+  }
+
+  /* title block, drafting-stamp style */
+  .titleblock {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 24px;
+    padding: 18px 20px;
+    border-bottom: 2px solid var(--ink);
+    background: var(--surface);
+    border-radius: 9px 9px 0 0;
+  }
+  .titleblock .name {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", "Roboto Condensed", Roboto, sans-serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: 0.01em;
+  }
+  .titleblock .sub {
+    grid-column: 1;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+  }
+  .titleblock .stamp {
+    grid-row: 1 / 3;
+    text-align: right;
+    font-size: 0.7rem;
+    color: var(--ink-faint);
+    line-height: 1.5;
+    border-left: 1px solid var(--line);
+    padding-left: 16px;
+    white-space: nowrap;
+  }
+  .titleblock .stamp b { color: var(--ink-soft); font-weight: 600; }
+
+  /* week navigator */
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+  }
+  .navbtn {
+    -webkit-appearance: none;
+    appearance: none;
+    touch-action: manipulation;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    color: var(--ink);
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  @media (hover: hover) {
+    .navbtn:hover { background: var(--accent-soft); border-color: var(--accent); }
+  }
+  .navbtn:active { background: var(--accent-soft); border-color: var(--accent); }
+  .navbtn:disabled { opacity: 0.35; cursor: default; }
+  .navbtn:focus-visible, select:focus-visible, .daypicker button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .navcenter {
+    flex: 1;
+    text-align: center;
+    min-width: 0;
+  }
+  .navcenter .weeklabel {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", "Roboto Condensed", Roboto, sans-serif;
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+  .navcenter .weekmeta {
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+  }
+  select#weekpick {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238590a0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    padding-right: 26px !important;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+    border: 1px solid var(--line-strong);
+    background-color: var(--paper);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: "IBM Plex Mono", "Roboto Mono", "Droid Sans Mono", monospace;
+    font-size: 0.78rem;
+    max-width: 108px;
+  }
+
+  .body { padding: 8px 20px 20px; }
+
+  .day {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .day:last-child { border-bottom: none; }
+  .dayhead {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .dayhead .dow {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", "Roboto Condensed", Roboto, sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .dayhead .date {
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+  }
+  .dayhead .today-pill {
+    margin-left: auto;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 2px 8px;
+  }
+
+  .empty-day {
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+    font-style: italic;
+    padding-left: 2px;
+  }
+
+  .lesson {
+    display: grid;
+    grid-template-columns: 66px minmax(0, 1fr);
+    gap: 12px;
+    padding: 8px 10px 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--lesson-color, var(--accent));
+  }
+  .lesson .time {
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--ink-soft);
+    padding-top: 1px;
+  }
+  .lesson .time b { display: block; color: var(--ink); font-size: 0.78rem; }
+  .lesson .info .subj {
+    overflow-wrap: anywhere;
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .lesson .info .type {
+    font-size: 0.62rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--lesson-color, var(--accent));
+    background: var(--lesson-tint, rgba(13, 92, 99, 0.14));
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .lesson .info .type { color: var(--ink); }
+  }
+  :root[data-theme="dark"] .lesson .info .type { color: var(--ink); }
+  .lesson .info .meta {
+    overflow-wrap: anywhere;
+    font-size: 0.76rem;
+    color: var(--ink-soft);
+    margin-top: 3px;
+  }
+  .lesson .info .meta .room { font-family: "IBM Plex Mono", "Roboto Mono", "Droid Sans Mono", monospace; }
+  .lesson .info .meta .sep { color: var(--ink-faint); margin: 0 4px; }
+
+  .session-banner {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 14px 16px;
+    margin: 4px 0 16px;
+    border: 1px dashed var(--line-strong);
+    border-radius: 8px;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+    background: var(--amber-soft);
+  }
+  .session-banner b { color: var(--ink); }
+
+  .legend {
+    padding: 14px 20px 22px;
+    border-top: 1px solid var(--line);
+  }
+  .legend summary {
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  .legend summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .legendgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
+    gap: 6px 14px;
+    margin-top: 12px;
+  }
+  .legenditem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+  .legenditem .swatch {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    background: var(--sw, var(--accent));
+  }
+
+  .hint {
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    margin-top: 14px;
+    padding: 0 4px;
+  }
+
+  @media (max-width: 520px) {
+    body { padding: 10px; }
+    .titleblock { grid-template-columns: 1fr; padding: 14px; }
+    .titleblock .stamp { grid-row: auto; text-align: left; border-left: none; padding-left: 0; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; white-space: normal; }
+    .nav { gap: 8px; padding: 10px 12px; }
+    .navcenter .weeklabel { font-size: 1rem; }
+    .navcenter .weekmeta { font-size: 0.66rem; letter-spacing: 0.02em; }
+    select#weekpick { max-width: 124px; font-size: 0.72rem; padding-left: 8px; padding-right: 24px !important; }
+    .navcenter .weekmeta .yr { display: none; }
+    .body { padding: 4px 12px 16px; }
+    .legend { padding: 14px 14px 20px; }
+    .lesson { grid-template-columns: 54px minmax(0, 1fr); gap: 10px; }
+  }
+
+  @media (max-width: 350px) {
+    .nav { gap: 6px; padding-inline: 8px; }
+    .navbtn { width: 32px; height: 32px; }
+    .navcenter .weeklabel { font-size: 0.9rem; white-space: nowrap; }
+    select#weekpick { max-width: 100px; font-size: 0.68rem; padding-right: 20px !important; background-position: right 6px center; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .day, .lesson { transition: background-color 0.15s ease; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="titleblock">
+    <div class="name">WCY26KY3S1</div>
+    <div class="sub">Plan zajęć &middot; semestr zimowy</div>
+    <div class="stamp">
+      <div><b>Wydział</b> Cybernetyki</div>
+      <div><b>Semestr</b> 28.09.2026 &ndash; 22.02.2027</div>
+      <div><b>Wygenerowano</b> 28.09.2026</div>
+    </div>
+  </div>
+
+  <div class="nav">
+    <button class="navbtn" id="prevBtn" aria-label="Poprzedni tydzień">&#8249;</button>
+    <div class="navcenter">
+      <div class="weeklabel" id="weekLabel">&nbsp;</div>
+      <div class="weekmeta" id="weekMeta">&nbsp;</div>
+    </div>
+    <select id="weekpick" aria-label="Wybierz tydzień"></select>
+    <button class="navbtn" id="nextBtn" aria-label="Następny tydzień">&#8250;</button>
+  </div>
+
+  <div class="body" id="weekBody"></div>
+
+  <details class="legend">
+    <summary>Legenda przedmiotów</summary>
+    <div class="legendgrid" id="legendGrid"></div>
+  </details>
+
+  <div class="hint" id="pageHint">Strzałki lub lista rozwijana zmieniają tydzień &middot; zrzut ekranu tej karty = gotowy podgląd tygodnia</div>
+</div>
+
+<script type="application/json" id="plan-data">{"meta":{"group":"WCY26KY3S1","generated":"2026-09-28","todayIso":"2026-09-28"},"subjectColors":{"Etyka zawodowa":"#2563a8","Inauguracja WCY":"#1d8a7a","Język angielski":"#5b52c9","Język obcy (II) międzywydziałowy":"#c8862a","Matematyka I":"#c14953","Matematyka II":"#3f9142","Matematyka dyskretna I":"#8a4fae","Ochrona własności intelektualnych":"#c65a91","Podstawy grafiki inżynierskiej":"#6f5ed1","Wprowadzenie do informatyki":"#d16b3f","Wprowadzenie do metrologii":"#b5651d","Wprowadzenie do studiowania":"#2aa7ad","Wybrane zagadnienia prawa":"#7a8a3a","Wychowanie fizyczne":"#6b7280"},"weeks":[{"monday":"2026-09-28","label":"28 IX - 03 X","year":2026,"days":{"PIĄTEK":[{"day":"PIĄTEK","date":"2026-10-02","block":"1","start":"08:00","end":"09:35","subj_abbrev":"PGI","type_abbrev":"w","room":"314 S","teachers_code":["Tor.J"],"occurrence":1,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Wykład)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-10-02","block":"2","start":"09:50","end":"11:25","subj_abbrev":"MD1","type_abbrev":"w","room":"314 S","teachers_code":["Ch"],"occurrence":1,"title_full":"Matematyka dyskretna I - Prowadzący (Wykład)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Wykład","teachers_full":["Prowadzący"]}]}},{"monday":"2026-10-05","label":"05 X - 10 X","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-10-05","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":1,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-10-06","block":"2","start":"09:50","end":"11:25","subj_abbrev":"MD1","type_abbrev":"w","room":"316 S","teachers_code":["Ch"],"occurrence":2,"title_full":"Matematyka dyskretna I - Prowadzący (Wykład)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Wykład","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-10-07","block":"1","start":"08:00","end":"09:35","subj_abbrev":"MD1","type_abbrev":"ć","room":"307 S","teachers_code":["CichA"],"occurrence":1,"title_full":"Matematyka dyskretna I - Prowadzący (Ćwiczenia)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-10-07","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"ć","room":"201 65","teachers_code":["Smn"],"occurrence":1,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-10-07","block":"3","start":"11:40","end":"13:15","subj_abbrev":"In. WCY","type_abbrev":"SO","room":"S. Kinowa K","teachers_code":["..."],"occurrence":1,"title_full":"Inauguracja WCY - ... ... ... (Spotkanie organizacy)","bgcolor":"#D8BFD8","subject_full":"Inauguracja WCY","type_full":"Spotkanie organizacyjne","teachers_full":["... ... ..."]},{"day":"ŚRODA","date":"2026-10-07","block":"4","start":"13:30","end":"15:05","subj_abbrev":"In. WCY","type_abbrev":"SO","room":"S. Kinowa K","teachers_code":["..."],"occurrence":2,"title_full":"Inauguracja WCY - ... ... ... (Spotkanie organizacy)","bgcolor":"#D8BFD8","subject_full":"Inauguracja WCY","type_full":"Spotkanie organizacyjne","teachers_full":["... ... ..."]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-10-08","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":1,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-10-08","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WdS","type_abbrev":"w","room":"316 S","teachers_code":["Ł.E."],"occurrence":1,"title_full":"Wprowadzenie do studiowania - Prowadzący (Wykład)","bgcolor":"#FF69B4","subject_full":"Wprowadzenie do studiowania","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-10-08","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":1,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-10-08","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":1,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-10-08","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":1,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-10-09","block":"1","start":"08:00","end":"09:35","subj_abbrev":"WdI","type_abbrev":"w","room":"317 S","teachers_code":["Pe"],"occurrence":1,"title_full":"Wprowadzenie do informatyki - Prowadzący (Wykład)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-10-09","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WdI","type_abbrev":"w","room":"317 S","teachers_code":["Pe"],"occurrence":2,"title_full":"Wprowadzenie do informatyki - Prowadzący (Wykład)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Wykład","teachers_full":["Prowadzący"]}]}},{"monday":"2026-10-12","label":"12 X - 17 X","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-10-12","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":2,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-10-13","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WDM","type_abbrev":"w","room":"316 S","teachers_code":["Zar.Z"],"occurrence":1,"title_full":"Wprowadzenie do metrologii - Prowadzący (Wykład)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-10-13","block":"3","start":"11:40","end":"13:15","subj_abbrev":"PGI","type_abbrev":"ć","room":"108/ 54","teachers_code":["Jas.K."],"occurrence":1,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-10-13","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":1,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-10-14","block":"2","start":"09:50","end":"11:25","subj_abbrev":"PGI","type_abbrev":"w","room":"313 S","teachers_code":["Tor.J"],"occurrence":2,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Wykład)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-10-14","block":"3","start":"11:40","end":"13:15","subj_abbrev":"MD1","type_abbrev":"w","room":"316 S","teachers_code":["Ch"],"occurrence":3,"title_full":"Matematyka dyskretna I - Prowadzący (Wykład)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Wykład","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-10-15","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":2,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-10-15","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":2,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-10-15","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":2,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-10-15","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":2,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-10-16","block":"1","start":"08:00","end":"09:35","subj_abbrev":"MD1","type_abbrev":"ć","room":"307 S","teachers_code":["CichA"],"occurrence":2,"title_full":"Matematyka dyskretna I - Prowadzący (Ćwiczenia)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-10-16","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"ć","room":"201 65","teachers_code":["Smn"],"occurrence":2,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-10-16","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WdI","type_abbrev":"w","room":"317 S","teachers_code":["Pe"],"occurrence":3,"title_full":"Wprowadzenie do informatyki - Prowadzący (Wykład)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Wykład","teachers_full":["Prowadzący"]}]}},{"monday":"2026-10-19","label":"19 X - 24 X","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-10-19","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":3,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-10-19","block":"3","start":"11:40","end":"13:15","subj_abbrev":"MD1","type_abbrev":"w","room":"313 S","teachers_code":["Ch"],"occurrence":4,"title_full":"Matematyka dyskretna I - Prowadzący (Wykład)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-10-19","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Wzp","type_abbrev":"w","room":"314 S","teachers_code":["Kob.P"],"occurrence":1,"title_full":"Wybrane zagadnienia prawa - Prowadzący (Wykład)","bgcolor":"#FFA07A","subject_full":"Wybrane zagadnienia prawa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-10-19","block":"5","start":"16:00","end":"17:35","subj_abbrev":"Wzp","type_abbrev":"w","room":"314 S","teachers_code":["Kob.P"],"occurrence":2,"title_full":"Wybrane zagadnienia prawa - Prowadzący (Wykład)","bgcolor":"#FFA07A","subject_full":"Wybrane zagadnienia prawa","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-10-20","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WDM","type_abbrev":"w","room":"316 S","teachers_code":["Zar.Z"],"occurrence":2,"title_full":"Wprowadzenie do metrologii - Prowadzący (Wykład)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-10-20","block":"3","start":"11:40","end":"13:15","subj_abbrev":"Owi","type_abbrev":"w","room":"316 S","teachers_code":["RJ"],"occurrence":1,"title_full":"Ochrona własności intelektualnych - Prowadzący (Wykład)","bgcolor":"#E6E6FA","subject_full":"Ochrona własności intelektualnych","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-10-20","block":"4","start":"13:30","end":"15:05","subj_abbrev":"PGI","type_abbrev":"w","room":"313 S","teachers_code":["Tor.J"],"occurrence":3,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Wykład)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-10-20","block":"5","start":"16:00","end":"17:35","subj_abbrev":"PGI","type_abbrev":"w","room":"313 S","teachers_code":["Tor.J"],"occurrence":4,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Wykład)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Wykład","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-10-21","block":"3","start":"11:40","end":"13:15","subj_abbrev":"PGI","type_abbrev":"ć","room":"101 65","teachers_code":["Jas.K."],"occurrence":2,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-10-21","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"203 65","teachers_code":["Smn"],"occurrence":2,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-10-22","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":3,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-10-22","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":3,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-10-22","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":3,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-10-22","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":3,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-10-23","block":"1","start":"08:00","end":"09:35","subj_abbrev":"WdI","type_abbrev":"w","room":"317 S","teachers_code":["Pe"],"occurrence":4,"title_full":"Wprowadzenie do informatyki - Prowadzący (Wykład)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-10-23","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WdI","type_abbrev":"w","room":"317 S","teachers_code":["Pe"],"occurrence":5,"title_full":"Wprowadzenie do informatyki - Prowadzący (Wykład)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-10-23","block":"3","start":"11:40","end":"13:15","subj_abbrev":"MD1","type_abbrev":"ć","room":"252 S","teachers_code":["CichA"],"occurrence":3,"title_full":"Matematyka dyskretna I - Prowadzący (Ćwiczenia)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-10-23","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Mat I","type_abbrev":"ć","room":"203 65","teachers_code":["Smn"],"occurrence":3,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2026-10-26","label":"26 X - 31 X","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-10-26","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":4,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-10-26","block":"3","start":"11:40","end":"13:15","subj_abbrev":"MD1","type_abbrev":"w","room":"313 S","teachers_code":["Ch"],"occurrence":5,"title_full":"Matematyka dyskretna I - Prowadzący (Wykład)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-10-26","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WdS","type_abbrev":"w","room":"316 S","teachers_code":["Ł.E."],"occurrence":2,"title_full":"Wprowadzenie do studiowania - Prowadzący (Wykład)","bgcolor":"#FF69B4","subject_full":"Wprowadzenie do studiowania","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-10-27","block":"3","start":"11:40","end":"13:15","subj_abbrev":"Owi","type_abbrev":"w","room":"316 S","teachers_code":["RJ"],"occurrence":2,"title_full":"Ochrona własności intelektualnych - Prowadzący (Wykład)","bgcolor":"#E6E6FA","subject_full":"Ochrona własności intelektualnych","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-10-27","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WDM","type_abbrev":"w","room":"317 S","teachers_code":["Zar.Z"],"occurrence":3,"title_full":"Wprowadzenie do metrologii - Prowadzący (Wykład)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Wykład","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-10-28","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":3,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-10-28","block":"3","start":"11:40","end":"13:15","subj_abbrev":"Mat I","type_abbrev":"ć","room":"219 65","teachers_code":["Smn"],"occurrence":4,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-10-29","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":4,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-10-29","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":4,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-10-29","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":4,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-10-29","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":4,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-10-30","block":"1","start":"08:00","end":"09:35","subj_abbrev":"PGI","type_abbrev":"w","room":"313 S","teachers_code":["Tor.J"],"occurrence":5,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Wykład)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-10-30","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WdI","type_abbrev":"w","room":"317 S","teachers_code":["Pe"],"occurrence":6,"title_full":"Wprowadzenie do informatyki - Prowadzący (Wykład)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-10-30","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Mat I","type_abbrev":"ć","room":"201 65","teachers_code":["Smn"],"occurrence":5,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2026-11-02","label":"02 XI - 07 XI","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-11-02","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":5,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-02","block":"3","start":"11:40","end":"13:15","subj_abbrev":"MD1","type_abbrev":"w","room":"313 S","teachers_code":["Ch"],"occurrence":6,"title_full":"Matematyka dyskretna I - Prowadzący (Wykład)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-11-03","block":"1","start":"08:00","end":"09:35","subj_abbrev":"MD1","type_abbrev":"ć","room":"252 S","teachers_code":["CichA"],"occurrence":4,"title_full":"Matematyka dyskretna I - Prowadzący (Ćwiczenia)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-11-03","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WDM","type_abbrev":"w","room":"316 S","teachers_code":["Zar.Z"],"occurrence":4,"title_full":"Wprowadzenie do metrologii - Prowadzący (Wykład)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Wykład","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-11-04","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":4,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-11-04","block":"3","start":"11:40","end":"13:15","subj_abbrev":"Mat I","type_abbrev":"ć","room":"219 65","teachers_code":["Smn"],"occurrence":6,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-11-04","block":"5","start":"16:00","end":"17:35","subj_abbrev":"WdI","type_abbrev":"L","room":"219 65","teachers_code":["Pź"],"occurrence":1,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-11-04","block":"6","start":"17:50","end":"19:25","subj_abbrev":"WdI","type_abbrev":"L","room":"219 65","teachers_code":["Pź"],"occurrence":2,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-11-05","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":5,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-05","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":5,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-05","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":5,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-11-05","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":5,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-11-06","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WdI","type_abbrev":"w","room":"317 S","teachers_code":["Pe"],"occurrence":7,"title_full":"Wprowadzenie do informatyki - Prowadzący (Wykład)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-11-06","block":"3","start":"11:40","end":"13:15","subj_abbrev":"PGI","type_abbrev":"w","room":"314 S","teachers_code":["Tor.J"],"occurrence":6,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Wykład)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Wykład","teachers_full":["Prowadzący"]}]}},{"monday":"2026-11-09","label":"09 XI - 14 XI","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-11-09","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":6,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-09","block":"3","start":"11:40","end":"13:15","subj_abbrev":"MD1","type_abbrev":"w","room":"313 S","teachers_code":["Ch"],"occurrence":7,"title_full":"Matematyka dyskretna I - Prowadzący (Wykład)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-09","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Wzp","type_abbrev":"w","room":"314 S","teachers_code":["Kob.P"],"occurrence":3,"title_full":"Wybrane zagadnienia prawa - Prowadzący (Wykład)","bgcolor":"#FFA07A","subject_full":"Wybrane zagadnienia prawa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-09","block":"5","start":"16:00","end":"17:35","subj_abbrev":"Wzp","type_abbrev":"w","room":"314 S","teachers_code":["Kob.P"],"occurrence":4,"title_full":"Wybrane zagadnienia prawa - Prowadzący (Wykład)","bgcolor":"#FFA07A","subject_full":"Wybrane zagadnienia prawa","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-11-10","block":"1","start":"08:00","end":"09:35","subj_abbrev":"Owi","type_abbrev":"w","room":"316 S","teachers_code":["RJ"],"occurrence":3,"title_full":"Ochrona własności intelektualnych - Prowadzący (Wykład)","bgcolor":"#E6E6FA","subject_full":"Ochrona własności intelektualnych","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-11-10","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WDM","type_abbrev":"w","room":"316 S","teachers_code":["Zar.Z"],"occurrence":5,"title_full":"Wprowadzenie do metrologii - Prowadzący (Wykład)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Wykład","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-11-12","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":6,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-12","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":6,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-12","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":6,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-11-12","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":6,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-11-13","block":"2","start":"09:50","end":"11:25","subj_abbrev":"PGI","type_abbrev":"ć","room":"101 65","teachers_code":["Jas.K."],"occurrence":3,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2026-11-16","label":"16 XI - 21 XI","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-11-16","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":7,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-16","block":"3","start":"11:40","end":"13:15","subj_abbrev":"MD1","type_abbrev":"w","room":"313 S","teachers_code":["Ch"],"occurrence":8,"title_full":"Matematyka dyskretna I - Prowadzący (Wykład)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-16","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Wzp","type_abbrev":"w","room":"314 S","teachers_code":["Kob.P"],"occurrence":5,"title_full":"Wybrane zagadnienia prawa - Prowadzący (Wykład)","bgcolor":"#FFA07A","subject_full":"Wybrane zagadnienia prawa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-16","block":"5","start":"16:00","end":"17:35","subj_abbrev":"Wzp","type_abbrev":"w","room":"314 S","teachers_code":["Kob.P"],"occurrence":6,"title_full":"Wybrane zagadnienia prawa - Prowadzący (Wykład)","bgcolor":"#FFA07A","subject_full":"Wybrane zagadnienia prawa","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-11-17","block":"1","start":"08:00","end":"09:35","subj_abbrev":"Owi","type_abbrev":"w","room":"316 S","teachers_code":["RJ"],"occurrence":4,"title_full":"Ochrona własności intelektualnych - Prowadzący (Wykład)","bgcolor":"#E6E6FA","subject_full":"Ochrona własności intelektualnych","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-11-17","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WDM","type_abbrev":"w","room":"316 S","teachers_code":["Zar.Z"],"occurrence":6,"title_full":"Wprowadzenie do metrologii - Prowadzący (Wykład)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Wykład","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-11-18","block":"1","start":"08:00","end":"09:35","subj_abbrev":"WDM","type_abbrev":"ć","room":"307 S","teachers_code":["Ły.R"],"occurrence":1,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-11-18","block":"2","start":"09:50","end":"11:25","subj_abbrev":"PGI","type_abbrev":"ć","room":"101 65","teachers_code":["Jas.K."],"occurrence":4,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-11-19","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":7,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-19","block":"3","start":"11:40","end":"13:15","subj_abbrev":"PGI","type_abbrev":"w","room":"314 S","teachers_code":["Tor.J"],"occurrence":7,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Wykład)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-19","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":7,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-19","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":7,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-11-19","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":7,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-11-20","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":7,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-11-20","block":"3","start":"11:40","end":"13:15","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":5,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-11-20","block":"5","start":"16:00","end":"17:35","subj_abbrev":"Wzp","type_abbrev":"ć","room":"309 S","teachers_code":["Kob.P"],"occurrence":1,"title_full":"Wybrane zagadnienia prawa - Prowadzący (Ćwiczenia)","bgcolor":"#FFA07A","subject_full":"Wybrane zagadnienia prawa","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-11-20","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Wzp","type_abbrev":"ć","room":"309 S","teachers_code":["Kob.P"],"occurrence":2,"title_full":"Wybrane zagadnienia prawa - Prowadzący (Ćwiczenia)","bgcolor":"#FFA07A","subject_full":"Wybrane zagadnienia prawa","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2026-11-23","label":"23 XI - 28 XI","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-11-23","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":8,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-23","block":"3","start":"11:40","end":"13:15","subj_abbrev":"PGI","type_abbrev":"ć","room":"116/ 54","teachers_code":["Jas.K."],"occurrence":5,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-23","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":6,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-23","block":"6","start":"17:50","end":"19:25","subj_abbrev":"PGI","type_abbrev":"ć","room":"29/ 54 30/ 54","teachers_code":["Sa.B.","Jas.K."],"occurrence":6,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący; Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący","Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-11-23","block":"7","start":"19:40","end":"21:15","subj_abbrev":"PGI","type_abbrev":"ć","room":"29/ 54 30/ 54","teachers_code":["Sa.B.","Jas.K."],"occurrence":7,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący; Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący","Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-11-24","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Owi","type_abbrev":"w","room":"316 S","teachers_code":["RJ"],"occurrence":5,"title_full":"Ochrona własności intelektualnych - Prowadzący (Wykład)","bgcolor":"#E6E6FA","subject_full":"Ochrona własności intelektualnych","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-11-24","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WDM","type_abbrev":"w","room":"316 S","teachers_code":["Zar.Z"],"occurrence":7,"title_full":"Wprowadzenie do metrologii - Prowadzący (Wykład)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-11-24","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WDM","type_abbrev":"ć","room":"227 S","teachers_code":["Ły.R"],"occurrence":2,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-11-24","block":"5","start":"16:00","end":"17:35","subj_abbrev":"WdI","type_abbrev":"L","room":"218 65","teachers_code":["Pź"],"occurrence":3,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-11-24","block":"6","start":"17:50","end":"19:25","subj_abbrev":"WdI","type_abbrev":"L","room":"218 65","teachers_code":["Pź"],"occurrence":4,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-11-25","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":8,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-11-26","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":8,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-26","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WdS","type_abbrev":"w","room":"316 S","teachers_code":["Ł.E."],"occurrence":3,"title_full":"Wprowadzenie do studiowania - Prowadzący (Wykład)","bgcolor":"#FF69B4","subject_full":"Wprowadzenie do studiowania","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-26","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":8,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-11-26","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":8,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-11-26","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":8,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}]}},{"monday":"2026-11-30","label":"30 XI - 05 XII","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-11-30","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":9,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-12-01","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Owi","type_abbrev":"w","room":"316 S","teachers_code":["RJ"],"occurrence":6,"title_full":"Ochrona własności intelektualnych - Prowadzący (Wykład)","bgcolor":"#E6E6FA","subject_full":"Ochrona własności intelektualnych","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-12-01","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WDM","type_abbrev":"ć","room":"227 S","teachers_code":["Ły.R"],"occurrence":3,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-12-01","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":7,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-12-02","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":9,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-12-02","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"204 65","teachers_code":["Smn"],"occurrence":8,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-12-03","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":9,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-12-03","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":9,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-12-03","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":9,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-12-03","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":9,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-12-03","block":"7","start":"19:40","end":"21:15","subj_abbrev":"PGI","type_abbrev":"ć","room":"29/ 54 30/ 54","teachers_code":["Sa.B.","Jas.K."],"occurrence":8,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący; Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący","Prowadzący"]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-12-04","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":10,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2026-12-07","label":"07 XII - 12 XII","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-12-07","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":10,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-12-08","block":"1","start":"08:00","end":"09:35","subj_abbrev":"Ez","type_abbrev":"w","room":"317 S","teachers_code":["Soł"],"occurrence":1,"title_full":"Etyka zawodowa - Prowadzący (Wykład)","bgcolor":"#FFC0CB","subject_full":"Etyka zawodowa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-12-08","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Ez","type_abbrev":"w","room":"317 S","teachers_code":["Soł"],"occurrence":2,"title_full":"Etyka zawodowa - Prowadzący (Wykład)","bgcolor":"#FFC0CB","subject_full":"Etyka zawodowa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-12-08","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WDM","type_abbrev":"ć","room":"317 S","teachers_code":["Ły.R"],"occurrence":4,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-12-08","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"219 65","teachers_code":["Smn"],"occurrence":9,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-12-08","block":"5","start":"16:00","end":"17:35","subj_abbrev":"Owi","type_abbrev":"ć","room":"308 S","teachers_code":["RJ"],"occurrence":1,"title_full":"Ochrona własności intelektualnych - Prowadzący (Ćwiczenia)","bgcolor":"#E6E6FA","subject_full":"Ochrona własności intelektualnych","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-12-09","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":10,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-12-09","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WDM","type_abbrev":"w","room":"313 S","teachers_code":["Zar.Z"],"occurrence":8,"title_full":"Wprowadzenie do metrologii - Prowadzący (Wykład)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-12-09","block":"5","start":"16:00","end":"17:35","subj_abbrev":"WdI","type_abbrev":"L","room":"219 65","teachers_code":["Pź"],"occurrence":5,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-12-09","block":"6","start":"17:50","end":"19:25","subj_abbrev":"WdI","type_abbrev":"L","room":"219 65","teachers_code":["Pź"],"occurrence":6,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-12-10","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":11,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-12-10","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":10,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-12-10","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":10,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-12-10","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":10,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-12-11","block":"3","start":"11:40","end":"13:15","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":11,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2026-12-11","block":"4","start":"13:30","end":"15:05","subj_abbrev":"MD1","type_abbrev":"ć","room":"252 S","teachers_code":["CichA"],"occurrence":5,"title_full":"Matematyka dyskretna I - Prowadzący (Ćwiczenia)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2026-12-14","label":"14 XII - 19 XII","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-12-14","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":11,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-12-14","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WDM","type_abbrev":"ć","room":"314 S","teachers_code":["Ły.R"],"occurrence":5,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-12-14","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":12,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-12-15","block":"1","start":"08:00","end":"09:35","subj_abbrev":"Ez","type_abbrev":"w","room":"317 S","teachers_code":["Soł"],"occurrence":3,"title_full":"Etyka zawodowa - Prowadzący (Wykład)","bgcolor":"#FFC0CB","subject_full":"Etyka zawodowa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-12-15","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Ez","type_abbrev":"w","room":"317 S","teachers_code":["Soł"],"occurrence":4,"title_full":"Etyka zawodowa - Prowadzący (Wykład)","bgcolor":"#FFC0CB","subject_full":"Etyka zawodowa","type_full":"Wykład","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-12-16","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":12,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-12-16","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WDM","type_abbrev":"w","room":"313 S","teachers_code":["Zar.Z"],"occurrence":9,"title_full":"Wprowadzenie do metrologii - Prowadzący (Wykład)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Wykład","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2026-12-17","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":13,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-12-17","block":"3","start":"11:40","end":"13:15","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":10,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-12-17","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":11,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2026-12-17","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":11,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2026-12-17","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":11,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2026-12-18","block":"3","start":"11:40","end":"13:15","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":13,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2026-12-21","label":"21 XII - 26 XII","year":2026,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2026-12-21","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":12,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-12-21","block":"3","start":"11:40","end":"13:15","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":14,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-12-21","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Wzp","type_abbrev":"w","room":"314 S","teachers_code":["Kob.P"],"occurrence":7,"title_full":"Wybrane zagadnienia prawa - Prowadzący (Wykład)","bgcolor":"#FFA07A","subject_full":"Wybrane zagadnienia prawa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-12-21","block":"5","start":"16:00","end":"17:35","subj_abbrev":"WdI","type_abbrev":"L","room":"218 65","teachers_code":["Pź"],"occurrence":7,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2026-12-21","block":"6","start":"17:50","end":"19:25","subj_abbrev":"WdI","type_abbrev":"L","room":"218 65","teachers_code":["Pź"],"occurrence":8,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2026-12-22","block":"1","start":"08:00","end":"09:35","subj_abbrev":"Ez","type_abbrev":"w","room":"317 S","teachers_code":["Soł"],"occurrence":5,"title_full":"Etyka zawodowa - Prowadzący (Wykład)","bgcolor":"#FFC0CB","subject_full":"Etyka zawodowa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-12-22","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Ez","type_abbrev":"w","room":"317 S","teachers_code":["Soł"],"occurrence":6,"title_full":"Etyka zawodowa - Prowadzący (Wykład)","bgcolor":"#FFC0CB","subject_full":"Etyka zawodowa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2026-12-22","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":11,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2026-12-23","block":"1","start":"08:00","end":"09:35","subj_abbrev":"MD1","type_abbrev":"ć","room":"316 S","teachers_code":["CichA"],"occurrence":6,"title_full":"Matematyka dyskretna I - Prowadzący (Ćwiczenia)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-12-23","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":15,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2026-12-23","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WDM","type_abbrev":"ć","room":"233 S","teachers_code":["Ły.R"],"occurrence":6,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2026-12-28","label":"28 XII - 02 I","year":2026,"days":{}},{"monday":"2027-01-04","label":"04 I - 09 I","year":2027,"days":{"CZWARTEK":[{"day":"CZWARTEK","date":"2027-01-07","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":14,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-07","block":"3","start":"11:40","end":"13:15","subj_abbrev":"Ez","type_abbrev":"w","room":"317 S","teachers_code":["Soł"],"occurrence":7,"title_full":"Etyka zawodowa - Prowadzący (Wykład)","bgcolor":"#FFC0CB","subject_full":"Etyka zawodowa","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-07","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":12,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-07","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":12,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2027-01-07","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":12,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2027-01-08","block":"1","start":"08:00","end":"09:35","subj_abbrev":"WDM","type_abbrev":"ć","room":"316 S","teachers_code":["Ły.R"],"occurrence":7,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2027-01-08","block":"2","start":"09:50","end":"11:25","subj_abbrev":"PGI","type_abbrev":"ć","room":"101 65","teachers_code":["Jas.K."],"occurrence":9,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2027-01-08","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Mat I","type_abbrev":"ć","room":"203 65","teachers_code":["Smn"],"occurrence":16,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2027-01-11","label":"11 I - 16 I","year":2027,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2027-01-11","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":13,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2027-01-12","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":17,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2027-01-13","block":"1","start":"08:00","end":"09:35","subj_abbrev":"MD1","type_abbrev":"ć","room":"309 S","teachers_code":["CichA"],"occurrence":7,"title_full":"Matematyka dyskretna I - Prowadzący (Ćwiczenia)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2027-01-13","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WDM","type_abbrev":"ć","room":"317 S","teachers_code":["Ły.R"],"occurrence":8,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2027-01-13","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"205 65","teachers_code":["Smn"],"occurrence":12,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2027-01-13","block":"5","start":"16:00","end":"17:35","subj_abbrev":"WdI","type_abbrev":"L","room":"219 65","teachers_code":["Pź"],"occurrence":9,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2027-01-13","block":"6","start":"17:50","end":"19:25","subj_abbrev":"WdI","type_abbrev":"L","room":"219 65","teachers_code":["Pź"],"occurrence":10,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2027-01-14","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":15,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-14","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":13,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-14","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":13,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2027-01-14","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":13,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2027-01-15","block":"2","start":"09:50","end":"11:25","subj_abbrev":"PGI","type_abbrev":"ć","room":"101 65","teachers_code":["Jas.K."],"occurrence":10,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2027-01-15","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"203 65","teachers_code":["Smn"],"occurrence":13,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2027-01-18","label":"18 I - 23 I","year":2027,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2027-01-18","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":14,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PONIEDZIAŁEK","date":"2027-01-18","block":"3","start":"11:40","end":"13:15","subj_abbrev":"WDM","type_abbrev":"ć","room":"313 S","teachers_code":["Ły.R"],"occurrence":9,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2027-01-19","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Mat I","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":18,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2027-01-19","block":"5","start":"16:00","end":"17:35","subj_abbrev":"Ez","type_abbrev":"ć","room":"317 S","teachers_code":["Soł"],"occurrence":1,"title_full":"Etyka zawodowa - Prowadzący (Ćwiczenia)","bgcolor":"#FFC0CB","subject_full":"Etyka zawodowa","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2027-01-20","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"204 65","teachers_code":["Smn"],"occurrence":14,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2027-01-21","block":"1","start":"08:00","end":"09:35","subj_abbrev":"MD1","type_abbrev":"Z.","room":"316 S","teachers_code":["Ch"],"occurrence":1,"title_full":"Matematyka dyskretna I - Prowadzący (Zaliczenie)","bgcolor":"#FFFACD","subject_full":"Matematyka dyskretna I","type_full":"Zaliczenie","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-21","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":16,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-21","block":"3","start":"11:40","end":"13:15","subj_abbrev":"PGI","type_abbrev":"ć","room":"101 65","teachers_code":["Jas.K."],"occurrence":11,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-21","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":14,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-21","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":14,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2027-01-21","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":14,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2027-01-22","block":"3","start":"11:40","end":"13:15","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":15,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2027-01-25","label":"25 I - 30 I","year":2027,"days":{"PONIEDZIAŁEK":[{"day":"PONIEDZIAŁEK","date":"2027-01-25","block":"2","start":"09:50","end":"11:25","subj_abbrev":"Mat I","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":15,"title_full":"Matematyka I - Prowadzący (Wykład)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Wykład","teachers_full":["Prowadzący"]}],"WTOREK":[{"day":"WTOREK","date":"2027-01-26","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WDM","type_abbrev":"ć","room":"317 S","teachers_code":["Ły.R"],"occurrence":10,"title_full":"Wprowadzenie do metrologii - Prowadzący (Ćwiczenia)","bgcolor":"#F08080","subject_full":"Wprowadzenie do metrologii","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2027-01-26","block":"3","start":"11:40","end":"13:15","subj_abbrev":"Ez","type_abbrev":"ć","room":"309 S","teachers_code":["Soł"],"occurrence":2,"title_full":"Etyka zawodowa - Prowadzący (Ćwiczenia)","bgcolor":"#FFC0CB","subject_full":"Etyka zawodowa","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"WTOREK","date":"2027-01-26","block":"4","start":"13:30","end":"15:05","subj_abbrev":"Mat I","type_abbrev":"ć","room":"204 65","teachers_code":["Smn"],"occurrence":19,"title_full":"Matematyka I - Prowadzący (Ćwiczenia)","bgcolor":"#ADFF2F","subject_full":"Matematyka I","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}],"ŚRODA":[{"day":"ŚRODA","date":"2027-01-27","block":"4","start":"13:30","end":"15:05","subj_abbrev":"M II","type_abbrev":"ć","room":"204 65","teachers_code":["Smn"],"occurrence":16,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"ŚRODA","date":"2027-01-27","block":"5","start":"16:00","end":"17:35","subj_abbrev":"WdI","type_abbrev":"L","room":"218 65","teachers_code":["Pź"],"occurrence":11,"title_full":"Wprowadzenie do informatyki - Prowadzący (Laboratorium)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Laboratorium","teachers_full":["Prowadzący"]}],"CZWARTEK":[{"day":"CZWARTEK","date":"2027-01-28","block":"2","start":"09:50","end":"11:25","subj_abbrev":"M II","type_abbrev":"w","room":"314 S","teachers_code":["Smn"],"occurrence":17,"title_full":"Matematyka II - Prowadzący (Wykład)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-28","block":"4","start":"13:30","end":"15:05","subj_abbrev":"WF","type_abbrev":"ć","room":"-","teachers_code":["WLachowski"],"occurrence":15,"title_full":"Wychowanie fizyczne - Prowadzący (Ćwiczenia)","bgcolor":"#CD5C5C","subject_full":"Wychowanie fizyczne","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"CZWARTEK","date":"2027-01-28","block":"5","start":"16:00","end":"17:35","subj_abbrev":"JoM","type_abbrev":"ć","room":"230 K","teachers_code":["-"],"occurrence":15,"title_full":"Język obcy (II) międzywydziałowy -  (Ćwiczenia)","bgcolor":"#00FFFF","subject_full":"Język obcy (II) międzywydziałowy","type_full":"Ćwiczenia","teachers_full":[]},{"day":"CZWARTEK","date":"2027-01-28","block":"6","start":"17:50","end":"19:25","subj_abbrev":"Ja","type_abbrev":"ć","room":"134 K 133 K 131 K","teachers_code":["-"],"occurrence":15,"title_full":"Język angielski -  (Ćwiczenia)","bgcolor":"#FFD700","subject_full":"Język angielski","type_full":"Ćwiczenia","teachers_full":[]}],"PIĄTEK":[{"day":"PIĄTEK","date":"2027-01-29","block":"1","start":"08:00","end":"09:35","subj_abbrev":"PGI","type_abbrev":"ć","room":"101 65","teachers_code":["Jas.K."],"occurrence":12,"title_full":"Podstawy grafiki inżynierskiej - Prowadzący (Ćwiczenia)","bgcolor":"#FF6347","subject_full":"Podstawy grafiki inżynierskiej","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2027-01-29","block":"2","start":"09:50","end":"11:25","subj_abbrev":"WdI","type_abbrev":"w","room":"317 S","teachers_code":["Pe"],"occurrence":8,"title_full":"Wprowadzenie do informatyki - Prowadzący (Wykład)","bgcolor":"#B8860B","subject_full":"Wprowadzenie do informatyki","type_full":"Wykład","teachers_full":["Prowadzący"]},{"day":"PIĄTEK","date":"2027-01-29","block":"3","start":"11:40","end":"13:15","subj_abbrev":"M II","type_abbrev":"ć","room":"218 65","teachers_code":["Smn"],"occurrence":17,"title_full":"Matematyka II - Prowadzący (Ćwiczenia)","bgcolor":"#FFEBCD","subject_full":"Matematyka II","type_full":"Ćwiczenia","teachers_full":["Prowadzący"]}]}},{"monday":"2027-02-01","label":"01 II - 06 II","year":2027,"days":{}},{"monday":"2027-02-08","label":"08 II - 13 II","year":2027,"days":{}},{"monday":"2027-02-15","label":"15 II - 20 II","year":2027,"days":{}},{"monday":"2027-02-22","label":"22 II - 27 II","year":2027,"days":{}}]}</script>
+<script>
+(function () {
+  var DOW_PL = {
+    'PONIEDZIAŁEK': 'Poniedziałek',
+    'WTOREK': 'Wtorek',
+    'ŚRODA': 'Środa',
+    'CZWARTEK': 'Czwartek',
+    'PIĄTEK': 'Piątek',
+    'SOBOTA': 'Sobota',
+    'NIEDZIELA': 'Niedziela'
+  };
+  var DAY_ORDER = ['PONIEDZIAŁEK','WTOREK','ŚRODA','CZWARTEK','PIĄTEK','SOBOTA'];
+  var TYPE_SHORT = {
+    'Wykład': 'Wykład',
+    'Ćwiczenia': 'Ćwiczenia',
+    'Laboratorium': 'Laboratorium',
+    'Zaliczenie': 'Zaliczenie',
+    'Spotkanie organizacyjne': 'Spotkanie org.'
+  };
+
+  var state = { weekIndex: 0, data: null };
+
+  function isoToLocalDate(iso) {
+    var p = iso.split('-');
+    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  }
+  function dowFromMonday(monday, offset) {
+    var dt = new Date(monday.getTime());
+    dt.setDate(dt.getDate() + offset);
+    return dt;
+  }
+  var MONTHS_PL_SHORT = ['sty','lut','mar','kwi','maj','cze','lip','sie','wrz','paź','lis','gru'];
+  function fmtDayDate(dt) {
+    return dt.getDate() + ' ' + MONTHS_PL_SHORT[dt.getMonth()];
+  }
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  var ROMAN_MONTH = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 };
+  function fmtWeekLabel(label) {
+    return String(label)
+      .replace(/(\d{1,2})\s+(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)\b/g, function (m, day, rom) {
+        return pad2(day) + '.' + pad2(ROMAN_MONTH[rom]);
+      })
+      .replace(/\s*[-\u2013]\s*/, '\u2013');
+  }
+  function todayIso() {
+    var now = new Date();
+    return now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+  }
+
+  function render() {
+    var d = state.data;
+    var week = d.weeks[state.weekIndex];
+    var monday = isoToLocalDate(week.monday);
+    var today = todayIso();
+
+    document.getElementById('weekLabel').textContent = fmtWeekLabel(week.label);
+    document.getElementById('weekMeta').innerHTML =
+      'Tydzień ' + (state.weekIndex + 1) + ' z ' + d.weeks.length + '<span class="yr"> · ' + week.year + '</span>';
+
+    var pick = document.getElementById('weekpick');
+    if (!pick.options.length) {
+      d.weeks.forEach(function (w, i) {
+        var opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = fmtWeekLabel(w.label);
+        pick.appendChild(opt);
+      });
+    }
+    pick.value = state.weekIndex;
+
+    document.getElementById('prevBtn').disabled = state.weekIndex === 0;
+    document.getElementById('nextBtn').disabled = state.weekIndex === d.weeks.length - 1;
+
+    var body = document.getElementById('weekBody');
+    body.innerHTML = '';
+
+    var hasAny = Object.keys(week.days || {}).length > 0;
+
+    if (!hasAny) {
+      var banner = document.createElement('div');
+      banner.className = 'session-banner';
+      banner.innerHTML = '<span>&#128203;</span><span>Brak zajęć stałych w tym tygodniu &mdash; <b>sesja egzaminacyjna</b> lub przerwa. Sprawdź terminy dodatkowe w e-dziekanacie.</span>';
+      body.appendChild(banner);
+    }
+
+    DAY_ORDER.forEach(function (dayKey, idx) {
+      var dt = dowFromMonday(monday, idx);
+      var dayDiv = document.createElement('div');
+      dayDiv.className = 'day';
+
+      var head = document.createElement('div');
+      head.className = 'dayhead';
+      var dowSpan = document.createElement('span');
+      dowSpan.className = 'dow';
+      dowSpan.textContent = DOW_PL[dayKey];
+      var dateSpan = document.createElement('span');
+      dateSpan.className = 'date mono';
+      dateSpan.textContent = fmtDayDate(dt);
+      head.appendChild(dowSpan);
+      head.appendChild(dateSpan);
+
+      var dtIso = dt.getFullYear() + '-' + pad2(dt.getMonth()+1) + '-' + pad2(dt.getDate());
+      if (dtIso === today) {
+        var pill = document.createElement('span');
+        pill.className = 'today-pill';
+        pill.textContent = 'Dziś';
+        head.appendChild(pill);
+      }
+      dayDiv.appendChild(head);
+
+      var lessons = (week.days && week.days[dayKey]) || [];
+      if (lessons.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'empty-day';
+        empty.textContent = 'Brak zajęć';
+        dayDiv.appendChild(empty);
+      } else {
+        lessons.forEach(function (ev) {
+          var color = d.subjectColors[ev.subject_full] || '#0d5c63';
+          var row = document.createElement('div');
+          row.className = 'lesson';
+          row.style.setProperty('--lesson-color', color);
+          if (/^#[0-9a-fA-F]{6}$/.test(color)) row.style.setProperty('--lesson-tint', color + '24');
+
+          var time = document.createElement('div');
+          time.className = 'time mono';
+          time.innerHTML = '<b>' + ev.start + '</b>' + ev.end;
+          row.appendChild(time);
+
+          var info = document.createElement('div');
+          info.className = 'info';
+          var subj = document.createElement('div');
+          subj.className = 'subj';
+          var typeLabel = TYPE_SHORT[ev.type_full] || ev.type_full;
+          subj.innerHTML = '<span>' + ev.subject_full + '</span><span class="type">' + typeLabel + '</span>';
+          info.appendChild(subj);
+
+          var meta = document.createElement('div');
+          meta.className = 'meta';
+          var parts = [];
+          if (ev.room && ev.room !== '-') parts.push('<span class="room">' + ev.room + '</span>');
+          if (ev.teachers_full && ev.teachers_full.length) parts.push(ev.teachers_full.join(', '));
+          meta.innerHTML = parts.join('<span class="sep">&middot;</span>');
+          info.appendChild(meta);
+
+          row.appendChild(info);
+          dayDiv.appendChild(row);
+        });
+      }
+
+      body.appendChild(dayDiv);
+    });
+  }
+
+  function renderLegend() {
+    var grid = document.getElementById('legendGrid');
+    var entries = Object.keys(state.data.subjectColors).sort();
+    entries.forEach(function (name) {
+      var item = document.createElement('div');
+      item.className = 'legenditem';
+      item.innerHTML = '<span class="swatch" style="--sw:' + state.data.subjectColors[name] + '"></span><span>' + name + '</span>';
+      grid.appendChild(item);
+    });
+  }
+
+  function go(delta) {
+    var next = state.weekIndex + delta;
+    if (next < 0 || next >= state.data.weeks.length) return;
+    state.weekIndex = next;
+    render();
+  }
+
+  function findCurrentWeekIndex(data) {
+    var today = todayIso();
+    for (var i = 0; i < data.weeks.length; i++) {
+      var monday = data.weeks[i].monday;
+      var mondayDt = isoToLocalDate(monday);
+      var satDt = new Date(mondayDt.getTime());
+      satDt.setDate(satDt.getDate() + 6);
+      var satIso = satDt.getFullYear() + '-' + pad2(satDt.getMonth()+1) + '-' + pad2(satDt.getDate());
+      if (today >= monday && today <= satIso) return i;
+      if (today < monday) return i === 0 ? 0 : i;
+    }
+    return data.weeks.length - 1;
+  }
+
+  function boot(data) {
+    state.data = data;
+    state.weekIndex = findCurrentWeekIndex(data);
+
+    document.getElementById('prevBtn').addEventListener('click', function () { go(-1); });
+    document.getElementById('nextBtn').addEventListener('click', function () { go(1); });
+    document.getElementById('weekpick').addEventListener('change', function (e) {
+      state.weekIndex = parseInt(e.target.value, 10);
+      render();
+    });
+
+    renderLegend();
+    render();
+  }
+
+  try {
+    var raw = document.getElementById('plan-data').textContent;
+    var data = JSON.parse(raw);
+    boot(data);
+  } catch (err) {
+    document.getElementById('weekBody').innerHTML =
+      '<div class="session-banner"><span>&#9888;</span><span>Nie udało się wczytać danych planu (' + err + ').</span></div>';
+  }
+})();
+</script>
+
+</body>
+</html>

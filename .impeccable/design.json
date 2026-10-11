@@ -1,0 +1,415 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-11T12:49:02+00:00",
+  "title": "Design System: Plan zajęć WCY26KY3S1",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "System Blue",
+        "canonical": "#0a84ff",
+        "tonalRamp": [
+          "#000b1f",
+          "#03244c",
+          "#024082",
+          "#095fb9",
+          "#1c80f0",
+          "#69a7f8",
+          "#a6ccff",
+          "#e4f0ff"
+        ]
+      },
+      "accent-text": {
+        "role": "primary",
+        "displayName": "Link Blue",
+        "canonical": "#4da3ff",
+        "tonalRamp": [
+          "#000b1d",
+          "#032548",
+          "#01427c",
+          "#0662b1",
+          "#2b84de",
+          "#5ba9fd",
+          "#a3cdfd",
+          "#e4f0fe"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Black Ground",
+        "canonical": "#000000",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "surface-1": {
+        "role": "neutral",
+        "displayName": "Raised Grey 1",
+        "canonical": "#111113",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#252527",
+          "#424244",
+          "#616163",
+          "#828285",
+          "#a5a5a7",
+          "#c9c9cc",
+          "#eeeef1"
+        ]
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Raised Grey 2",
+        "canonical": "#1c1c1e",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#252527",
+          "#424244",
+          "#616163",
+          "#828284",
+          "#a5a5a7",
+          "#c9c9cb",
+          "#eeeef1"
+        ]
+      },
+      "surface-2-hover": {
+        "role": "neutral",
+        "displayName": "Raised Grey 2, hover",
+        "canonical": "#232326",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#252528",
+          "#424245",
+          "#616164",
+          "#828286",
+          "#a4a4a8",
+          "#c9c9cd",
+          "#eeeef2"
+        ]
+      },
+      "surface-3": {
+        "role": "neutral",
+        "displayName": "Raised Grey 3",
+        "canonical": "#2c2c2e",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#252527",
+          "#424244",
+          "#616163",
+          "#828284",
+          "#a5a5a7",
+          "#c9c9cb",
+          "#eeeef1"
+        ]
+      },
+      "surface-4": {
+        "role": "neutral",
+        "displayName": "Raised Grey 4",
+        "canonical": "#3a3a3c",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#252527",
+          "#424244",
+          "#616163",
+          "#828284",
+          "#a5a5a7",
+          "#c9c9cb",
+          "#eeeef1"
+        ]
+      },
+      "label": {
+        "role": "neutral",
+        "displayName": "Label",
+        "canonical": "#f5f5f7",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252526",
+          "#424243",
+          "#616163",
+          "#828284",
+          "#a5a5a7",
+          "#c9c9cb",
+          "#eeeef0"
+        ]
+      },
+      "label-secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Label",
+        "canonical": "#a1a1a6",
+        "tonalRamp": [
+          "#0b0b0e",
+          "#252528",
+          "#414146",
+          "#616165",
+          "#828287",
+          "#a4a4a9",
+          "#c8c8ce",
+          "#eeeef3"
+        ]
+      },
+      "label-tertiary": {
+        "role": "neutral",
+        "displayName": "Tertiary Label",
+        "canonical": "#86868b",
+        "tonalRamp": [
+          "#0b0b0e",
+          "#252529",
+          "#414146",
+          "#616165",
+          "#828287",
+          "#a4a4aa",
+          "#c8c8ce",
+          "#eeeef3"
+        ]
+      },
+      "label-quaternary": {
+        "role": "neutral",
+        "displayName": "Quaternary Label",
+        "canonical": "#6e6e73",
+        "tonalRamp": [
+          "#0b0b0e",
+          "#252529",
+          "#414146",
+          "#616165",
+          "#828287",
+          "#a4a4aa",
+          "#c8c8ce",
+          "#eeeef4"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The group code, desktop and tablet."
+      },
+      "display-compact": {
+        "displayName": "Display (phone)",
+        "purpose": "The group code on phones."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Day names (phone), Live card subject, week label (tablet+), sheet title."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Subject names, week label (phone), legend summary, sheet week labels."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Dates, Live card details, empty-week message."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Times, rooms, counts, status lines, chips; tabular numerals."
+      }
+    },
+    "shadows": [
+      {
+        "name": "edge-light",
+        "value": "inset 0 1px 0 rgba(255,255,255,0.06)",
+        "purpose": "Top highlight on every raised surface."
+      },
+      {
+        "name": "hairline-ring",
+        "value": "0 0 0 1px rgba(255,255,255,0.08)",
+        "purpose": "Outline for the Live card and key caps."
+      },
+      {
+        "name": "accent-ring",
+        "value": "0 0 0 1px rgba(10,132,255,0.5)",
+        "purpose": "Now row, Live card in the now state, today's group."
+      },
+      {
+        "name": "float",
+        "value": "0 16px 40px -12px rgba(0,0,0,0.8)",
+        "purpose": "Floating pill only."
+      },
+      {
+        "name": "sheet",
+        "value": "0 -24px 80px rgba(0,0,0,0.6)",
+        "purpose": "Bottom sheet on phones."
+      },
+      {
+        "name": "glass",
+        "value": "background: rgba(22,22,24,0.72); backdrop-filter: saturate(180%) blur(20px)",
+        "purpose": "Stuck week bar and floating pill only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Arrivals, reveals, focus ring settle."
+      },
+      {
+        "name": "ease-in",
+        "value": "cubic-bezier(0.55, 0, 1, 0.45)",
+        "purpose": "Exits (week out, dialog out)."
+      },
+      {
+        "name": "ease-sheet",
+        "value": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "purpose": "Bottom sheet in and out."
+      },
+      {
+        "name": "spring",
+        "value": "linear(0, 0.066, 0.215, 0.393, 0.566, 0.715, 0.833, 0.92, 0.978, 1.013, 1.032, 1.038, 1.037, 1.032, 1.026, 1.019, 1.013, 1.008, 1.004, 1.001, 1, 0.999, 1)",
+        "purpose": "Press feedback, chevrons, floating pill; ~4% overshoot."
+      },
+      {
+        "name": "dur-fast",
+        "value": "150ms",
+        "purpose": "Hover, press, colour feedback."
+      },
+      {
+        "name": "dur-base",
+        "value": "300ms",
+        "purpose": "State changes, accordion."
+      },
+      {
+        "name": "dur-slow",
+        "value": "600ms",
+        "purpose": "Page-load entrance, floating pill."
+      },
+      {
+        "name": "week-transition",
+        "value": "180ms out / 420ms in, translateX ±32px (View Transitions)",
+        "purpose": "Changing weeks; reduced motion makes it a cross-fade."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "370px"
+      },
+      {
+        "name": "tablet",
+        "value": "768px"
+      },
+      {
+        "name": "grid",
+        "value": "1080px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Round icon button",
+      "kind": "button",
+      "refersTo": "button-round",
+      "description": "Previous / next week.",
+      "html": "<button class=\"ds-round\" aria-label=\"Następny tydzień\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"/></svg></button>",
+      "css": ".ds-round{display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:50%;background:#1c1c1e;color:#f5f5f7;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);cursor:pointer;outline:2px solid transparent;outline-offset:6px;transition:background-color .15s,transform .3s cubic-bezier(.34,1.3,.64,1),outline-offset .3s cubic-bezier(.22,1,.36,1),outline-color .15s}.ds-round:hover{background:#2c2c2e}.ds-round:active{transform:scale(.94)}.ds-round:focus-visible{outline-color:#0a84ff;outline-offset:2px}"
+    },
+    {
+      "name": "Subject chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Legend filter; pressed highlights one subject across the week.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\"><span class=\"ds-chip-dot\"></span>Matematyka II</button>",
+      "css": ".ds-chip{--sw:#3f9142;display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:6px 14px 6px 12px;border:0;border-radius:999px;background:#1c1c1e;color:#a1a1a6;font:500 13px/1.3 -apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;cursor:pointer;transition:background-color .15s,color .15s,box-shadow .3s}.ds-chip-dot{width:10px;height:10px;border-radius:50%;background:var(--sw)}.ds-chip:hover{background:#2c2c2e;color:#f5f5f7}.ds-chip[aria-pressed=true]{color:#f5f5f7;background:color-mix(in srgb,var(--sw) 22%,#1c1c1e);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--sw) 75%,transparent)}.ds-chip:focus-visible{outline:2px solid #0a84ff;outline-offset:2px}"
+    },
+    {
+      "name": "Lesson row (grouped list)",
+      "kind": "card",
+      "refersTo": "lesson-row",
+      "description": "One class inside a day's inset grouped list; capsule doubles as progress.",
+      "html": "<div class=\"ds-group\"><div class=\"ds-row\"><div class=\"ds-time\"><b>09:50</b><span>11:25</span><small>95 min</small></div><span class=\"ds-cap\"></span><div><div class=\"ds-subj\">Matematyka II</div><div class=\"ds-type\">Wykład</div><div class=\"ds-meta\"><span class=\"ds-room\">314 S</span><span>Prowadzący</span></div></div></div></div>",
+      "css": ".ds-group{background:#1c1c1e;border-radius:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;color:#f5f5f7}.ds-row{display:grid;grid-template-columns:52px 4px 1fr;column-gap:14px;padding:14px 16px;transition:background-color .3s}.ds-row:hover{background:rgba(255,255,255,.025)}.ds-time{font-variant-numeric:tabular-nums;line-height:1.3}.ds-time b{display:block;font-size:15px;font-weight:600}.ds-time span{display:block;font-size:13px;color:#a1a1a6}.ds-time small{display:block;margin-top:6px;font-size:12px;color:#86868b}.ds-cap{width:4px;border-radius:2px;background:#3f9142}.ds-subj{font-size:17px;font-weight:600;letter-spacing:-.012em}.ds-type{margin-top:2px;font-size:13px;color:#a1a1a6}.ds-meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:13px;color:#86868b}.ds-room{color:#f5f5f7;font-weight:500}"
+    },
+    {
+      "name": "Live card",
+      "kind": "custom",
+      "refersTo": "live-card",
+      "description": "What is on now (or next) and where; capsule shows class progress.",
+      "html": "<button class=\"ds-live\"><span class=\"ds-live-cap\"></span><span><span class=\"ds-live-st\"><span class=\"ds-dot\"></span>Teraz · do 11:25</span><span class=\"ds-live-subj\">Matematyka II</span><span class=\"ds-live-line\"><b>314 S</b> 09:50–11:25 Wykład</span></span></button>",
+      "css": ".ds-live{display:grid;grid-template-columns:4px 1fr;column-gap:16px;width:100%;max-width:400px;padding:16px 24px 16px 16px;border:0;border-radius:20px;background:#1c1c1e;color:#f5f5f7;text-align:left;font-family:-apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 0 0 1px rgba(10,132,255,.5);cursor:pointer;transition:transform .3s cubic-bezier(.34,1.3,.64,1),background-color .3s}.ds-live:hover{background:#232326;transform:translateY(-2px)}.ds-live:active{transform:scale(.98)}.ds-live:focus-visible{outline:2px solid #0a84ff;outline-offset:2px}.ds-live>span{display:block}.ds-live-cap{border-radius:2px;background:linear-gradient(#3f9142 40%,rgba(63,145,66,.26) 40%)}.ds-live-st{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#4da3ff}.ds-dot{width:8px;height:8px;border-radius:50%;background:#0a84ff}.ds-live-subj{display:block;margin-top:6px;font-size:20px;font-weight:600;letter-spacing:-.02em}.ds-live-line{display:block;margin-top:8px;font-size:15px;color:#a1a1a6}.ds-live-line b{color:#f5f5f7;font-weight:500}"
+    },
+    {
+      "name": "Floating pill",
+      "kind": "button",
+      "refersTo": "floating-pill",
+      "description": "Back to the current week; glass because it floats over content.",
+      "html": "<button class=\"ds-pill\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"#4da3ff\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path d=\"M3 3v5h5\"/></svg>Bieżący tydzień</button>",
+      "css": ".ds-pill{display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 20px 0 16px;border:0;border-radius:999px;background:rgba(44,44,46,.72);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);color:#f5f5f7;font:600 15px -apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 0 0 1px rgba(255,255,255,.1),0 16px 40px -12px rgba(0,0,0,.8);cursor:pointer;transition:transform .6s cubic-bezier(.34,1.3,.64,1),background-color .15s}.ds-pill:hover{background:rgba(58,58,60,.78)}.ds-pill:active{transform:scale(.97)}.ds-pill:focus-visible{outline:2px solid #0a84ff;outline-offset:2px}"
+    },
+    {
+      "name": "Week sheet option",
+      "kind": "custom",
+      "refersTo": "sheet",
+      "description": "Row in the week picker sheet; selected week shows a drawn check.",
+      "html": "<div class=\"ds-sheet\"><button class=\"ds-opt\" aria-selected=\"true\"><span class=\"ds-opt-main\"><span class=\"ds-opt-label\">12.10–17.10</span><span class=\"ds-opt-meta\">Tydzień 3 z 22 · 13 bloków</span></span><span class=\"ds-opt-cur\">Bieżący tydzień</span><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"#0a84ff\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg></button></div>",
+      "css": ".ds-sheet{background:#1c1c1e;border-radius:24px;padding:8px;font-family:-apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;color:#f5f5f7}.ds-opt{display:flex;align-items:center;gap:12px;width:100%;min-height:60px;padding:10px 16px;border:0;border-radius:14px;background:transparent;color:inherit;text-align:left;cursor:pointer;transition:background-color .15s}.ds-opt:hover{background:#2c2c2e}.ds-opt:focus-visible{outline:2px solid #0a84ff;outline-offset:2px}.ds-opt-main{display:flex;flex-direction:column;flex:1}.ds-opt-label{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}.ds-opt-meta{margin-top:2px;font-size:13px;color:#a1a1a6}.ds-opt-cur{font-size:13px;font-weight:500;color:#4da3ff}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Pocket Live Activity",
+    "overview": "The timetable behaves like something iOS would ship: a black ground, greys that rise in lightness as surfaces come forward, one blue that means \"now / today / you are here\", and system type set tight and confident. The page is read in a hurry, on a phone, between buildings, so every surface answers what, when, where before it says anything about itself.\n\nDensity is calm rather than sparse. On phones each day is an inset grouped list; on desktop the same rows become tiles placed in a true day × block grid, so the whole week sits in one viewport. The memorable move is the subject capsule: a 4px colour bar that names the subject and, for the class in progress, fills top to bottom as the class elapses, in the rows and in the Live card at the top.\n\nMotion is physical and short: expo-out arrivals, springs on press and on the floating pill, View Transitions that slide the week sideways in the direction you moved, a bottom sheet that rides the iOS sheet curve. Movement is reserved for state changes; nothing loops except the live dot of the class that is on now.",
+    "keyCharacteristics": [
+      "Pure black ground; depth from surface lightness and a 6% top edge-light, not drop shadows.",
+      "One accent, used for now, today, focus and selection only.",
+      "System SF / Inter, sentence case, tabular numerals; no monospace, no all-caps labels.",
+      "Subject colour lives only in the capsule and legend dots.",
+      "Frosted glass only where something floats over content: the stuck week bar and the \"Bieżący tydzień\" pill."
+    ],
+    "rules": [
+      {
+        "name": "The One Blue Rule",
+        "body": "Blue means \"now, today, or focused\" and nothing else. Never use it for decoration, headings or inactive states.",
+        "section": "colors"
+      },
+      {
+        "name": "The Capsule Rule",
+        "body": "Subject colour appears only as the 4px capsule and the 10px legend dot. Never tint text, card backgrounds or borders with a subject colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The Receding Past Rule",
+        "body": "Past days and finished classes step down one text token (label → secondary, secondary → tertiary) and dim their capsule to 45%. They never drop below label-tertiary, so they stay AA-legible.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Time Rule",
+        "body": "Every time, date, count and room is set with tabular numerals so columns of times align.",
+        "section": "typography"
+      },
+      {
+        "name": "The Sentence Case Rule",
+        "body": "No uppercase labels or eyebrows anywhere; status lines read as sentences (\"Następne · za 25 min\").",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Glow Rule",
+        "body": "No coloured or zero-offset halo shadows. State is shown with a 1px accent ring and a tinted fill, never a glow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Glass-Only-When-Floating Rule",
+        "body": "Backdrop blur is allowed only on elements that sit over scrolling content. It is off while the bar rests in place.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep the ground pure #000 and lift surfaces only through the surface-* ramp plus edge-light.",
+      "Do use the accent only for now, today, focus and selection (The One Blue Rule).",
+      "Do animate transform and opacity: 150ms feedback, 300ms state, 420–520ms transitions and sheets, expo-out (cubic-bezier(0.22,1,0.36,1)) for arrivals, cubic-bezier(0.32,0.72,0,1) for the sheet, springs for press and the floating pill.",
+      "Do give every motion a reduced-motion path that keeps fades and drops travel.",
+      "Do keep all styling in hashed <style> blocks and set dynamic values with CSSOM custom properties; the CSP blocks inline style attributes."
+    ],
+    "donts": [
+      "Don't add coloured glows, gradient text, side stripes on card edges, or emoji or glyph icons.",
+      "Don't use uppercase eyebrows or labels above headings, or a monospace face for data.",
+      "Don't put backdrop blur on anything that does not float over content, or loop an animation on anything that is not live.",
+      "Don't tint text or surfaces with subject colours (The Capsule Rule).",
+      "Don't add WAT logos, crests or official-looking wording; the site is an unofficial student view."
+    ]
+  }
+}

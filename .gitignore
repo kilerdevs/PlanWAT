@@ -1,0 +1,15 @@
+# Build output (python3 build.py)
+/site/
+
+# Dev dependencies and test artefacts
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+__pycache__/
+*.pyc
+
+# Local backups and design-review captures
+*.bak
+/.impeccable/review/
+/.impeccable/hook.cache.json

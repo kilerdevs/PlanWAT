@@ -1,0 +1,63 @@
+name: Timetable
+description: Add a group or a new term, or report a wrong class (room, time, teacher)
+title: "[Timetable]: "
+labels: ["timetable"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Timetables live in `timetables/<term>/<GROUP>.ics`. If you can edit the file yourself, a pull request is
+        even faster — the format is in [docs/ICS-FORMAT.md](https://github.com/kilerdevs/PlanWAT/blob/HEAD/docs/ICS-FORMAT.md).
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is this about?
+      options:
+        - Add a group
+        - Add a new term for an existing group
+        - A class is wrong (room, time, teacher, type)
+        - A class is missing or should not be there
+    validations:
+      required: true
+
+  - type: input
+    id: group
+    attributes:
+      label: Group code
+      placeholder: WCY26KY3S1
+    validations:
+      required: true
+
+  - type: input
+    id: term
+    attributes:
+      label: Term
+      placeholder: semestr zimowy 2026/27
+    validations:
+      required: false
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: For a wrong class, give the date, the time and what it should be.
+      placeholder: 2026-10-15, 09:50 Matematyka II is in 316 S, not 314 S.
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: A link to the official plan or e-dziekanat page that shows the correct data.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the official plan, and this is not a one-off change announced only by the teacher.
+          required: true

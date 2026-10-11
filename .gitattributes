@@ -1,0 +1,6 @@
+# Text is normalised to LF...
+* text=auto eol=lf
+
+# ...except calendars, which are stored byte-for-byte: RFC 5545 requires CRLF line
+# endings, and calendar apps subscribed to /<GROUP>/plan.ics rely on them.
+*.ics -text diff

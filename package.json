@@ -1,0 +1,24 @@
+{
+  "name": "planwat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Phone-first WAT timetables rendered from iCalendar files, published as a static site.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kilerdevs/PlanWAT.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "python3 build.py --today 2026-10-15",
+    "test:unit": "node --test tests/ics.test.js && python3 -m unittest discover -s tests -p 'test_*.py'",
+    "test:e2e": "playwright test",
+    "test": "npm run test:unit && npm run build && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0"
+  }
+}

@@ -1,0 +1,61 @@
+name: Feature request
+description: Suggest an improvement or a new capability
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. The site deliberately stays small: plain HTML, CSS and JavaScript, no runtime dependencies and
+        no third-party scripts. Please describe the problem first; the best solution is often smaller than the first one
+        that comes to mind.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Who is affected and what is hard today?
+      placeholder: As a student I can't …
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like to happen. Sketches and wording are welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Group timetable page
+        - Group list / several groups and terms
+        - Calendar file (.ics) and subscriptions
+        - Accessibility
+        - Deployment (GitHub Pages, Docker)
+        - Tests and CI
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project fit
+      options:
+        - label: I understand that features needing a framework, a runtime dependency or a third-party script need discussion before any code.
+          required: true
+        - label: I would be willing to help implement or test this.
+          required: false

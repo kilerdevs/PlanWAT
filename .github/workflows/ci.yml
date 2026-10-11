@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches: [master, dev]
+  pull_request:
+
+# The same commit runs as push:dev and as the release PR; one group per ref
+# stops the pile-up. master always runs to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+# Nothing here needs write access: a compromised step cannot touch the repo.
+permissions:
+  contents: read
+
+jobs:
+  # The iCalendar reader (src/ics.js) runs in every visitor's browser; Node runs
+  # its tests with the built-in runner (no npm dependencies) and enforces
+  # coverage floors, so a regression fails the build instead of lowering a number.
+  unit:
+    name: unit tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      # Third-party actions are pinned to commit SHAs, not moving tags: a
+      # hijacked tag must not be able to run code in this repo.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Parser tests with coverage floors
+        run: >-
+          node --test --experimental-test-coverage
+          --test-coverage-include='src/**'
+          --test-coverage-lines=95 --test-coverage-branches=80 --test-coverage-functions=100
+          tests/ics.test.js
+
+  # build.py validates every calendar, picks each group's current term and
+  # writes the site. Its tests cover term selection, the per-page CSP, the
+  # nginx header CSP, escaping and the refusal paths.
+  build:
+    name: build (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build tests
+        run: python -m unittest discover -s tests -v
+      - name: Build the site
+        run: python build.py
+      # Calendars must keep CRLF line endings (RFC 5545, needed by calendar
+      # subscribers); .gitattributes stores them byte-for-byte.
+      - name: Calendars use CRLF line endings
+        run: |
+          bad=$(for f in timetables/*/*.ics; do grep -q $'[^\r]$' "$f" && echo "$f"; done || true)
+          if [ -n "$bad" ]; then echo "::error::LF line endings in: $bad"; exit 1; fi
+
+  # Real browsers against the built site, served the way GitHub Pages serves it
+  # (directory index, trailing-slash redirect, 404.html, no headers: the meta
+  # CSP is what the browser enforces). Chromium, Firefox and WebKit (iPhone
+  # Safari) at desktop and phone sizes; the clock is frozen inside the tests,
+  # so live states (now / next) are deterministic. Includes an axe WCAG scan.
+  e2e:
+    name: browser tests (${{ matrix.browser }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install test tooling
+        run: npm ci
+      # Dev dependencies are still dependencies: audit them on every build.
+      - name: Audit dev dependencies
+        run: npm audit --audit-level=high
+      - name: Install ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      # --today matches the frozen browser clock, so the term pick agrees with it.
+      - name: Build the site
+        run: python build.py --today 2026-10-15
+      - name: Run browser tests
+        run: >-
+          npx playwright test
+          ${{ matrix.browser == 'chromium' && '--project=chromium --project=mobile-chrome' || '' }}
+          ${{ matrix.browser == 'firefox' && '--project=firefox' || '' }}
+          ${{ matrix.browser == 'webkit' && '--project=mobile-safari' || '' }}
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: |
+            playwright-report
+            test-results
+          retention-days: 14
+
+  # The self-hosted image (see docs/DEPLOYMENT.md). Grype
+  # fails the build on HIGH/CRITICAL findings that have a fix: bumping the
+  # digest-pinned base image is the fix. The smoke test runs the image with the
+  # same hardening as docker-compose.yml and checks routing and headers.
+  docker:
+    name: docker image (Grype + smoke)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      # The image builds its own copy (Dockerfile stage 1); this one is the
+      # reference the smoke test compares the served files against.
+      - name: Build the site
+        run: python build.py
+      - name: Build image
+        run: docker build -t planwat:ci .
+      - name: Scan image (Grype)
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: planwat:ci
+          severity-cutoff: high
+          only-fixed: true
+          fail-build: true
+          output-format: table
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          docker run -d --name planwat -p 127.0.0.1:8088:8080 \
+            --read-only --tmpfs /tmp:size=16m,mode=1777,noexec,nosuid,nodev \
+            --cap-drop ALL --security-opt no-new-privileges:true planwat:ci
+          for _ in $(seq 1 30); do curl -fs http://127.0.0.1:8088/healthz >/dev/null && break; sleep 1; done
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          test "$(code http://127.0.0.1:8088/)" = 200
+          test "$(code http://127.0.0.1:8088/WCY26KY3S1)" = 301
+          test "$(curl -s -o /dev/null -w '%{redirect_url}' http://127.0.0.1:8088/WCY26KY3S1)" = "http://127.0.0.1:8088/WCY26KY3S1/"
+          curl -fs http://127.0.0.1:8088/WCY26KY3S1/ | cmp - site/WCY26KY3S1/index.html
+          curl -fs http://127.0.0.1:8088/WCY26KY3S1/plan.ics | cmp - site/WCY26KY3S1/plan.ics
+          curl -fsI http://127.0.0.1:8088/WCY26KY3S1/plan.ics | grep -qi '^content-type: text/calendar; charset=utf-8'
+          test "$(code http://127.0.0.1:8088/WCY99XX9X9/)" = 404
+          test "$(code http://127.0.0.1:8088/.planwat-site)" = 404
+          test "$(code -X POST http://127.0.0.1:8088/)" = 405
+          headers=$(curl -fsI http://127.0.0.1:8088/WCY26KY3S1/)
+          for h in "content-security-policy: .*frame-ancestors 'none'" "x-frame-options: DENY" \
+                   "x-content-type-options: nosniff" "strict-transport-security: max-age=" \
+                   "referrer-policy: no-referrer" "cross-origin-opener-policy: same-origin"; do
+            echo "$headers" | grep -qi "^$h" || { echo "::error::missing header: $h"; exit 1; }
+          done
+          echo "smoke test passed"
+      - name: Container logs
+        if: always()
+        run: docker logs planwat 2>&1 | tail -50 || true

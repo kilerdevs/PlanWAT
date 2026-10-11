@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "marquee",
+        "value": "*",
+        "files": [
+          "src/group.html"
+        ],
+        "createdAt": "2026-10-11T12:40:53.574Z",
+        "reason": "brief: owner's redesign brief asks for skeleton shimmer instead of spinners; the only infinite slide is the .skel loading placeholder, shown until the script renders"
+      }
+    ]
+  }
+}

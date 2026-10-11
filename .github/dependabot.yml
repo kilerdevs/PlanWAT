@@ -1,0 +1,36 @@
+version: 2
+# Every ecosystem targets `dev`: master is protected and only receives dev via
+# release PRs, so bumps opened against master would bypass the normal flow.
+updates:
+  # CI actions drift too: an outdated or compromised action is a supply-chain
+  # risk like any other dependency. Dependabot understands SHA-pinned
+  # references and proposes the pinned form of the new version.
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      minor-patch:
+        update-types: [minor, patch]
+
+  # Browser-test runner (dev only; the site ships no npm dependencies).
+  - package-ecosystem: npm
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      minor-patch:
+        update-types: [minor, patch]
+
+  # Base images of the self-hosted deployment (python builder, nginx runtime),
+  # pinned by digest: the Grype gate holds the built image to their patches.
+  - package-ecosystem: docker
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      minor-patch:
+        update-types: [minor, patch]
