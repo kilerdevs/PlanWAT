@@ -165,9 +165,11 @@ def csp(scripts, styles, connect, frame_ancestors=False):
         "base-uri 'none'",
         "form-action 'none'",
     ]
-    if frame_ancestors:
-        parts.append("frame-ancestors 'none'")  # header only: browsers ignore it in a meta tag
-    parts.append('upgrade-insecure-requests')
+    if frame_ancestors:  # header only
+        parts.append("frame-ancestors 'none'")  # browsers ignore it in a meta tag
+        # Redundant in the meta CSP (every source is https or 'self'), where WebKit would also apply it to
+        # http://127.0.0.1 and break local previews; the header (always served over https) keeps it.
+        parts.append('upgrade-insecure-requests')
     return '; '.join(parts)
 
 
