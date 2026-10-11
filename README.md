@@ -129,7 +129,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and the pull-request chec
 ## Deployment
 
 - **GitHub Pages** (primary): [`.github/workflows/pages.yml`](.github/workflows/pages.yml) builds and deploys on every
-  push to `master`, on a daily schedule (term changes) and on demand.
+  push to `master` or `dev`, on a daily schedule (term changes) and on demand. It publishes production from `master`
+  at the site root plus a preview of `dev` under `/dev/` (linked from the front page footer).
 - **Docker** (self-hosted): `docker compose up -d --build` builds the site inside the image and serves it from a
   read-only, unprivileged nginx on `127.0.0.1:8088`, with security headers.
 

@@ -2,9 +2,15 @@ name: Pages
 
 # Builds the site and deploys it to GitHub Pages. master is protected (signed
 # commits, required CI checks), so whatever reaches it has passed CI.
+#
+# Two trees are published: production from master at the site root, and a
+# preview of dev under /dev/ (linked from the production front page).
+# Production is always built from master no matter which ref started the run,
+# so a push to dev refreshes the preview without ever promoting dev content
+# to the root.
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
   # Daily rebuild: build.py picks each group's current term by date, so a new
   # term goes live on its first day without anyone pushing a commit.
   schedule:
@@ -24,6 +30,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: master
+          path: prod
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: dev
+          path: devsrc
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
@@ -31,8 +44,28 @@ jobs:
       # domain is set; the 404 page's links need it.
       - id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-      - name: Build the site
-        run: python build.py --base-path "${{ steps.pages.outputs.base_path }}"
+      - name: Build the production site
+        run: python prod/build.py --out site --base-path "${{ steps.pages.outputs.base_path }}"
+      - name: Build the dev preview
+        run: python devsrc/build.py --out site/dev --base-path "${{ steps.pages.outputs.base_path }}/dev"
+      # Cross-link the two front pages. Plain anchors only: no inline script or
+      # style changes, so the hash-pinned CSPs stay valid.
+      - name: Link production and preview
+        run: |
+          python3 - <<'EOF'
+          from pathlib import Path
+          prod = Path('site/index.html')
+          html = prod.read_text(encoding='utf-8')
+          link = ' <a href="dev/">Wersja testowa (dev)</a>'
+          assert link not in html and '</footer>' in html
+          prod.write_text(html.replace('</footer>', link + '</footer>', 1), encoding='utf-8')
+          dev = Path('site/dev/index.html')
+          html = dev.read_text(encoding='utf-8')
+          link = ' <a href="../">Wersja stabilna</a>'
+          assert link not in html and '</footer>' in html
+          dev.write_text(html.replace('</footer>', link + '</footer>', 1), encoding='utf-8')
+          print('linked production <-> dev preview')
+          EOF
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
