@@ -14,6 +14,13 @@ tunnel. The examples use `plan.example.org` for the custom domain.
 The site is then available at <https://kilerdevs.github.io/PlanWAT/>. All links are relative, so it works both there and
 on a custom domain; only the 404 page needs the base path, which the workflow takes from `actions/configure-pages`.
 
+### Dev preview
+
+Every deploy also builds the tip of `dev` into `/dev/` (e.g. <https://kilerdevs.github.io/PlanWAT/dev/>), linked as
+"Wersja testowa (dev)" from the production front-page footer, with a "Wersja stabilna" link back. Pushing to `dev`
+refreshes the preview; production is always built from `master`, so a dev push can never promote unfinished content
+to the site root. The daily rebuild keeps the preview's current-term pick fresh too.
+
 > [!NOTE]
 > GitHub disables scheduled workflows in public repositories after 60 days without activity. If that happens, re-enable
 > **Pages** in the Actions tab (or push any commit).

@@ -45,6 +45,7 @@ class FacultyTest(unittest.TestCase):
         self.assertEqual(build.faculty_of('WIG24AB1S1'), 'WIG')
         self.assertEqual(build.faculty_of('WML24AB1S1'), 'WML')
         self.assertEqual(build.faculty_of('WTC24AB1S1'), 'WTC')
+        self.assertEqual(build.faculty_of('WLO26AX1S1'), 'WLO')
         self.assertEqual(build.faculty_of('WCY26_Fiz1a'), 'WCY')
 
     def test_unknown_prefixes_fall_back_to_other(self):
@@ -124,14 +125,18 @@ class BuildRealSiteTest(unittest.TestCase):
         else:
             self.assertNotIn('http-equiv="refresh"', html)
 
-    def test_root_offers_the_faculties_first_and_a_group_search(self):
+    def test_root_lists_collapsed_faculty_sections_and_a_group_search(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
-        for code in ('WCY', 'WEL', 'WIG', 'WML', 'WTC'):
-            self.assertIn(f'data-facbtn="{code}"', html)
-        self.assertIn('Wydział Cybernetyki', html)
-        self.assertIn('Faculty of Cybernetics', html)
+        self.assertNotIn('data-facbtn', html)
+        self.assertNotIn('@@', html)
         self.assertIn('id="groupSearch"', html)
         self.assertIn('id="noResults"', html)
+        self.assertIn('data-fac-section="WCY"', html)
+        self.assertIn('data-fac-section="WLO"', html)
+        self.assertIn('WLO &middot; Wydział Bezpieczeństwa, Logistyki i Zarządzania', html)
+        self.assertIn('<details class="fac-sec"', html)
+        self.assertNotIn('<details class="fac-sec" open', html)
+        self.assertNotIn('<details open', html)
         for group in self.groups():
             self.assertIn(f'data-group="{group}"', html)
 

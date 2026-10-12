@@ -15,11 +15,11 @@ All notable changes to PlanWAT are documented here. The format follows
   With several groups, the root page now lists them instead of redirecting.
 - Timetables for 16 more groups (e.g. `WCY26_M1`, `WCY26_Fiz1a`, `WCY26IB1bS6`): group codes may now contain
   lowercase letters and underscores, and each file's `X-PLAN-GROUP` matches its file name.
-- Front page: pick a faculty first (WCY, WEL, WIG, WML, WTC — Polish and English names), then search the group.
-  The choice is shareable via `#wydzial=<CODE>` and survives back/forward navigation.
+- Front page: search the group; faculty lists are collapsed by default and open on matching search.
 - Group page: on Saturday/Sunday with no weekend lessons planned, the next week opens straight away.
 - Browser tests for the faculty picker, group search, weekend rollover and the front-page accessibility scan;
   the WCY26KY3S1 timetable is pinned in `tests/fixtures/wcy26ky3s1.plan.json` instead of the first export.
+- Dev preview: every Pages deploy publishes the tip of `dev` under `/dev/`, cross-linked with production.
 
 ### Changed
 - Tests follow the groups in `timetables/` instead of assuming one: every group must get a page and a byte-identical
