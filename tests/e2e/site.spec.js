@@ -110,6 +110,7 @@ test('on a weekend without classes the next week is shown', async ({ page }) => 
 
 test('every group page renders its calendar without errors', async ({ page }) => {
   test.slow(); // visits every group page in one test; grows with timetables/
+  test.setTimeout(120_000 + GROUPS.length * 1_000);
   expect(GROUPS.length).toBeGreaterThan(0);
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
