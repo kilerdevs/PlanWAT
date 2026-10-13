@@ -31,13 +31,18 @@ pages.yml     checks out `data` and lays its timetables over prod/ and dev/ befo
 | Faculty | Driver | State |
 |---|---|---|
 | WLO, WEL, WIM | `plansoft` | enabled |
+| IOE | `plansoft` (pinned base: the winter plans live under the stale `lato/` dir; the grid is transposed and its cells read SUBJ/type/room/alias, converted with `wlo2ics --faculty ioe`) | enabled |
 | WML | `wml` (Plansoft pages; the live `index.xml` is resolved via the landing-page iframe, since the faculty republishes under revisioned directories) | enabled |
 | WCY | `wcy` | disabled until a dry run proves plain HTTP works (the old crawler used a browser) |
 | WTC | `wtc` | enabled; `index.xml` lists one Plansoft PDF per group, converted with `pymupdf` (installed by the refresh action) |
 
+Each group has exactly one canonical owner, so no plan is published twice under two codes: WEL skips the
+`IOE*`/`WME*` pages its index also lists (they belong to IOE/WIM), and IOE skips its listed `WME*` page.
+
 Pages named like `1PL26KP` get the faculty prefix (`WEL1PL26KP`) so the file name, `X-PLAN-GROUP` and the front-page
 section agree. Pages that are not group codes (courses such as `Kurs_-_…`) are skipped. WML groups keep the
-faculty's own `WMT` codes (only `^WMT` pages are crawled) and are listed under the WML section.
+faculty's own `WMT` codes (only `^WMT` pages are crawled) and are listed under the WML section. WIM groups keep
+their `WME` codes and are listed under the WIM section.
 
 WTC notes: the site sits behind Incapsula, so the PDFs are fetched with the
 index page as Referer on the shared cookie-keeping session, one at a time;

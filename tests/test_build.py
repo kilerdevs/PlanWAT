@@ -51,9 +51,10 @@ class FacultyTest(unittest.TestCase):
         self.assertEqual(build.faculty_of('WLO26AX1S1'), 'WLO')
         self.assertEqual(build.faculty_of('WCY26_Fiz1a'), 'WCY')
         self.assertEqual(build.faculty_of('WMT26AX1S0'), 'WML')
+        self.assertEqual(build.faculty_of('WME26MX1S1'), 'WIM')
+        self.assertEqual(build.faculty_of('IOE26HX1S0'), 'IOE')
 
     def test_unknown_prefixes_fall_back_to_other(self):
-        self.assertEqual(build.faculty_of('WME26BX1S1'), 'OTHER')
         self.assertEqual(build.faculty_of('ABC123'), 'OTHER')
 
     def test_plural_grup(self):

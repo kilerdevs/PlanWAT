@@ -393,5 +393,56 @@ class WmlConversion(unittest.TestCase):
         self.assertTrue(ok, why)
 
 
+class PlansoftFiltering(unittest.TestCase):
+    WEL_INDEX = ('<?xml version="1.0"?><xml><data>'
+                 '<gro href="1PL26KP.htm"/><gro href="WEL26EX1S0.htm"/>'
+                 '<gro href="IOE23HX1S0.htm"/><gro href="WME23BE1S1.htm"/>'
+                 '<gro href="WIG26BW1S0.htm"/></data></xml>')
+
+    def test_wel_keeps_its_own_groups_but_not_ioe_or_wme(self):
+        # The IOE/WME pages listed by WEL belong to the IOE institute and
+        # the WIM faculty: crawling them here would publish every such
+        # group twice under two codes.
+        cfg = dict(WLO_CFG, prefix='WEL', label='WEL', keep_prefixes=['WME'],
+                   groups_re='^(?!IOE|WME)')
+        items = plansoft.Driver('wel', cfg, TODAY).items(self.WEL_INDEX)
+        self.assertEqual([i.code for i in items],
+                         ['WEL1PL26KP', 'WEL26EX1S0', 'WIG26BW1S0'])
+
+    def test_ioe_keeps_only_ioe_groups(self):
+        cfg = dict(WLO_CFG, prefix='', label='IOE',
+                   base='https://example.test/plany/lato/',
+                   groups_re='^IOE')
+        driver = plansoft.Driver('ioe', cfg, TODAY)
+        self.assertEqual(driver.base, 'https://example.test/plany/lato/')
+        items = driver.items(self.WEL_INDEX)
+        self.assertEqual([i.code for i in items], ['IOE23HX1S0'])
+
+
+class IoeConversion(unittest.TestCase):
+    def convert(self):
+        cfg = dict(WLO_CFG, prefix='', label='IOE',
+                   base='https://example.test/plany/lato/',
+                   groups_re='^IOE')
+        driver = plansoft.Driver('ioe', cfg, TODAY)
+        return driver.convert(Item('IOE26HX1S0', 'https://example.test/IOE26HX1S0.htm', 'IOE26HX1S0'),
+                              page('IOE26HX1S0.htm'))
+
+    def test_a_transposed_page_becomes_a_valid_calendar_without_staff_names(self):
+        ics = self.convert()
+        self.assertIn('X-PLAN-GROUP:IOE26HX1S0', ics)
+        self.assertIn('X-PLAN-SOURCE:ioe-plansoft', ics)
+        self.assertIn('PRODID:-//PlanWAT//IOE//PL', ics)
+        self.assertEqual(ics.count('BEGIN:VEVENT'), 210)
+        self.assertIn('SUMMARY:Matematyka 1', ics)
+        self.assertIn('LOCATION:315a S', ics)
+        self.assertNotIn('CONTACT', ics)
+        self.assertNotIn('prowadzący:', ics.lower())
+        self.assertNotIn('Pta.S', ics)
+        self.assertNotIn('Bi.Ka', ics)
+        ok, why = core.validate(core.to_crlf(ics), 'IOE26HX1S0', '2026-27-zima')
+        self.assertTrue(ok, why)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -41,9 +41,11 @@ FONT_FILES = 'https://fonts.gstatic.com'
 # A group belongs to the faculty matching the first three letters of its code;
 # anything else is listed under "Pozostałe grupy".
 FACULTIES = [
+    ('IOE', 'Instytut Optoelektroniki'),
     ('WCY', 'Wydział Cybernetyki'),
     ('WEL', 'Wydział Elektroniki'),
     ('WIG', 'Wydział Inżynierii Lądowej i Geodezji'),
+    ('WIM', 'Wydział Inżynierii Mechanicznej'),
     ('WLO', 'Wydział Bezpieczeństwa, Logistyki i Zarządzania'),
     ('WML', 'Wydział Mechatroniki, Uzbrojenia i Lotnictwa'),
     ('WTC', 'Wydział Nowych Technologii i Chemii'),
@@ -55,6 +57,8 @@ def faculty_of(group):
     prefix = group[:3].upper()
     if prefix == 'WMT':
         return 'WML'  # WML publishes its plans under WMT group codes
+    if prefix == 'WME':
+        return 'WIM'  # WIM publishes its plans under WME group codes
     return prefix if prefix in FACULTY_CODES else 'OTHER'
 
 
