@@ -53,6 +53,8 @@ FACULTY_CODES = {code for code, _ in FACULTIES}
 
 def faculty_of(group):
     prefix = group[:3].upper()
+    if prefix == 'WMT':
+        return 'WML'  # WML publishes its plans under WMT group codes
     return prefix if prefix in FACULTY_CODES else 'OTHER'
 
 
@@ -122,6 +124,9 @@ def read_calendar(path):
                     raise BuildError(f'{path}: an event has no {", ".join(sorted(missing))}')
                 event = None
         elif stack and stack[-1] == 'VEVENT':
+            # PlanWAT keeps no personal data of staff: a calendar that names who teaches is refused.
+            if key == 'CONTACT' or (key == 'DESCRIPTION' and 'prowadzący:' in value.lower()):
+                raise BuildError(f'{path}: calendars must not name staff (remove the {key} line)')
             event.add(key)
             if key == 'DTSTART' and _ymd(value):
                 dates.append(_ymd(value))

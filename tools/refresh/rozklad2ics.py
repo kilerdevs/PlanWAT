@@ -18,9 +18,8 @@ Notes on the source data (all configurable below / via CLI):
     (date / block_id / name / info / colorp spans). If it is missing, the
     visible grid cells (``div.day`` + ``div.block[title]``) are used instead.
   * Block times (08:00-09:35, ...) are read from the ``div.day_blocks`` header.
-  * The page sometimes has an empty instructor cell. SUBJECT_TEACHERS below
-    backfills those (lecturers rarely change; a warning is printed for
-    subjects with no backfill configured).
+  * Instructor names are never read or written: the calendars carry no
+    personal data of staff (no CONTACT line, no instructor line).
   * The page is live and changes over time (rooms move, labs get
     added/cancelled). The reference output this script reproduces was built
     from an earlier snapshot, so a few events may legitimately differ when the
@@ -35,37 +34,8 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 
 # ----------------------------------------------------------------------------
-# Backfill data (page cells are sometimes empty; titles are never on the page)
+# Fixups for known-bad page data
 # ----------------------------------------------------------------------------
-
-# Lecturer name fragments by surname. Academic titles are deliberately NOT
-# used: CONTACT lines carry plain "Firstname Surname" for every lecturer,
-# so output stays consistent whether or not the page names a lecturer.
-# (No title table is needed anymore.)
-
-# Subject (full name, as printed on the page) -> fallback instructors, used only
-# when the page cell has no instructor. Entries are "Surname Firstname".
-SUBJECT_TEACHERS = {
-    "Podstawy grafiki in\u017cynierskiej": ["Prowadzący"],
-    "Wybrane zagadnienia prawa": ["Prowadzący"],
-    "Wprowadzenie do metrologii": ["Prowadzący"],
-    "Ochrona w\u0142asno\u015bci intelektualnych": ["Prowadzący"],
-    "Etyka zawodowa": ["Prowadzący"],
-    "Wychowanie fizyczne": ["Prowadzący"],
-    "Inauguracja WCY": ["... ... ..."],
-}
-
-# Evening PGI workshops in building 54 rooms 29/30 are co-taught; the page
-# cell is empty, so the pair is backfilled here (order matters for output).
-PGI_WORKSHOP_ROOM = "29/ 54 30/ 54"
-PGI_WORKSHOP_TEACHERS = ["Prowadzący", "Prowadzący"]
-
-# Metrology has different lecturers for lectures vs. exercises; the subject
-# default above only covers lectures.
-SUBJECT_TYPE_TEACHERS = {
-    ("Wprowadzenie do metrologii", "\u0106wiczenia"): ["Prowadzący"],
-    ("Podstawy grafiki in\u017cynierskiej", "\u0106wiczenia"): ["Prowadzący"],
-}
 
 # Known-incomplete room listings seen on the page -> full listing.
 ROOM_FIXUPS = {
@@ -331,35 +301,6 @@ def normalize_room(raw):
     return ROOM_FIXUPS.get(room, room)
 
 
-def resolve_instructors(lesson):
-    """Raw instructor field -> list of CONTACT strings (may be empty)."""
-    raw = lesson["instructor"]
-    # NB: items are lstripped but NOT rstripped -- a trailing space in the
-    # page cell is significant (it yields e.g. "Prowadzący" downstream,
-    # matching the reference calendar byte-for-byte).
-    raws = [r.lstrip() for r in raw.split(",") if r.strip()] \
-        if raw and raw.strip() != "-" else []
-    if not raws:
-        key = (lesson["subject"], lesson["type"])
-        if (lesson["subject"] == "Podstawy grafiki in\u017cynierskiej"
-                and lesson["type"] == "\u0106wiczenia"
-                and normalize_room(lesson["room"]) == PGI_WORKSHOP_ROOM):
-            raws = PGI_WORKSHOP_TEACHERS
-        elif key in SUBJECT_TYPE_TEACHERS:
-            raws = SUBJECT_TYPE_TEACHERS[key]
-        else:
-            raws = SUBJECT_TEACHERS.get(lesson["subject"], [])
-    contacts = []
-    for item in raws:
-        surname, _, firstname = item.partition(" ")
-        if re.search(r"[A-Za-z\u0100-\u017f]", item):
-            # plain "Firstname Surname" (whitespace-normalised); no titles
-            contacts.append(" ".join((firstname + " " + surname).split()))
-        else:
-            contacts.append(item)  # placeholder such as "... ... ..."
-    return contacts
-
-
 def subject_color(subject):
     if subject in SUBJECT_COLORS:
         return SUBJECT_COLORS[subject]
@@ -437,7 +378,6 @@ def build_ics(lessons, times, meta, generated):
         tstart, tend = times[lesson["block"]]
         category = lesson["type"] or CODE_TYPES.get(lesson["code"], "")
         room = normalize_room(lesson["room"])
-        contacts = resolve_instructors(lesson)
         base_uid = "%sT%s-%s@planwat" % (d, tstart, group.lower())
         uid = base_uid
         n = 2
@@ -456,13 +396,7 @@ def build_ics(lessons, times, meta, generated):
         lines.append("CATEGORIES:%s" % esc(category))
         if room:
             lines.append("LOCATION:%s" % esc(room))
-        for contact in contacts:
-            lines.append("CONTACT:%s" % esc(contact))
-        if contacts:
-            desc = "%s\nProwadz\u0105cy: %s" % (category, ", ".join(contacts))
-        else:
-            desc = category
-        lines.append("DESCRIPTION:%s" % esc(desc))
+        lines.append("DESCRIPTION:%s" % esc(category))
         lines.append("X-PLAN-COLOR:%s" % subject_color(lesson["subject"]))
         lines.append("END:VEVENT")
         nevents += 1

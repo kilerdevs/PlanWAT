@@ -9,7 +9,7 @@ related_targets: ["src/index.html", "src/404.html"]
 
 Scope: the group timetable page (src/group.html → site/<GROUP>/index.html). Visitor mode: Operate.
 
-Audience and job: WAT students on phones, opened from the group chat, checking what is on now/next, where (room), who teaches, and the rest of the week. Desktop is secondary but should show the whole week at once.
+Audience and job: WAT students on phones, opened from the group chat, checking what is on now/next, where (room), and the rest of the week. Desktop is secondary but should show the whole week at once.
 
 Constraints: Polish copy unchanged; dark theme only (owner's brief); strict hash-pinned CSP (no inline style attributes, CSSOM only); smooth on mid-range phones (transform/opacity motion, one backdrop blur on the sticky bar and floating pill only); prefers-reduced-motion respected.
 

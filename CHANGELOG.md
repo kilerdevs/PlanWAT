@@ -9,6 +9,11 @@ All notable changes to PlanWAT are documented here. The format follows
 
 ## [Unreleased]
 
+### Removed
+- All personal data of staff: names, surnames and academic titles are gone from the calendars, the page, the converters,
+  the tests and the whole Git history. Calendars no longer carry `CONTACT` or instructor lines, and the build refuses
+  any calendar that does.
+
 ### Added
 - Group page: "Zaktualizowano" and "Sprawdzono" dates from the refresh, and a pledge by the maintainer that PlanWAT stays free
   (also in the front page footer).
@@ -47,7 +52,7 @@ All notable changes to PlanWAT are documented here. The format follows
 First public release.
 
 ### Added
-- Group timetable page: Live card for the class on now or next (room, time, teacher, progress), grouped day lists on
+- Group timetable page: Live card for the class on now or next (room, time, progress), grouped day lists on
   phones and a day × time-slot grid on wide screens, week picker sheet, arrows / swipe / keyboard navigation,
   "Bieżący tydzień" pill, subject legend, phones scroll to the current class, `.ics` download.
 - Timetables as iCalendar files in `timetables/<term>/<GROUP>.ics`, read in the browser by `src/ics.js` (folded lines,

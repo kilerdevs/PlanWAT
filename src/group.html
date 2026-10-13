@@ -337,8 +337,6 @@
   .live-room[hidden] { display: none !important; }
   .live-line .i { color: var(--t3); }
   .live-time { font-variant-numeric: tabular-nums; }
-  .live-teach { display: block; margin-top: var(--sp-1); font-size: var(--fs-13); color: var(--t3); }
-  .live-teach:empty { display: none; }
   .live-next {
     display: block;
     margin-top: var(--sp-3);
@@ -1409,7 +1407,6 @@
         <span class="live-time" id="liveTime"></span>
         <span id="liveType"></span>
       </span>
-      <span class="live-teach" id="liveTeach"></span>
       <span class="live-next" id="liveNext" hidden></span>
     </button>
   </header>
@@ -1635,12 +1632,6 @@
       room.appendChild(el('span', null, ev.room));
       metaRow.appendChild(room);
     }
-    if (ev.teachers_full && ev.teachers_full.length) {
-      var who = el('span', 'who');
-      who.appendChild(icon('user', 'i-sm'));
-      who.appendChild(el('span', null, ev.teachers_full.join(', ')));
-      metaRow.appendChild(who);
-    }
     if (metaRow.childNodes.length) info.appendChild(metaRow);
     row.appendChild(info);
     return row;
@@ -1854,7 +1845,6 @@
     $('liveRoom').textContent = hasRoom ? main.room : '';
     $('liveTime').textContent = main.start + '–' + main.end;
     $('liveType').textContent = TYPE_SHORT[main.type_full] || main.type_full;
-    $('liveTeach').textContent = (main.teachers_full || []).join(', ');
     var nx = $('liveNext');
     if (cur && next) {
       var nextRoom = next.room && next.room !== '-' ? ' · ' + next.room : '';
