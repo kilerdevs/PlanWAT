@@ -42,7 +42,9 @@ faculty's own `WMT` codes (only `^WMT` pages are crawled) and are listed under t
 WTC notes: the site sits behind Incapsula, so the PDFs are fetched with the
 index page as Referer on the shared cookie-keeping session, one at a time;
 the converter needs `pip install pymupdf` on any machine running the crawl
-(the daily action installs it). Converted calendars carry no staff names
+(the daily action installs it into a throwaway venv on `$RUNNER_TEMP`,
+because the self-hosted runner's baked `/opt/venv` is read-only at job
+time). Converted calendars carry no staff names
 (see the privacy rule below).
 
 Pages named like `1PL26KP` get the faculty prefix (`WEL1PL26KP`) so the file name, `X-PLAN-GROUP` and the front-page
