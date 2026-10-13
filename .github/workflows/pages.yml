@@ -51,6 +51,7 @@ jobs:
         run: |
           for tree in prod devsrc; do
             if [ -d data/timetables ]; then cp -r data/timetables/. "$tree/timetables/"; fi
+            if [ -f data/refresh-state.json ]; then cp data/refresh-state.json "$tree/refresh-state.json"; fi
           done
           echo "overlaid $(find data/timetables -name '*.ics' | wc -l) refreshed calendars"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

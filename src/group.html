@@ -1375,7 +1375,8 @@
       <dl class="facts enter d3">
         <div id="factFaculty"@@HIDE_FACULTY@@><dt>Wydział</dt><dd>@@FACULTY@@</dd></div>
         <div id="factSemester"><dt>Semestr</dt><dd>@@SEMESTER@@</dd></div>
-        <div id="factGenerated"@@HIDE_GENERATED@@><dt>Wygenerowano</dt><dd>@@GENERATED@@</dd></div>
+        <div id="factUpdated"@@HIDE_UPDATED@@><dt>Zaktualizowano</dt><dd>@@UPDATED@@</dd></div>
+        <div id="factChecked"@@HIDE_CHECKED@@><dt>Sprawdzono</dt><dd>@@CHECKED@@</dd></div>
       </dl>
       <div class="tools enter d3" id="tools">
         <button class="dl" id="favBtn" type="button" aria-pressed="false"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-star"/></svg><span id="favText">Dodaj do ulubionych</span></button>
@@ -1465,6 +1466,7 @@
     <span class="kb"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> zmieniają tydzień &middot; <kbd>T</kbd> bieżący tydzień &middot; <kbd>Esc</kbd> czyści wyróżnienie</span>
     <span class="touch">Przesuń palcem w bok, aby zmienić tydzień</span>
   </p>
+  <p class="hint wrap pledge">PlanWAT jest nieoficjalnym projektem studentów. Jego opiekun zobowiązuje się, że serwis pozostanie darmowy dla wszystkich.</p>
 </main>
 
 <button class="todaypill" id="todayBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"/></svg>Bieżący tydzień</button>
@@ -3089,7 +3091,6 @@
     fact('factFaculty', m.faculty);
     fact('factSemester', fmtFullDate(m.semesterStart || weeks[0].monday) + ' – ' +
       fmtFullDate(m.semesterEnd || isoOf(addDays(isoToLocalDate(weeks[weeks.length - 1].monday), 5))));
-    fact('factGenerated', m.generated ? fmtFullDate(m.generated) : '');
   }
 
   function fail(err) {
