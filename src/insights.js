@@ -171,28 +171,62 @@
   /* ---------- "Odrabianie": the same class in another group of the year ---------- */
   function yearOf(group) { var m = /^([A-Za-z]{3}\d{2})/.exec(group || ''); return m ? m[1].toUpperCase() : null; }
 
+  /* peer groups of one major and year: same faculty + year, same leading-letter major of the code
+     remainder, same code shape. WCY26KY3S1 pairs with WCY26KY1S1 (the 1st group of the same major),
+     but not with WCY26EL2S6 (another major) or WEL26ELTS6 (another code shape). */
+  function peerStem(group) {
+    var m = /^([A-Za-z]{3}\d{2})([A-Za-z]*)/.exec(group || '');
+    if (!m) return null;
+    return (m[1] + '|' + m[2] + '|' + String(group).length).toUpperCase();
+  }
+  function peersOf(myGroup, groups) {
+    var stem = peerStem(myGroup);
+    if (!stem) return [];
+    return groups.filter(function (g) { return g !== myGroup && peerStem(g) === stem; });
+  }
+
   /* a lecture several groups attend together is the same class, not another chance to catch up */
   function shared(dayLessons, s, e, room, subject) {
     return dayLessons.some(function (l) {
       return toMin(l.start) === s && toMin(l.end) === e && l.room === room && norm(l.subject_full) === norm(subject);
     });
   }
-  /* year/<PREFIX>.json -> the classes of one subject (and type, when given) in other groups, from today on,
-     each marked with whether it clashes with my own classes; classes my group attends too are left out */
+  /* year/<PREFIX>.json -> the classes of one subject (and type, when given) in the peer groups of the
+     same major and year, from today on, each marked with whether it clashes with my own classes and
+     with its ordinal within its group's (subject, type): the Nth class covers the same material as
+     my Nth class, so only ordinals my own program also has are offered. Classes my group attends
+     together with the peer group are left out. */
   function catchUp(yearData, myGroup, myByDate, subject, type, todayIso) {
     var epoch = dayNumber(yearData.epoch), names = yearData.names, e = yearData.e, out = [];
     var want = norm(subject), wantType = type ? norm(type) : null;
     var today = dayNumber(todayIso);
+    var peers = {};
+    peersOf(myGroup, yearData.groups).forEach(function (g) { peers[g] = 1; });
+    var myTotals = {};
+    Object.keys(myByDate).forEach(function (date) {
+      (myByDate[date] || []).forEach(function (l) {
+        var k = norm(l.subject_full) + '|' + norm(l.type_full || 'Inne');
+        myTotals[k] = (myTotals[k] || 0) + 1;
+      });
+    });
+    var ord = {};
     for (var i = 0; i + 6 < e.length; i += 7) {
       var group = yearData.groups[e[i]];
-      if (group === myGroup || norm(names[e[i + 1]]) !== want) continue;
-      if (wantType && norm(names[e[i + 2]]) !== wantType) continue;
+      if (group === myGroup || !peers[group]) continue;
+      var sname = names[e[i + 1]], tname = names[e[i + 2]];
+      if (norm(sname) !== want) continue;
+      var tn = norm(tname), tkey = tn || 'inne';
+      if (wantType && tn !== wantType) continue;
+      var key = group + '|' + norm(sname) + '|' + tkey;
+      var n = (ord[key] || 0) + 1;
+      ord[key] = n;
       var day = epoch + e[i + 4];
       if (day < today) continue;
       var date = isoFromDayNumber(day), s = e[i + 5], en = e[i + 6], room = names[e[i + 3]];
-      if (shared(myByDate[date] || [], s, en, room, names[e[i + 1]])) continue;
+      if (n > (myTotals[norm(sname) + '|' + tkey] || 0)) continue;
+      if (shared(myByDate[date] || [], s, en, room, sname)) continue;
       out.push({
-        group: group, date: date, start: s, end: en, type: names[e[i + 2]], room: room,
+        group: group, date: date, start: s, end: en, type: tname, room: room, n: n,
         clash: overlaps(myByDate[date] || [], s, en)
       });
     }
@@ -219,7 +253,7 @@
     lessons: lessons, gaps: gaps, isExam: isExam, subjectProgress: subjectProgress, stats: stats,
     lessonKey: lessonKey, fingerprint: fingerprint, diff: diff,
     freeWindows: freeWindows, intervals: intervals, overlaps: overlaps, byDate: byDate,
-    yearOf: yearOf, catchUp: catchUp,
+    yearOf: yearOf, peersOf: peersOf, catchUp: catchUp,
     monthGrid: monthGrid, dayNumber: dayNumber, isoFromDayNumber: isoFromDayNumber
   };
   if (typeof module === 'object' && module.exports) module.exports = PlanInsights;
