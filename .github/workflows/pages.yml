@@ -37,6 +37,22 @@ jobs:
         with:
           ref: dev
           path: devsrc
+      # Refreshed calendars live on the `data` branch (see refresh.yml). They are laid over the timetables
+      # committed in each tree, so the site shows the latest plans without a commit to master or dev. Before the
+      # branch exists, or if it cannot be fetched, the committed timetables are published as they are.
+      - id: data
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: data
+          path: data
+      - name: Overlay the refreshed timetables
+        if: steps.data.outcome == 'success'
+        run: |
+          for tree in prod devsrc; do
+            if [ -d data/timetables ]; then cp -r data/timetables/. "$tree/timetables/"; fi
+          done
+          echo "overlaid $(find data/timetables -name '*.ics' | wc -l) refreshed calendars"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'

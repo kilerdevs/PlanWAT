@@ -5,6 +5,7 @@ Run: python3 -m unittest discover -s tests -v
 import base64
 import datetime as dt
 import hashlib
+import json
 import re
 import shutil
 import sys
@@ -124,6 +125,14 @@ class BuildRealSiteTest(unittest.TestCase):
             self.assertIn(f'<meta http-equiv="refresh" content="0; url={groups[0]}/">', html)
         else:
             self.assertNotIn('http-equiv="refresh"', html)
+
+    def test_root_has_faculty_filters_stars_and_live_cards_support(self):
+        html = (self.out / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('data-fac="WCY"', html)
+        self.assertIn('data-star="WCY26KY3S1"', html)
+        self.assertIn('id="liveCards"', html)
+        self.assertIn('window.PlanICS', html)
+        self.assertIn("connect-src 'self'", html)
 
     def test_root_lists_collapsed_faculty_sections_and_a_group_search(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
@@ -247,6 +256,67 @@ class BuildManyGroupsTest(unittest.TestCase):
         html = (out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
         self.assertNotIn('<script>alert(1)</script>', html)
         self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt;', html)
+
+    def test_rejects_a_group_named_like_the_data_folder(self):
+        self.add('2026-27-zima', 'data', calendar('data', '2026-09-28', '2027-02-22', '2026-10-05'))
+        with self.assertRaisesRegex(build.BuildError, 'reserved'):
+            build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
+    def test_writes_the_group_list_room_bookings_and_year_files(self):
+        one = 'LOCATION:dr X\\, 1.16/ 16\\;1.17/16'
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05', one))
+        self.add('2026-27-zima', 'WCY26KY1S1', calendar('WCY26KY1S1', '2026-09-28', '2027-02-22', '2026-10-05', 'LOCATION:1.16/16'))
+        self.add('2026-27-zima', 'Inne', calendar('Inne', '2026-09-28', '2027-02-22', '2026-10-06', 'LOCATION:-'))
+        out = self.tmp / 'site'
+        build.build(self.tt, out, today=D(2026, 10, 15), nginx_conf=None)
+        groups = json.loads((out / 'data' / 'groups.json').read_text(encoding='utf-8'))
+        self.assertEqual(groups, [['Inne', 'term 2026-09-28', ''], ['WCY26KY1S1', 'term 2026-09-28', 'WCY26'],
+                                  ['WCY26KY3S1', 'term 2026-09-28', 'WCY26']])
+        rooms = json.loads((out / 'data' / 'rooms.json').read_text(encoding='utf-8'))
+        day = (D(2026, 10, 5) - D(2000, 1, 1)).days
+        self.assertEqual(rooms['rooms'], ['1.16/16', '1.17/16'])
+        self.assertEqual(rooms['b'], [0, day, 480, 575, 1, day, 480, 575])  # the shared class is booked once
+        self.assertEqual(rooms['groups'], 3)
+        year = json.loads((out / 'data' / 'year' / 'WCY26.json').read_text(encoding='utf-8'))
+        self.assertEqual(year['groups'], ['WCY26KY1S1', 'WCY26KY3S1'])
+        self.assertEqual(len(year['e']), 14)
+        self.assertEqual(year['names'][year['e'][1]], 'Matematyka')
+        self.assertFalse((out / 'data' / 'year' / '.json').exists())
+
+    def test_reads_repeats_durations_utc_times_and_skips_cancelled_and_all_day_events(self):
+        path = self.tmp / 'x.ics'
+        path.write_text('\r\n'.join([
+            'BEGIN:VCALENDAR',
+            'BEGIN:VEVENT', 'UID:a', 'DTSTART;TZID=Europe/Warsaw:20261005T080000', 'DURATION:PT1H35M',
+            'RRULE:FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=20261014', 'EXDATE;TZID=Europe/Warsaw:20261007T080000',
+            'SUMMARY:Fizyka', 'CATEGORIES:Wykład,Inne', 'LOCATION:100 S', 'END:VEVENT',
+            'BEGIN:VEVENT', 'UID:b', 'DTSTART:20261006T060000Z', 'DTEND:20261006T073500Z', 'SUMMARY:UTC', 'END:VEVENT',
+            'BEGIN:VEVENT', 'UID:c', 'DTSTART;VALUE=DATE:20261006', 'SUMMARY:Dzień', 'END:VEVENT',
+            'BEGIN:VEVENT', 'UID:d', 'DTSTART:20261006T080000', 'DTEND:20261006T090000', 'STATUS:CANCELLED',
+            'SUMMARY:Odwołane', 'END:VEVENT',
+            'BEGIN:VEVENT', 'UID:e', 'DTSTART:20261008T080000', 'DTEND:20261008T090000', 'RRULE:FREQ=DAILY;COUNT=2',
+            'SUMMARY:Codziennie', 'END:VEVENT',
+            'BEGIN:VEVENT', 'UID:f', 'DTSTART:20261009T080000', 'DTEND:20261009T090000', 'RRULE:FREQ=MONTHLY',
+            'SUMMARY:Miesięcznie', 'END:VEVENT',
+            'END:VCALENDAR', '']), encoding='utf-8', newline='')
+        got = build.calendar_lessons(path, build._tz(), D(2027, 2, 22))
+        self.assertIn((D(2026, 10, 5), 480, 575, 'Fizyka', 'Wykład', '100 S'), got)
+        self.assertIn((D(2026, 10, 12), 480, 575, 'Fizyka', 'Wykład', '100 S'), got)
+        self.assertIn((D(2026, 10, 14), 480, 575, 'Fizyka', 'Wykład', '100 S'), got)
+        self.assertNotIn(D(2026, 10, 7), [g[0] for g in got if g[3] == 'Fizyka'])
+        self.assertEqual(len([g for g in got if g[3] == 'Fizyka']), 3)
+        self.assertIn((D(2026, 10, 6), 480, 575, 'UTC', '', ''), got)
+        self.assertEqual([g[0] for g in got if g[3] == 'Codziennie'], [D(2026, 10, 8), D(2026, 10, 9)])
+        self.assertEqual(len([g for g in got if g[3] == 'Miesięcznie']), 1)
+        self.assertNotIn('Dzień', [g[3] for g in got])
+        self.assertNotIn('Odwołane', [g[3] for g in got])
+
+    def test_room_names_and_year_prefixes(self):
+        self.assertEqual(build.split_rooms('dr X, 1.16/ 16;1.17/16;-;Pływalnia;1.17/ 16'), ['1.16/16', '1.17/16'])
+        self.assertEqual(build.split_rooms('314 S'), ['314 S'])
+        self.assertEqual(build.year_of('WCY26KY3S1'), 'WCY26')
+        self.assertEqual(build.year_of('wlo22FO1S0'), 'WLO22')
+        self.assertIsNone(build.year_of('WCY_M1'))
 
 
 if __name__ == '__main__':

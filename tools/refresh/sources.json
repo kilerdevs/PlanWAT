@@ -1,0 +1,38 @@
+{
+  "wlo": {
+    "driver": "plansoft",
+    "label": "WLO",
+    "prefix": "WLO",
+    "base": "https://wlo.wat.edu.pl/planzajec/{season}/",
+    "enabled": true
+  },
+  "wel": {
+    "driver": "plansoft",
+    "label": "WEL",
+    "prefix": "WEL",
+    "keep_prefixes": ["WME"],
+    "base": "https://wel.wat.edu.pl/planyzajec/{season}/",
+    "enabled": true
+  },
+  "wim": {
+    "driver": "plansoft",
+    "label": "WIM",
+    "prefix": "",
+    "base": "https://www.wim.wat.edu.pl/wp-content/uploads/rozklady/{season}/",
+    "enabled": true
+  },
+  "wcy": {
+    "driver": "wcy",
+    "label": "WCY",
+    "index": "https://planzajec.wcy.wat.edu.pl/pl/rozklad",
+    "page": "https://planzajec.wcy.wat.edu.pl/pl/rozklad?grupa_id={group}",
+    "enabled": false,
+    "note": "Enable after a dry run proves plain HTTP works; the old crawler used a browser."
+  },
+  "wtc": {
+    "driver": "wtc",
+    "label": "WTC",
+    "enabled": false,
+    "note": "Crawler and converter to be supplied: add drivers/wtc.py (see drivers/__init__.py), then enable."
+  }
+}
