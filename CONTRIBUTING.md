@@ -69,7 +69,8 @@ look at the result on a real phone, and with reduced motion turned on.
 
 ## Conventions
 
-- **Write the test first.** Reader changes get a case in `tests/ics.test.js`, build changes one in `tests/test_build.py`,
+- **Write the test first.** Reader changes get a case in `tests/ics.test.js`, plan-insight changes one in
+  `tests/insights.test.js`, build changes one in `tests/test_build.py`,
   behaviour in the browser one in `tests/e2e/site.spec.js`. Watch it fail, then make it pass.
 - **No runtime dependencies and no third-party scripts.** The site is plain HTML, CSS and JavaScript. npm packages are
   test tooling only.

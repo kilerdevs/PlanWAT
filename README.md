@@ -51,8 +51,18 @@ The interface is Polish; the code and documentation are English.
   and finished classes recede; the class in progress fills its colour capsule as it runs.
 - **Navigation:** arrows, swipe, keyboard (`←` `→` `T` `Esc`), a week picker sheet, and a "Bieżący tydzień" pill to jump
   back. Phones scroll to the current class on open.
-- **Subject legend** that highlights one subject across the week.
-- **Download / subscribe** to the group's `.ics` file.
+- **Three views:** Tydzień, **Lista** (today onwards, past days on request) and **Miesiąc** (tap a day to open its week);
+  breaks of 30 minutes or more show as "Okienko" between classes.
+- **Subject legend** that highlights one subject across the week, and **subject progress** (classes done out of the
+  total, the next one, the count per class type).
+- **Gdzie odrobić?** finds the same class in the other groups of the year, marking the ones that clash with your plan.
+- **Porównaj grupy:** up to four plans side by side, week by week, with the time all of them are free.
+- **Wolne sale:** rooms with no class of any group in PlanWAT at a chosen day, time and length.
+- **Statystyki:** hours per week, per weekday and per class type, earliest start, latest end, longest day, breaks.
+- **Download, subscribe** (Google Calendar, Apple Calendar via webcal, a copyable feed link) and **share** the plan;
+  **print / PDF** the shown week or list.
+- **Favourites and recent groups** on the front page, and a notice when the plan changed since your last visit. These
+  live only in the browser's storage: no account, no tracking, everything is free.
 - **Accessible and fast:** WCAG 2.1 AA contrast, keyboard and screen-reader support, `prefers-reduced-motion` respected,
   no framework and no third-party scripts.
 
@@ -70,6 +80,8 @@ timetables/<term>/<GROUP>.ics          source of truth: one iCalendar file per g
 site/index.html                        group list (redirects while there is only one group)
 site/<GROUP>/index.html                the timetable page
 site/<GROUP>/plan.ics                  byte-for-byte copy of the group's current term
+site/data/groups.json, rooms.json,     group list, room bookings and each year's classes, read on demand
+     year/<PREFIX>.json                by "Porównaj grupy", "Wolne sale" and "Gdzie odrobić?"
 site/404.html
             │
             ▼  GitHub Pages            deployed on every push to master and rebuilt daily,
@@ -78,7 +90,8 @@ site/404.html
 
 In the browser, the group page fetches `plan.ics` and renders it with [`src/ics.js`](src/ics.js), a small RFC 5545 reader
 (folded lines, escaping, time zones, weekly repeats, excluded dates). Nothing is pre-rendered into the page, so the
-calendar file and the page can never disagree.
+calendar file and the page can never disagree. [`src/insights.js`](src/insights.js) computes the statistics, subject
+progress, plan changes, shared free time, catch-up classes and free rooms; it is pure and unit-tested like the reader.
 
 ## Adding or updating a timetable
 
@@ -117,9 +130,10 @@ Preview the built site with `node tests/e2e/serve.js` (http://127.0.0.1:4173), w
 build.py                 static site generator (standard library only)
 src/group.html           group page template: markup, styles and app script (inlined, CSP-hashed)
 src/ics.js               iCalendar reader, inlined into every group page
+src/insights.js          statistics, progress, comparison, catch-up and free rooms, inlined into every group page
 src/index.html, 404.html group list and not-found page
 timetables/              <term>/<GROUP>.ics, the data
-tests/                   ics.test.js (reader), test_build.py (build), e2e/ (Playwright), fixtures/
+tests/                   ics.test.js (reader), insights.test.js, test_build.py (build), e2e/ (Playwright), fixtures/
 tools/export_ics.py      one-time export of the original page's data into the first calendar
 deploy/nginx.conf        nginx template for the self-hosted Docker image
 ```
