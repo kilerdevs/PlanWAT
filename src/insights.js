@@ -1,5 +1,5 @@
 /* Plan insights: pure functions over the plan model from PlanICS.toPlan and the JSON files written by
-   build.py (data/rooms.json, data/year/<PREFIX>.json). No DOM access, so node:test covers them.
+   build.py (data/year/<PREFIX>.json). No DOM access, so node:test covers them.
    Times are "HH:MM" strings in the plan model and minutes after midnight everywhere else. */
 (function (root) {
   'use strict';
@@ -200,39 +200,6 @@
     return out;
   }
 
-  /* ---------- "Wolne sale" ---------- */
-  /* rooms.json -> rooms with no class in [s, e) on the date, each with the minute its next class starts
-     (null: free for the rest of the day); null when the date is outside the data */
-  function freeRooms(roomData, iso, s, e) {
-    var epoch = dayNumber(roomData.epoch), day = dayNumber(iso) - epoch, b = roomData.b;
-    var busy = {}, next = {}, any = false, first = Infinity, last = -Infinity;
-    for (var i = 0; i + 3 < b.length; i += 4) {
-      first = Math.min(first, b[i + 1]);
-      last = Math.max(last, b[i + 1]);
-      if (b[i + 1] !== day) continue;
-      any = true;
-      var r = b[i], bs = b[i + 2], be = b[i + 3];
-      if (bs < e && be > s) busy[r] = true;
-      else if (bs >= e && (next[r] == null || bs < next[r])) next[r] = bs;
-    }
-    if (!any && (day < first || day > last)) return null;
-    var out = [];
-    roomData.rooms.forEach(function (name, r) {
-      if (!busy[r]) out.push({ room: name, until: next[r] == null ? null : next[r] });
-    });
-    return out;
-  }
-  function dataRange(roomData) {
-    var epoch = dayNumber(roomData.epoch), b = roomData.b, lo = Infinity, hi = -Infinity;
-    for (var i = 1; i < b.length; i += 4) { lo = Math.min(lo, b[i]); hi = Math.max(hi, b[i]); }
-    return lo > hi ? null : { from: isoFromDayNumber(epoch + lo), to: isoFromDayNumber(epoch + hi) };
-  }
-  /* "308 S" -> "S", "0.24/135" -> "135", "T3.1W" -> "" : what the room list is grouped by */
-  function building(room) {
-    var m = /\/\s*(\w+)\s*$/.exec(room) || /^\S+\s+([A-Za-zĄĆĘŁŃÓŚŹŻ]{1,3}|\d{1,3}[A-Z]?)$/.exec(room);
-    return m ? m[1] : '';
-  }
-
   /* ---------- month view ---------- */
   /* the Monday-first weeks covering a month: arrays of 7 ISO dates, null outside the month */
   function monthGrid(year, month) {
@@ -252,7 +219,7 @@
     lessons: lessons, gaps: gaps, isExam: isExam, subjectProgress: subjectProgress, stats: stats,
     lessonKey: lessonKey, fingerprint: fingerprint, diff: diff,
     freeWindows: freeWindows, intervals: intervals, overlaps: overlaps, byDate: byDate,
-    yearOf: yearOf, catchUp: catchUp, freeRooms: freeRooms, dataRange: dataRange, building: building,
+    yearOf: yearOf, catchUp: catchUp,
     monthGrid: monthGrid, dayNumber: dayNumber, isoFromDayNumber: isoFromDayNumber
   };
   if (typeof module === 'object' && module.exports) module.exports = PlanInsights;

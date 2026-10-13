@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 @@CSP@@
 <meta name="referrer" content="no-referrer">
+<meta name="google-site-verification" content="4JlUoMTu9DUDJHMVXEl4njYiw2QjxqPH-TBvJ1fXyHM">
 @@REDIRECT@@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
@@ -75,6 +76,21 @@
   .textbtn:active { background: var(--s2); }
   .recent-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
   .recent-head h3 { margin: 0; }
+  .devnote {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    margin: 24px 0 0;
+    padding: 14px 16px;
+    border-radius: 20px;
+    background: var(--s2);
+    box-shadow: var(--edge), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    font-size: 0.9375rem;
+    color: var(--t2);
+  }
+  .devnote svg { flex: none; width: 20px; height: 20px; margin-top: 1px; fill: none; stroke: var(--t1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .devnote p { margin: 0; }
+  .devnote strong { display: block; margin-bottom: 2px; color: var(--t1); font-weight: 600; letter-spacing: -0.012em; }
   .live-sec { margin-top: 32px; }
   .cards { display: grid; gap: 8px; }
   .now-card {
@@ -352,6 +368,10 @@
   <h1>Plany zajęć</h1>
   <p class="lead">Znajdź swoją grupę.</p>
   <p class="stats">@@STATS@@</p>
+  <div class="devnote" role="note">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <p><strong>Serwis jest w trakcie rozwoju</strong>Dane planów mogą być błędne. Korzystaj z ostrożnością do odwołania i sprawdzaj ważne terminy w e-dziekanacie.</p>
+  </div>
   <section class="live-sec" id="liveSec" aria-labelledby="liveTitle" hidden>
     <h2 id="liveTitle">Teraz w Twoich grupach</h2>
     <div class="cards" id="liveCards"></div>
@@ -383,6 +403,7 @@
   <footer>
     <p>PlanWAT to prywatna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Serwis nie jest uczelnianym systemem ani jego częścią, a plany pochodzą z ogólnodostępnych stron wydziałów.</p>
     <p>Zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie. Serwis nie używa plików cookie ani narzędzi śledzących; ulubione grupy zapisują się tylko w Twojej przeglądarce.</p>
+    <p>Opiekun projektu zobowiązuje się, że PlanWAT pozostanie darmowy dla wszystkich studentów.</p>
   </footer>
 </main>
 <script>@@ICS_JS@@</script>

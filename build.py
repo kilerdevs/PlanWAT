@@ -272,9 +272,6 @@ def _event_lessons(ev, tz, limit):
     return out
 
 
-# A room is a LOCATION part with a digit in it ("314 S", "0.24/ 135"); anything else ("-", a teacher's name
-# typed into the room field, "Pływalnia") cannot be told apart from a non-room and stays out of the free-rooms list.
-ROOM_RE = re.compile(r'\d')
 YEAR_RE = re.compile(r'^([A-Za-z]{3}\d{2})')
 EPOCH = dt.date(2000, 1, 1)  # day numbers in the data files count from here
 
@@ -283,16 +280,6 @@ def year_of(group):
     """The faculty + intake-year prefix that groups of one year share (WCY26KY3S1 -> WCY26), or None."""
     m = YEAR_RE.match(group)
     return m.group(1).upper() if m else None
-
-
-def split_rooms(location):
-    """The rooms of a LOCATION, normalised: "dr X, 1.16/ 16;1.17/16" -> ["1.16/16", "1.17/16"]."""
-    rooms = []
-    for part in location.split(';'):
-        part = re.sub(r'\s*/\s*', '/', ' '.join(part.rsplit(',', 1)[-1].split()))
-        if ROOM_RE.search(part) and part not in rooms:
-            rooms.append(part)
-    return rooms
 
 
 def _tz():
@@ -307,13 +294,11 @@ def build_data(current):
     """The JSON files behind the group page's tools, from every group's current term.
 
     groups.json            [[group, term label, year prefix], ...]
-    rooms.json             rooms and every booking [room, day, start, end, ...], for "Wolne sale"
     year/<PREFIX>.json     every class of the groups of one year, for "Odrabianie"
     Days are counted from 2000-01-01 and times are minutes after midnight, to keep the files small.
     """
     tz = _tz()
     groups = sorted(current)
-    rooms, booked = {}, set()
     years = {}
     for group in groups:
         term = current[group]
@@ -321,17 +306,8 @@ def build_data(current):
         year = year_of(group)
         if year:
             years.setdefault(year, []).append((group, lessons))
-        for day, s, e, _, _, location in lessons:
-            for room in split_rooms(location):
-                booked.add((rooms.setdefault(room, len(rooms)), (day - EPOCH).days, s, e))
-    room_names = sorted(rooms)
-    remap = {rooms[name]: i for i, name in enumerate(room_names)}
-    bookings = []
-    for r, d, s, e in sorted((remap[r], d, s, e) for r, d, s, e in booked):
-        bookings.extend((r, d, s, e))
     files = {
         'groups.json': [[g, current[g].meta['term'] or current[g].term_id, year_of(g) or ''] for g in groups],
-        'rooms.json': {'epoch': EPOCH.isoformat(), 'groups': len(groups), 'rooms': room_names, 'b': bookings},
     }
     for year, members in sorted(years.items()):
         names, idx, flat = [], {}, []
@@ -406,11 +382,36 @@ def _date(d):
     return d.strftime('%d.%m.%Y')
 
 
-def render_group(template, ics_js, term):
+def _stamp(iso, with_time=False):
+    """A UTC timestamp from refresh-state.json as a Warsaw-time date (and time) for the page, or ''."""
+    try:
+        moment = dt.datetime.fromisoformat(iso).replace(tzinfo=dt.timezone.utc)
+    except (TypeError, ValueError):
+        return ''
+    tz = _tz()
+    if tz:
+        moment = moment.astimezone(tz)
+    return moment.strftime('%d.%m.%Y %H:%M' if with_time else '%d.%m.%Y')
+
+
+def load_refresh_state(path):
+    """Per-group refresh times written by tools/refresh (refresh-state.json); {} when there is none."""
+    try:
+        groups = json.loads(Path(path).read_text(encoding='utf-8')).get('groups', {})
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return groups if isinstance(groups, dict) else {}
+
+
+def render_group(template, ics_js, term, refreshed=None):
     m = term.meta
     e = lambda v: html.escape(v, quote=True)  # noqa: E731
     description = f'Plan zajęć grupy {m["group"]}' + (f' — Wydział {m["faculty"]}' if m['faculty'] else '') + \
         (f', {m["term"]}' if m['term'] else '') + '.'
+    refreshed = refreshed or {}
+    # Last change of the plan (from the refresh), else the date the calendar says it was generated.
+    updated = _stamp(refreshed.get('changed') or refreshed.get('checked')) or (_date(m['generated']) if m['generated'] else '')
+    checked = _stamp(refreshed.get('checked'), with_time=True)
     values = {
         '@@GROUP@@': e(m['group']),
         '@@DESCRIPTION@@': e(description),
@@ -418,8 +419,10 @@ def render_group(template, ics_js, term):
         '@@FACULTY@@': e(m['faculty']),
         '@@HIDE_FACULTY@@': '' if m['faculty'] else ' hidden',
         '@@SEMESTER@@': f'{_date(m["semester_start"])} &ndash; {_date(m["semester_end"])}',
-        '@@GENERATED@@': _date(m['generated']) if m['generated'] else '',
-        '@@HIDE_GENERATED@@': '' if m['generated'] else ' hidden',
+        '@@UPDATED@@': e(updated),
+        '@@HIDE_UPDATED@@': '' if updated else ' hidden',
+        '@@CHECKED@@': e(checked),
+        '@@HIDE_CHECKED@@': '' if checked else ' hidden',
     }
     page = template.replace('@@ICS_JS@@', ics_js)  # first: the scripts' own text is never substituted into
     for key, value in values.items():
@@ -535,7 +538,7 @@ def update_nginx(conf_path, scripts, styles):
     conf_path.write_text(conf)
 
 
-def build(timetables, out, today, base_path='', nginx_conf=None):
+def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None):
     files = sorted(Path(timetables).glob('*/*.ics'))
     if not files:
         raise BuildError(f'no calendars found in {timetables}/<term>/<GROUP>.ics')
@@ -555,6 +558,8 @@ def build(timetables, out, today, base_path='', nginx_conf=None):
         if '@@' in code:
             raise BuildError(f'src/{name} must not contain "@@"')
 
+    refreshed = load_refresh_state(state_path or ROOT / 'refresh-state.json')
+
     out = Path(out)
     _prepare_out(out)
     all_scripts, all_styles = [], []
@@ -568,7 +573,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None):
         all_styles.extend(styles)
 
     for group, term in sorted(current.items()):
-        write(f'{group}/index.html', render_group(group_tpl, ics_js + '\n' + insights_js, term))
+        write(f'{group}/index.html', render_group(group_tpl, ics_js + '\n' + insights_js, term, refreshed.get(group)))
         shutil.copyfile(term.path, out / group / 'plan.ics')
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js))
     write('404.html', render_404((SRC / '404.html').read_text(encoding='utf-8'), base_path))
@@ -596,10 +601,11 @@ def main(argv=None):
     ap.add_argument('--out', default=ROOT / 'site', type=Path)
     ap.add_argument('--today', type=dt.date.fromisoformat, help='pick terms as of this date (YYYY-MM-DD)')
     ap.add_argument('--base-path', default='', help='URL path the site is served under, e.g. /PlanWAT')
+    ap.add_argument('--state', type=Path, help='refresh-state.json with per-group refresh times (default: ./refresh-state.json)')
     ap.add_argument('--nginx', type=Path, help='nginx.conf whose CSP header to pin (Docker build only)')
     args = ap.parse_args(argv)
     try:
-        picked = build(args.timetables, args.out, args.today or _today_in_warsaw(), args.base_path, args.nginx)
+        picked = build(args.timetables, args.out, args.today or _today_in_warsaw(), args.base_path, args.nginx, args.state)
     except BuildError as err:
         print(f'build failed: {err}', file=sys.stderr)
         return 1

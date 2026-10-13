@@ -57,7 +57,6 @@ The interface is Polish; the code and documentation are English.
   total, the next one, the count per class type).
 - **Gdzie odrobić?** finds the same class in the other groups of the year, marking the ones that clash with your plan.
 - **Porównaj grupy:** up to four plans side by side, week by week, with the time all of them are free.
-- **Wolne sale:** rooms with no class of any group in PlanWAT at a chosen day, time and length.
 - **Statystyki:** hours per week, per weekday and per class type, earliest start, latest end, longest day, breaks.
 - **Download, subscribe** (Google Calendar, Apple Calendar via webcal, a copyable feed link) and **share** the plan;
   **print / PDF** the shown week or list.
@@ -80,8 +79,8 @@ timetables/<term>/<GROUP>.ics          source of truth: one iCalendar file per g
 site/index.html                        group list (redirects while there is only one group)
 site/<GROUP>/index.html                the timetable page
 site/<GROUP>/plan.ics                  byte-for-byte copy of the group's current term
-site/data/groups.json, rooms.json,     group list, room bookings and each year's classes, read on demand
-     year/<PREFIX>.json                by "Porównaj grupy", "Wolne sale" and "Gdzie odrobić?"
+site/data/groups.json,                group list and each year's classes, read on demand
+     year/<PREFIX>.json                by "Porównaj grupy" and "Gdzie odrobić?"
 site/404.html
             │
             ▼  GitHub Pages            deployed on every push to master and rebuilt daily,
@@ -91,7 +90,7 @@ site/404.html
 In the browser, the group page fetches `plan.ics` and renders it with [`src/ics.js`](src/ics.js), a small RFC 5545 reader
 (folded lines, escaping, time zones, weekly repeats, excluded dates). Nothing is pre-rendered into the page, so the
 calendar file and the page can never disagree. [`src/insights.js`](src/insights.js) computes the statistics, subject
-progress, plan changes, shared free time, catch-up classes and free rooms; it is pure and unit-tested like the reader.
+progress, plan changes, shared free time, and catch-up classes; it is pure and unit-tested like the reader.
 
 ## Adding or updating a timetable
 
@@ -130,7 +129,7 @@ Preview the built site with `node tests/e2e/serve.js` (http://127.0.0.1:4173), w
 build.py                 static site generator (standard library only)
 src/group.html           group page template: markup, styles and app script (inlined, CSP-hashed)
 src/ics.js               iCalendar reader, inlined into every group page
-src/insights.js          statistics, progress, comparison, catch-up and free rooms, inlined into every group page
+src/insights.js          statistics, progress, comparison and catch-up, inlined into every group page
 src/index.html, 404.html group list and not-found page
 timetables/              <term>/<GROUP>.ics, the data
 tests/                   ics.test.js (reader), insights.test.js, test_build.py (build), e2e/ (Playwright), fixtures/

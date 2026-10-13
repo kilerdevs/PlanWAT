@@ -1,4 +1,4 @@
-// Tests for src/insights.js (statistics, subject progress, plan changes, group comparison, free rooms).
+// Tests for src/insights.js (statistics, subject progress, plan changes, group comparison).
 // Run: node --test tests/insights.test.js
 process.env.TZ = 'Europe/Warsaw';
 
@@ -119,18 +119,6 @@ test('catch-up finds the class in other groups of the year and flags clashes', (
   const together = { '2026-10-15': [L('2026-10-15', '08:00', '09:35', 'Fizyka', 'Ćwiczenia', '100 S')] };
   assert.deepEqual(I.catchUp(year, 'ME', together, 'Fizyka', 'Ćwiczenia', '2026-10-15').map((f) => f.group), ['G2']);
   assert.equal(I.isoFromDayNumber(I.dayNumber('2027-03-28')), '2027-03-28');
-});
-
-test('free rooms on a date and time, with when each one is next taken', () => {
-  const d = I.dayNumber('2026-10-15') - I.dayNumber('2000-01-01');
-  const data = { epoch: '2000-01-01', rooms: ['100 S', '200 S', '0.24/135'], b: [0, d, 480, 575, 1, d, 700, 795, 2, d - 7, 480, 575] };
-  assert.deepEqual(I.freeRooms(data, '2026-10-15', 500, 560), [{ room: '200 S', until: 700 }, { room: '0.24/135', until: null }]);
-  assert.deepEqual(I.freeRooms(data, '2026-10-15', 600, 700).map((r) => r.room), ['100 S', '200 S', '0.24/135']);
-  assert.equal(I.freeRooms(data, '2026-10-10', 500, 560).length, 3); // a day inside the data with no classes
-  assert.equal(I.freeRooms(data, '2027-06-01', 500, 560), null);
-  assert.deepEqual(I.dataRange(data), { from: '2026-10-08', to: '2026-10-15' });
-  assert.equal(I.dataRange({ epoch: '2000-01-01', rooms: [], b: [] }), null);
-  assert.deepEqual(['308 S', '0.24/135', '124 K', '3/23A', 'T3.1W'].map(I.building), ['S', '135', 'K', '23A', '']);
 });
 
 test('month grid starts on Monday and pads the edges', () => {

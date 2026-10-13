@@ -1035,7 +1035,6 @@
   .action .i { color: var(--t2); }
   .action small { display: block; font-size: var(--fs-13); font-weight: 400; color: var(--t2); }
   .field { display: grid; gap: 4px; font-size: var(--fs-13); color: var(--t2); }
-  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-2); }
   .field input {
     min-height: 44px;
     padding: 8px 12px;
@@ -1186,6 +1185,10 @@
       align-items: end;
       gap: var(--sp-6);
     }
+    /* The list is a single 720px column: centre the whole page on it (header included) instead of leaving it
+       at the left edge of the wide week container. */
+    body[data-view="list"] .wrap { max-width: calc(720px + var(--gl) + var(--gr)); }
+    body[data-view="list"] .hero { grid-template-columns: minmax(0, 1fr); }
     .week {
       display: grid;
       grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
@@ -1355,7 +1358,6 @@
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></symbol>
   <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
-  <symbol id="i-door" viewBox="0 0 24 24"><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h3"/><path d="M13 20h9"/><path d="M10 12v.01"/><path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z"/></symbol>
   <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
@@ -1375,7 +1377,8 @@
       <dl class="facts enter d3">
         <div id="factFaculty"@@HIDE_FACULTY@@><dt>Wydział</dt><dd>@@FACULTY@@</dd></div>
         <div id="factSemester"><dt>Semestr</dt><dd>@@SEMESTER@@</dd></div>
-        <div id="factGenerated"@@HIDE_GENERATED@@><dt>Wygenerowano</dt><dd>@@GENERATED@@</dd></div>
+        <div id="factUpdated"@@HIDE_UPDATED@@><dt>Zaktualizowano</dt><dd>@@UPDATED@@</dd></div>
+        <div id="factChecked"@@HIDE_CHECKED@@><dt>Sprawdzono</dt><dd>@@CHECKED@@</dd></div>
       </dl>
       <div class="tools enter d3" id="tools">
         <button class="dl" id="favBtn" type="button" aria-pressed="false"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-star"/></svg><span id="favText">Dodaj do ulubionych</span></button>
@@ -1384,7 +1387,6 @@
         <button class="dl" id="shareBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-share"/></svg>Udostępnij</button>
         <button class="dl" id="statsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chart"/></svg>Statystyki</button>
         <button class="dl" id="compareBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"/></svg>Porównaj grupy</button>
-        <button class="dl" id="roomsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-door"/></svg>Wolne sale</button>
         <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
       </div>
       <div class="notice" id="changeNotice" role="status" hidden>
@@ -1465,6 +1467,7 @@
     <span class="kb"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> zmieniają tydzień &middot; <kbd>T</kbd> bieżący tydzień &middot; <kbd>Esc</kbd> czyści wyróżnienie</span>
     <span class="touch">Przesuń palcem w bok, aby zmienić tydzień</span>
   </p>
+  <p class="hint wrap pledge">PlanWAT jest nieoficjalnym projektem studentów. Jego opiekun zobowiązuje się, że serwis pozostanie darmowy dla wszystkich.</p>
 </main>
 
 <button class="todaypill" id="todayBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"/></svg>Bieżący tydzień</button>
@@ -2875,88 +2878,6 @@
     getJSON('data/year/' + encodeURIComponent(year) + '.json').then(draw, function () { draw({ error: true }); });
   }
 
-  /* ---------- free rooms ---------- */
-  function openRooms() {
-    var n = new Date();
-    var opts = { date: todayIso(), time: pad2(n.getHours()) + ':' + pad2(n.getMinutes() - n.getMinutes() % 5), dur: 95, q: '' };
-    var draw = function (data, focusId) {
-      openTool('Wolne sale', function (body) {
-        var fields = body.appendChild(el('div', 'fields'));
-        var date = el('input');
-        date.type = 'date';
-        date.id = 'frDate';
-        date.value = opts.date;
-        var time = el('input');
-        time.type = 'time';
-        time.id = 'frTime';
-        time.step = 300;
-        time.value = opts.time;
-        var q = el('input');
-        q.type = 'search';
-        q.id = 'frQuery';
-        q.placeholder = 'np. 308 albo S';
-        q.value = opts.q;
-        q.autocomplete = 'off';
-        fields.appendChild(field('Dzień', date));
-        fields.appendChild(field('Od godziny', time));
-        fields.appendChild(field('Sala lub budynek', q));
-        body.appendChild(choices('Na jak długo', 'frDur',
-          [[45, '45 min'], [95, '1 blok'], [205, '2 bloki'], [315, '3 bloki']], opts.dur, function (v) {
-            opts.dur = v;
-            draw(data);
-            $('frDur').querySelector('[aria-pressed="true"]').focus();
-          }));
-        var range = data && !data.error ? PI.dataRange(data) : null;
-        if (range) { date.min = range.from; date.max = range.to; }
-        var redraw = function (id) { return function () {
-          opts.date = date.value || opts.date; opts.time = time.value || opts.time; opts.q = q.value;
-          draw(data, id);
-        }; };
-        date.addEventListener('change', redraw('frDate'));
-        time.addEventListener('change', redraw('frTime'));
-        q.addEventListener('input', redraw('frQuery'));
-
-        var out = body.appendChild(el('div'));
-        out.id = 'frResult';
-        if (!data) { para(out, 'Wczytywanie rezerwacji sal…', 'muted'); return; }
-        if (data.error) { para(out, 'Nie udało się wczytać danych o salach. Spróbuj ponownie później.', 'muted'); return; }
-        var s = toMin(opts.time), e = Math.min(24 * 60, s + opts.dur);
-        var free = PI.freeRooms(data, opts.date, s, e);
-        var status = out.appendChild(el('p', 'muted'));
-        status.setAttribute('role', 'status');
-        if (!free) {
-          status.textContent = range ? 'Brak danych dla tego dnia. Dane obejmują ' + fmtFullDate(range.from) + ' – ' + fmtFullDate(range.to) + '.' : 'Brak danych o salach.';
-          return;
-        }
-        /* "S" or "135" alone also matches the building, so "S" lists the rooms of building S */
-        var needle = PI.norm(opts.q);
-        free = free.filter(function (r) {
-          return !needle || PI.norm(r.room).indexOf(needle) >= 0 || PI.norm(PI.building(r.room)) === needle;
-        });
-        free.sort(function (a, b) {
-          var ua = a.until == null ? 1e9 : a.until, ub = b.until == null ? 1e9 : b.until;
-          return ub - ua || a.room.localeCompare(b.room, 'pl', { numeric: true });
-        });
-        status.textContent = free.length + ' ' + PI.plural(free.length, 'wolna sala', 'wolne sale', 'wolnych sal') + ' ' +
-          shortDate(opts.date) + ', ' + PI.hhmm(s) + '–' + PI.hhmm(e) + '.';
-        if (free.length) {
-          var ul = out.appendChild(el('ul', 'rows'));
-          free.forEach(function (r) {
-            ul.appendChild(rowItem(r.room, PI.building(r.room) ? 'budynek ' + PI.building(r.room) : '', r.until == null ? 'wolna do końca dnia' : 'wolna do ' + PI.hhmm(r.until)));
-          });
-        }
-        para(out, 'Sala jest tu wolna, jeśli nie ma w niej zajęć żadnej z ' + data.groups + ' grup w PlanWAT. Egzaminy, wydarzenia i plany innych wydziałów nie są widoczne, więc zajrzyj przed wejściem.', 'muted');
-      });
-      if (focusId && $(focusId)) {
-        var f = $(focusId);
-        f.focus();
-        if (f.type === 'search') f.setSelectionRange(f.value.length, f.value.length);
-      }
-    };
-    draw(null);
-    getJSON('data/rooms.json').then(function (d) { draw(d); }, function () { draw({ error: true }); });
-  }
-
   function initTools() {
     initTool();
     initFavourite();
@@ -2967,7 +2888,6 @@
     $('shareBtn').addEventListener('click', sharePlan);
     $('statsBtn').addEventListener('click', openStats);
     $('compareBtn').addEventListener('click', openCompare);
-    $('roomsBtn').addEventListener('click', openRooms);
     $('printBtn').addEventListener('click', function () { window.print(); });
     var seg = $('viewSeg').querySelectorAll('button');
     for (var i = 0; i < seg.length; i++) {
@@ -3089,7 +3009,6 @@
     fact('factFaculty', m.faculty);
     fact('factSemester', fmtFullDate(m.semesterStart || weeks[0].monday) + ' – ' +
       fmtFullDate(m.semesterEnd || isoOf(addDays(isoToLocalDate(weeks[weeks.length - 1].monday), 5))));
-    fact('factGenerated', m.generated ? fmtFullDate(m.generated) : '');
   }
 
   function fail(err) {
@@ -3097,7 +3016,7 @@
     b.appendChild(icon('alert'));
     b.appendChild(el('span', null, 'Nie udało się wczytać danych planu (' + err + ').'));
     $('weekBody').replaceChildren(b);
-    ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'compareBtn', 'roomsBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
+    ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'compareBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
   }
 
   try {
