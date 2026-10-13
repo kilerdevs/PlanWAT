@@ -1186,6 +1186,10 @@
       align-items: end;
       gap: var(--sp-6);
     }
+    /* The list is a single 720px column: centre the whole page on it (header included) instead of leaving it
+       at the left edge of the wide week container. */
+    body[data-view="list"] .wrap { max-width: calc(720px + var(--gl) + var(--gr)); }
+    body[data-view="list"] .hero { grid-template-columns: minmax(0, 1fr); }
     .week {
       display: grid;
       grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
