@@ -53,6 +53,8 @@ FACULTY_CODES = {code for code, _ in FACULTIES}
 
 def faculty_of(group):
     prefix = group[:3].upper()
+    if prefix == 'WMT':
+        return 'WML'  # WML publishes its plans under WMT group codes
     return prefix if prefix in FACULTY_CODES else 'OTHER'
 
 

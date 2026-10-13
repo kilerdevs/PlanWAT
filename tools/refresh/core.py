@@ -28,7 +28,10 @@ def is_blocked(status, text):
     """True for an Incapsula block or any status other than 200.
 
     Good pages also carry an Incapsula *sensor* script (`_Incapsula_Resource?...`); that alone is not a block.
+    304 (Not Modified, from a conditional refresh) is a healthy answer: the page is unchanged.
     """
+    if status == 304:
+        return False
     if status != 200:
         return True
     return (('main-iframe' in text and 'incident_id=' in text)

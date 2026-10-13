@@ -30,9 +30,21 @@ class Driver:
         text = decode(r.content)
         if core.is_blocked(r.status_code, text):
             raise core.Blocked(f'index.xml: HTTP {r.status_code}')
+        return self.items(text)
+
+    def items(self, text):
+        """Group pages listed by an index.xml: (code, url, page-id) items.
+
+        `groups_re` (a config regex) keeps only matching page stems: WML's
+        index also lists room/consultation pages the site is not built from.
+        """
+        groups_re = self.cfg.get('groups_re')
+        rx = re.compile(groups_re, re.IGNORECASE) if groups_re else None
         items, seen = [], set()
         for href in re.findall(r'<gro href="([^"]+)"', text):
             stem = href[:-4] if href.lower().endswith('.htm') else href
+            if rx is not None and not rx.search(stem):
+                continue
             code = core.group_code(stem, self.prefix, self.cfg.get('keep_prefixes', ()))
             if code and code not in seen:
                 seen.add(code)
