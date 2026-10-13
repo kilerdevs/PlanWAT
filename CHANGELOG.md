@@ -10,6 +10,8 @@ All notable changes to PlanWAT are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Timetables for 23 WTC groups (e.g. `WTC26NX1S1`, `WTC22CO1S0`), converted from the
+  WTC Plansoft timetables (`WTC zima 2026/2027`, semestr zimowy 2026/27).
 - Timetables for groups WCY26KY1S1, WCY26KY2S1, WCY26KY4S1, WCY26KY5S1, WCY26KY6S1 and WCY26KYAS1 (semestr zimowy
   2026/27).
   With several groups, the root page now lists them instead of redirecting.
