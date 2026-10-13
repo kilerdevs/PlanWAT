@@ -27,7 +27,6 @@
     --accent: #0a84ff;
     --accent-text: #4da3ff;
     --accent-line: rgba(10, 132, 255, 0.5);
-    --accent-wash: rgba(10, 132, 255, 0.05);
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
     color-scheme: dark;
   }
@@ -44,14 +43,108 @@
   }
   ::selection { background: rgba(10, 132, 255, 0.45); color: #fff; }
   main {
-    max-width: calc(560px + 32px);
+    max-width: calc(592px + 32px);
     margin: 0 auto;
     padding: calc(env(safe-area-inset-top) + 56px) max(16px, env(safe-area-inset-right)) calc(48px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
   h1 { margin: 0; font-size: 2.5rem; font-weight: 700; line-height: 1.04; letter-spacing: -0.035em; }
   .lead { margin: 8px 0 0; font-size: 1.0625rem; color: var(--t2); }
-  h2 { margin: 40px 0 12px; padding: 0 4px; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }
-  .step { margin: 32px 0 12px; padding: 0 4px; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--t3); }
+  .stats { margin: 4px 0 0; font-size: 0.8125rem; color: var(--t3); font-variant-numeric: tabular-nums; }
+  h2 { margin: 0 0 12px; padding: 0 4px; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }
+  h3 { margin: 0 0 8px; padding: 0 4px; font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.012em; color: var(--t2); }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 32px 0 12px; padding: 0 4px; }
+  .step { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }
+  .textbtn {
+    flex: none;
+    min-height: 32px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--accent-text);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: 0;
+    transition: outline-color 150ms, background-color 150ms;
+    touch-action: manipulation;
+  }
+  .textbtn:focus-visible { outline-color: var(--accent); }
+  .textbtn:active { background: var(--s2); }
+  .recent-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+  .recent-head h3 { margin: 0; }
+  .live-sec { margin-top: 32px; }
+  .cards { display: grid; gap: 8px; }
+  .now-card {
+    display: flex;
+    align-items: stretch;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 20px;
+    background: var(--s2);
+    box-shadow: var(--edge);
+    color: inherit;
+    text-decoration: none;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    transition: background-color 150ms, outline-color 150ms, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+    touch-action: manipulation;
+  }
+  .now-card:focus-visible { outline-color: var(--accent); }
+  .now-card:active { background: var(--s3); transform: scale(0.985); }
+  .now-card.live { outline-color: var(--accent-line); }
+  .now-card.live:focus-visible { outline-color: var(--accent); }
+  .cap { flex: none; width: 4px; border-radius: 2px; background: var(--s3); overflow: hidden; }
+  .cap i { display: block; width: 100%; height: var(--p, 100%); background: var(--c, var(--t3)); border-radius: 2px; }
+  .now-body { flex: 1 1 auto; min-width: 0; }
+  .now-body > span { display: block; }
+  .now-body > .now-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .now-group { font-size: 0.8125rem; font-weight: 600; color: var(--t2); font-variant-numeric: tabular-nums; }
+  .now-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8125rem; font-weight: 500; color: var(--t2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .now-card.live .now-status { color: var(--accent-text); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  .now-subject { margin-top: 4px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em; line-height: 1.28; overflow-wrap: anywhere; }
+  .now-meta { margin-top: 2px; font-size: 0.8125rem; color: var(--t2); font-variant-numeric: tabular-nums; }
+  .now-none .now-subject { color: var(--t2); font-weight: 500; }
+  .filters {
+    display: flex;
+    gap: 8px;
+    margin: 12px -16px 0;
+    padding: 2px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 6px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--s2);
+    box-shadow: var(--edge);
+    color: var(--t2);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    transition: background-color 150ms, color 150ms, outline-color 150ms;
+    touch-action: manipulation;
+  }
+  .chip:focus-visible { outline-color: var(--accent); }
+  .chip:active { background: var(--s3); }
+  .chip[aria-pressed="true"] { background: var(--s3); color: var(--t1); box-shadow: var(--edge), inset 0 0 0 1px rgba(255, 255, 255, 0.28); }
+  .chip .n { color: var(--t3); font-variant-numeric: tabular-nums; }
+  .chip[aria-pressed="true"] .n { color: var(--t2); }
   .fac-sec {
     margin-top: 12px;
     border-radius: 20px;
@@ -76,14 +169,15 @@
   .fac-sec summary:focus-visible { outline-color: var(--accent); }
   .fac-sec summary:active { background: var(--s3); }
   .fac-title { flex: 1 1 auto; min-width: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em; }
-  .fac-sec .chev { transition: transform 200ms; }
-  .fac-sec[open] .chev { transform: rotate(90deg); }
+  .fac-sec summary .chev { transition: transform 200ms; }
+  .fac-sec[open] > summary .chev { transform: rotate(90deg); }
   .fac-sec ul { border-radius: 0; background: transparent; box-shadow: none; border-top: 1px solid var(--line); }
   .fac-n { font-size: 0.8125rem; color: var(--t3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .search-wrap { position: relative; }
   .search {
     width: 100%;
     min-height: 52px;
-    padding: 12px 16px;
+    padding: 12px 52px 12px 16px;
     border: 0;
     border-radius: 20px;
     background: var(--s2);
@@ -94,9 +188,46 @@
     outline: 2px solid transparent;
     outline-offset: -2px;
     caret-color: var(--accent);
+    -webkit-appearance: none;
+    appearance: none;
   }
+  .search::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
   .search::placeholder { color: var(--t3); }
   .search:focus-visible { outline-color: var(--accent); }
+  .kbd {
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    transform: translateY(-50%);
+    min-width: 24px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: var(--s3);
+    color: var(--t3);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-align: center;
+    pointer-events: none;
+  }
+  .clear {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--t2);
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: -4px;
+    touch-action: manipulation;
+  }
+  .clear:focus-visible { outline-color: var(--accent); }
+  .clear svg, .star svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .resultline { margin: 12px 4px 0; font-size: 0.8125rem; color: var(--t3); font-variant-numeric: tabular-nums; }
   .empty {
     margin-top: 12px;
@@ -108,6 +239,7 @@
     font-size: 0.9375rem;
     text-align: center;
   }
+  .empty .textbtn { display: block; margin: 8px auto 0; }
   [hidden] { display: none !important; }
   ul {
     margin: 0;
@@ -119,12 +251,17 @@
     overflow: hidden;
   }
   li + li { border-top: 1px solid var(--line); }
+  li.yr { padding: 14px 16px 6px; border-top: 0; font-size: 0.8125rem; font-weight: 600; color: var(--t3); font-variant-numeric: tabular-nums; }
+  li.yr + li { border-top: 0; }
+  li.row { display: flex; align-items: center; }
   .group {
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 60px;
-    padding: 12px 16px;
+    min-height: 56px;
+    padding: 10px 4px 10px 16px;
     color: inherit;
     text-decoration: none;
     outline: 2px solid transparent;
@@ -133,7 +270,7 @@
   }
   .group:focus-visible { outline-color: var(--accent); }
   .group:active { background: var(--s3); }
-  .code { display: block; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em; }
+  .code { display: block; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em; font-variant-numeric: tabular-nums; }
   .term { display: block; margin-top: 2px; font-size: 0.8125rem; color: var(--t2); }
   .chev {
     flex: none;
@@ -147,8 +284,26 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  .saved { margin-top: 24px; }
-  .saved h2 { margin: 16px 0 8px; font-size: 0.9375rem; color: var(--t2); }
+  .star {
+    flex: none;
+    width: 52px;
+    height: 56px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--t3);
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    transition: color 150ms, outline-color 150ms, transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    touch-action: manipulation;
+  }
+  .star:focus-visible { outline-color: var(--accent); }
+  .star:active { transform: scale(0.88); }
+  .star[aria-pressed="true"] { color: var(--t1); }
+  .star[aria-pressed="true"] svg { fill: currentColor; }
+  .saved { margin-top: 32px; }
+  .saved > div + div { margin-top: 16px; }
   .picks { display: flex; flex-wrap: wrap; gap: 8px; }
   .pick {
     display: inline-flex;
@@ -171,12 +326,24 @@
   .pick:focus-visible { outline-color: var(--accent); }
   .pick:active { background: var(--s3); }
   .pick svg { width: 14px; height: 14px; fill: currentColor; stroke: none; color: var(--t2); }
-  footer { margin-top: 32px; padding: 0 4px; font-size: 0.8125rem; color: var(--t3); }
+  footer { margin-top: 40px; padding: 16px 4px 0; border-top: 1px solid var(--line); font-size: 0.8125rem; color: var(--t3); }
+  footer p { margin: 0; }
+  footer p + p { margin-top: 8px; }
   footer a { color: var(--accent-text); }
-  @media (hover: hover) and (pointer: fine) { .group:hover, .pick:hover { background: var(--s3); } .fac-sec summary:hover { background: var(--s3); } }
+  @media (hover: hover) and (pointer: fine) {
+    .group:hover, .pick:hover, .fac-sec summary:hover, .now-card:hover { background: var(--s3); }
+    .chip:hover { background: var(--s3); color: var(--t1); }
+    .star:hover, .clear:hover { color: var(--t1); }
+  }
+  @media (pointer: coarse) { .kbd { display: none; } .chip { min-height: 44px; } }
+  @media (prefers-reduced-motion: reduce) {
+    .dot { animation: none; }
+    .now-card, .star, .fac-sec summary .chev { transition: none; }
+  }
   @media (min-width: 768px) {
     main { padding-top: calc(env(safe-area-inset-top) + 96px); }
     h1 { font-size: 4rem; letter-spacing: -0.04em; }
+    .filters { margin: 12px 0 0; padding: 2px 0; flex-wrap: wrap; overflow: visible; }
   }
 </style>
 </head>
@@ -184,19 +351,41 @@
 <main>
   <h1>Plany zajęć</h1>
   <p class="lead">Znajdź swoją grupę.</p>
-  <section class="saved" id="saved" aria-label="Twoje grupy" hidden>
-    <div id="favWrap" hidden><h2>Ulubione</h2><div class="picks" id="favList"></div></div>
-    <div id="recentWrap" hidden><h2>Ostatnio oglądane</h2><div class="picks" id="recentList"></div></div>
+  <p class="stats">@@STATS@@</p>
+  <section class="live-sec" id="liveSec" aria-labelledby="liveTitle" hidden>
+    <h2 id="liveTitle">Teraz w Twoich grupach</h2>
+    <div class="cards" id="liveCards"></div>
   </section>
-  <p class="step"><label for="groupSearch">Szukaj grupy</label></p>
-  <input class="search" id="groupSearch" type="search" placeholder="np. WCY26KY3S1" autocomplete="off" aria-describedby="resultCount">
+  <section class="saved" id="saved" aria-label="Twoje grupy" hidden>
+    <div id="favWrap" hidden><h3>Ulubione</h3><div class="picks" id="favList"></div></div>
+    <div id="recentWrap" hidden>
+      <div class="recent-head"><h3>Ostatnio oglądane</h3><button class="textbtn" id="clearRecent" type="button">Wyczyść</button></div>
+      <div class="picks" id="recentList"></div>
+    </div>
+  </section>
+  <div class="bar"><label class="step" for="groupSearch">Szukaj grupy</label><button class="textbtn" id="toggleAll" type="button">Rozwiń wszystkie</button></div>
+  <div class="search-wrap">
+    <input class="search" id="groupSearch" type="search" placeholder="np. WCY26KY3S1" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="resultCount" aria-keyshortcuts="/">
+    <span class="kbd" aria-hidden="true">/</span>
+    <button class="clear" id="clearSearch" type="button" aria-label="Wyczyść wyszukiwanie" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="filters" id="filters" role="group" aria-label="Filtr wydziału">
+@@CHIPS@@
+  </div>
   <p class="resultline" id="resultCount" aria-live="polite"></p>
   <div id="groupList">
 @@GROUPS@@
   </div>
-  <p class="empty" id="noResults" hidden>Brak grup dla podanej frazy. Wyczyść wyszukiwanie.</p>
-  <footer>Nieoficjalny plan zajęć. Zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie.</footer>
+  <div class="empty" id="noResults" hidden>
+    <span>Brak grup dla podanej frazy lub wydziału.</span>
+    <button class="textbtn" id="resetFilters" type="button">Wyczyść filtry</button>
+  </div>
+  <footer>
+    <p>PlanWAT to prywatna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Serwis nie jest uczelnianym systemem ani jego częścią, a plany pochodzą z ogólnodostępnych stron wydziałów.</p>
+    <p>Zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie. Serwis nie używa plików cookie ani narzędzi śledzących; ulubione grupy zapisują się tylko w Twojej przeglądarce.</p>
+  </footer>
 </main>
+<script>@@ICS_JS@@</script>
 <script>
 (function () {
   'use strict';
@@ -206,30 +395,97 @@
     if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return n + ' grupy';
     return n + ' grup';
   }
-  var search = document.getElementById('groupSearch');
-  var count = document.getElementById('resultCount');
-  var empty = document.getElementById('noResults');
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function $(id) { return document.getElementById(id); }
+  var SVG = 'http://www.w3.org/2000/svg';
+  var STAR = 'M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z';
+
+  /* the browser's own storage: favourites and recent groups (the group pages write them) */
+  var store = {
+    get: function (k) {
+      try { var v = JSON.parse(window.localStorage.getItem('planwat:' + k) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+    },
+    set: function (k, v) {
+      try { window.localStorage.setItem('planwat:' + k, JSON.stringify(v)); } catch (e) { /* private mode or full */ }
+    }
+  };
+
+  var search = $('groupSearch');
+  var count = $('resultCount');
+  var empty = $('noResults');
+  var clearBtn = $('clearSearch');
+  var toggleAll = $('toggleAll');
+  var chips = Array.prototype.slice.call(document.querySelectorAll('#filters .chip'));
   var sections = Array.prototype.slice.call(document.querySelectorAll('details[data-fac-section]'));
   var items = Array.prototype.slice.call(document.querySelectorAll('#groupList li[data-group]'));
+  var faculty = '';
+
   function apply() {
     var q = (search.value || '').trim().toUpperCase();
     var shown = 0;
     items.forEach(function (li) {
-      var show = !q || li.getAttribute('data-group').toUpperCase().indexOf(q) !== -1;
+      var show = (!q || li.getAttribute('data-group').toUpperCase().indexOf(q) !== -1) &&
+        (!faculty || li.getAttribute('data-fac') === faculty);
       li.hidden = !show;
       if (show) shown++;
     });
     sections.forEach(function (sec) {
       var any = Array.prototype.some.call(sec.querySelectorAll('li[data-group]'), function (li) { return !li.hidden; });
       sec.hidden = !any;
-      if (any) sec.open = !!q;
+      if (any && (q || faculty)) sec.open = true;
+      /* a year heading stays only above a visible group */
+      var head = null, headHas = false;
+      Array.prototype.forEach.call(sec.querySelectorAll('li'), function (li) {
+        if (li.classList.contains('yr')) {
+          if (head) head.hidden = !headHas;
+          head = li;
+          headHas = false;
+        } else if (!li.hidden) {
+          headHas = true;
+        }
+      });
+      if (head) head.hidden = !headHas;
     });
     empty.hidden = shown !== 0;
+    clearBtn.hidden = !search.value;
     count.textContent = 'Wyświetlono ' + plural(shown);
+    syncToggle();
   }
-  search.addEventListener('input', apply);
-  /* Enter opens the group when the search leaves exactly one, or names one exactly */
+  function syncToggle() {
+    var vis = sections.filter(function (s) { return !s.hidden; });
+    var allOpen = vis.length > 0 && vis.every(function (s) { return s.open; });
+    toggleAll.textContent = allOpen ? 'Zwiń wszystkie' : 'Rozwiń wszystkie';
+    toggleAll.hidden = !vis.length;
+  }
+  function collapseIfIdle() {
+    if (!search.value.trim() && !faculty) sections.forEach(function (sec) { sec.open = false; });
+  }
+  function setFaculty(code) {
+    faculty = code;
+    chips.forEach(function (c) { c.setAttribute('aria-pressed', String(c.getAttribute('data-fac') === code)); });
+    collapseIfIdle();
+    apply();
+  }
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      var code = c.getAttribute('data-fac');
+      setFaculty(code === faculty ? '' : code);
+    });
+  });
+  search.addEventListener('input', function () { collapseIfIdle(); apply(); });
+  sections.forEach(function (sec) { sec.addEventListener('toggle', syncToggle); });
+  toggleAll.addEventListener('click', function () {
+    var vis = sections.filter(function (s) { return !s.hidden; });
+    var open = !vis.every(function (s) { return s.open; });
+    vis.forEach(function (s) { s.open = open; });
+    syncToggle();
+  });
+  function resetAll() { search.value = ''; setFaculty(''); search.focus(); }
+  clearBtn.addEventListener('click', resetAll);
+  $('resetFilters').addEventListener('click', resetAll);
+  /* Enter opens the group when the search leaves exactly one, or names one exactly; Esc clears */
   search.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && search.value) { search.value = ''; collapseIfIdle(); apply(); return; }
     if (e.key !== 'Enter') return;
     var q = (search.value || '').trim().toUpperCase();
     var visible = items.filter(function (li) { return !li.hidden; });
@@ -239,40 +495,185 @@
     e.preventDefault();
     location.href = target.querySelector('a').getAttribute('href');
   });
+  /* "/" jumps to the search */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    search.focus();
+    search.select();
+  });
+  /* a link such as /?q=WCY26 opens with that search */
+  try {
+    var preset = new URLSearchParams(location.search).get('q');
+    if (preset) search.value = preset.slice(0, 40);
+  } catch (e) { /* plain page */ }
   apply();
 
-  /* favourites and recently opened groups, kept by this browser only (set on the group pages) */
-  function stored(key) {
-    try { var v = JSON.parse(window.localStorage.getItem('planwat:' + key) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
-  }
+  /* ---------- favourites and recently opened groups ---------- */
   var known = {};
   items.forEach(function (li) { known[li.getAttribute('data-group')] = true; });
   function fill(listId, wrapId, groups, star) {
-    var list = document.getElementById(listId);
+    var list = $(listId);
+    list.textContent = '';
     groups = groups.filter(function (g) { return known[g]; });
     groups.forEach(function (g) {
       var a = document.createElement('a');
       a.className = 'pick';
       a.href = g + '/';
       if (star) {
-        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        var svg = document.createElementNS(SVG, 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('aria-hidden', 'true');
-        var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', 'M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z');
+        var path = document.createElementNS(SVG, 'path');
+        path.setAttribute('d', STAR);
         svg.appendChild(path);
         a.appendChild(svg);
       }
       a.appendChild(document.createTextNode(g));
       list.appendChild(a);
     });
-    document.getElementById(wrapId).hidden = !groups.length;
+    $(wrapId).hidden = !groups.length;
     return groups.length;
   }
-  var favs = stored('favs');
-  var shownFav = fill('favList', 'favWrap', favs, true);
-  var shownRecent = fill('recentList', 'recentWrap', stored('recent').filter(function (g) { return favs.indexOf(g) < 0; }).slice(0, 6), false);
-  document.getElementById('saved').hidden = !(shownFav + shownRecent);
+  function renderSaved() {
+    var favs = store.get('favs').filter(function (g) { return known[g]; });
+    var shownFav = fill('favList', 'favWrap', favs, true);
+    var shownRecent = fill('recentList', 'recentWrap', store.get('recent').filter(function (g) { return favs.indexOf(g) < 0; }).slice(0, 6), false);
+    $('saved').hidden = !(shownFav + shownRecent);
+    Array.prototype.forEach.call(document.querySelectorAll('.star'), function (b) {
+      var g = b.getAttribute('data-star');
+      var on = favs.indexOf(g) >= 0;
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-label', on ? 'Usuń ' + g + ' z ulubionych' : 'Dodaj ' + g + ' do ulubionych');
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.star'), function (b) {
+    b.addEventListener('click', function () {
+      var g = b.getAttribute('data-star');
+      var favs = store.get('favs');
+      var at = favs.indexOf(g);
+      if (at >= 0) favs.splice(at, 1); else favs.push(g);
+      store.set('favs', favs);
+      renderSaved();
+      renderLive();
+    });
+  });
+  $('clearRecent').addEventListener('click', function () { store.set('recent', []); renderSaved(); renderLive(); });
+
+  /* ---------- what is on now in the favourite groups ---------- */
+  var LIVE_MAX = 3;
+  var plans = {};  /* group -> promise of its parsed plan, or null when it cannot be read */
+  function loadPlan(g) {
+    if (!plans[g]) {
+      plans[g] = fetch(g + '/plan.ics', { credentials: 'same-origin' })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+        .then(function (buf) { var P = window.PlanICS; return P.toPlan(P.parse(P.decode(buf))); })
+        .catch(function () { return null; });
+    }
+    return plans[g];
+  }
+  function flatten(plan) {
+    var out = [];
+    plan.weeks.forEach(function (w) {
+      Object.keys(w.days).forEach(function (k) { w.days[k].forEach(function (l) { out.push(l); }); });
+    });
+    out.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
+    return out;
+  }
+  function mins(t) { var p = t.split(':'); return +p[0] * 60 + +p[1]; }
+  function isoOf(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  var DOW = ['nd', 'pn', 'wt', 'śr', 'cz', 'pt', 'sob'];
+  function when(l, now) {
+    var today = isoOf(now);
+    var tomorrow = isoOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+    if (l.date === today) {
+      var d = mins(l.start) - (now.getHours() * 60 + now.getMinutes());
+      return d < 60 ? 'za ' + d + ' min' : 'dziś ' + l.start;
+    }
+    if (l.date === tomorrow) return 'jutro ' + l.start;
+    var p = l.date.split('-');
+    return DOW[new Date(+p[0], +p[1] - 1, +p[2]).getDay()] + ' ' + p[2] + '.' + p[1] + ' ' + l.start;
+  }
+  function status(plan, now) {
+    var today = isoOf(now), nowMin = now.getHours() * 60 + now.getMinutes();
+    var all = flatten(plan);
+    var live = null, next = null;
+    for (var i = 0; i < all.length; i++) {
+      var l = all[i];
+      if (l.date === today && mins(l.start) <= nowMin && nowMin < mins(l.end)) { live = l; continue; }
+      if (l.date > today || (l.date === today && mins(l.start) > nowMin)) { next = l; break; }
+    }
+    return { live: live, next: next };
+  }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function card(g, plan, now) {
+    var st = status(plan, now);
+    var l = st.live || st.next;
+    var a = el('a', 'now-card' + (st.live ? ' live' : '') + (l ? '' : ' now-none'));
+    a.href = g + '/';
+    var cap = el('span', 'cap');
+    var bar = el('i');
+    if (l) {
+      bar.style.setProperty('--c', plan.subjectColors[l.subject_full] || '#86868b');
+      if (st.live) {
+        var nowMin = now.getHours() * 60 + now.getMinutes();
+        var pct = Math.max(0, Math.min(100, (nowMin - mins(l.start)) / (mins(l.end) - mins(l.start)) * 100));
+        bar.style.setProperty('--p', pct.toFixed(1) + '%');
+      }
+    }
+    cap.appendChild(bar);
+    var body = el('span', 'now-body');
+    var top = el('span', 'now-top');
+    top.appendChild(el('span', 'now-group', g));
+    var state = el('span', 'now-status');
+    if (st.live) {
+      state.appendChild(el('span', 'dot'));
+      state.appendChild(document.createTextNode('Teraz · do ' + l.end));
+    } else {
+      state.textContent = l ? 'Następne · ' + when(l, now) : 'Koniec planu';
+    }
+    top.appendChild(state);
+    body.appendChild(top);
+    body.appendChild(el('span', 'now-subject', l ? l.subject_full : 'Brak nadchodzących zajęć'));
+    if (l) {
+      var meta = [l.start + '–' + l.end];
+      if (l.room) meta.push(l.room);
+      if (l.type_full) meta.push(l.type_full);
+      body.appendChild(el('span', 'now-meta', meta.join(' · ')));
+    }
+    a.appendChild(cap);
+    a.appendChild(body);
+    return a;
+  }
+  var liveToken = 0;
+  function renderLive() {
+    var favs = store.get('favs').filter(function (g) { return known[g]; });
+    var pool = (favs.length ? favs : store.get('recent').filter(function (g) { return known[g]; }).slice(0, 1)).slice(0, LIVE_MAX);
+    var token = ++liveToken;
+    $('liveTitle').textContent = favs.length ? 'Teraz w Twoich grupach' : 'Teraz w ostatniej grupie';
+    if (!pool.length) { $('liveSec').hidden = true; return; }
+    Promise.all(pool.map(function (g) { return loadPlan(g).then(function (p) { return { g: g, plan: p }; }); })).then(function (res) {
+      if (token !== liveToken) return;
+      var now = new Date();
+      var box = $('liveCards');
+      box.textContent = '';
+      var n = 0;
+      res.forEach(function (r) { if (r.plan) { box.appendChild(card(r.g, r.plan, now)); n++; } });
+      $('liveSec').hidden = !n;
+    });
+  }
+  renderSaved();
+  renderLive();
+  /* keep "now" honest while the page stays open */
+  setInterval(function () { if (!document.hidden) renderLive(); }, 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) renderLive(); });
 })();
 </script>
 </body>

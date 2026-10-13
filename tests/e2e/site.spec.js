@@ -455,3 +455,49 @@ test('the list view and the tool sheets have no serious or critical accessibilit
     await expect(tool(page)).toBeHidden();
   }
 });
+
+test('the front page shows what is on now in a favourite group', async ({ page }) => {
+  await page.clock.setFixedTime(THURSDAY_1030);
+  await page.addInitScript(() => localStorage.setItem('planwat:favs', JSON.stringify(['WCY26KY3S1'])));
+  await page.goto('/');
+  const card = page.locator('#liveCards a.now-card');
+  await expect(card).toHaveCount(1);
+  await expect(card).toHaveClass(/live/);
+  await expect(card).toContainText('Teraz · do');
+  await expect(card).toContainText('314 S');
+  await card.click();
+  await expect(page).toHaveURL(ON_GROUP);
+});
+
+test('a star on a group row adds it to the favourites, and the faculty chips filter the list', async ({ page }) => {
+  await page.clock.setFixedTime(THURSDAY_1030);
+  await page.goto('/');
+  await expect(page.locator('#saved')).toBeHidden();
+  await page.locator('details[data-fac-section="WCY"] > summary').click();
+  const star = page.locator('button.star[data-star="WCY26KY3S1"]');
+  await expect(star).toHaveAttribute('aria-pressed', 'false');
+  await star.click();
+  await expect(star).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#favList a.pick')).toHaveText(['WCY26KY3S1']);
+  await expect(page.locator('#liveCards a.now-card')).toHaveCount(1);
+  await star.click();
+  await expect(page.locator('#saved')).toBeHidden();
+
+  await page.locator('#filters .chip[data-fac="WCY"]').click();
+  await expect(page.locator('#filters .chip[data-fac="WCY"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('details[data-fac-section="WCY"]')).toHaveAttribute('open', '');
+  await expect(page.locator('details[data-fac-section]:not([hidden])')).toHaveCount(1);
+  await page.locator('#filters .chip[data-fac=""]').click();
+  await expect(page.locator('details[data-fac-section]:not([hidden])')).toHaveCount(await page.locator('details[data-fac-section]').count());
+});
+
+test('the front page search takes the "/" key and a ?q= link', async ({ page }) => {
+  await page.goto('/?q=wcy26ky3');
+  await expect(page.locator('#groupSearch')).toHaveValue('wcy26ky3');
+  await expect(page.locator('a.group[href="WCY26KY3S1/"]')).toBeVisible();
+  await page.locator('#clearSearch').click();
+  await expect(page.locator('#groupSearch')).toHaveValue('');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('/');
+  await expect(page.locator('#groupSearch')).toBeFocused();
+});

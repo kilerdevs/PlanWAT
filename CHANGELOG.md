@@ -10,6 +10,9 @@ All notable changes to PlanWAT are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Front page: "Teraz w Twoich grupach" cards (what is on now or next in the favourite groups), faculty filter chips,
+  intake-year headings, star buttons on every group row, expand/collapse all, `/` to search, `?q=` links, clear buttons,
+  a rewritten footer (unofficial project, no cookies).
 - Timetables for 23 WTC groups (e.g. `WTC26NX1S1`, `WTC22CO1S0`), converted from the
   WTC Plansoft timetables (`WTC zima 2026/2027`, semestr zimowy 2026/27).
 - Group page: list and month views, breaks between classes, subject progress, statistics, comparing groups
