@@ -15,7 +15,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / 'tools'))
 import build  # noqa: E402
+import scrub_staff  # noqa: E402
 
 D = dt.date
 
@@ -48,6 +50,7 @@ class FacultyTest(unittest.TestCase):
         self.assertEqual(build.faculty_of('WTC24AB1S1'), 'WTC')
         self.assertEqual(build.faculty_of('WLO26AX1S1'), 'WLO')
         self.assertEqual(build.faculty_of('WCY26_Fiz1a'), 'WCY')
+        self.assertEqual(build.faculty_of('WMT26AX1S0'), 'WML')
 
     def test_unknown_prefixes_fall_back_to_other(self):
         self.assertEqual(build.faculty_of('WME26BX1S1'), 'OTHER')
@@ -339,6 +342,44 @@ class BuildManyGroupsTest(unittest.TestCase):
         self.assertEqual(build.year_of('WCY26KY3S1'), 'WCY26')
         self.assertEqual(build.year_of('wlo22FO1S0'), 'WLO22')
         self.assertIsNone(build.year_of('WCY_M1'))
+
+
+class ScrubStaffTest(unittest.TestCase):
+    def test_drops_contact_and_instructor_segments_but_keeps_the_rest(self):
+        before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
+                  'SUMMARY:Matematyka\r\nCATEGORIES:Wykład\r\nCONTACT:Jan Kowalski\r\n'
+                  'DESCRIPTION:Wykład\\nProwadzący: Jan Kowalski\\nGrupy: WLO1, WLO2\r\n'
+                  'END:VEVENT\r\nEND:VCALENDAR\r\n')
+        after, removed = scrub_staff.scrub_text(before)
+        self.assertTrue(removed)
+        self.assertNotIn('CONTACT', after)
+        self.assertNotIn('owalski', after)
+        self.assertIn('DESCRIPTION:Wykład\\nGrupy: WLO1, WLO2', after)
+        self.assertTrue(after.endswith('\r\n') and '\n\n' not in after.replace('\r\n', '\n'))
+        ok, why = scrub_staff.verify('probe', before, after)
+        self.assertTrue(ok, why)
+
+    def test_unfolds_before_scrubbing_so_folded_names_are_caught(self):
+        before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
+                  'SUMMARY:Matematyka\r\nDESCRIPTION:Wykład\\nProwadzący: Aleksandra Dłu\r\n'
+                  ' gosz imię\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
+        after, removed = scrub_staff.scrub_text(before)
+        self.assertTrue(removed)
+        self.assertNotIn('ługosz', after)
+        self.assertIn('DESCRIPTION:Wykład', after)
+
+    def test_a_clean_crlf_calendar_is_byte_stable(self):
+        before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
+                  'SUMMARY:Matematyka\r\nDESCRIPTION:Wykład\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
+        self.assertIsNone(scrub_staff.scrub_text(before))
+
+    def test_lf_endings_are_normalized_without_touching_content(self):
+        before = ('BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:a\nDTSTART:20261005T080000\n'
+                  'SUMMARY:Matematyka\nEND:VEVENT\nEND:VCALENDAR\n')
+        after, removed = scrub_staff.scrub_text(before)
+        self.assertFalse(removed)
+        self.assertFalse([l for l in after.split('\n') if l and not l.endswith('\r')])
+        self.assertIn('SUMMARY:Matematyka', after)
 
 
 if __name__ == '__main__':

@@ -29,10 +29,22 @@
     "enabled": false,
     "note": "Enable after a dry run proves plain HTTP works; the old crawler used a browser."
   },
+  "wml": {
+    "driver": "wml",
+    "label": "WML",
+    "prefix": "WML",
+    "keep_prefixes": ["WMT"],
+    "groups_re": "^WMT",
+    "landing": "https://wml.wat.edu.pl/rozklady-zajec/",
+    "enabled": true,
+    "note": "Enabled 2026-10-13: the live index.xml is resolved via the landing page iframe (revisioned dirs); WMT-coded groups convert with wlo2ics. Watch the first runs."
+  },
   "wtc": {
     "driver": "wtc",
     "label": "WTC",
-    "enabled": false,
-    "note": "Crawler and converter to be supplied: add drivers/wtc.py (see drivers/__init__.py), then enable."
+    "prefix": "WTC",
+    "base": "https://wtc.wat.edu.pl/Plany/{season}/",
+    "enabled": true,
+    "note": "Enabled 2026-10-13: crawler + PDF converter in drivers/wtc (pymupdf). Watch the first runs; the site sits behind Incapsula."
   }
 }
