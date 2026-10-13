@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Students of WAT (Wojskowa Akademia Techniczna) study groups. It starts with one group, WCY26KY3S1 (Wydział Cybernetyki, semestr zimowy 2026/27), and is meant to grow to other WAT groups and years. They open it on their phones, usually from a link shared in the group chat. The job: find out which class is on now or next, where it is (room), who teaches it, and what the rest of the week looks like.
+Students of WAT (Wojskowa Akademia Techniczna) study groups. It starts with one group, WCY26KY3S1 (Wydział Cybernetyki, semestr zimowy 2026/27), and is meant to grow to other WAT groups and years. They open it on their phones, usually from a link shared in the group chat. The job: find out which class is on now or next, where it is (room), and what the rest of the week looks like.
 
 ## Product Purpose
 
@@ -38,7 +38,7 @@ The official WAT plan is a large table built for desktop. This site turns the sa
 - **Terminology** (keep in Polish): blok (one class slot), Wykład / Ćwiczenia / Laboratorium / Zaliczenie / Spotkanie organizacyjne, tydzień, sesja egzaminacyjna, e-dziekanat. Group codes follow the WAT format, e.g. `WCY26KY3S1`.
 - **Technical setup:**
   - Timetables live in `timetables/<term>/<GROUP>.ics` (iCalendar, RFC 5545; format in `docs/ICS-FORMAT.md`). `build.py` validates them, picks each group's current term by date and writes `site/`: `/<GROUP>/index.html` + `/<GROUP>/plan.ics`, a group list at `/` (redirects while there is one group) and `404.html`. The group page fetches `plan.ics` and renders it in the browser with `src/ics.js` (tests: `tests/ics.test.js`, `tests/test_build.py`, `tests/e2e/`).
-  - Group, faculty, term, semester range and generation date come from the calendar's `X-PLAN-*` properties; each class uses `SUMMARY` (subject), `CATEGORIES` (type), `LOCATION` (room), `CONTACT` (one per teacher) and `X-PLAN-COLOR` (subject colour).
+  - Group, faculty, term, semester range and generation date come from the calendar's `X-PLAN-*` properties; each class uses `SUMMARY` (subject), `CATEGORIES` (type), `LOCATION` (room) and `X-PLAN-COLOR` (subject colour).
   - `/<GROUP>/plan.ics` is public, so the same link also works as a calendar subscription.
   - Served by a hardened, read-only, non-root nginx container (`PLAN-WAT`, localhost:8088), reached through a Cloudflare tunnel on the project's custom domain. GitHub Pages (repository kilerdevs/PlanWAT) is the target deployment.
 - **Security** (the owner's explicit requirement: "as secure as possible, used by public"):
@@ -58,7 +58,7 @@ The official WAT plan is a large table built for desktop. This site turns the sa
 
 ## Evidence on Hand
 
-- Real timetable data for WCY26KY3S1: 22 weeks, 216 class blocks, with subjects, types, rooms, teachers and per-subject colours, in `timetables/2026-27-zima/WCY26KY3S1.ics`. It was exported once by `tools/export_ics.py` from the original page, which is kept as `tests/fixtures/v1-page.html`; the parser output for the current calendar is pinned in `tests/fixtures/wcy26ky3s1.plan.json`.
+- Real timetable data for WCY26KY3S1: 22 weeks, 216 class blocks, with subjects, types, rooms and per-subject colours, in `timetables/2026-27-zima/WCY26KY3S1.ics`. It was exported once by `tools/export_ics.py` from the original page, which is kept as `tests/fixtures/v1-page.html`; the parser output for the current calendar is pinned in `tests/fixtures/wcy26ky3s1.plan.json`.
 - None of the following exist; do not fabricate them: data for other groups, usage numbers, testimonials, endorsements, or any WAT-provided assets.
 
 ## Product Principles

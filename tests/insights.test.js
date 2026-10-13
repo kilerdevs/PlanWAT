@@ -13,7 +13,7 @@ const ROOT = path.join(__dirname, '..');
 const REAL = PlanICS.toPlan(PlanICS.parse(fs.readFileSync(path.join(ROOT, 'timetables', '2026-27-zima', 'WCY26KY3S1.ics'), 'utf8')));
 
 function L(date, start, end, subject, type = 'Wykład', room = '100 S') {
-  return { date, start, end, subject_full: subject, type_full: type, room, teachers_full: [] };
+  return { date, start, end, subject_full: subject, type_full: type, room };
 }
 /* a plan model with the lessons placed in their weeks, the way PlanICS.toPlan builds it */
 function planOf(list) {

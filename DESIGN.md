@@ -139,7 +139,7 @@ A near-monochrome dark ramp with a single systemBlue accent; subject colours com
 ### Neutral
 - **Black Ground** (`ground`): the page.
 - **Raised Grey 1–4** (`surface-1` … `surface-4`): skeletons and fallbacks (1), cards, groups, sheet (2), pressed and secondary controls (3), handles and hover on small controls (4). `surface-2-hover` is the hover lift for tiles and the Live card.
-- **Label ramp** (`label`, `label-secondary`, `label-tertiary`): primary text, supporting text (dates, types, meta), quiet text (teachers, counts, hints). `label-quaternary` is reserved for disabled or decorative use; it fails AA for small text.
+- **Label ramp** (`label`, `label-secondary`, `label-tertiary`): primary text, supporting text (dates, types, meta), quiet text (counts, hints). `label-quaternary` is reserved for disabled or decorative use; it fails AA for small text.
 - **Hairline** (`rgba(255,255,255,0.08)`, strong `0.14`): separators and outlines. **Edge-light** (`inset 0 1px 0 rgba(255,255,255,0.06)`): the top highlight on every raised surface.
 - **Accent tints**: `rgba(10,132,255,0.14)` soft fill (today pill), `0.5` ring (now row and Live card outline), `0.35` ring and `0.05` wash (today column on desktop), `0.24` flash (jump-to-class highlight), `0.45` text selection.
 
@@ -210,7 +210,7 @@ Continuous, iOS-like rounding scaled to the object: 12px controls, 16px tiles, 2
 - **Floating pill:** "Bieżący tydzień" capsule that springs up from the bottom only when you are away from the current week.
 
 ### Live card (signature)
-A button card at the top of the page, shown only when today has a class on now or still to come. It holds the status line (live dot + "Teraz · do HH:MM", or a clock + "Następne · za …"), the subject in Headline, then room, time and type, then teachers, and the next class under a hairline. Its capsule fills with class progress, first animating from empty on load. Tapping jumps to that class in the week and flashes it.
+A button card at the top of the page, shown only when today has a class on now or still to come. It holds the status line (live dot + "Teraz · do HH:MM", or a clock + "Następne · za …"), the subject in Headline, then room, time and type, and the next class under a hairline. Its capsule fills with class progress, first animating from empty on load. Tapping jumps to that class in the week and flashes it.
 
 ## Do's and Don'ts
 

@@ -31,9 +31,12 @@ jobs:
     runs-on: [self-hosted, planwat]
     timeout-minutes: 240
     permissions:
+      # Least privilege on purpose (see docs/REFRESH.md "If GitHub is compromised"):
+      # contents pushes the data branch, issues files the blocked notice. In particular there is
+      # no actions:write: the daily pages.yml rebuild picks refreshed calendars up on its own,
+      # so a stolen token cannot trigger arbitrary workflows.
       contents: write
       issues: write
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

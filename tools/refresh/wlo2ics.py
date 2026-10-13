@@ -18,6 +18,9 @@ Two export variants are handled (same engine):
     multi-word settlement types ('Zp. ćw 2'), ';'-separated lecturer
     slots and subgroup notes ('Podgrupa 1'). Subjects vs settlements are
     told apart by the full name (settlements name a person).
+  * WML: lesson cell = lecturer-short / room / SUBJECT / type (the page
+    shows its own plan; cells truncate aliases, e.g. 'Szymonik' -> 'Szym',
+    while the legend carries bare aliases without hour settlements).
 
 Mechanism of the source site (https://wlo.wat.edu.pl/planzajec/zima/):
   * index.xml catalogues group pages (<gro>), lecturer pages (<lec>) and
@@ -40,8 +43,8 @@ Mechanism of the source site (https://wlo.wat.edu.pl/planzajec/zima/):
     aliases. They are resolved data-driven: for each (subject, type) the
     settlement names the lecturer, and the cells using that (subject, type)
     carry (almost always) exactly one distinct short -> mapping learned.
-  * Lecturer names carry academic titles in the source ("Prowadzący"); output uses plain "Firstname Surname" (titles stripped),
-    names stored surname-first on the site ("Prowadzący").
+  * Lecturer names and titles are never written to the calendar: it carries
+    no personal data of staff (no CONTACT line, no instructor line).
   * Slot -> clock time is NOT printed on the page. SLOT_TIMES below reuses
     the WAT-wide standard (same 7 pairs as the WCY planzajec blocks).
     XXX verify against a real WLO lesson if they ever publish hours.
@@ -108,12 +111,13 @@ TYPE_LABELS = {
 }
 
 # leading tokens stripped as academic titles / ranks / affiliations
-# (matched after splitting on whitespace, dots and brackets, so ""
-# and "(Prowadzący)" split into plain words too)
-TITLE_WORDS = {"", "", "", "in\u017c", "", "", "lic",
-               "wat", "ucz", "sgh", "n", "ekon", "spol", "spo\u0142",
-               "med", "techn", "mir", "", "", "pp\u0142k", "",
-               "", "", "", "", "pulk", "p\u0142k", "rez"}
+# (matched after splitting on whitespace, dots and brackets, so "dr hab."
+# and "(dr hab.) Kowalski" split into plain words too)
+TITLE_WORDS = {"dr", "hab", "prof", "inż", "inz", "mgr", "lic",
+               "wat", "ucz", "sgh", "n", "ekon", "spol", "społ",
+               "med", "techn", "mir", "gen", "bryg", "ppłk", "płk",
+               "mjr", "por", "ppor", "kpt", "chor", "mł", "ml",
+               "pulk", "st", "rez"}
 
 VTIMEZONE = """BEGIN:VTIMEZONE
 TZID:Europe/Warsaw
@@ -148,12 +152,12 @@ def clean_text(raw):
 
 
 def strip_titles(name):
-    """'Prowadzący) Prowadzący' -> 'Prowadzący'.
+    """'dr hab. inż. Kowalski Jan, WAT' -> 'Kowalski Jan'.
 
     Titles/ranks/affiliations are stripped token-wise; dots and brackets
-    also split (' ' ->  +  + ) since the planner is
+    also split ('dr hab.' -> dr + hab) since the planner is
     inconsistent about spaces. A trailing ", ..." affiliation
-    ('Prowadzący, Prowadzący) is cut first.
+    ('Kowalski Jan, WAT') is cut first.
     """
     name = name.split(",")[0]
     toks = [t for t in re.split(r"[\s.()]+", name) if t]
@@ -163,7 +167,7 @@ def strip_titles(name):
 
 
 def swap_name(name):
-    """'Prowadzący' -> 'Prowadzący' (firstname is last token)."""
+    """'Kowalski Jan' -> 'Jan Kowalski' (firstname is last token)."""
     parts = name.split()
     if len(parts) >= 2:
         return parts[-1] + " " + " ".join(parts[:-1])
@@ -247,6 +251,14 @@ def parse_page(path):
     for r in rows:
         cells = split_cells(r)
         if len(cells) < 20:
+            # short rows carry no week columns, but real legend entries hide
+            # in them (WML parks lecturer aliases there): harvest every pair.
+            # Padding rows have no mergeWith cell and stay skipped.
+            for a, inner in cells:
+                if "mergewith" in a.lower():
+                    leg = legend_pair((a, inner))
+                    if leg:
+                        legends.append(leg)
             continue
         first = clean_text(cells[0][1])
         mslot = SLOT_RE.match(first)
@@ -322,13 +334,16 @@ def legend_pair(merge_cell, _full_cell=None):
 
 
 def looks_like_person(full):
-    """Settlement full names are people ('Prowadzący); subject full names are
-    not. Titles are the distinguisher (no subject starts with one)."""
+    """Settlement full names are people ('dr hab. inż. Kowalski Jan'); subject full names are
+    not. A leading title is the distinguisher (no subject starts with one); dots and brackets
+    inside the name do not count (subjects like 'Język obcy (II) ...' are not people)."""
     if not full:
         return False
+    toks = [t for t in re.split(r"[\s.()]+", full.split(",")[0]) if t]
+    if not toks or toks[0].lower() not in TITLE_WORDS:
+        return False
     stripped = strip_titles(full)
-    return (stripped != full.strip()
-            and bool(re.search(r"[A-Za-z\u0100-\u017f]", stripped)))
+    return bool(re.search(r"[A-Za-z\u0100-\u017f]", stripped))
 
 
 def build_tables(legends):
@@ -443,8 +458,30 @@ def learn_shorts(week_rows, subj_type_lect, resolve):
     return short_map
 
 
+def match_alias(slot_text, alias):
+    """A WML lecturer slot -> [names], best effort (parse intermediate only).
+
+    Cells truncate aliases ('Szymonik' -> 'Szym'), so an exact hit falls back
+    to a unique prefix hit; ';'-separated slots resolve part-wise. Unknown
+    shorts give []: the calendar never names staff either way.
+    """
+    out = []
+    for part in re.split(r"[;,]", slot_text):
+        p = part.strip()
+        if not p:
+            continue
+        if p in alias:
+            cands = [p]
+        else:
+            cands = [a for a in alias if a.startswith(p)]
+            if len(cands) != 1:
+                continue
+        out.extend(x for x in alias[cands[0]] if x not in out)
+    return out
+
+
 def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
-                  short_map, group, base_year, resolve):
+                  short_map, group, base_year, resolve, lect_alias=None):
     lessons = []
     type_warned = set()
     subj_warned = set()
@@ -479,6 +516,7 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
             groups, lect_slot, room, notes = [], None, "", []
             positional = False
             lects_pre, wel = None, False
+            wml = lect_alias is not None
             if hm:
                 subj = hm.group(1).strip()
                 typ = repair_type(hm.group(2).strip())
@@ -521,6 +559,26 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
                     # subject + room only (language classes etc.)
                     room = segs[1]
                 # len == 1: subject alone
+            elif wml and len(segs) == 4:
+                # WML cell: lecturer / room / SUBJECT / type (the page shows
+                # its own plan; lecturer aliases may be truncated in cells)
+                lect_slot, room, subj, typ = (s.strip() for s in segs)
+                typ = repair_type(typ)
+                if not subj or not typ:
+                    continue
+                groups = []
+            elif (wml and len(segs) == 3
+                    and resolve(segs[1].strip()) is not None):
+                # WML short cell: room-or-lecturer / SUBJECT / type
+                maybe = segs[0].strip()
+                if match_alias(maybe, lect_alias):
+                    lect_slot = maybe
+                else:
+                    room = maybe
+                subj, typ = segs[1].strip(), repair_type(segs[2].strip())
+                if not subj or not typ:
+                    continue
+                groups = []
             else:
                 # WEL-style cell: SUBJ / type / room (the page shows its
                 # own plan; no group or lecturer lines in cells)
@@ -544,6 +602,9 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
                 subj_key = subj
             else:
                 full = subjects[subj_key]
+            if wml and looks_like_person(full):
+                warn("subject %r resolves to staff (%r); lesson skipped" % (subj, full))
+                continue
             if typ not in TYPE_LABELS and typ not in type_warned:
                 warn("unknown type code %r; using it verbatim" % typ)
                 type_warned.add(typ)
@@ -606,6 +667,12 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
                 lects = lects_pre
             elif wel:
                 lects = settle
+            elif wml and lect_slot:
+                lects = match_alias(lect_slot, lect_alias)
+                if not lects and lect_slot not in short_warned:
+                    warn("unresolved lecturer alias %r for %s (%s)"
+                         % (lect_slot, subj, dt.isoformat()))
+                    short_warned.add(lect_slot)
             elif lect_slot is None:
                 lects = settle
             else:
@@ -675,13 +742,7 @@ def build_ics(lessons, group, period, updated, generated, faculty="wlo"):
         lines.append("CATEGORIES:%s" % esc(lesson["type"]))
         if lesson["room"]:
             lines.append("LOCATION:%s" % esc(lesson["room"]))
-        for contact in lesson["contacts"]:
-            lines.append("CONTACT:%s" % esc(contact))
-        if lesson["contacts"]:
-            desc = "%s\nProwadz\u0105cy: %s" % (lesson["type"],
-                                                ", ".join(lesson["contacts"]))
-        else:
-            desc = lesson["type"]
+        desc = lesson["type"]
         if lesson.get("shares"):
             desc += "\nUwaga: %s" % " ".join(lesson["shares"])
         if len(lesson["groups"]) > 1:
@@ -737,6 +798,19 @@ def main(argv):
         return None
 
     short_map = learn_shorts(week_rows, subj_type_lect, resolve)
+    lect_alias = None
+    if faculty == "wml":
+        # WML legends name lecturers with bare aliases (no hour settlements):
+        # alias -> [names], resolved data-driven like everything else here.
+        # Names are parse intermediates only (the calendar never names staff).
+        lect_alias = {}
+        for short, full in legends:
+            if full and looks_like_person(full):
+                name = swap_name(" ".join(strip_titles(full).split()))
+                if re.search(r"[A-Za-z\u0100-\u017f]", name):
+                    lect_alias.setdefault(short, [])
+                    if name not in lect_alias[short]:
+                        lect_alias[short].append(name)
     if updated and updated[1] >= 9:
         base_year = updated[2]
     elif updated:
@@ -747,7 +821,7 @@ def main(argv):
         base_year = now.year if now.month >= 9 else now.year - 1
     lessons = parse_lessons(date_blocks, week_rows, subjects,
                             subj_type_lect, short_map, gfilter, base_year,
-                            resolve)
+                            resolve, lect_alias)
     ics, n = build_ics(lessons, args.code or group, args.period, updated,
                        datetime.date.today(), faculty)
     with open(args.output, "w", encoding="utf-8", newline="") as f:

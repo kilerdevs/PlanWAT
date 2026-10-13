@@ -217,7 +217,6 @@
       if (!subject) return;
       var type = ev.CATEGORIES ? (splitList(ev.CATEGORIES[0].value)[0] || '') : '';
       var room = text(ev, 'LOCATION');
-      var teachers = (ev.CONTACT || []).map(function (p) { return unescapeText(p.value).trim(); }).filter(Boolean);
       var color = text(ev, 'X-PLAN-COLOR');
       var found = occurrences(ev, limit);
       if (!found.length) return;
@@ -225,7 +224,7 @@
       found.forEach(function (o) {
         lessons.push({
           date: isoOf(o.start), start: hhmm(o.start), end: hhmm(o.end),
-          subject_full: subject, type_full: type, room: room, teachers_full: teachers
+          subject_full: subject, type_full: type, room: room
         });
       });
     });

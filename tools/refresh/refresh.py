@@ -4,12 +4,12 @@
     python tools/refresh/refresh.py --out <data checkout> [--faculty wlo,wel] [--profile hosted|selfhosted]
                                     [--limit N] [--dry-run] [--max-minutes M] [--fresh-hours H]
 
-For every enabled faculty it lists the groups, fetches each page politely (one session, sequential, jittered),
-converts pages that changed, validates the calendar the way the site's build does, and writes
-<out>/timetables/<term>/<GROUP>.ics only when the plan really changed. Progress lives in <out>/refresh-state.json,
-so a stopped run resumes where it stopped.
+For every enabled faculty it lists the groups, fetches each page politely (one session, sequential, jittered,
+conditional revalidation so unchanged pages answer 304), converts pages that changed, validates the calendar the
+way the site's build does, and writes <out>/timetables/<term>/<GROUP>.ics only when the plan really changed.
+Progress lives in <out>/refresh-state.json, so a stopped run resumes where it stopped.
 
-The first sign of a block (any status but 200, an Incapsula incident page) stops that faculty at once: nothing is
+The first sign of a block (any status but 200/304, an Incapsula incident page) stops that faculty at once: nothing is
 retried, nothing half-converted is published, the old calendars stay. Exit codes: 0 done, 3 blocked, 4 incomplete.
 With GITHUB_OUTPUT set, `blocked`, `incomplete` and `changed` are exported for the workflow.
 """
@@ -26,7 +26,10 @@ sys.path.insert(0, str(HERE))
 import core  # noqa: E402
 import drivers  # noqa: E402
 
-PROFILES = {'hosted': (3.0, 7.0), 'selfhosted': (1.0, 2.5)}  # seconds between pages; both proven to stay unblocked
+PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (2.5, 6.0)}  # seconds between pages
+# WLO and WEL share one Incapsula policy (cookies for .wat.edu.pl): crawling either too fast blocks both home
+# addresses for hours. The self-hosted range above stays unblocked; the hosted range is for datacenter egress,
+# which Incapsula already distrusts. Do not tune these down without a dry run from the crawling machine.
 
 
 def log(msg):
@@ -51,9 +54,38 @@ def robots_allows(session, url):
 
 def new_session():
     from curl_cffi import requests as cr
-    s = cr.Session(impersonate='chrome131')
+    # 'chrome' tracks curl_cffi's current Chrome fingerprint (chrome136 in 0.13.0). A pinned old release
+    # (chrome131 was kept long after Chrome moved on) is itself a bot signal to Incapsula.
+    s = cr.Session(impersonate='chrome')
     s.headers['Accept-Language'] = 'pl-PL,pl;q=0.9'
     return s
+
+
+def conditional_headers(entry):
+    """Validators for a conditional refresh: the server answers 304 without a body when nothing changed.
+
+    Bandwidth, time and WAF score all drop: a 304 carries no page and looks like a returning visitor's
+    revalidation rather than a full crawl.
+    """
+    headers = {}
+    if entry.get('modified'):
+        headers['If-Modified-Since'] = entry['modified']
+    if entry.get('etag'):
+        headers['If-None-Match'] = entry['etag']
+    return headers
+
+
+def remember_validators(entry, response):
+    """Keep the server's cache validators for the next conditional refresh (best effort)."""
+    get = getattr(response, 'headers', {}).get
+    try:
+        modified, etag = get('Last-Modified'), get('ETag')
+    except Exception:
+        return
+    if modified:
+        entry['modified'] = modified
+    if etag:
+        entry['etag'] = etag
 
 
 def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic):
@@ -89,12 +121,18 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             return changed, False, False
         if n > 1:
             sleep(random.uniform(*args.delay))
+        entry = state.groups.setdefault(item.code, {})
         try:
-            r = session.get(item.url, timeout=60)
+            r = session.get(item.url, timeout=60, headers=conditional_headers(entry))
         except Exception as err:
             log(f'[{name}] BLOCKED/NETWORK on {item.code}: {err}')
             fac['blocked_at'] = core.now_utc().isoformat()
             return changed, True, False
+        if r.status_code == 304:
+            # The server says the page is byte-identical: no download, no conversion, just a fresh check mark.
+            remember_validators(entry, r)
+            entry['checked'] = core.now_utc().isoformat()
+            continue
         raw = r.content
         text = raw.decode('utf-8', errors='replace')
         if r.status_code == 404:
@@ -108,7 +146,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             log(f'[{name}] {item.code}: not a timetable page, skipped')
             failed += 1
             continue
-        entry = state.groups.setdefault(item.code, {})
+        remember_validators(entry, r)
         digest = core.sha256(raw)
         path = out / 'timetables' / tid / f'{item.code}.ics'
         old = path.read_text(encoding='utf-8') if path.is_file() else None

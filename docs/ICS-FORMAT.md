@@ -34,9 +34,9 @@ e-dziekanat.
 | `SUMMARY` | yes | Subject name, e.g. `Matematyka I`. Events with the same summary share a colour and a legend entry. |
 | `CATEGORIES` | recommended | Class type: `Wykład`, `Ćwiczenia`, `Laboratorium`, `Zaliczenie`, `Spotkanie organizacyjne`. The first value is used. |
 | `LOCATION` | recommended | Room, e.g. `314 S`. |
-| `CONTACT` | optional, repeatable | One per teacher, e.g. `Prowadzący`. |
 | `X-PLAN-COLOR` | optional | Subject colour as `#rrggbb`. Anything else falls back to a fixed palette colour derived from the subject name. |
 | `DESCRIPTION` | optional | Shown by calendar apps; not read by PlanWAT. |
+| `CONTACT` | **not allowed** | PlanWAT keeps no personal data of staff: a calendar with a `CONTACT` line, or a description naming the instructor, fails the build. |
 | `RRULE` | optional | `FREQ=WEEKLY` or `DAILY` with `INTERVAL`, `COUNT`, `UNTIL` and `BYDAY`. Other rules show only the first occurrence. |
 | `EXDATE` | optional | Dates or date-times removed from a repeating event. |
 | `STATUS:CANCELLED` | optional | The event is skipped. |
@@ -67,7 +67,6 @@ DTEND;TZID=Europe/Warsaw:20261005T112500
 SUMMARY:Matematyka I
 CATEGORIES:Wykład
 LOCATION:314 S
-CONTACT:Prowadzący
 X-PLAN-COLOR:#c14953
 END:VEVENT
 END:VCALENDAR
