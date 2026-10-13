@@ -1192,7 +1192,9 @@
       grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
       grid-template-rows: repeat(var(--trows, 2), auto);
       gap: 10px 12px;
-      align-items: start;
+      /* stretch, not start: every block in a start-time row takes the row height, so blocks
+         of the same slot line up across days instead of sizing to their own text */
+      align-items: stretch;
       padding-top: var(--sp-3);
     }
     .week .day, .week .group { display: contents; }
@@ -1450,7 +1452,7 @@
   <div class="wrap">
     <details class="legend" id="progress">
       <summary><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chevron-right"/></svg>Postęp przedmiotów</summary>
-      <p class="legend-tip">Ile zajęć z każdego przedmiotu już się odbyło. &bdquo;Gdzie odrobić?&rdquo; szuka tych samych zajęć w innych grupach z rocznika.</p>
+      <p class="legend-tip">Ile zajęć z każdego przedmiotu już się odbyło. &bdquo;Gdzie odrobić?&rdquo; szuka tych samych zajęć, o tych samych numerach, w innych grupach kierunku.</p>
       <ul class="subjects" id="subjList"></ul>
     </details>
     <details class="legend" id="legend">
@@ -2826,7 +2828,7 @@
     var opts = { type: '', free: true, limit: 40 };
     var draw = function (data) {
       openTool('Gdzie odrobić: ' + subject, function (body) {
-        para(body, 'Te same zajęcia w innych grupach rocznika ' + year + ', od dziś do końca semestru. Udział w zajęciach innej grupy uzgodnij z prowadzącym.');
+        para(body, 'Te same zajęcia, o tym samym numerze w semestrze, w innych grupach Twojego kierunku i rocznika, od dziś do końca semestru. Numer (nr) musi się zgadzać: drugie ćwiczenia odrabiasz na drugich ćwiczeniach. Udział w zajęciach innej grupy uzgodnij z prowadzącym.');
         var kinds = [['', 'Wszystkie']].concat(types.filter(function (t) { return t !== 'Inne'; }).map(function (t) { return [t, t]; }));
         body.appendChild(choices('Rodzaj zajęć', 'cuType', kinds, opts.type, function (v) {
           opts.type = v; opts.limit = 40; draw(data);
@@ -2848,13 +2850,13 @@
           return !(f.date === today && f.end <= mins) && (!opts.free || !f.clash);
         });
         var count = body.appendChild(el('p', 'muted', found.length ? 'Znaleziono ' + found.length + ' ' + PI.plural(found.length, 'termin', 'terminy', 'terminów') + '.' :
-          'Brak takich zajęć w innych grupach rocznika do końca semestru.'));
+          'Brak takich zajęć w innych grupach kierunku do końca semestru.'));
         count.setAttribute('role', 'status');
         if (!found.length) return;
         var ul = body.appendChild(el('ul', 'rows'));
         found.slice(0, opts.limit).forEach(function (f) {
           var tag = el('span', f.clash ? 'tag warn' : 'tag', f.clash ? 'Masz wtedy zajęcia' : 'Możesz dołączyć');
-          ul.appendChild(rowItem(shortDate(f.date), PI.hhmm(f.start) + '–' + PI.hhmm(f.end) + (f.type ? ' · ' + f.type : '') +
+          ul.appendChild(rowItem(shortDate(f.date), PI.hhmm(f.start) + '–' + PI.hhmm(f.end) + (f.type ? ' · ' + f.type : '') + ' · nr ' + f.n +
             (f.room && f.room !== '-' ? ' · ' + f.room : ''), f.group, tag));
         });
         if (found.length > opts.limit) {
