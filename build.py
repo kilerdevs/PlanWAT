@@ -272,9 +272,6 @@ def _event_lessons(ev, tz, limit):
     return out
 
 
-# A room is a LOCATION part with a digit in it ("314 S", "0.24/ 135"); anything else ("-", a teacher's name
-# typed into the room field, "Pływalnia") cannot be told apart from a non-room and stays out of the free-rooms list.
-ROOM_RE = re.compile(r'\d')
 YEAR_RE = re.compile(r'^([A-Za-z]{3}\d{2})')
 EPOCH = dt.date(2000, 1, 1)  # day numbers in the data files count from here
 
@@ -283,16 +280,6 @@ def year_of(group):
     """The faculty + intake-year prefix that groups of one year share (WCY26KY3S1 -> WCY26), or None."""
     m = YEAR_RE.match(group)
     return m.group(1).upper() if m else None
-
-
-def split_rooms(location):
-    """The rooms of a LOCATION, normalised: "dr X, 1.16/ 16;1.17/16" -> ["1.16/16", "1.17/16"]."""
-    rooms = []
-    for part in location.split(';'):
-        part = re.sub(r'\s*/\s*', '/', ' '.join(part.rsplit(',', 1)[-1].split()))
-        if ROOM_RE.search(part) and part not in rooms:
-            rooms.append(part)
-    return rooms
 
 
 def _tz():
@@ -307,13 +294,11 @@ def build_data(current):
     """The JSON files behind the group page's tools, from every group's current term.
 
     groups.json            [[group, term label, year prefix], ...]
-    rooms.json             rooms and every booking [room, day, start, end, ...], for "Wolne sale"
     year/<PREFIX>.json     every class of the groups of one year, for "Odrabianie"
     Days are counted from 2000-01-01 and times are minutes after midnight, to keep the files small.
     """
     tz = _tz()
     groups = sorted(current)
-    rooms, booked = {}, set()
     years = {}
     for group in groups:
         term = current[group]
@@ -321,17 +306,8 @@ def build_data(current):
         year = year_of(group)
         if year:
             years.setdefault(year, []).append((group, lessons))
-        for day, s, e, _, _, location in lessons:
-            for room in split_rooms(location):
-                booked.add((rooms.setdefault(room, len(rooms)), (day - EPOCH).days, s, e))
-    room_names = sorted(rooms)
-    remap = {rooms[name]: i for i, name in enumerate(room_names)}
-    bookings = []
-    for r, d, s, e in sorted((remap[r], d, s, e) for r, d, s, e in booked):
-        bookings.extend((r, d, s, e))
     files = {
         'groups.json': [[g, current[g].meta['term'] or current[g].term_id, year_of(g) or ''] for g in groups],
-        'rooms.json': {'epoch': EPOCH.isoformat(), 'groups': len(groups), 'rooms': room_names, 'b': bookings},
     }
     for year, members in sorted(years.items()):
         names, idx, flat = [], {}, []
