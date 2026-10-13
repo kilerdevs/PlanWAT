@@ -10,6 +10,9 @@ All notable changes to PlanWAT are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Automatic refresh: a scheduled workflow re-reads the WLO, WEL and WIM timetable pages (WCY and WTC drivers are
+  prepared, disabled), validates the calendars and publishes them through a `data` branch that the Pages build overlays.
+  A hosted runner goes first, a self-hosted runner takes over when blocked. See docs/REFRESH.md.
 - Front page: "Teraz w Twoich grupach" cards (what is on now or next in the favourite groups), faculty filter chips,
   intake-year headings, star buttons on every group row, expand/collapse all, `/` to search, `?q=` links, clear buttons,
   a rewritten footer (unofficial project, no cookies).

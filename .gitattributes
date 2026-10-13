@@ -4,3 +4,6 @@
 # ...except calendars, which are stored byte-for-byte: RFC 5545 requires CRLF line
 # endings, and calendar apps subscribed to /<GROUP>/plan.ics rely on them.
 *.ics -text diff
+
+# Saved faculty pages used as test fixtures keep their bytes.
+tests/fixtures/refresh/*.htm -text
