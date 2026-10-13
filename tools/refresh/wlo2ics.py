@@ -248,8 +248,18 @@ def parse_page(path):
     date_blocks = []   # (day, [date-or-None x N])
     week_rows = []     # (block_index, slot, [cell-html x N])
     legends = []       # (short, full-or-None) in document order
-    for r in rows:
-        cells = split_cells(r)
+    split = [split_cells(r) for r in rows]
+    # The IOE site prints a transposed grid: every row starts with the
+    # weekday and the lesson rows carry the time slot in the second cell
+    # ([day, slot, spacer, week cells..., legend, full]), while each
+    # weekday block opens with its own date strip in the same shape.
+    # Standard pages never pair a weekday with a slot this way, so one
+    # such row marks the whole page.
+    transposed = any(
+        len(c) >= 20 and DAY_RE.match(clean_text(c[0][1]))
+        and SLOT_RE.match(clean_text(c[1][1])) for c in split)
+    day_strips = {}
+    for cells in split:
         if len(cells) < 20:
             # short rows carry no week columns, but real legend entries hide
             # in them (WML parks lecturer aliases there): harvest every pair.
@@ -261,12 +271,41 @@ def parse_page(path):
                         legends.append(leg)
             continue
         first = clean_text(cells[0][1])
-        mslot = SLOT_RE.match(first)
         # the mergeWith legend cell: last cell carrying the attribute;
         # week columns run between the label and the legend (WEL pages
         # omit trailing empty week columns, so widths vary)
         mi = max((i for i, (a, _) in enumerate(cells)
                   if "mergewith" in a.lower()), default=None)
+        if transposed:
+            # [day, slot-or-blank, spacer, week cells..., legend, full];
+            # the week's dates run from the third cell, and each weekday
+            # block opens with its own date strip in the same shape.
+            leg = legend_pair(cells[mi]) if mi is not None else None
+            if leg:
+                legends.append(leg)
+            if not DAY_RE.match(first):
+                continue  # legend-only row: no day, no dates, no lessons
+            mslot = SLOT_RE.match(clean_text(cells[1][1]))
+            if mslot:
+                bi = day_strips.get(first)
+                if bi is None:
+                    warn("transposed lesson row before its date strip; "
+                         "row skipped")
+                    continue
+                week_rows.append((bi, "%s-%s" % mslot.groups(),
+                                  [c for _, c in cells[3:mi]]))
+                continue
+            dates = []
+            for _, c in cells[3:mi]:
+                m = DATE_RE.match(clean_text(c))
+                if m and m.group(2) in ROMAN_MONTH:
+                    dates.append((int(m.group(1)), ROMAN_MONTH[m.group(2)]))
+                else:
+                    dates.append(None)
+            day_strips[first] = len(date_blocks)
+            date_blocks.append((first, dates))
+            continue
+        mslot = SLOT_RE.match(first)
         if mslot:
             if mi is None:
                 continue
@@ -481,7 +520,8 @@ def match_alias(slot_text, alias):
 
 
 def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
-                  short_map, group, base_year, resolve, lect_alias=None):
+                  short_map, group, base_year, resolve, lect_alias=None,
+                  ioe=False):
     lessons = []
     type_warned = set()
     subj_warned = set()
@@ -580,19 +620,45 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
                     continue
                 groups = []
             else:
-                # WEL-style cell: SUBJ / type / room (the page shows its
-                # own plan; no group or lecturer lines in cells)
-                subj = segs[0].strip()
-                typ = repair_type(segs[1].strip()) if len(segs) > 1 else ""
-                if not subj or not typ:
-                    continue
-                room = segs[-1] if len(segs) >= 3 else ""
-                if len(segs) > 3 and segs[2] in short_map:
-                    lects_pre = list(short_map[segs[2]])
+                if ioe and len(segs) == 4:
+                    # IOE cell: SUBJ / type / room / lecturer alias. The
+                    # alias is a parse intermediate only (the calendar
+                    # never names staff), so it is dropped, not resolved.
+                    subj = segs[0].strip()
+                    typ = repair_type(segs[1].strip())
+                    room = segs[2].strip()
+                    if looks_like_person(room):
+                        room = ""  # a misplaced alias, never publish it
+                    lects_pre, groups, wel = None, [], True
+                elif ioe and len(segs) == 3:
+                    # IOE short cell: SUBJ / type / room-or-alias. A token
+                    # without digits is an alias, not a room: drop it.
+                    subj = segs[0].strip()
+                    typ = repair_type(segs[1].strip())
+                    third = segs[2].strip()
+                    room = (third if re.search(r"\d", third)
+                            or third == "aE" else "")
+                    lects_pre, groups, wel = None, [], True
+                elif ioe:
+                    # IOE bare cell: a subject alone (e.g. 'Ing').
+                    subj, typ, room = segs[0].strip(), "", ""
+                    lects_pre, groups, wel = None, [], True
                 else:
-                    lects_pre = None
-                groups = []
-                wel = True
+                    # WEL-style cell: SUBJ / type / room (the page shows its
+                    # own plan; no group or lecturer lines in cells)
+                    subj = segs[0].strip()
+                    typ = repair_type(segs[1].strip()) if len(segs) > 1 else ""
+                    if not subj or not typ:
+                        continue
+                    room = segs[-1] if len(segs) >= 3 else ""
+                    if len(segs) > 3 and segs[2] in short_map:
+                        lects_pre = list(short_map[segs[2]])
+                    else:
+                        lects_pre = None
+                    groups = []
+                    wel = True
+            if not subj or (not typ and not ioe):
+                continue
             subj_key = resolve(subj)
             if subj_key is None:
                 if subj not in subj_warned:
@@ -602,13 +668,13 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
                 subj_key = subj
             else:
                 full = subjects[subj_key]
-            if wml and looks_like_person(full):
+            if (wml or ioe) and looks_like_person(full):
                 warn("subject %r resolves to staff (%r); lesson skipped" % (subj, full))
                 continue
             if typ not in TYPE_LABELS and typ not in type_warned:
                 warn("unknown type code %r; using it verbatim" % typ)
                 type_warned.add(typ)
-            label = TYPE_LABELS.get(typ, typ)
+            label = TYPE_LABELS.get(typ, typ or "Zajęcia")
             tstart, tend = SLOT_TIMES[slot]
             settle = list(subj_type_lect.get((subj_key, typ), []))
 
@@ -821,7 +887,7 @@ def main(argv):
         base_year = now.year if now.month >= 9 else now.year - 1
     lessons = parse_lessons(date_blocks, week_rows, subjects,
                             subj_type_lect, short_map, gfilter, base_year,
-                            resolve, lect_alias)
+                            resolve, lect_alias, ioe=(faculty == "ioe"))
     ics, n = build_ics(lessons, args.code or group, args.period, updated,
                        datetime.date.today(), faculty)
     with open(args.output, "w", encoding="utf-8", newline="") as f:

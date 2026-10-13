@@ -11,8 +11,10 @@
     "label": "WEL",
     "prefix": "WEL",
     "keep_prefixes": ["WME"],
+    "groups_re": "^(?!IOE|WME)",
     "base": "https://wel.wat.edu.pl/planyzajec/{season}/",
-    "enabled": true
+    "enabled": true,
+    "note": "IOE/WME pages listed here belong to the IOE institute / WIM faculty (canonical owners); they are skipped here so no group gets two calendars."
   },
   "wim": {
     "driver": "plansoft",
@@ -21,7 +23,15 @@
     "base": "https://www.wim.wat.edu.pl/wp-content/uploads/rozklady/{season}/",
     "enabled": true
   },
-  "wcy": {
+  "ioe": {
+    "driver": "plansoft",
+    "label": "IOE",
+    "prefix": "",
+    "groups_re": "^IOE",
+    "base": "https://ioe.wat.edu.pl/plany/lato/",
+    "enabled": true,
+    "note": "Enabled 2026-10-14: the winter plans live under the stale lato/ dir (.../plany/zima/ 404s), so the base is pinned, not seasonal. Transposed grid + SUBJ/type/room/alias cells convert with wlo2ics (--faculty ioe); the WME page listed here belongs to WIM and is skipped."
+  },  "wcy": {
     "driver": "wcy",
     "label": "WCY",
     "index": "https://planzajec.wcy.wat.edu.pl/pl/rozklad",
