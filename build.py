@@ -122,6 +122,9 @@ def read_calendar(path):
                     raise BuildError(f'{path}: an event has no {", ".join(sorted(missing))}')
                 event = None
         elif stack and stack[-1] == 'VEVENT':
+            # PlanWAT keeps no personal data of staff: a calendar that names who teaches is refused.
+            if key == 'CONTACT' or (key == 'DESCRIPTION' and 'prowadzący:' in value.lower()):
+                raise BuildError(f'{path}: calendars must not name staff (remove the {key} line)')
             event.add(key)
             if key == 'DTSTART' and _ymd(value):
                 dates.append(_ymd(value))

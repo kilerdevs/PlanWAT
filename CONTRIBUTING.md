@@ -32,7 +32,7 @@ all welcome.
 | You want to… | Do this |
 |---|---|
 | **Add a group or a new term** | Add `timetables/<term>/<GROUP>.ics` following [docs/ICS-FORMAT.md](docs/ICS-FORMAT.md) and open a PR, or open a [timetable issue](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) with a link to the official plan |
-| **Fix a wrong class** (room, time, teacher) | Edit the event in the group's `.ics`, keep its `UID`, and open a PR, or open a timetable issue |
+| **Fix a wrong class** (room, time) | Edit the event in the group's `.ics`, keep its `UID`, and open a PR, or open a timetable issue |
 | **Fix a bug** | Open a [bug report](https://github.com/kilerdevs/PlanWAT/issues/new?template=bug_report.yml), or go straight to a PR for small fixes |
 | **Propose a feature** | Open a [feature request](https://github.com/kilerdevs/PlanWAT/issues/new?template=feature_request.yml) first for anything non-trivial |
 | **Improve the docs** | README, `docs/`, this file, or a comment where a non-obvious decision deserves one |

@@ -76,7 +76,7 @@ window (90 days is customary) before public disclosure.
 
 ### Out of scope
 
-- **Wrong timetable data** (a room, time or teacher): please open a
+- **Wrong timetable data** (a room or time): please open a
   [timetable issue](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) instead.
 - Headers that GitHub Pages cannot send (`X-Frame-Options`, `frame-ancestors`, …): documented, with the Cloudflare
   rules that restore them, in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#security-headers-on-pages).

@@ -268,6 +268,24 @@ class BuildManyGroupsTest(unittest.TestCase):
         self.assertNotIn('<script>alert(1)</script>', html)
         self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt;', html)
 
+    def test_calendars_that_name_staff_are_refused(self):
+        for extra in ('CONTACT:Test Person', 'DESCRIPTION:Wykład\\nProwadzący: Test Person'):
+            with self.subTest(extra=extra):
+                self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+                path = self.tt / '2026-27-zima' / 'WCY26KY3S1.ics'
+                path.write_text(path.read_text(encoding='utf-8').replace('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\n' + extra),
+                                encoding='utf-8', newline='')
+                with self.assertRaisesRegex(build.BuildError, 'must not name staff'):
+                    build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
+    def test_a_subject_that_merely_starts_with_prowadzenie_is_fine(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05',
+                                                          'DESCRIPTION:Wykład'))
+        path = self.tt / '2026-27-zima' / 'WCY26KY3S1.ics'
+        path.write_text(path.read_text(encoding='utf-8').replace('SUMMARY:Matematyka', 'SUMMARY:Prowadzenie negocjacji'),
+                        encoding='utf-8', newline='')
+        build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
     def test_rejects_a_group_named_like_the_data_folder(self):
         self.add('2026-27-zima', 'data', calendar('data', '2026-09-28', '2027-02-22', '2026-10-05'))
         with self.assertRaisesRegex(build.BuildError, 'reserved'):

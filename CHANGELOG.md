@@ -47,7 +47,7 @@ All notable changes to PlanWAT are documented here. The format follows
 First public release.
 
 ### Added
-- Group timetable page: Live card for the class on now or next (room, time, teacher, progress), grouped day lists on
+- Group timetable page: Live card for the class on now or next (room, time, progress), grouped day lists on
   phones and a day × time-slot grid on wide screens, week picker sheet, arrows / swipe / keyboard navigation,
   "Bieżący tydzień" pill, subject legend, phones scroll to the current class, `.ics` download.
 - Timetables as iCalendar files in `timetables/<term>/<GROUP>.ics`, read in the browser by `src/ics.js` (folded lines,

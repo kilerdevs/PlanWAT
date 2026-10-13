@@ -1,5 +1,5 @@
 name: Timetable
-description: Add a group or a new term, or report a wrong class (room, time, teacher)
+description: Add a group or a new term, or report a wrong class (room, time)
 title: "[Timetable]: "
 labels: ["timetable"]
 body:
@@ -16,7 +16,7 @@ body:
       options:
         - Add a group
         - Add a new term for an existing group
-        - A class is wrong (room, time, teacher, type)
+        - A class is wrong (room, time, type)
         - A class is missing or should not be there
     validations:
       required: true

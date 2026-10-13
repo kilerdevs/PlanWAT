@@ -92,8 +92,7 @@ count = 0
 for week in data['weeks']:
     for day in week['days'].values():
         for ev in day:
-            teachers = ev.get('teachers_full') or []
-            desc = ev['type_full'] + ('\nProwadzący: ' + ', '.join(teachers) if teachers else '')
+            desc = ev['type_full']
             lines += [
                 'BEGIN:VEVENT',
                 f'UID:{local(ev["date"], ev["start"])[:13]}-{group.lower()}@{UID_DOMAIN}',
@@ -105,7 +104,6 @@ for week in data['weeks']:
             ]
             if ev.get('room') and ev['room'] != '-':
                 lines.append(f'LOCATION:{esc(ev["room"])}')
-            lines += [f'CONTACT:{esc(t)}' for t in teachers]
             lines.append(f'DESCRIPTION:{esc(desc)}')
             if ev['subject_full'] in colors:
                 lines.append(f'X-PLAN-COLOR:{colors[ev["subject_full"]]}')

@@ -46,7 +46,7 @@ The interface is Polish; the code and documentation are English.
 
 ## Features
 
-- **Live card:** the class on now (or next today), its room, time, teacher and progress; tapping it jumps to the class.
+- **Live card:** the class on now (or next today), its room, time and progress; tapping it jumps to the class.
 - **Week view:** on phones each day is a grouped list; on wide screens the week becomes a day × time-slot grid. Past days
   and finished classes recede; the class in progress fills its colour capsule as it runs.
 - **Navigation:** arrows, swipe, keyboard (`←` `→` `T` `Esc`), a week picker sheet, and a "Bieżący tydzień" pill to jump

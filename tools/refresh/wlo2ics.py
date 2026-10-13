@@ -40,8 +40,8 @@ Mechanism of the source site (https://wlo.wat.edu.pl/planzajec/zima/):
     aliases. They are resolved data-driven: for each (subject, type) the
     settlement names the lecturer, and the cells using that (subject, type)
     carry (almost always) exactly one distinct short -> mapping learned.
-  * Lecturer names carry academic titles in the source ("Prowadzący"); output uses plain "Firstname Surname" (titles stripped),
-    names stored surname-first on the site ("Prowadzący").
+  * Lecturer names and titles are never written to the calendar: it carries
+    no personal data of staff (no CONTACT line, no instructor line).
   * Slot -> clock time is NOT printed on the page. SLOT_TIMES below reuses
     the WAT-wide standard (same 7 pairs as the WCY planzajec blocks).
     XXX verify against a real WLO lesson if they ever publish hours.
@@ -675,13 +675,7 @@ def build_ics(lessons, group, period, updated, generated, faculty="wlo"):
         lines.append("CATEGORIES:%s" % esc(lesson["type"]))
         if lesson["room"]:
             lines.append("LOCATION:%s" % esc(lesson["room"]))
-        for contact in lesson["contacts"]:
-            lines.append("CONTACT:%s" % esc(contact))
-        if lesson["contacts"]:
-            desc = "%s\nProwadz\u0105cy: %s" % (lesson["type"],
-                                                ", ".join(lesson["contacts"]))
-        else:
-            desc = lesson["type"]
+        desc = lesson["type"]
         if lesson.get("shares"):
             desc += "\nUwaga: %s" % " ".join(lesson["shares"])
         if len(lesson["groups"]) > 1:

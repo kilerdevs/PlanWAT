@@ -79,7 +79,7 @@ test('accepts DURATION instead of DTEND', () => {
   assert.equal(l.end, '09:35');
 });
 
-test('maps CATEGORIES, LOCATION, CONTACT and X-PLAN-COLOR onto lesson fields', () => {
+test('maps CATEGORIES, LOCATION and X-PLAN-COLOR onto lesson fields, and never reads who teaches', () => {
   const p = plan(event([
     'UID:e@test',
     'DTSTART;TZID=Europe/Warsaw:20261005T095000',
@@ -87,14 +87,13 @@ test('maps CATEGORIES, LOCATION, CONTACT and X-PLAN-COLOR onto lesson fields', (
     'SUMMARY:Podstawy grafiki inżynierskiej',
     'CATEGORIES:Laboratorium',
     'LOCATION:108/ 54',
-    'CONTACT:Prowadzący',
-    'CONTACT:Prowadzący',
+    'CONTACT:ignored',
     'X-PLAN-COLOR:#6f5ed1',
   ]));
   const [l] = allLessons(p);
   assert.equal(l.type_full, 'Laboratorium');
   assert.equal(l.room, '108/ 54');
-  assert.deepEqual(l.teachers_full, ['Prowadzący', 'Prowadzący']);
+  assert.equal(l.teachers_full, undefined);
   assert.equal(p.subjectColors['Podstawy grafiki inżynierskiej'], '#6f5ed1');
 });
 
@@ -223,7 +222,7 @@ test('initialWeekIndex stays on weekends that have lessons', () => {
 });
 
 /* ---------- snapshot: the WCY26KY3S1 calendar must parse into the pinned plan ----------
-   The timetables/ files are corrected over time (rooms, times, teachers), so the
+   The timetables/ files are corrected over time (rooms, times), so the
    frozen v1 export above is no longer byte-identical. This pins the current
    truth instead: any correction fails loudly, then the snapshot is regenerated:
      node -e "process.env.TZ='Europe/Warsaw';
