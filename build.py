@@ -427,40 +427,88 @@ def render_group(template, ics_js, term):
     return finish(page, connect=True)
 
 
-def render_index(template, current):
+def plural_wydzial(n):
+    if n == 1:
+        return '1 wydział'
+    m10, m100 = n % 10, n % 100
+    if 2 <= m10 <= 4 and not 12 <= m100 <= 14:
+        return f'{n} wydziały'
+    return f'{n} wydziałów'
+
+
+INTAKE_RE = re.compile(r'^[A-Za-z]{3}(\d{2})')
+STAR_SVG = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6'
+            'L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z"/></svg>')
+
+
+def render_index(template, current, ics_js=''):
     names = {code: pl for code, pl in FACULTIES}
     order = {code: i for i, (code, _) in enumerate(FACULTIES)}
     groups = sorted(current.items(), key=lambda kv: (order.get(faculty_of(kv[0]), len(order)), kv[0]))
+    labels = {code: term.meta['term'] or term.term_id for code, term in groups}
+    uniform = len(set(labels.values())) == 1  # one term for everyone: say it once, not on every row
 
-    sections, fac, rows = [], None, []
+    def intake(code):
+        m = INTAKE_RE.match(code)
+        return 2000 + int(m.group(1)) if m else None
+
+    sections, chips, fac, rows = [], [], None, []
+    totals = {}
+    for code, _ in groups:
+        totals[faculty_of(code)] = totals.get(faculty_of(code), 0) + 1
 
     def flush():
         if rows:
             if fac == 'OTHER':
-                title = 'Pozostałe grupy'
+                title, short = 'Pozostałe grupy', 'Pozostałe'
             else:
-                title = f'{fac} &middot; {html.escape(names[fac])}'
+                title, short = f'{fac} &middot; {html.escape(names[fac])}', fac
+            full = html.escape(names.get(fac, 'Pozostałe grupy'), quote=True)
+            chips.append(f'    <button class="chip" type="button" data-fac="{fac}" aria-pressed="false" title="{full}">'
+                         f'{short}<span class="n">{totals[fac]}</span></button>')
+            lis, last = [], None
+            years = {intake(c) for c, _ in rows_src}
+            for code, row in rows_src:
+                year = intake(code)
+                if len(years) > 1 and year != last:
+                    lis.append(f'    <li class="yr">Rocznik {year}</li>' if year else '    <li class="yr">Pozostałe</li>')
+                    last = year
+                lis.append(row)
             sections.append(f'  <details class="fac-sec" data-fac-section="{fac}">\n'
                             f'    <summary><span class="fac-title">{title}</span>'
                             f'<span class="fac-n">{plural_grup(len(rows))}</span>'
                             '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true">'
                             '<path d="m9 18 6-6-6-6"/></svg></summary>\n'
-                            '  <ul>\n' + '\n'.join(rows) + '\n  </ul>\n  </details>')
+                            '  <ul>\n' + '\n'.join(lis) + '\n  </ul>\n  </details>')
 
+    rows_src = []
     for code, term in groups:
         if faculty_of(code) != fac:
             flush()
-            fac, rows = faculty_of(code), []
-        label = html.escape(term.meta['term'] or term.term_id)
-        rows.append(f'    <li data-group="{code}" data-fac="{faculty_of(code)}">'
-                    f'<a class="group" href="{code}/"><span><span class="code">{code}</span>'
-                    f'<span class="term">{label}</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true">'
-                    '<path d="m9 18 6-6-6-6"/></svg></a></li>')
+            fac, rows, rows_src = faculty_of(code), [], []
+        term_html = '' if uniform else f'<span class="term">{html.escape(labels[code])}</span>'
+        row = (f'    <li class="row" data-group="{code}" data-fac="{faculty_of(code)}">'
+               f'<a class="group" href="{code}/"><span><span class="code">{code}</span>{term_html}</span>'
+               '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>'
+               f'<button class="star" type="button" data-star="{code}" aria-pressed="false" '
+               f'aria-label="Dodaj {code} do ulubionych">{STAR_SVG}</button></li>')
+        rows.append(row)
+        rows_src.append((code, row))
     flush()
+    facs = [f for f in totals if f != 'OTHER']
+    stats = plural_grup(len(groups)) + ' &middot; ' + plural_wydzial(len(facs))
+    if uniform and groups:
+        stats += ' &middot; ' + html.escape(next(iter(labels.values())))
     redirect = f'<meta http-equiv="refresh" content="0; url={groups[0][0]}/">' if len(groups) == 1 else ''
-    page = template.replace('@@GROUPS@@', '\n'.join(sections))
+    all_chip = (f'    <button class="chip" type="button" data-fac="" aria-pressed="true">Wszystkie'
+                f'<span class="n">{len(groups)}</span></button>')
+    chips_html = '\n'.join([all_chip] + chips)
+    page = template.replace('@@ICS_JS@@', ics_js)  # first: the script's own text is never substituted into
+    page = page.replace('@@GROUPS@@', '\n'.join(sections))
+    page = page.replace('@@CHIPS@@', chips_html)
+    page = page.replace('@@STATS@@', stats)
     page = page.replace('@@REDIRECT@@', redirect)
-    return finish(page, connect=False)
+    return finish(page, connect=True)
 
 
 def render_404(template, base_path):
@@ -522,7 +570,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None):
     for group, term in sorted(current.items()):
         write(f'{group}/index.html', render_group(group_tpl, ics_js + '\n' + insights_js, term))
         shutil.copyfile(term.path, out / group / 'plan.ics')
-    write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current))
+    write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js))
     write('404.html', render_404((SRC / '404.html').read_text(encoding='utf-8'), base_path))
     for rel, data in build_data(current).items():
         target = out / DATA_DIR / rel

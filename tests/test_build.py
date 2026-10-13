@@ -126,6 +126,14 @@ class BuildRealSiteTest(unittest.TestCase):
         else:
             self.assertNotIn('http-equiv="refresh"', html)
 
+    def test_root_has_faculty_filters_stars_and_live_cards_support(self):
+        html = (self.out / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('data-fac="WCY"', html)
+        self.assertIn('data-star="WCY26KY3S1"', html)
+        self.assertIn('id="liveCards"', html)
+        self.assertIn('window.PlanICS', html)
+        self.assertIn("connect-src 'self'", html)
+
     def test_root_lists_collapsed_faculty_sections_and_a_group_search(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
         self.assertNotIn('data-facbtn', html)
