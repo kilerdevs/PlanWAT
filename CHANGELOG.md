@@ -9,6 +9,11 @@ All notable changes to PlanWAT are documented here. The format follows
 
 ## [Unreleased]
 
+### Removed
+- All personal data of staff: names, surnames and academic titles are gone from the calendars, the page, the converters,
+  the tests and the whole Git history. Calendars no longer carry `CONTACT` or instructor lines, and the build refuses
+  any calendar that does.
+
 ### Added
 - Group page: "Zaktualizowano" and "Sprawdzono" dates from the refresh, and a pledge by the maintainer that PlanWAT stays free
   (also in the front page footer).
