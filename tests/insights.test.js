@@ -109,19 +109,20 @@ test('catch-up looks only in peer groups of the same major and matches ordinals'
   const year = {
     epoch: '2000-01-01', groups: ['WCY26KY1S1', 'WCY26KY3S1', 'WCY26EL1S1', 'WCY26ELTS6'],
     names: ['Fizyka', 'Ćwiczenia', '100 S', 'Wykład'],
-    // peer of the same major: past class (counts as no. 1), two future ones;
+    // peer of the same major: past class (counts as no. 1), three future ones (no. 4 is beyond my program);
     // other major / other code shape: same classes, never offered
-    e: [0, 0, 1, 2, day - 7, 480, 575, 0, 0, 1, 2, day, 480, 575, 0, 0, 1, 2, day + 7, 480, 575,
+    e: [0, 0, 1, 2, day - 7, 480, 575, 0, 0, 1, 2, day, 480, 575, 0, 0, 1, 2, day + 7, 480, 575, 0, 0, 1, 2, day + 14, 480, 575,
       2, 0, 1, 2, day, 480, 575, 3, 0, 1, 2, day, 480, 575],
   };
-  // my group holds two (Fizyka, Ćwiczenia) classes: the peer's 3rd is not my program
+  // my group holds three (Fizyka, Ćwiczenia) classes: the peer's 2nd and 3rd are my program
   const mine = {
-    '2026-10-01': [L('2026-10-01', '08:00', '09:35', 'Fizyka', 'Ćwiczenia')],
+    '2026-10-01': [L('2026-10-01', '08:00', '09:35', 'Fizyka', 'Ćwiczenia'), L('2026-10-01', '11:40', '13:15', 'Fizyka', 'Ćwiczenia')],
     '2026-10-08': [L('2026-10-08', '08:00', '09:35', 'Fizyka', 'Ćwiczenia')],
     '2026-10-15': [L('2026-10-15', '08:00', '09:35', 'X')],
   };
   const found = I.catchUp(year, 'WCY26KY3S1', mine, 'fizyka', 'Ćwiczenia', '2026-10-15');
-  assert.deepEqual(found.map((f) => [f.group, f.n, I.hhmm(f.start), f.clash]), [['WCY26KY1S1', 2, '08:00', true]]);
+  assert.deepEqual(found.map((f) => [f.group, f.n, I.hhmm(f.start), f.clash]),
+    [['WCY26KY1S1', 2, '08:00', true], ['WCY26KY1S1', 3, '08:00', false]]);
   assert.equal(found[0].date, '2026-10-15');
   // KY1S1's 08:00 class is left out when it is the very class my group attends with it;
   // the later one is offered as no. 2
