@@ -3,19 +3,14 @@ name: Refresh timetables
 # Re-crawls the faculty timetable pages, converts what changed and pushes the calendars to the `data` branch;
 # pages.yml overlays that branch over the repository's timetables/ on every deploy. See docs/REFRESH.md.
 #
-# The hosted runner goes first. If the faculty site blocks it (Incapsula) or the run could not finish, the
-# self-hosted runner (label "planwat", a home PC or Pi) takes over and resumes from the same state file.
+# Runs only on the self-hosted runner (label "planwat"): the faculty sites' Incapsula wall blocks GitHub's
+# datacenter addresses on the first request, so a hosted runner can only fail.
 on:
   # Off-hours (about 03:00 Warsaw time); the plans rarely change, so once a day is plenty.
   schedule:
     - cron: '23 1 * * *'
   workflow_dispatch:
     inputs:
-      runner:
-        description: 'Where to run'
-        type: choice
-        options: [auto, hosted, selfhosted]
-        default: auto
       faculty:
         description: 'Comma-separated faculties, e.g. wel (empty: all enabled)'
         type: string
@@ -30,38 +25,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  hosted:
-    if: github.event_name != 'workflow_dispatch' || inputs.runner != 'selfhosted'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 150
-    permissions:
-      contents: write
-      issues: write
-      actions: write
-    outputs:
-      blocked: ${{ steps.refresh.outputs.blocked }}
-      incomplete: ${{ steps.refresh.outputs.incomplete }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          path: src
-      - id: refresh
-        uses: ./src/.github/actions/refresh
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          profile: hosted
-          faculty: ${{ inputs.faculty }}
-
-  selfhosted:
-    needs: hosted
-    # Only on scheduled runs and on request: never for pull requests, so a fork cannot reach the runner.
-    if: >-
-      always() &&
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
-      !(github.event_name == 'workflow_dispatch' && inputs.runner == 'hosted') &&
-      (needs.hosted.result != 'success' ||
-       needs.hosted.outputs.blocked == 'true' ||
-       needs.hosted.outputs.incomplete == 'true')
+  refresh:
+    # Only scheduled and manual runs reach the runner, never pull requests, so a fork cannot run code on it.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, planwat]
     timeout-minutes: 240
     permissions:

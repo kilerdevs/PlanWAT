@@ -224,6 +224,17 @@ class BuildManyGroupsTest(unittest.TestCase):
         self.assertIn('href="WCY25IY1S1/"', root)
         self.assertIn('href="WCY26KY3S1/"', root)
 
+    def test_group_page_shows_when_the_plan_was_updated_and_checked(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        state = self.tmp / 'state.json'
+        state.write_text('{"version":1,"groups":{"WCY26KY3S1":{"changed":"2026-10-13T17:35:00","checked":"2026-10-14T01:40:00"}}}')
+        out = self.tmp / 'site'
+        build.build(self.tt, out, today=D(2026, 10, 15), nginx_conf=None, state_path=state)
+        html = (out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('<dt>Zaktualizowano</dt><dd>13.10.2026</dd>', html)
+        self.assertIn('<dt>Sprawdzono</dt><dd>14.10.2026 03:40</dd>', html)
+        self.assertIn('pozostanie darmowy', html)
+
     def test_a_single_group_root_redirects_straight_to_it(self):
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
         out = self.tmp / 'site'
