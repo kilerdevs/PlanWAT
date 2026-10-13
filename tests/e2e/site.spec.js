@@ -306,6 +306,20 @@ test('the chosen view is remembered', async ({ page }) => {
   await expect(page.locator('#viewSeg button[data-view="list"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('week blocks sharing a start time have one height on desktop', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile-safari' || testInfo.project.name === 'mobile-chrome',
+    'the day x block grid is desktop-only');
+  await openGroup(page);
+  const heights = await page.locator('#weekBody .lesson').evaluateAll((els) =>
+    els.map((e) => ({ start: e.getAttribute('data-start'), h: e.getBoundingClientRect().height })));
+  const byStart = {};
+  heights.forEach(({ start, h }) => { (byStart[start] = byStart[start] || []).push(h); });
+  expect(Object.keys(byStart).length).toBeGreaterThan(1);
+  Object.entries(byStart).forEach(([start, hs]) => {
+    expect({ start, spread: Math.max(...hs) - Math.min(...hs) }.spread).toBeLessThanOrEqual(1);
+  });
+});
+
 test('subject progress counts classes and finds where to catch up in other groups', async ({ page }) => {
   await openGroup(page);
   await page.locator('#progress summary').click();
@@ -317,6 +331,13 @@ test('subject progress counts classes and finds where to catch up in other group
   await expect(tool(page)).toBeVisible();
   await expect(page.locator('#toolTitle')).toHaveText('Gdzie odrobić: Matematyka II');
   await expect(tool(page).locator('p[role="status"]')).toContainText(/Znaleziono \d+ termin|Brak takich zajęć/);
+  // only peer groups of the same major and year, each carrying its ordinal in the term
+  const rows = tool(page).locator('ul.rows li');
+  await expect.poll(() => rows.count()).toBeGreaterThan(0);
+  for (const li of await rows.all()) {
+    await expect(li.locator('.x')).toHaveText(/^WCY26KY/);
+    await expect(li.locator('.m')).toContainText(/· nr \d+/);
+  }
   await page.locator('#cuFree').check();
   await expect(tool(page).locator('.tag.warn')).toHaveCount(0);
   await page.keyboard.press('Escape');

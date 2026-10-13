@@ -99,25 +99,41 @@ test('free windows shared by several groups', () => {
   assert.equal(I.byDate(REAL)['2026-10-15'].length, I.lessons(REAL).filter((l) => l.date === '2026-10-15').length);
 });
 
-test('catch-up finds the class in other groups of the year and flags clashes', () => {
+test('catch-up looks only in peer groups of the same major and matches ordinals', () => {
   assert.equal(I.yearOf('WCY26KY3S1'), 'WCY26');
   assert.equal(I.yearOf('wlo22FO1S0'), 'WLO22');
   assert.equal(I.yearOf('X1'), null);
+  assert.deepEqual(I.peersOf('WCY26KY3S1', ['WCY26KY1S1', 'WCY26KY3S1', 'WCY26EL1S1', 'WEL26ELTS6', 'WCY26_Fiz1b']), ['WCY26KY1S1']);
+  assert.deepEqual(I.peersOf('X1', ['X1', 'X2']), []);
   const day = I.dayNumber('2026-10-15') - I.dayNumber('2000-01-01');
   const year = {
-    epoch: '2000-01-01', groups: ['G1', 'G2', 'ME'],
-    names: ['Fizyka', 'Ćwiczenia', '100 S', 'Wykład', 'Chemia'],
-    e: [0, 0, 1, 2, day, 480, 575, 1, 0, 1, 2, day, 700, 795, 1, 0, 3, 2, day, 700, 795,
-      2, 0, 1, 2, day, 480, 575, 0, 4, 1, 2, day, 480, 575, 0, 0, 1, 2, day - 1, 480, 575],
+    epoch: '2000-01-01', groups: ['WCY26KY1S1', 'WCY26KY3S1', 'WCY26EL1S1', 'WCY26ELTS6'],
+    names: ['Fizyka', 'Ćwiczenia', '100 S', 'Wykład'],
+    // peer of the same major: past class (counts as no. 1), three future ones (no. 4 is beyond my program);
+    // other major / other code shape: same classes, never offered
+    e: [0, 0, 1, 2, day - 7, 480, 575, 0, 0, 1, 2, day, 480, 575, 0, 0, 1, 2, day + 7, 480, 575, 0, 0, 1, 2, day + 14, 480, 575,
+      2, 0, 1, 2, day, 480, 575, 3, 0, 1, 2, day, 480, 575],
   };
-  const mine = { '2026-10-15': [L('2026-10-15', '08:00', '09:35', 'X')] };
-  const found = I.catchUp(year, 'ME', mine, 'fizyka', 'Ćwiczenia', '2026-10-15');
-  assert.deepEqual(found.map((f) => [f.group, I.hhmm(f.start), f.clash]), [['G1', '08:00', true], ['G2', '11:40', false]]);
+  // my group holds three (Fizyka, Ćwiczenia) classes: the peer's 2nd and 3rd are my program
+  const mine = {
+    '2026-10-01': [L('2026-10-01', '08:00', '09:35', 'Fizyka', 'Ćwiczenia'), L('2026-10-01', '11:40', '13:15', 'Fizyka', 'Ćwiczenia')],
+    '2026-10-08': [L('2026-10-08', '08:00', '09:35', 'Fizyka', 'Ćwiczenia')],
+    '2026-10-15': [L('2026-10-15', '08:00', '09:35', 'X')],
+  };
+  const found = I.catchUp(year, 'WCY26KY3S1', mine, 'fizyka', 'Ćwiczenia', '2026-10-15');
+  assert.deepEqual(found.map((f) => [f.group, f.n, I.hhmm(f.start), f.clash]),
+    [['WCY26KY1S1', 2, '08:00', true], ['WCY26KY1S1', 3, '08:00', false]]);
   assert.equal(found[0].date, '2026-10-15');
-  assert.equal(I.catchUp(year, 'ME', mine, 'Fizyka', '', '2026-10-15').length, 3);
-  // G1's 08:00 class is left out when it is the very class my group attends with it
-  const together = { '2026-10-15': [L('2026-10-15', '08:00', '09:35', 'Fizyka', 'Ćwiczenia', '100 S')] };
-  assert.deepEqual(I.catchUp(year, 'ME', together, 'Fizyka', 'Ćwiczenia', '2026-10-15').map((f) => f.group), ['G2']);
+  // KY1S1's 08:00 class is left out when it is the very class my group attends with it;
+  // the later one is offered as no. 2
+  const together = { '2026-10-15': [L('2026-10-15', '08:00', '09:35', 'Fizyka', 'Ćwiczenia', '100 S'), L('2026-10-15', '11:40', '13:15', 'Fizyka', 'Ćwiczenia', '200 S')] };
+  const year2 = {
+    epoch: '2000-01-01', groups: ['WCY26KY1S1', 'WCY26KY3S1'],
+    names: ['Fizyka', 'Ćwiczenia', '100 S'],
+    e: [1, 0, 1, 2, day, 480, 575, 1, 0, 1, 2, day + 7, 480, 575],
+  };
+  assert.deepEqual(I.catchUp(year2, 'WCY26KY1S1', together, 'Fizyka', 'Ćwiczenia', '2026-10-15').map((f) => [f.group, f.n]),
+    [['WCY26KY3S1', 2]]);
   assert.equal(I.isoFromDayNumber(I.dayNumber('2027-03-28')), '2027-03-28');
 });
 
