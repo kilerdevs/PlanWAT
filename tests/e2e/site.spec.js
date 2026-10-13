@@ -249,7 +249,7 @@ test('the group page has no serious or critical accessibility violations', async
   expect(serious).toEqual([]);
 });
 
-/* ---------- tools: views, progress, statistics, calendar, sharing, comparison, catch-up, free rooms ---------- */
+/* ---------- tools: views, progress, statistics, calendar, sharing, comparison, catch-up ---------- */
 
 const tool = (page) => page.locator('#toolSheet');
 const noCsp = async (page) => expect(await page.evaluate(() => window.__csp)).toEqual([]);
@@ -368,22 +368,6 @@ test('comparing groups shows both plans and the shared free time', async ({ page
   await noCsp(page);
 });
 
-test('free rooms lists rooms with no class at the chosen time', async ({ page }) => {
-  await openGroup(page);
-  await page.locator('#roomsBtn').click();
-  await expect(page.locator('#frDate')).toHaveValue('2026-10-15');
-  await expect(page.locator('#frTime')).toHaveValue('10:30');
-  const status = tool(page).locator('#frResult p[role="status"]');
-  await expect(status).toContainText(/wolnych sal|wolne sale|wolna sala/);
-  // 314 S hosts Matematyka II right now, so it is not free
-  await page.locator('#frQuery').fill('314 S');
-  await expect(tool(page).locator('.rows .t', { hasText: /^314 S$/ })).toHaveCount(0);
-  await page.locator('#frDate').fill('2030-01-01');
-  await page.locator('#frDate').dispatchEvent('change');
-  await expect(tool(page).locator('#frResult p[role="status"]')).toContainText('Brak danych dla tego dnia');
-  await noCsp(page);
-});
-
 test('favourites and recent groups appear on the front page', async ({ page }) => {
   await openGroup(page);
   await page.locator('#favBtn').click();
@@ -446,7 +430,7 @@ test('the list view and the tool sheets have no serious or critical accessibilit
   expect(await scan()).toEqual([]);
   await page.locator('#viewSeg button[data-view="month"]').click();
   expect(await scan()).toEqual([]);
-  for (const id of ['#statsBtn', '#roomsBtn', '#calBtn']) {
+  for (const id of ['#statsBtn', '#calBtn']) {
     await page.locator(id).click();
     await expect(tool(page)).toBeVisible();
     await expect(tool(page).locator('.muted', { hasText: 'Wczytywanie' })).toHaveCount(0);

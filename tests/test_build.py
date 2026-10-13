@@ -273,7 +273,7 @@ class BuildManyGroupsTest(unittest.TestCase):
         with self.assertRaisesRegex(build.BuildError, 'reserved'):
             build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
-    def test_writes_the_group_list_room_bookings_and_year_files(self):
+    def test_writes_the_group_list_and_year_files(self):
         one = 'LOCATION:dr X\\, 1.16/ 16\\;1.17/16'
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05', one))
         self.add('2026-27-zima', 'WCY26KY1S1', calendar('WCY26KY1S1', '2026-09-28', '2027-02-22', '2026-10-05', 'LOCATION:1.16/16'))
@@ -283,11 +283,6 @@ class BuildManyGroupsTest(unittest.TestCase):
         groups = json.loads((out / 'data' / 'groups.json').read_text(encoding='utf-8'))
         self.assertEqual(groups, [['Inne', 'term 2026-09-28', ''], ['WCY26KY1S1', 'term 2026-09-28', 'WCY26'],
                                   ['WCY26KY3S1', 'term 2026-09-28', 'WCY26']])
-        rooms = json.loads((out / 'data' / 'rooms.json').read_text(encoding='utf-8'))
-        day = (D(2026, 10, 5) - D(2000, 1, 1)).days
-        self.assertEqual(rooms['rooms'], ['1.16/16', '1.17/16'])
-        self.assertEqual(rooms['b'], [0, day, 480, 575, 1, day, 480, 575])  # the shared class is booked once
-        self.assertEqual(rooms['groups'], 3)
         year = json.loads((out / 'data' / 'year' / 'WCY26.json').read_text(encoding='utf-8'))
         self.assertEqual(year['groups'], ['WCY26KY1S1', 'WCY26KY3S1'])
         self.assertEqual(len(year['e']), 14)
@@ -322,9 +317,7 @@ class BuildManyGroupsTest(unittest.TestCase):
         self.assertNotIn('Dzień', [g[3] for g in got])
         self.assertNotIn('Odwołane', [g[3] for g in got])
 
-    def test_room_names_and_year_prefixes(self):
-        self.assertEqual(build.split_rooms('dr X, 1.16/ 16;1.17/16;-;Pływalnia;1.17/ 16'), ['1.16/16', '1.17/16'])
-        self.assertEqual(build.split_rooms('314 S'), ['314 S'])
+    def test_year_prefixes(self):
         self.assertEqual(build.year_of('WCY26KY3S1'), 'WCY26')
         self.assertEqual(build.year_of('wlo22FO1S0'), 'WLO22')
         self.assertIsNone(build.year_of('WCY_M1'))

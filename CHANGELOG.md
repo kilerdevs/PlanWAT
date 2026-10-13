@@ -21,7 +21,7 @@ All notable changes to PlanWAT are documented here. The format follows
 - Timetables for 23 WTC groups (e.g. `WTC26NX1S1`, `WTC22CO1S0`), converted from the
   WTC Plansoft timetables (`WTC zima 2026/2027`, semestr zimowy 2026/27).
 - Group page: list and month views, breaks between classes, subject progress, statistics, comparing groups
-  (with shared free time), "Gdzie odrobić?" (the same class in other groups of the year), free rooms, calendar
+  (with shared free time), "Gdzie odrobić?" (the same class in other groups of the year), calendar
   subscription (Google, Apple, link), sharing, print / PDF, and a notice when the plan changed since the last visit.
   Everything is free and stored only in the browser.
 - Front page: favourite and recently viewed groups; Enter opens the only matching group.
