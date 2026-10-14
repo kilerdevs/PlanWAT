@@ -162,6 +162,31 @@ class Run(unittest.TestCase):
         self.assertEqual((changed, blocked, complete), ([], False, True))
         self.assertEqual(self.ics().read_bytes(), first)
 
+    def test_the_coming_semester_is_refreshed_into_its_own_term_with_its_own_state(self):
+        args = refresh.parse(['--out', str(self.tmp), '--force'])
+        state = core.State(self.tmp / core.STATE_FILE)
+        coming = core.upcoming_reference(dt.date(2026, 8, 20))
+        self.assertEqual(coming, dt.date(2026, 9, 1))
+        result = refresh.refresh_faculty('wlo', WLO_CFG, args, state, coming, FakeSession(self.routes),
+                                         sleep=lambda s: None, ahead=True)
+        self.assertEqual(result, (['WLO26AX1S1'], False, True))
+        self.assertTrue(self.ics().is_file())
+        self.assertEqual(list(state.groups), ['WLO26AX1S1@2026-27-zima'])  # the running semester's entry is untouched
+        self.assertNotIn('last_ok', state.faculties['wlo'])
+
+    def test_lessons_of_another_semester_are_not_filed_under_the_term(self):
+        self.run_once()
+        ics = self.ics().read_text(encoding='utf-8')
+        self.assertTrue(core.validate(ics, 'WLO26AX1S1', '2026-27-zima')[0])
+        ok, why = core.validate(ics, 'WLO26AX1S1', '2026-27-lato')
+        self.assertFalse(ok)
+        self.assertIn('outside the term', why)
+
+    def test_the_coming_semester_is_only_looked_for_before_it_starts(self):
+        self.assertEqual(core.upcoming_reference(dt.date(2027, 1, 5)), dt.date(2027, 3, 1))
+        for month in (3, 4, 5, 6, 7, 9, 10, 11, 12):
+            self.assertIsNone(core.upcoming_reference(dt.date(2026, month, 15)))
+
     def test_a_block_stops_the_run_and_keeps_the_last_good_calendar(self):
         self.run_once()
         first = self.ics().read_bytes()

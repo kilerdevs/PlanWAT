@@ -88,8 +88,9 @@ def remember_validators(entry, response):
         entry['etag'] = etag
 
 
-def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic):
-    """Returns (changed codes, blocked, complete)."""
+def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic, ahead=False):
+    """Returns (changed codes, blocked, complete). `today` is a date inside the semester to refresh; with `ahead`
+    that is the coming semester, tracked under its own state keys so the running one keeps its dates."""
     driver = drivers.load(cfg['driver'], name, cfg, today)
     tid = core.term_id(today)
     out = Path(args.out)
@@ -110,7 +111,8 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         log(f'[{name}] robots.txt disallows the timetable pages; skipping the faculty')
         return [], False, False
     now = core.now_utc()
-    todo = [i for i in items if args.force or not state.fresh(i.code, now, args.fresh_hours)]
+    key = (lambda code: f'{code}@{tid}') if ahead else (lambda code: code)
+    todo = [i for i in items if args.force or not state.fresh(key(i.code), now, args.fresh_hours)]
     if args.limit:
         todo = todo[:args.limit]
     log(f'[{name}] {len(items)} groups, {len(items) - len(todo)} fresh, {len(todo)} to check (term {tid})')
@@ -121,7 +123,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             return changed, False, False
         if n > 1:
             sleep(random.uniform(*args.delay))
-        entry = state.groups.setdefault(item.code, {})
+        entry = state.groups.setdefault(key(item.code), {})
         try:
             r = session.get(item.url, timeout=60, headers=conditional_headers(entry))
         except Exception as err:
@@ -179,8 +181,9 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             path.write_bytes(ics.encode('utf-8'))
             if n % 25 == 0:
                 state.save()
-    fac['last_ok'] = core.now_utc().isoformat()
-    fac['blocked_at'] = None
+    if not ahead:
+        fac['last_ok'] = core.now_utc().isoformat()
+        fac['blocked_at'] = None
     log(f'[{name}] done: {len(changed)} changed, {failed} skipped')
     return changed, False, True
 
@@ -228,6 +231,16 @@ def main(argv=None, session=None, today=None):
         incomplete |= not complete
         if was_blocked:
             break  # the same egress is probably blocked everywhere: stop, do not probe the other hosts
+        coming = core.upcoming_reference(today)
+        if coming:
+            # The next semester's plans may already be up. Whatever is not published yet is just not there:
+            # that never makes the run incomplete, only a block stops it.
+            log(f'[{name}] looking for the coming semester ({core.term_id(coming)})')
+            done, was_blocked, _ = refresh_faculty(name, sources[name], args, state, coming, session, ahead=True)
+            changed += done
+            blocked |= was_blocked
+            if was_blocked:
+                break
     if not args.dry_run:
         state.save()
     export(blocked=blocked, incomplete=incomplete, changed=len(changed))

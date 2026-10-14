@@ -616,3 +616,24 @@ test('a current plan does not show the unpublished notice', async ({ page }) => 
   await openGroup(page);
   await expect(page.locator('#staleNotice')).toBeHidden();
 });
+
+test('a group with two terms switches between them with ?t= and exports the term on show', async ({ page }) => {
+  const nav = '<nav class="termswitch" id="termSwitch" aria-label="Semestr"><a href="./" data-term="2026-27-zima" aria-current="true">Zima 2026/27</a>' +
+    '<a href="./?t=2026-27-lato" data-term="2026-27-lato">Lato 2026/27</a></nav>';
+  await page.route(/\/WCY26KY3S1\/(\?.*)?$/, async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, body: (await res.text()).replace(/(<p class="sub[^>]*id="termLine">[^<]*<\/p>)/, `$1${nav}`) });
+  });
+  await page.route('**/plan-2026-27-lato.ics', async (route) => {
+    const res = await page.request.get(new URL('plan.ics', route.request().url()).href);
+    await route.fulfill({ status: 200, contentType: 'text/calendar', body: (await res.text()).replace(/X-PLAN-TERM:.*/, 'X-PLAN-TERM:semestr letni 2026/27') });
+  });
+  const problems = await openGroup(page, { path: `${GROUP}?t=2026-27-lato` });
+  await expect(page.locator('#termLine')).toContainText('letni');
+  await expect(page.locator('#icsLink')).toHaveAttribute('href', 'plan-2026-27-lato.ics');
+  await expect(page.locator('#factUpdated')).toBeHidden();
+  await expect(page.locator('#termSwitch a[aria-current]')).toHaveText('Zima 2026/27'); // markup is static: current term of the build
+  await page.goto(GROUP + '?t=nope');
+  await expect(page.locator('#icsLink')).toHaveAttribute('href', 'plan.ics');
+  expect(problems).toEqual([]);
+});

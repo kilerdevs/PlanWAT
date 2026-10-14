@@ -235,7 +235,7 @@ class BuildRealSiteTest(unittest.TestCase):
     def test_group_page_uses_relative_urls_for_its_calendar(self):
         html = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
         self.assertIn('href="plan.ics"', html)
-        self.assertIn("fetch('plan.ics'", html)
+        self.assertIn("fetch(planFile", html)
         self.assertNotIn('/plan.ics', html)
 
     def test_group_page_first_paint_shows_the_calendar_metadata(self):
@@ -333,6 +333,22 @@ class BuildManyGroupsTest(unittest.TestCase):
     def add(self, term, group, text):
         (self.tt / term).mkdir(parents=True, exist_ok=True)
         (self.tt / term / f'{group}.ics').write_text(text, encoding='utf-8', newline='')
+
+    def test_a_group_with_two_terms_gets_a_switcher_and_the_other_terms_calendar(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        self.add('2026-27-lato', 'WCY26KY3S1', calendar('WCY26KY3S1', '2027-03-01', '2027-06-21', '2027-03-02'))
+        self.add('2026-27-zima', 'WCY25IY1S1', calendar('WCY25IY1S1', '2026-09-28', '2027-02-22', '2026-10-06'))
+        out = self.tmp / 'site'
+        build.build(self.tt, out, today=D(2026, 10, 14), nginx_conf=None)
+        page = (out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('id="termSwitch"', page)
+        self.assertIn('<a href="./" data-term="2026-27-zima" aria-current="true">Zima 2026/27</a>', page)
+        self.assertIn('data-term="2026-27-lato">Lato 2026/27</a>', page)
+        self.assertIn('X-PLAN-SEMESTER-START:20270301',
+                      (out / 'WCY26KY3S1' / 'plan-2026-27-lato.ics').read_text(encoding='utf-8'))
+        self.assertTrue((out / 'WCY26KY3S1' / 'plan-2026-27-lato-przypomnienia.ics').exists())
+        self.assertNotIn('termSwitch', (out / 'WCY25IY1S1' / 'index.html').read_text(encoding='utf-8').split('<script>')[0])
+        self.assertFalse((out / 'WCY25IY1S1' / 'plan-2026-27-lato.ics').exists())
 
     def test_each_group_gets_its_current_term_and_the_root_lists_all_groups(self):
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))

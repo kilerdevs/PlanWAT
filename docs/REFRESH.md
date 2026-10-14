@@ -116,3 +116,15 @@ while the runner host must stay clean and the published site must stay safe:
 
 Every group page shows **Zaktualizowano** (when the plan last changed) and **Sprawdzono** (when the crawler last verified
 it), taken from `refresh-state.json` at build time; groups never refreshed show the calendar's own generation date.
+
+## Two semesters at once
+
+Faculties publish the coming semester's plans before it starts. In August (winter semester) and January–February
+(summer semester) each run therefore refreshes the running semester first and then the coming one, into its own
+`timetables/<term>/` folder (`core.upcoming_reference`). The coming semester is tracked in `refresh-state.json` under
+`<GROUP>@<term>`, so the running semester's "checked" and "changed" dates stay intact; whatever is not published yet is
+simply not there and never makes a run incomplete. A calendar is accepted only when most of its lessons fall into the
+term's window (`core.term_window`), so a faculty that still shows last year's plan is not filed under the new term.
+
+The site builds every term it finds: a group's page shows the running (or next) semester and, when the group has
+another one, a Zima/Lato switch (`?t=<term>`, calendar at `plan-<term>.ics`).
