@@ -15,6 +15,10 @@ All notable changes to PlanWAT are documented here. The format follows
   any calendar that does.
 
 ### Added
+- Two semesters per group: the group page gets a Zima/Lato switch (`?t=<term>`) when a second term exists, and the other
+  term's calendars are published as `plan-<term>.ics` (and `plan-<term>-przypomnienia.ics`).
+- Refresh backend: while the coming semester is being published (August, January–February) it is refreshed next to the
+  running one, with its own state, and calendars whose lessons mostly fall outside the term are rejected.
 - Group page: when every class of a plan predates the semester (the faculty has not published the new plan yet), a notice says so.
 - Automatic refresh now covers WCY: group list read from the faculty's jump menu, term label and dates set by the driver, and
   pages that still show last semester's lessons are skipped instead of being filed under the new term.

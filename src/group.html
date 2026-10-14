@@ -904,6 +904,11 @@
     .tools .dl { flex: none; }
   }
   #favBtn[aria-pressed="true"] .i { fill: currentColor; color: var(--t1); }
+  .termswitch { display: inline-flex; gap: 2px; padding: 3px; margin-top: 10px; border-radius: 999px; background: var(--s3); }
+  .termswitch a { padding: 6px 14px; border-radius: 999px; color: var(--t2); font-size: 13px; font-weight: 600; text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; }
+  .termswitch a[aria-current] { background: var(--t1); color: var(--bg); }
+  .termswitch a:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+
   .notice {
     display: flex;
     flex-wrap: wrap;
@@ -1419,6 +1424,7 @@
       <a class="backlink enter" id="backLink" href="../"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chevron-left"/></svg>Wszystkie grupy</a>
       <h1 class="title enter" id="groupName">@@GROUP@@</h1>
       <p class="sub enter d1" id="termLine">@@TERM_LINE@@</p>
+      @@TERM_SWITCH@@
       <div class="semprog enter d2" id="semProg">
         <div class="semprog-top"><span>Postęp semestru</span><span class="num" id="semPct">0%</span></div>
         <div class="track" role="progressbar" aria-label="Postęp semestru" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="semTrack"><div class="fill" id="semFill"></div></div>
@@ -2685,7 +2691,7 @@
   }
 
   function openCalendar() {
-    var feeds = { plain: 'plan.ics', remind: 'plan-przypomnienia.ics' };
+    var feeds = { plain: planFile, remind: planFile.replace(/\.ics$/, '-przypomnienia.ics') };
     openTool('Dodaj do kalendarza', function (body) {
       para(body, 'Subskrypcja dodaje plan do aplikacji kalendarza i aktualizuje go sama, gdy plan się zmieni (zwykle w ciągu kilku godzin).');
       var chk = body.appendChild(el('label', 'check'));
@@ -3170,13 +3176,23 @@
 
   /* offline: the service worker keeps the last copy of this page and its plan; say that it is a saved copy */
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(function () {});
+  /* another term of this group: ?t=<term> opens plan-<term>.ics, but only for a term the page itself links to */
+  var planFile = (function () {
+    var t = new URLSearchParams(location.search).get('t');
+    var link = t && document.querySelector('#termSwitch a[data-term="' + t.replace(/[^\w-]/g, '') + '"]');
+    return link && !link.hasAttribute('aria-current') ? 'plan-' + link.getAttribute('data-term') + '.ics' : 'plan.ics';
+  })();
+  if (planFile !== 'plan.ics') {
+    $('icsLink').setAttribute('href', planFile);
+    ['factUpdated', 'factChecked'].forEach(function (id) { $(id).hidden = true; });
+  }
   function showOffline() { $('offlineNotice').hidden = navigator.onLine !== false; }
   window.addEventListener('online', showOffline);
   window.addEventListener('offline', showOffline);
   showOffline();
 
   try {
-    fetch('plan.ics', { credentials: 'same-origin' })
+    fetch(planFile, { credentials: 'same-origin' })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.arrayBuffer();

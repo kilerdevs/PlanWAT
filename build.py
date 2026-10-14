@@ -499,7 +499,25 @@ def load_refresh_state(path):
     return groups if isinstance(groups, dict) else {}
 
 
-def render_group(template, ics_js, term, refreshed=None):
+def term_label(term_id):
+    """'2026-27-zima' -> 'Zima 2026/27' (anything else is shown as it is)."""
+    m = re.fullmatch(r'(\d{4})-(\d{2})-(zima|lato)', term_id)
+    return f'{m.group(3).capitalize()} {m.group(1)}/{m.group(2)}' if m else term_id
+
+
+def term_switch(term, terms):
+    """The Zima/Lato links of a group that has more than one term; empty for the usual single term."""
+    if len(terms) < 2:
+        return ''
+    links = []
+    for t in sorted(terms, key=lambda t: t.start):
+        href = './' if t.term_id == term.term_id else f'./?t={t.term_id}'
+        here = ' aria-current="true"' if t.term_id == term.term_id else ''
+        links.append(f'<a href="{html.escape(href, quote=True)}" data-term="{t.term_id}"{here}>{html.escape(term_label(t.term_id))}</a>')
+    return '<nav class="termswitch" id="termSwitch" aria-label="Semestr">' + ''.join(links) + '</nav>'
+
+
+def render_group(template, ics_js, term, refreshed=None, terms=()):
     m = term.meta
     e = lambda v: html.escape(v, quote=True)  # noqa: E731
     description = f'Plan zajęć grupy {m["group"]}' + (f' — Wydział {m["faculty"]}' if m['faculty'] else '') + \
@@ -510,6 +528,7 @@ def render_group(template, ics_js, term, refreshed=None):
     checked = _stamp(refreshed.get('checked'), with_time=True)
     values = {
         '@@GROUP@@': e(m['group']),
+        '@@TERM_SWITCH@@': term_switch(term, terms),
         '@@DESCRIPTION@@': e(description),
         '@@TERM_LINE@@': 'Plan zajęć &middot; ' + e(m['term']) if m['term'] else 'Plan zajęć',
         '@@FACULTY@@': e(m['faculty']),
@@ -734,9 +753,14 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
         all_styles.extend(styles)
 
     for group, term in sorted(current.items()):
-        write(f'{group}/index.html', render_group(group_tpl, '\n'.join((ics_js, insights_js, campus_js)), term, refreshed.get(group)))
+        write(f'{group}/index.html', render_group(group_tpl, '\n'.join((ics_js, insights_js, campus_js)), term,
+                                                  refreshed.get(group), by_group[group]))
         shutil.copyfile(term.path, out / group / 'plan.ics')
         (out / group / REMINDER_FILE).write_bytes(with_reminders(term.path.read_bytes()))
+        for other in by_group[group]:  # the group's other terms: plan-<term>.ics, opened by the page's ?t=<term>
+            if other.term_id != term.term_id:
+                shutil.copyfile(other.path, out / group / f'plan-{other.term_id}.ics')
+                (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.path.read_bytes()))
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js))
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8')))

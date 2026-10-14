@@ -53,6 +53,25 @@ def term_id(today):
     return f'{year}-{(year + 1) % 100:02d}-{season}'
 
 
+def upcoming_reference(today):
+    """A date inside the semester that is about to start, while the faculties publish its plans ahead of time.
+
+    August -> the winter semester (from 1 September), January and February -> the summer one (from 1 March).
+    None the rest of the year. Both semesters are then refreshed side by side, each into its own term folder."""
+    if today.month == 8:
+        return dt.date(today.year, 9, 1)
+    if today.month in (1, 2):
+        return dt.date(today.year, 3, 1)
+    return None
+
+
+def term_window(tid):
+    """(first, last) day, as YYYYMMDD, that lessons of the term `2026-27-zima` / `2026-27-lato` may fall on."""
+    year, _, season = tid.split('-')
+    year = int(year)
+    return (f'{year}0901', f'{year + 1}0229') if season == 'zima' else (f'{year + 1}0201', f'{year + 1}0930')
+
+
 def period_label(prefix, today):
     season, year = season_of(today)
     return f'{prefix} {season} {year}/{year + 1}'
@@ -98,6 +117,11 @@ def validate(ics, code, tid, previous=None, max_loss=0.4):
             return False, str(err).replace(str(path), f'{tid}/{code}.ics')
     if not event_count(ics):
         return False, 'no events'
+    first, last = term_window(tid)
+    starts = re.findall(r'BEGIN:VEVENT.*?DTSTART[^:\r\n]*:(\d{8})', ics, re.S)
+    inside = sum(first <= d <= last for d in starts)
+    if starts and inside * 2 < len(starts):
+        return False, f'most lessons fall outside the term ({min(starts)}..{max(starts)}): the faculty shows another semester'
     if previous:
         before, now = event_count(previous), event_count(ics)
         if before >= 5 and now < before * (1 - max_loss):
