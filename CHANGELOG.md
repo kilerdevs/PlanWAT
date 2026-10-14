@@ -15,6 +15,8 @@ All notable changes to PlanWAT are documented here. The format follows
   any calendar that does.
 
 ### Added
+- Light theme: follows the system by default, with an Auto / Ciemny / Jasny switch on the front and group pages (stored in the browser only; the map stays dark).
+- "Drukuj / PDF" now produces one clean A4 sheet per week: black on white, one line per class, no buttons or browser header and footer.
 - Installable app: an "Zainstaluj aplikację" button on the front page and group pages when the browser offers installation
   (Chrome, Edge, Android), a Safari hint on iOS, iOS web-app meta tags, and the map page links the manifest too; tests read
   Chromium's own installability check for the front page, a group and the map.

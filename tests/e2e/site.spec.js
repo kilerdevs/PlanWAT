@@ -663,3 +663,56 @@ test('"Moje przedmioty" hides a subject everywhere, remembers it, and the downlo
   expect(await page.locator('#weekBody .lesson').count()).toBe(before);
   expect(problems).toEqual([]);
 });
+
+test('the system light theme is followed, and a stored choice wins and survives a reload', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  const problems = await openGroup(page);
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(await bg()).toBe('rgb(242, 242, 247)');
+  await page.locator('[data-theme-set="dark"]').click();
+  expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
+  expect(await bg()).toBe('rgb(0, 0, 0)');
+  await page.reload();
+  await expect(page.locator('.lesson').first()).toBeVisible();
+  expect(await bg()).toBe('rgb(0, 0, 0)');
+  await expect(page.locator('[data-theme-set="dark"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('[data-theme-set="auto"]').click();
+  expect(await bg()).toBe('rgb(242, 242, 247)');
+  expect(problems).toEqual([]);
+});
+
+test('the front page and a group page in the light theme have no serious or critical accessibility violations', async ({ page }) => {
+  test.slow();
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+  const scan = async () => {
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+    return results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
+      .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  };
+  await openGroup(page);
+  expect(await scan()).toEqual([]);
+  await page.locator('#viewSeg button[data-view="list"]').click();
+  expect(await scan()).toEqual([]);
+  await page.goto('/');
+  await expect(page.locator('h1')).toBeVisible();
+  expect(await scan()).toEqual([]);
+});
+
+test('the map page stays dark whatever the system theme', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/mapa/');
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(0, 0, 0)');
+});
+
+test('printing a week gives one clean A4 sheet without the page chrome', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'page.pdf is Chromium only');
+  await openGroup(page);
+  await page.emulateMedia({ media: 'print' });
+  const pdf = await page.pdf({ format: 'A4', preferCSSPageSize: true });
+  expect((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+  for (const gone of ['.tools', '.viewbar', '.live', '#progress', '.legend', '.themeswitch']) {
+    await expect(page.locator(gone).first()).toBeHidden();
+  }
+  await expect(page.locator('.dow').first()).toBeVisible();
+});

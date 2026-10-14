@@ -1,0 +1,22 @@
+/* ---- theme: the page tokens are the dark ones; "light" restates them. Auto follows the system, a stored choice wins ---- */
+:root {
+  --hl: 255, 255, 255;
+  --past-1: #a1a1a6;
+  --past-2: #86868b;
+  --glass-solid: rgba(22, 22, 24, 0.95);
+  --pill-hover: rgba(58, 58, 60, 0.78);
+  --warn: #ffb340;
+  --scrim: rgba(0, 0, 0, 0.6);
+}
+:root[data-theme="light"] {
+@@LIGHT@@
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+@@LIGHT@@
+  }
+}
+.themeswitch { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--s3); vertical-align: middle; }
+.themeswitch button { font: inherit; font-size: 0.8125rem; font-weight: 600; color: var(--t2); background: none; border: 0; border-radius: 999px; padding: 6px 14px; min-height: 32px; cursor: pointer; }
+.themeswitch button[aria-pressed="true"] { background: var(--t1); color: var(--bg); }
+.themeswitch button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -7,8 +7,10 @@
 <meta name="google-site-verification" content="4JlUoMTu9DUDJHMVXEl4njYiw2QjxqPH-TBvJ1fXyHM">
 @@REDIRECT@@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+@@THEME_HEAD@@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="PlanWAT">
@@ -29,8 +31,8 @@
     --t1: #f5f5f7;
     --t2: #a1a1a6;
     --t3: #86868b;
-    --line: rgba(255, 255, 255, 0.08);
-    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --line: rgba(var(--hl), 0.08);
+    --edge: inset 0 1px 0 rgba(var(--hl), 0.06);
     --accent: #0a84ff;
     --accent-text: #4da3ff;
     --accent-line: rgba(10, 132, 255, 0.5);
@@ -96,7 +98,7 @@
     padding: 14px 16px;
     border-radius: 20px;
     background: var(--s2);
-    box-shadow: var(--edge), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    box-shadow: var(--edge), inset 0 0 0 1px rgba(var(--hl), 0.14);
     font-size: 0.9375rem;
     color: var(--t2);
   }
@@ -170,7 +172,7 @@
   }
   .chip:focus-visible { outline-color: var(--accent); }
   .chip:active { background: var(--s3); }
-  .chip[aria-pressed="true"] { background: var(--s3); color: var(--t1); box-shadow: var(--edge), inset 0 0 0 1px rgba(255, 255, 255, 0.28); }
+  .chip[aria-pressed="true"] { background: var(--s3); color: var(--t1); box-shadow: var(--edge), inset 0 0 0 1px rgba(var(--hl), 0.28); }
   .chip .n { color: var(--t3); font-variant-numeric: tabular-nums; }
   .chip[aria-pressed="true"] .n { color: var(--t2); }
   .fac-sec {
@@ -374,6 +376,7 @@
     h1 { font-size: 4rem; letter-spacing: -0.04em; }
     .filters { margin: 12px 0 0; padding: 2px 0; flex-wrap: wrap; overflow: visible; }
   }
+/*@@THEME_CSS@@*/
 </style>
 </head>
 <body>
@@ -419,6 +422,7 @@
     <p>Zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie. Serwis nie używa plików cookie ani narzędzi śledzących; ulubione grupy zapisują się tylko w Twojej przeglądarce.</p>
     <p>Opiekun projektu zobowiązuje się, że PlanWAT pozostanie darmowy dla wszystkich studentów.</p>
     <p><strong>PlanWAT nigdy nie poprosi Cię o hasło</strong> ani inne dane logowania (USOS, e-dziekanat, poczta). Jeśli ktoś o nie prosi w imieniu PlanWAT, to oszustwo.</p>
+    <p><div class="themeswitch" role="group" aria-label="Motyw"><button type="button" data-theme-set="auto" aria-pressed="true">Auto</button><button type="button" data-theme-set="dark" aria-pressed="false">Ciemny</button><button type="button" data-theme-set="light" aria-pressed="false">Jasny</button></div></p>
     <p id="installRow" hidden><button class="appbtn" id="installBtn" type="button" hidden>Zainstaluj PlanWAT jako aplikację</button> <span id="installHint"></span></p>
     <p><a href="prywatnosc/">Prywatność i zasady</a> · <a href="https://github.com/kilerdevs/PlanWAT/issues">Zgłoś błąd</a></p>
   </footer>

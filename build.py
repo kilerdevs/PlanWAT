@@ -463,8 +463,22 @@ def csp(scripts, styles, connect, frame_ancestors=False, extra=None):
     return '; '.join(parts)
 
 
+def themed(page):
+    """Fill the theme markers (light tokens, the switch's styles, the early script). Pages without them stay as they are."""
+    if '@@THEME_HEAD@@' not in page and '/*@@THEME_CSS@@*/' not in page:
+        return page
+    light = ''.join('    ' + line + chr(10) for line in (SRC / 'theme-light.css').read_text(encoding='utf-8').splitlines())
+    css = (SRC / 'theme.css').read_text(encoding='utf-8').replace('@@LIGHT@@', light.rstrip(chr(10)))
+    js = (SRC / 'theme.js').read_text(encoding='utf-8')
+    for name, code in (('theme.css', css), ('theme.js', js)):
+        if '@@' in code:
+            raise BuildError(f'src/{name} must not contain "@@"')
+    return page.replace('@@THEME_HEAD@@', '<script>' + js + '</script>').replace('/*@@THEME_CSS@@*/', css)
+
+
 def finish(page, connect, extra=None):
     """Pin the page's inline code into its meta CSP and sanity-check the result."""
+    page = themed(page)
     if 'style="' in page:
         raise BuildError('inline style attributes would be blocked by the CSP')
     scripts, styles = inline_hashes(page)
@@ -637,7 +651,8 @@ def render_map(template, ics_js, campus_js):
 
 
 def render_privacy(template):
-    return finish(template, connect=False)
+    # the notice runs no script at all: it follows the system theme through CSS only (no stored choice)
+    return finish(template.replace('@@THEME_HEAD@@' + chr(10), ''), connect=False)
 
 
 def robots_txt(base_path, noindex):

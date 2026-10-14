@@ -39,7 +39,7 @@ The official WAT plan is a large table built for desktop. This site turns the sa
   - Calendar feed with a reminder 15 minutes before each class (`plan-przypomnienia.ics`).
   - Public-site basics: privacy notice and terms at `/prywatnosc/`, "PlanWAT never asks for your password" in the footer, `robots.txt`, `/.well-known/security.txt`.
   - Campus map at `/mapa/`: building markers by faculty, search, walking directions; rooms in the plan link to their building and each day opens its classes on the map.
-  - Dark theme only. The light/system switch was removed in the owner's 2026-10-11 redesign brief ("Dark theme only").
+  - Dark and light themes: the system's choice by default, with an Auto / Ciemny / Jasny switch (stored in the browser only). The map stays dark. This restores a switch the 2026-10-11 redesign had removed; dark remains the reference design.
 - **Terminology** (keep in Polish): blok (one class slot), Wykład / Ćwiczenia / Laboratorium / Zaliczenie / Spotkanie organizacyjne, tydzień, sesja egzaminacyjna, e-dziekanat. Group codes follow the WAT format, e.g. `WCY26KY3S1`.
 - **Technical setup:**
   - Timetables live in `timetables/<term>/<GROUP>.ics` (iCalendar, RFC 5545; format in `docs/ICS-FORMAT.md`). `build.py` validates them, picks each group's current term by date and writes `site/`: `/<GROUP>/index.html` + `/<GROUP>/plan.ics`, a group list at `/` (redirects while there is one group) and `404.html`. The group page fetches `plan.ics` and renders it in the browser with `src/ics.js` (tests: `tests/ics.test.js`, `tests/test_build.py`, `tests/e2e/`).
