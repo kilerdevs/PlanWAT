@@ -418,6 +418,20 @@ class BuildManyGroupsTest(unittest.TestCase):
                 with self.assertRaisesRegex(build.BuildError, 'must not name staff'):
                     build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
+    def test_a_location_that_names_a_person_is_refused(self):
+        for room in (r'dr inż. Nazwisko Imie\, 255 S', r'mgr inż. Nazwisko Imie\;mgr Inny Osoba\, 3/ 23A', 'prof. dr hab. Nazwisko Imie'):
+            with self.subTest(room=room):
+                self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+                path = self.tt / '2026-27-zima' / 'WCY26KY3S1.ics'
+                path.write_text(path.read_text(encoding='utf-8').replace('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nLOCATION:' + room),
+                                encoding='utf-8', newline='')
+                with self.assertRaisesRegex(build.BuildError, 'LOCATION names a person'):
+                    build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
+    def test_ordinary_rooms_are_not_mistaken_for_people(self):
+        for room in ('314 S', r'1.9/ 16\;1.10/ 16', 'aula/ 135', '7a-b Bibl.', '1002 HILTON'):
+            self.assertFalse(build._names_person(room), room)
+
     def test_a_subject_that_merely_starts_with_prowadzenie_is_fine(self):
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05',
                                                           'DESCRIPTION:Wykład'))
@@ -468,7 +482,7 @@ class BuildManyGroupsTest(unittest.TestCase):
             build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
     def test_writes_the_group_list_and_year_files(self):
-        one = 'LOCATION:dr X\\, 1.16/ 16\\;1.17/16'
+        one = 'LOCATION:1.16/ 16\\;1.17/16'
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05', one))
         self.add('2026-27-zima', 'WCY26KY1S1', calendar('WCY26KY1S1', '2026-09-28', '2027-02-22', '2026-10-05', 'LOCATION:1.16/16'))
         self.add('2026-27-zima', 'Inne', calendar('Inne', '2026-09-28', '2027-02-22', '2026-10-06', 'LOCATION:-'))

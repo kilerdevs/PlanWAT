@@ -273,6 +273,21 @@ class TitlesTest(unittest.TestCase):
         self.assertFalse(wlo2ics.looks_like_person('Etyka zawodowa'))
 
 
+class PublicRoomTest(unittest.TestCase):
+    def test_a_person_in_the_room_text_is_dropped_and_the_room_kept(self):
+        self.assertEqual(wlo2ics.public_room('dr inż. Kowalski Jan, 255 S'), '255 S')
+        self.assertEqual(wlo2ics.public_room('dr inż. Kowalski Jan, dr inż. Nowak Adam, 1.17/16'), '1.17/16')
+        self.assertEqual(wlo2ics.public_room('mgr inż. Kowalski Jan;mgr inż. Nowak Adam, 3/ 23A;5/ 23A'), '3/ 23A;5/ 23A')
+        self.assertEqual(wlo2ics.public_room('dr hab. inż.(prof. ucz.) Kowalski Jan, aula/135'), 'aula/135')
+
+    def test_a_person_alone_leaves_no_location(self):
+        self.assertEqual(wlo2ics.public_room('dr hab. Kowalski Jan'), '')
+
+    def test_ordinary_rooms_are_untouched(self):
+        for room in ('314 S', '1.9/ 16;1.10/ 16', 'aula/ 135', '7a-b Bibl.', '', None):
+            self.assertEqual(wlo2ics.public_room(room), room)
+
+
 class WtcDiscovery(unittest.TestCase):
     def discover(self, body, headers=None):
         driver = wtc.Driver('wtc', WTC_CFG, TODAY)

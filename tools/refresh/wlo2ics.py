@@ -385,6 +385,31 @@ def looks_like_person(full):
     return bool(re.search(r"[A-Za-z\u0100-\u017f]", stripped))
 
 
+# Academic and military titles only. The wider TITLE_WORDS also holds words like "st" and "wat",
+# which open real room names ("ST.nr 1(PWC2)"), so they cannot decide whether a room is a person.
+ROOM_TITLES = {"dr", "hab", "prof", "inż", "inz", "mgr", "lic", "płk", "ppłk", "mjr", "kpt", "por",
+               "ppor", "gen", "bryg", "rez", "ucz"}
+
+
+def names_person(part):
+    """True for 'dr inż. Kowalski Jan': leading title(s) followed by a capitalised name."""
+    toks = [t for t in re.split(r"[\s.()]+", part.strip()) if t]
+    i = 0
+    while i < len(toks) and toks[i].lower() in ROOM_TITLES:
+        i += 1
+    return 0 < i < len(toks) and toks[i][0].isalpha() and toks[i][0].isupper()
+
+
+def public_room(room):
+    """The room text that may be published: every ';'/','-separated part that names a person is
+    dropped, so a misparsed cell can never put staff into a calendar. A room without such a part
+    is returned unchanged."""
+    parts = [p.strip() for p in re.split(r"[;,]", room or "")]
+    if not any(p and names_person(p) for p in parts):
+        return room
+    return ";".join(p for p in parts if p and not names_person(p))
+
+
 def build_tables(legends):
     """Legends -> subject full names + (subject, type) -> [lecturers].
 
@@ -806,8 +831,9 @@ def build_ics(lessons, group, period, updated, generated, faculty="wlo"):
                      % (lesson["date"], lesson["end"]))
         lines.append("SUMMARY:%s" % esc(lesson["subject"]))
         lines.append("CATEGORIES:%s" % esc(lesson["type"]))
-        if lesson["room"]:
-            lines.append("LOCATION:%s" % esc(lesson["room"]))
+        room = public_room(lesson["room"])
+        if room:
+            lines.append("LOCATION:%s" % esc(room))
         desc = lesson["type"]
         if lesson.get("shares"):
             desc += "\nUwaga: %s" % " ".join(lesson["shares"])

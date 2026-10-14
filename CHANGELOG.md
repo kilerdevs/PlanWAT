@@ -98,6 +98,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - `CI`, `Egress` i `SAST` nie uruchamiają się już po pushu na `master`: pull request wydania zdążył je wykonać.
 
 ### Naprawiono
+- **Dane kadry w `LOCATION`:** przy części komórek WLO konwerter wpisywał do pola sali także prowadzących (np. `dr inż. …, 255 S`),
+  przez co 8 kalendarzy publikowało nazwiska. Konwerter odrzuca teraz każdą część sali będącą tytułem z nazwiskiem, a build odmawia
+  kalendarza, w którego `LOCATION` taka część występuje. Gałąź `data` została oczyszczona wraz z historią.
 - Niewidoczny przycisk instalacji pojawiał się na iOS, mimo że miał być ukryty (reguła CSS nadpisywała atrybut `hidden`).
 - Alerty CodeQL: nazwa pliku semestru powstaje z zweryfikowanej wartości zapytania, a nie z tekstu strony. Wyrażenie regularne w
   teście przestało pomijać znaczniki pisane wielkimi literami. Zamiana średnika w teście nie jest już tożsamościowa.
