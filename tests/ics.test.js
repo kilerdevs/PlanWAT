@@ -255,3 +255,28 @@ test('the WCY26KY3S1 calendar matches the pinned plan snapshot', () => {
   assert.equal(p.weeks.length, 22);
   assert.deepEqual(p, snapshot);
 });
+
+test('a class listed twice (same time, subject, type and room) is shown once', () => {
+  const ev = (room) => event(['UID:x' + room, 'DTSTART;TZID=Europe/Warsaw:20261015T100000', 'DTEND;TZID=Europe/Warsaw:20261015T113000',
+    'SUMMARY:Matematyka', 'CATEGORIES:Wykład', 'LOCATION:' + room]);
+  const p = plan([...ev('A1'), ...ev('A1'), ...ev('B2')]);
+  assert.equal(allLessons(p).length, 2);
+});
+
+test('subjectsOf lists every subject with its count, sorted', () => {
+  const ev = (n, s) => event(['UID:' + n, 'DTSTART:20261015T100000', 'DTEND:20261015T113000', 'SUMMARY:' + s, 'X-PLAN-COLOR:#aabbcc']);
+  const parsed = PlanICS.parse(cal([...ev(1, 'Fizyka'), ...ev(2, 'Algebra'), ...ev(3, 'Fizyka')]));
+  assert.deepEqual(PlanICS.subjectsOf(parsed).map((s) => [s.name, s.count, s.color]), [['Algebra', 1, '#aabbcc'], ['Fizyka', 2, '#aabbcc']]);
+});
+
+test('hidden subjects drop out of the plan and out of the calendar text', () => {
+  const ev = (n, s) => event(['UID:' + n, 'DTSTART:20261015T100000', 'DTEND:20261015T113000', 'SUMMARY:' + s]);
+  const raw = cal([...ev(1, 'Fizyka'), ...ev(2, 'Algebra\, liniowa'), 'X-KEEP:1']);
+  const parsed = PlanICS.parse(raw);
+  assert.deepEqual(allLessons(PlanICS.toPlan(PlanICS.withoutSubjects(parsed, ['Fizyka']))).map((l) => l.subject_full), ['Algebra, liniowa']);
+  const text = PlanICS.filterText(raw, ['Algebra, liniowa']);
+  assert.ok(text.includes('SUMMARY:Fizyka') && !text.includes('Algebra'));
+  assert.ok(text.includes('X-KEEP:1') && text.trim().endsWith('END:VCALENDAR'));
+  assert.equal(PlanICS.parse(text).events.length, 1);
+  assert.equal(PlanICS.filterText(raw, []), raw);
+});
