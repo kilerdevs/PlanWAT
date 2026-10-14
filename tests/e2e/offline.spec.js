@@ -40,3 +40,31 @@ test('the manifest and the worker are served from the site', async ({ request })
   expect(await (await request.get('/.well-known/security.txt')).text()).toContain('Contact: ');
   expect((await request.get('/prywatnosc/')).ok()).toBe(true);
 });
+
+test('Chromium finds nothing that stops the front page, a group and the map from being installed', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'installability is read from Chromium');
+  for (const path of ['/', '/WCY26KY3S1/', '/mapa/']) {
+    await page.goto(path);
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => true)).catch(() => {});
+    await page.reload();
+    const cdp = await context.newCDPSession(page);
+    const { installabilityErrors } = await cdp.send('Page.getInstallabilityErrors');
+    expect(installabilityErrors, path).toEqual([]);
+    expect((await cdp.send('Page.getAppManifest')).errors, path).toEqual([]);
+  }
+});
+
+test('an install button appears when the browser offers installation, and asks it to prompt', async ({ page }) => {
+  await page.addInitScript(() => { window.__prompted = 0; });
+  await page.goto('/WCY26KY3S1/');
+  await expect(page.locator('#installBtn')).toBeHidden();
+  await page.evaluate(() => {
+    const e = new Event('beforeinstallprompt', { cancelable: true });
+    e.prompt = () => { window.__prompted++; return Promise.resolve(); };
+    window.dispatchEvent(e);
+  });
+  await expect(page.locator('#installBtn')).toBeVisible();
+  await page.locator('#installBtn').click();
+  expect(await page.evaluate(() => window.__prompted)).toBe(1);
+  await expect(page.locator('#installBtn')).toBeHidden();
+});
