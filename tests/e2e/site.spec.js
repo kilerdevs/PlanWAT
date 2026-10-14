@@ -539,7 +539,13 @@ test('tapping a class finds where to make up that very meeting', async ({ page }
   await expect(tool(page)).toBeHidden();
 
   // the room link inside the class keeps going to the map, and the subject is a keyboard-reachable button
-  await expect(lesson.locator('a.room')).toHaveAttribute('href', /^\.\.\/mapa\/\?b=/);
+  await expect(lesson.locator('.room a')).toHaveAttribute('href', /^\.\.\/mapa\/\?b=/);
+  // only the room text is the map link: the pin next to it belongs to the class like everything else
+  await lesson.locator('.room svg').click();
+  await expect(tool(page)).toBeVisible();
+  await expect(page).toHaveURL(/\/WCY26KY3S1\/$/);
+  await page.keyboard.press('Escape');
+  await expect(tool(page)).toBeHidden();
   await lesson.locator('button.subj').focus();
   await page.keyboard.press('Enter');
   await expect(tool(page)).toBeVisible();
