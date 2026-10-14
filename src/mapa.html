@@ -175,6 +175,8 @@
     cursor: pointer; opacity: var(--bldg-opacity);
   }
   .bldg > span { display: block; transform: scale(var(--bldg-scale)); }
+  .bldg.dot { width: 16px; height: 16px; border-width: 2px; }
+  .bldg.dot::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; } /* keeps a 32px tap target */
   .bldg.wide { width: auto; min-width: 30px; padding: 0 6px; border-radius: 15px; }
   .bldg.on-day { border-color: #fff; box-shadow: 0 0 0 3px var(--accent), 0 1px 4px rgba(0, 0, 0, 0.6); opacity: 1; }
   .bldg[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 4px var(--accent); opacity: 1; z-index: 2; }
@@ -183,7 +185,7 @@
   .maplibregl-ctrl-group { background: var(--s2) !important; border: 1px solid var(--line-2); }
   .maplibregl-ctrl-group button + button { border-top-color: var(--line-2) !important; }
   .maplibregl-ctrl-icon { filter: invert(1); }
-  .maplibregl-ctrl-attrib { background: rgba(17, 17, 19, 0.85) !important; color: var(--t2); }
+  .maplibregl-ctrl.maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib-inner { background: rgba(17, 17, 19, 0.85) !important; color: var(--t2) !important; }
   .maplibregl-ctrl-attrib a { color: var(--t1) !important; }
   .maplibregl-ctrl-attrib-button { filter: invert(1); }
   .maplibregl-ctrl-top-right { top: calc(var(--top) - 10px); right: calc(var(--gr) - 10px); }
@@ -278,7 +280,7 @@
     return svg;
   }
   function dot(color, cls) { var d = el('span', cls || 'dot'); d.style.setProperty('--fc', color); return d; }
-  function markerLabel(b) { return b.code === 'BIBL' ? 'B' : b.code || (/^Brama/.test(b.name) ? '↗' : '·'); }
+  function markerLabel(b) { return b.code === 'BIBL' ? 'B' : b.code || (/^Brama/.test(b.name) ? '↗' : ''); }
 
   var map = null, pitched = true, markers = [];
   var sheet = $('sheet'), selection = $('selection');
@@ -504,23 +506,27 @@
       try {
         var style = map.getStyle();
         var source = Object.keys(style.sources).filter(function (k) { return style.sources[k].type === 'vector'; })[0];
-        var firstSymbol = (style.layers.filter(function (l) { return l.type === 'symbol'; })[0] || {}).id;
+        // Insert after the last line or fill layer: a 2D layer drawn later paints over the 3D buildings
+        // (this style puts its first label before the roads, so "before the first symbol" left paths on the roofs).
+        var lastFlat = -1;
+        style.layers.forEach(function (l, i) { if (l.type !== 'symbol') lastFlat = i; });
+        var firstSymbol = (style.layers[lastFlat + 1] || {}).id;
         if (source) {
           // Light from the upper left so walls and roofs differ in shade, and a sky in the page colour so the
           // horizon at 55° fades out instead of ending on a hard edge on tall desktop windows.
-          map.setLight({ anchor: 'viewport', color: '#ffffff', intensity: 0.35, position: [1.2, 210, 35] });
+          map.setLight({ anchor: 'viewport', color: '#ffffff', intensity: 0.2, position: [1.2, 210, 35] });
           if (map.setSky) map.setSky({ 'sky-color': '#0c0c0c', 'horizon-color': '#18181b', 'fog-color': '#0c0c0c', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.4 });
           map.addLayer({
             id: 'buildings-3d', type: 'fill-extrusion', source: source, 'source-layer': 'building', minzoom: 14,
             // building outlines that also come as separate parts are flagged hide_3d; extruding both makes them flicker
             filter: ['!=', ['get', 'hide_3d'], true],
             paint: {
-              'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#2c2d32', 25, '#383a40', 60, '#46484f'],
+              'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#3a3b41', 25, '#45474e', 60, '#52545c'],
               'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, ['coalesce', ['get', 'render_height'], 8]],
               'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, ['coalesce', ['get', 'render_min_height'], 0]],
               // opaque on purpose: translucent extrusions show their back walls through the front ones
               'fill-extrusion-opacity': 1,
-              'fill-extrusion-vertical-gradient': true
+              'fill-extrusion-vertical-gradient': false
             }
           }, firstSymbol);
         }
@@ -532,7 +538,7 @@
       btn.type = 'button';
       var label = markerLabel(b);
       if (label.length > 2) btn.classList.add('wide');
-      btn.appendChild(el('span', null, label));
+      if (label) btn.appendChild(el('span', null, label)); else btn.classList.add('dot');
       btn.style.setProperty('--fc', b.faculty.color);
       btn.style.setProperty('--fi', C.inkOn(b.faculty.color));
       btn.title = b.name;
