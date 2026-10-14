@@ -600,3 +600,19 @@ test('tapping a class finds where to make up that very meeting', async ({ page }
   await expect(tool(page)).toBeVisible();
   await noCsp(page);
 });
+
+test('a plan whose lessons all predate the semester says the faculty has not published it yet', async ({ page }) => {
+  await page.route('**/plan.ics', async (route) => {
+    const res = await route.fetch();
+    const body = (await res.text()).replace(/X-PLAN-SEMESTER-START:\d+/, 'X-PLAN-SEMESTER-START:20990101');
+    await route.fulfill({ response: res, body });
+  });
+  const problems = await openGroup(page);
+  await expect(page.locator('#staleNotice')).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+test('a current plan does not show the unpublished notice', async ({ page }) => {
+  await openGroup(page);
+  await expect(page.locator('#staleNotice')).toBeHidden();
+});

@@ -1442,6 +1442,10 @@
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
         <span class="notice-text">Jesteś offline. Widzisz plan zapisany w przeglądarce przy ostatniej wizycie.</span>
       </div>
+      <div class="notice" id="staleNotice" role="status" hidden>
+        <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
+        <span class="notice-text">Wydział nie opublikował jeszcze planu na ten semestr. Widzisz ostatni dostępny plan; zajrzyj później, odświeżamy go codziennie.</span>
+      </div>
       <div class="notice" id="changeNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
         <span class="notice-text" id="changeText"></span>
@@ -3143,6 +3147,13 @@
       document.title = 'Plan zajęć ' + m.group;
       $('icsLink').setAttribute('download', 'plan-' + m.group.replace(/[^\w.-]+/g, '-') + '.ics');
     }
+    /* the faculty may still show last semester's lessons: none of them falls into this semester yet */
+    var stale = !!m.semesterStart && weeks.every(function (w) {
+      return Object.keys(w.days).every(function (k) {
+        return w.days[k].every(function (l) { return l.date < m.semesterStart; });
+      });
+    });
+    $('staleNotice').hidden = !stale;
     $('termLine').textContent = m.term ? 'Plan zajęć · ' + m.term : 'Plan zajęć';
     fact('factFaculty', m.faculty);
     fact('factSemester', fmtFullDate(m.semesterStart || weeks[0].monday) + ' – ' +
