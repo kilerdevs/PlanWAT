@@ -1,0 +1,42 @@
+# Paste-snippet for the existing Blackbox + Prometheus on the plebania box (NOT yet wired).
+# Probes the LAN GUI at http://plebania:18080/api/status with the http_2xx module, every 60s.
+# Split into two pastes: `blackbox` goes into blackbox.yml `modules:`, `scrape` into prometheus.yml `scrape_configs:`.
+blackbox:
+  # blackbox.yml addition (http_2xx is a stock module; renamed here so the stock one stays untouched):
+  modules:
+    http_2xx_egress_status:
+      prober: http
+      timeout: 10s
+      http:
+        method: GET
+        # Fail when /api/status stops answering 2xx (matches EgressStatusDown alert).
+        valid_status_codes: [200]
+        # Optional body check: the GUI always returns JSON with a "mode" key.
+        # Uncomment if your Blackbox version supports it:
+        # fail_if_body_not_matches_regexp:
+        #   - '"mode":'
+        preferred_ip_protocol: ip4
+
+prometheus:
+  # prometheus.yml addition (60s interval, feeds probe_success{job="egress-status"}):
+  scrape_configs:
+    - job_name: egress-status
+      metrics_path: /probe
+      scrape_interval: 60s
+      scrape_timeout: 15s
+      params:
+        module: [http_2xx_egress_status]
+        target: [http://plebania:18080/api/status]
+      static_configs:
+        - targets:
+            # Address of the Blackbox exporter on the box; keep the probed target in params above.
+            - 127.0.0.1:9115
+          labels:
+            instance: plebania-egress
+      relabel_configs:
+        - source_labels: [__address__]
+          target_label: __param_target
+        - source_labels: [__param_target]
+          target_label: instance
+        - target_label: __address__
+          replacement: 127.0.0.1:9115

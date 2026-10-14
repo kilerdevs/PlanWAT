@@ -1,0 +1,69 @@
+# Drop-in PrometheusRule template for the plebania egress box (NOT yet wired).
+# Paste into the box Prometheus (or apply as a PrometheusRule CR) and adapt the
+# metric names to whatever exporter/recording rule exposes the GUI JSON.
+#
+# Adaptation notes (generic names used below):
+# - egress up/down: Blackbox `probe_success{job="egress-status"}` probing
+#   http://plebania:18080/api/status (see blackbox-snippet.yml). If you probe
+#   the container port directly, change the job/instance labels.
+# - host verified counts: needs a recording rule or exporter mapping
+#   GET /api/status `.hosts.<host>.verified` -> `egress_host_verified{host=...}`
+#   and `.hosts.<host>.mode` -> `egress_host_direct{host=...}` (1 when DIRECT).
+# - pool size: map GET /api/status `.pool` ok-count -> `egress_pool_alive`.
+# - disk: standard node_exporter `node_filesystem_avail_bytes` /
+#   `node_filesystem_size_bytes`; adjust mountpoint + threshold to the box
+#   reality (root ~84%, /srv ~98% at time of writing).
+# - runner: existing Prometheus `up{job="..."}` for the runner job; set the
+#   job label to the one the box already scrapes.
+groups:
+  - name: planwat-egress
+    rules:
+      # Egress GUI unreachable: the pool, mode and run reports are blind.
+      - alert: EgressStatusDown
+        expr: probe_success{job="egress-status"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Egress /api/status down 5m"
+          description: "Blackbox probe of http://plebania:18080/api/status failing for 5m."
+
+      # A chain host with 0 verified proxies sits in DIRECT fallback (fail-open).
+      - alert: EgressHostStuckDirect
+        expr: egress_host_verified == 0
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Chain host stuck DIRECT with 0 verified ({{ $labels.host }})"
+          description: "Host {{ $labels.host }} has 0 verified proxies for >2h; faculty traffic goes direct."
+
+      # Pool nearly empty: rotation has no room to rotate.
+      - alert: EgressPoolLow
+        expr: egress_pool_alive < 5
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Egress pool alive <5"
+          description: "Fewer than 5 alive proxies for 30m; check /api/status pool table."
+
+      # Box disk: tune per mountpoint; /srv fills first on plebania.
+      - alert: BoxDiskFilling
+        expr: 100 * (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) > 85
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Box disk >85% ({{ $labels.mountpoint }})"
+          description: "Mount {{ $labels.mountpoint }} over 85% for 30m (box reality: root ~84%, /srv ~98%). Lower per-mountpoint if /srv keeps tripping."
+
+      # Runner not scraped: scheduled refreshes silently stop.
+      - alert: RunnerOffline
+        expr: up{job="planwat-runner"} == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Runner offline"
+          description: "Prometheus up{job=\"planwat-runner\"} is 0 for 15m; refresh.yml has nowhere to run."
