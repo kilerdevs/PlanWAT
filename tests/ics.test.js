@@ -42,6 +42,22 @@ test('unfolds folded lines and unescapes text values', () => {
   assert.equal(l.room, '134 K, 133 K; 131 K');
 });
 
+test('alarms inside an event (the reminder feed) do not change the class', () => {
+  const p = plan(event([
+    'UID:a@test',
+    'DTSTART;TZID=Europe/Warsaw:20261002T080000',
+    'DTEND;TZID=Europe/Warsaw:20261002T093500',
+    'SUMMARY:Matematyka I',
+    'LOCATION:314 S',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Przypomnienie', 'TRIGGER:-PT15M', 'END:VALARM',
+  ]));
+  const [l] = allLessons(p);
+  assert.equal(allLessons(p).length, 1);
+  assert.equal(l.subject_full, 'Matematyka I');
+  assert.equal(l.room, '314 S');
+  assert.equal(l.start, '08:00');
+});
+
 test('decode unfolds raw bytes before UTF-8 decoding, even inside a multi-byte character', () => {
   // "Żywienie" with the fold placed between the two bytes of "Ż" (0xC5 0xBB), plus a UTF-8 BOM
   const head = Buffer.from('﻿BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:z@test\r\nDTSTART:20261002T080000\r\nDTEND:20261002T093500\r\nSUMMARY:', 'utf8');

@@ -54,6 +54,12 @@ The interface is Polish; the code and documentation are English.
 - **Meeting numbers:** every class shows which meeting of its subject and type it is, e.g. "Wykład · 3/15".
 - **Three views:** Tydzień, **Lista** (today onwards, past days on request) and **Miesiąc** (tap a day to open its week);
   breaks of 30 minutes or more show as "Okienko" between classes.
+- **Walking time:** between two classes in different buildings the plan shows the walk, e.g. "Do bud. 65 · ~6 min
+  pieszo", linked to the map, and flags it when the walk takes longer than the break. The Live card adds it to the next
+  class.
+- **Offline and installable:** a service worker keeps the last copy of the pages you opened and their plans, so the plan
+  opens without signal (with a notice that it is the saved copy); each group page can be added to the home screen as its
+  own app.
 - **Subject legend** that highlights one subject across the week, and **subject progress** (classes done out of the
   total, the next one, the count per class type).
 - **Mapa kampusu** (`/mapa/`): every WAT building on a 3D map, coloured by faculty, with search, a faculty legend,
@@ -63,10 +69,13 @@ The interface is Polish; the code and documentation are English.
   Tapping a class runs it for that very meeting (same type and number).
 - **Porównaj grupy:** up to four plans side by side, week by week, with the time all of them are free.
 - **Statystyki:** hours per week, per weekday and per class type, earliest start, latest end, longest day, breaks.
-- **Download, subscribe** (Google Calendar, Apple Calendar via webcal, a copyable feed link) and **share** the plan;
+- **Download, subscribe** (Google Calendar, Apple Calendar via webcal, a copyable feed link), optionally as a feed with
+  a reminder 15 minutes before each class (`plan-przypomnienia.ics`), and **share** the plan;
   **print / PDF** the shown week or list.
 - **Favourites and recent groups** on the front page, and a notice when the plan changed since your last visit. These
   live only in the browser's storage: no account, no tracking, everything is free.
+- **Public-site basics:** a privacy notice and terms of use at `/prywatnosc/`, the footer note that PlanWAT never asks
+  for a password, `robots.txt` and `/.well-known/security.txt` (RFC 9116); the dev preview is marked `noindex`.
 - **Accessible and fast:** WCAG 2.1 AA contrast, keyboard and screen-reader support, `prefers-reduced-motion` respected,
   no framework and no third-party scripts.
 
@@ -162,7 +171,11 @@ headers Pages cannot send, are described in [docs/DEPLOYMENT.md](docs/DEPLOYMENT
 - Every page carries a **hash-pinned Content-Security-Policy**: only its own inline script and style run, it may fetch
   only its own `plan.ics`, and the only external origin is Google Fonts. The campus map page (`/mapa/`) is the one
   exception: it also loads MapLibre GL JS from `unpkg.com` (pinned to a version and a Subresource Integrity hash) and
-  map tiles from `tiles.openfreemap.org`, and allows the `blob:` workers MapLibre renders with.
+  map tiles from `tiles.openfreemap.org`, and allows the `blob:` workers MapLibre renders with. The front and group
+  pages also allow `worker-src 'self'` and `manifest-src 'self'` for the offline worker (`/sw.js`) and the web app
+  manifest.
+- The service worker caches only same-origin pages, calendars and app files (network first) and Google Fonts; it never
+  touches other requests, and the production worker leaves the `/dev/` preview to its own worker.
 - Calendar text is rendered with `textContent` in the browser and HTML-escaped at build time; colours are accepted only as
   `#rrggbb`.
 - CI runs CodeQL (JavaScript, Python, workflows), a Grype scan of the Docker image, and dependency audits. Actions are

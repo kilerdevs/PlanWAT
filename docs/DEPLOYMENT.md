@@ -19,7 +19,13 @@ on a custom domain; only the 404 page needs the base path, which the workflow ta
 Every deploy also builds the tip of `dev` into `/dev/` (e.g. <https://kilerdevs.github.io/PlanWAT/dev/>), linked as
 "Wersja testowa (dev)" from the production front-page footer, with a "Wersja stabilna" link back. Pushing to `dev`
 refreshes the preview; production is always built from `master`, so a dev push can never promote unfinished content
-to the site root. The daily rebuild keeps the preview's current-term pick fresh too.
+to the site root. The daily rebuild keeps the preview's current-term pick fresh too. The preview is built with
+`--noindex` (a `noindex, nofollow` meta tag on every page and a closed `robots.txt`), and has its own service worker
+at `/dev/sw.js`, which the production worker never interferes with.
+
+`robots.txt` and `/.well-known/security.txt` are only read at the root of a host, so on `kilerdevs.github.io/PlanWAT/`
+they take effect once the site has a custom domain; the Pages artifact includes dotfiles for `.well-known/` and drops
+the internal `.planwat-site` build markers.
 
 > [!NOTE]
 > GitHub disables scheduled workflows in public repositories after 60 days without activity. If that happens, re-enable

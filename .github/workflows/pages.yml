@@ -64,7 +64,7 @@ jobs:
       - name: Build the production site
         run: python prod/build.py --out site --base-path "${{ steps.pages.outputs.base_path }}"
       - name: Build the dev preview
-        run: python devsrc/build.py --out site/dev --base-path "${{ steps.pages.outputs.base_path }}/dev"
+        run: python devsrc/build.py --out site/dev --base-path "${{ steps.pages.outputs.base_path }}/dev" --noindex
       # Cross-link the two front pages. Plain anchors only: no inline script or
       # style changes, so the hash-pinned CSPs stay valid.
       - name: Link production and preview
@@ -83,9 +83,13 @@ jobs:
           dev.write_text(html.replace('</footer>', link + '</footer>', 1), encoding='utf-8')
           print('linked production <-> dev preview')
           EOF
+      # The artifact includes dotfiles for .well-known/security.txt; the build markers are internal.
+      - name: Drop build markers
+        run: find site -name .planwat-site -delete
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
+          include-hidden-files: true
 
   deploy:
     needs: build

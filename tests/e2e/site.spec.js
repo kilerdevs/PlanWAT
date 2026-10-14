@@ -92,6 +92,27 @@ test('the root page has no serious or critical accessibility violations', async 
   expect(serious).toEqual([]);
 });
 
+test('the privacy page is linked from the footer, accessible and runs no script', async ({ page }) => {
+  const csp = [];
+  await page.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (e) => { window.__csp = (window.__csp || []).concat(e.violatedDirective); });
+  });
+  await page.goto('/');
+  await expect(page.locator('footer')).toContainText('PlanWAT nigdy nie poprosi Cię o hasło');
+  await page.locator('footer a[href="prywatnosc/"]').click();
+  await expect(page).toHaveURL(/\/prywatnosc\/$/);
+  await expect(page.locator('h1')).toHaveText('Prywatność i zasady');
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  expect(serious).toEqual([]);
+  csp.push(...(await page.evaluate(() => window.__csp || [])));
+  expect(csp).toEqual([]);
+});
+
 test('on a weekend without classes the next week is shown', async ({ page }) => {
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
@@ -157,6 +178,16 @@ test('the group page links back to the list of groups', async ({ page }) => {
   await expect(back).toBeVisible();
   await expect(back).toHaveAttribute('href', '../');
   await expect(back).toHaveText('Wszystkie grupy');
+});
+
+test('a change of building between classes shows the walk and links to the map', async ({ page }) => {
+  await openGroup(page);
+  await page.locator('#viewSeg button[data-view="list"]').click();
+  // Friday 16 Oct: 307 S until 9:35, then 201 65 from 9:50
+  const walk = page.locator('#listView .gap').filter({ hasText: 'Do bud. 65' }).first();
+  await expect(walk).toContainText('~6 min pieszo');
+  await expect(walk).not.toHaveClass(/tight/);
+  await expect(walk.locator('a')).toHaveAttribute('href', '../mapa/?b=65');
 });
 
 test('arrow buttons, keys and the current-week pill move between weeks', async ({ page }) => {
@@ -370,6 +401,15 @@ test('the calendar sheet offers subscription links and the file', async ({ page 
   await expect(page.locator('#calApple')).toHaveAttribute('href', /^webcal:\/\/127\.0\.0\.1:\d+\/WCY26KY3S1\/plan\.ics$/);
   await expect(page.locator('#calGoogle')).toHaveAttribute('href', /^https:\/\/calendar\.google\.com\/calendar\/render\?cid=webcal%3A%2F%2F/);
   await expect(tool(page).locator('a[download="plan-WCY26KY3S1.ics"]')).toHaveAttribute('href', 'plan.ics');
+
+  // the reminder switch points every action at the calendar with alarms
+  await page.locator('#calRemind').check();
+  await expect(page.locator('#calApple')).toHaveAttribute('href', /^webcal:\/\/127\.0\.0\.1:\d+\/WCY26KY3S1\/plan-przypomnienia\.ics$/);
+  await expect(page.locator('#calGoogle')).toHaveAttribute('href', /plan-przypomnienia\.ics$/);
+  await expect(page.locator('#calFile')).toHaveAttribute('href', 'plan-przypomnienia.ics');
+  await expect(page.locator('#calFile')).toHaveAttribute('download', 'plan-WCY26KY3S1-przypomnienia.ics');
+  await page.locator('#calRemind').uncheck();
+  await expect(page.locator('#calFile')).toHaveAttribute('href', 'plan.ics');
 });
 
 test('share hands the page link to the system share sheet', async ({ page }) => {

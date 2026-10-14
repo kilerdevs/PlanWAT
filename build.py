@@ -5,7 +5,11 @@ Output (default: site/):
     index.html            group list (redirects straight to the group while there is only one)
     <GROUP>/index.html    the timetable page; it fetches ./plan.ics and renders it in the browser
     <GROUP>/plan.ics      the group's current term, byte-for-byte
+    <GROUP>/plan-przypomnienia.ics   the same calendar with a reminder 15 minutes before each class
     mapa/index.html       campus map (MapLibre from unpkg, tiles from OpenFreeMap: the only page allowed them)
+    prywatnosc/index.html privacy notice and terms of use
+    sw.js, manifest.webmanifest, <GROUP>/manifest.webmanifest, icons/   offline worker and home-screen app
+    robots.txt, .well-known/security.txt
     404.html
 
 Every page carries a hash-pinned Content-Security-Policy in a <meta> tag (GitHub Pages cannot send
@@ -38,6 +42,8 @@ TERM_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
 FONT_CSS = 'https://fonts.googleapis.com'
 FONT_FILES = 'https://fonts.gstatic.com'
 MAP_DIR = 'mapa'  # site/mapa/: the campus map
+REMINDER_FILE = 'plan-przypomnienia.ics'  # <GROUP>/plan.ics with an alarm before every class
+REMINDER_MINUTES = 15
 # Extra CSP sources of the map page only: the MapLibre engine (SRI-pinned in src/mapa.html), its tiles,
 # and the blob: workers it renders with.
 MAP_LIB = 'https://unpkg.com'
@@ -50,6 +56,26 @@ MAP_CSP = {
     'worker-src': ['blob:'],
     'child-src': ['blob:'],
 }
+# The index and group pages register the offline service worker (site/sw.js) and link a web app manifest
+# with same-origin icons.
+APP_CSP = {
+    'img-src': ["'self'"],
+    'worker-src': ["'self'"],
+    'manifest-src': ["'self'"],
+}
+ICONS_DIR = 'icons'  # site/icons/: app icons named by the manifests
+PRIVACY_DIR = 'prywatnosc'  # site/prywatnosc/: privacy notice and terms of use
+REPO_URL = 'https://github.com/kilerdevs/PlanWAT'
+NOINDEX = '<meta name="robots" content="noindex, nofollow">'
+SW_FILE = 'sw.js'
+
+
+def merge_csp(*extras):
+    out = {}
+    for extra in extras:
+        for name, sources in extra.items():
+            out[name] = out.get(name, []) + [s for s in sources if s not in out.get(name, [])]
+    return out
 
 # Canonical faculties offered on the front page (code -> Polish name).
 # A group belongs to the faculty matching the first three letters of its code;
@@ -186,6 +212,47 @@ def load_term(path):
 def _unfold(path):
     text = path.read_bytes().decode('utf-8')
     return [l for l in re.sub(r'\r?\n[ \t]', '', text.lstrip('﻿')).splitlines() if l]
+
+
+def _fold(line):
+    """An iCalendar content line folded at 75 octets (RFC 5545 3.1), never inside a UTF-8 character."""
+    parts, cur, size = [], '', 0
+    for ch in line:
+        n = len(ch.encode('utf-8'))
+        if size + n > 75:
+            parts.append(cur)
+            cur, size = ' ', 1
+        cur += ch
+        size += n
+    return '\r\n'.join(parts + [cur])
+
+
+def with_reminders(raw):
+    """The calendar with a display alarm REMINDER_MINUTES before each event that has none; CRLF, refolded."""
+    text = raw.decode('utf-8').lstrip('\ufeff')
+    out, stack, summary, has_alarm = [], [], '', False
+    for line in (l for l in re.sub(r'\r?\n[ \t]', '', text).splitlines() if l):
+        name, _, value = line.partition(':')
+        name = name.split(';', 1)[0].upper()
+        kind = value.strip().upper()
+        if name == 'BEGIN':
+            stack.append(kind)
+            if kind == 'VEVENT':
+                summary, has_alarm = '', False
+            elif kind == 'VALARM':
+                has_alarm = True
+        elif name == 'END':
+            if kind == 'VEVENT' and stack[-1:] == ['VEVENT'] and not has_alarm:
+                out += ['BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + (summary or 'Zajęcia'),
+                        f'TRIGGER:-PT{REMINDER_MINUTES}M', 'END:VALARM']
+            if stack:
+                stack.pop()
+        elif name == 'SUMMARY' and stack[-1:] == ['VEVENT']:
+            summary = value
+        elif name == 'X-WR-CALNAME' and stack == ['VCALENDAR']:
+            line += ' (przypomnienia)'
+        out.append(line)
+    return ''.join(_fold(l) + '\r\n' for l in out).encode('utf-8')
 
 
 def _local_dt(value, params, tz):
@@ -381,7 +448,7 @@ def csp(scripts, styles, connect, frame_ancestors=False, extra=None):
         'img-src ' + ' '.join(['data:'] + more('img-src')),
         'connect-src ' + (' '.join(["'self'"] + more('connect-src')) if connect else "'none'"),
     ]
-    parts += [f'{name} ' + ' '.join(more(name)) for name in ('worker-src', 'child-src') if more(name)]
+    parts += [f'{name} ' + ' '.join(more(name)) for name in ('worker-src', 'child-src', 'manifest-src') if more(name)]
     parts += [
         "base-uri 'none'",
         "form-action 'none'",
@@ -456,7 +523,7 @@ def render_group(template, ics_js, term, refreshed=None):
     page = template.replace('@@ICS_JS@@', ics_js)  # first: the scripts' own text is never substituted into
     for key, value in values.items():
         page = page.replace(key, value)
-    return finish(page, connect=True)
+    return finish(page, connect=True, extra=APP_CSP)
 
 
 def plural_wydzial(n):
@@ -540,7 +607,7 @@ def render_index(template, current, ics_js=''):
     page = page.replace('@@CHIPS@@', chips_html)
     page = page.replace('@@STATS@@', stats)
     page = page.replace('@@REDIRECT@@', redirect)
-    return finish(page, connect=True)
+    return finish(page, connect=True, extra=APP_CSP)
 
 
 def render_map(template, ics_js, campus_js):
@@ -548,8 +615,62 @@ def render_map(template, ics_js, campus_js):
     return finish(page, connect=True, extra=MAP_CSP)
 
 
+def render_privacy(template):
+    return finish(template, connect=False)
+
+
+def robots_txt(base_path, noindex):
+    if noindex:  # the dev preview: keep it out of search engines altogether
+        return 'User-agent: *\nDisallow: /\n'
+    base = base_path.rstrip('/')
+    return (f'# PlanWAT: nieoficjalne plany zajęć WAT\nUser-agent: *\nAllow: {base}/\n'
+            f'Disallow: {base}/{DATA_DIR}/\nDisallow: {base}/dev/\n')
+
+
+def security_txt(today):
+    # RFC 9116: Expires must be less than a year away; the site is rebuilt daily, so 180 days stays fresh
+    expires = dt.datetime.combine(today + dt.timedelta(days=180), dt.time(), dt.timezone.utc)
+    return (f'Contact: {REPO_URL}/security/advisories/new\n'
+            f'Expires: {expires.strftime("%Y-%m-%dT%H:%M:%SZ")}\n'
+            'Preferred-Languages: pl, en\n'
+            f'Policy: {REPO_URL}/blob/master/SECURITY.md\n')
+
+
 def render_404(template, base_path):
     return finish(template.replace('@@BASE@@', html.escape(base_path.rstrip('/'), quote=True)), connect=False)
+
+
+def manifest(name, short_name, scope, up):
+    """A web app manifest; every URL is relative to the manifest so the site works under any base path."""
+    icon = lambda f, size, kind, purpose='any': {'src': f'{up}{ICONS_DIR}/{f}', 'sizes': size, 'type': kind, 'purpose': purpose}  # noqa: E731
+    return json.dumps({
+        'id': './', 'name': name, 'short_name': short_name, 'lang': 'pl', 'dir': 'ltr',
+        'description': 'Nieoficjalny, czytelny na telefonie plan zajęć grup WAT.',
+        'start_url': './', 'scope': scope, 'display': 'standalone',
+        'background_color': '#000000', 'theme_color': '#000000',
+        'icons': [icon('icon-192.png', '192x192', 'image/png'), icon('icon-512.png', '512x512', 'image/png'),
+                  icon('maskable-512.png', '512x512', 'image/png', 'maskable'), icon('icon.svg', 'any', 'image/svg+xml')],
+    }, ensure_ascii=False, indent=1)
+
+
+def write_app(out, groups):
+    """Icons, manifests and the service worker; written last, so its version covers every other file."""
+    (out / ICONS_DIR).mkdir()
+    for f in sorted((SRC / 'icons').glob('*')):
+        if f.suffix in ('.png', '.svg'):
+            shutil.copyfile(f, out / ICONS_DIR / f.name)
+    (out / 'manifest.webmanifest').write_text(manifest('PlanWAT', 'PlanWAT', './', ''), encoding='utf-8')
+    for group in groups:
+        # the app opens at the group; its scope is the whole site so the map and the front page stay inside it
+        (out / group / 'manifest.webmanifest').write_text(manifest(f'PlanWAT · {group}', group, '../', '../'), encoding='utf-8')
+    digest = hashlib.sha256()
+    # .well-known/security.txt changes its expiry date daily; it must not reset everyone's offline copy
+    for f in sorted(p for p in out.rglob('*') if p.is_file() and p.relative_to(out).parts[0] != '.well-known'):
+        digest.update(f.relative_to(out).as_posix().encode() + b'\0' + f.read_bytes())
+    sw = (SRC / SW_FILE).read_text(encoding='utf-8')
+    if sw.count('@@VERSION@@') != 1:
+        raise BuildError('src/sw.js must contain "@@VERSION@@" exactly once')
+    (out / SW_FILE).write_text(sw.replace('@@VERSION@@', digest.hexdigest()[:16]), encoding='utf-8')
 
 
 # ---------------------------------------------------------------- build
@@ -566,7 +687,8 @@ def _prepare_out(out):
 def update_nginx(conf_path, scripts, styles):
     # One header for every page: the union of their hashes and the map's sources. Each page's meta CSP
     # still applies on top, so the pages other than the map stay as strict as before.
-    policy = csp(sorted(set(scripts)), sorted(set(styles)), connect=True, frame_ancestors=True, extra=MAP_CSP)
+    policy = csp(sorted(set(scripts)), sorted(set(styles)), connect=True, frame_ancestors=True,
+                 extra=merge_csp(APP_CSP, MAP_CSP))
     conf, n = re.subn(r'add_header Content-Security-Policy "[^"]*"',
                       f'add_header Content-Security-Policy "{policy}"', conf_path.read_text())
     if n != 1:
@@ -574,7 +696,7 @@ def update_nginx(conf_path, scripts, styles):
     conf_path.write_text(conf)
 
 
-def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None):
+def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None, noindex=False):
     files = sorted(Path(timetables).glob('*/*.ics'))
     if not files:
         raise BuildError(f'no calendars found in {timetables}/<term>/<GROUP>.ics')
@@ -582,7 +704,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     for path in files:
         group, term = load_term(path)
         by_group.setdefault(group, []).append(term)
-    clash = [g for g in by_group if g.lower() in (DATA_DIR, MAP_DIR)]
+    clash = [g for g in by_group if g.lower() in (DATA_DIR, MAP_DIR, ICONS_DIR, PRIVACY_DIR)]
     if clash:
         raise BuildError(f'group code "{clash[0]}" is reserved for the site\'s own pages and data files')
     current = {group: pick_term(terms, today) for group, terms in by_group.items()}
@@ -605,6 +727,8 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
         page, scripts, styles = page_scripts_styles
         target = out / rel
         target.parent.mkdir(parents=True, exist_ok=True)
+        if noindex and NOINDEX not in page:
+            page = page.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n' + NOINDEX, 1)
         target.write_text(page.replace('\r\n', '\n'), encoding='utf-8')
         all_scripts.extend(scripts)
         all_styles.extend(styles)
@@ -612,14 +736,20 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     for group, term in sorted(current.items()):
         write(f'{group}/index.html', render_group(group_tpl, '\n'.join((ics_js, insights_js, campus_js)), term, refreshed.get(group)))
         shutil.copyfile(term.path, out / group / 'plan.ics')
+        (out / group / REMINDER_FILE).write_bytes(with_reminders(term.path.read_bytes()))
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js))
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js))
+    write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8')))
+    (out / 'robots.txt').write_text(robots_txt(base_path, noindex), encoding='utf-8')
+    (out / '.well-known').mkdir()
+    (out / '.well-known' / 'security.txt').write_text(security_txt(today), encoding='utf-8')
     write('404.html', render_404((SRC / '404.html').read_text(encoding='utf-8'), base_path))
     for rel, data in build_data(current).items():
         target = out / DATA_DIR / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
 
+    write_app(out, sorted(current))
     if nginx_conf:
         update_nginx(Path(nginx_conf), all_scripts, all_styles)
     return {group: term.term_id for group, term in current.items()}
@@ -641,9 +771,10 @@ def main(argv=None):
     ap.add_argument('--base-path', default='', help='URL path the site is served under, e.g. /PlanWAT')
     ap.add_argument('--state', type=Path, help='refresh-state.json with per-group refresh times (default: ./refresh-state.json)')
     ap.add_argument('--nginx', type=Path, help='nginx.conf whose CSP header to pin (Docker build only)')
+    ap.add_argument('--noindex', action='store_true', help='ask search engines to skip the whole site (the dev preview)')
     args = ap.parse_args(argv)
     try:
-        picked = build(args.timetables, args.out, args.today or _today_in_warsaw(), args.base_path, args.nginx, args.state)
+        picked = build(args.timetables, args.out, args.today or _today_in_warsaw(), args.base_path, args.nginx, args.state, args.noindex)
     except BuildError as err:
         print(f'build failed: {err}', file=sys.stderr)
         return 1

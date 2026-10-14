@@ -43,6 +43,10 @@ e-dziekanat.
 
 Text values use iCalendar escaping (`\,` `\;` `\\` `\n`).
 
+Alarms (`VALARM`) inside an event are ignored by the page. The build publishes each calendar twice: `plan.ics`
+byte-for-byte, and `plan-przypomnienia.ics` with a `DISPLAY` alarm 15 minutes before every event that has none
+(CRLF line endings, lines refolded at 75 octets, `X-WR-CALNAME` suffixed with " (przypomnienia)").
+
 ## Example
 
 ```

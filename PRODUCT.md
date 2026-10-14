@@ -34,6 +34,10 @@ The official WAT plan is a large table built for desktop. This site turns the sa
   - Live "Teraz" (now) and "Następne" (next) status with a countdown on today's classes.
   - Semester progress.
   - A subject legend that highlights one subject across the week.
+  - Walking time between classes in different buildings, flagged when the walk is longer than the break.
+  - Offline: a service worker keeps the opened pages and plans; each group can be installed as a home-screen app.
+  - Calendar feed with a reminder 15 minutes before each class (`plan-przypomnienia.ics`).
+  - Public-site basics: privacy notice and terms at `/prywatnosc/`, "PlanWAT never asks for your password" in the footer, `robots.txt`, `/.well-known/security.txt`.
   - Campus map at `/mapa/`: building markers by faculty, search, walking directions; rooms in the plan link to their building and each day opens its classes on the map.
   - Dark theme only. The light/system switch was removed in the owner's 2026-10-11 redesign brief ("Dark theme only").
 - **Terminology** (keep in Polish): blok (one class slot), Wykład / Ćwiczenia / Laboratorium / Zaliczenie / Spotkanie organizacyjne, tydzień, sesja egzaminacyjna, e-dziekanat. Group codes follow the WAT format, e.g. `WCY26KY3S1`.

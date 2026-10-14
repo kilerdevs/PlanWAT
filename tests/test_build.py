@@ -111,6 +111,63 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertEqual((self.out / 'WCY26KY3S1' / 'plan.ics').read_bytes(),
                          (ROOT / 'timetables' / '2026-27-zima' / 'WCY26KY3S1.ics').read_bytes())
 
+    def test_offline_worker_manifests_and_icons(self):
+        sw = (self.out / 'sw.js').read_text(encoding='utf-8')
+        self.assertRegex(sw, r"var VERSION = '[0-9a-f]{16}';")
+        self.assertNotIn('@@', sw)
+        for name in ('icon.svg', 'icon-192.png', 'icon-512.png', 'maskable-512.png', 'apple-touch-icon.png'):
+            self.assertTrue((self.out / 'icons' / name).is_file(), name)
+        root = json.loads((self.out / 'manifest.webmanifest').read_text(encoding='utf-8'))
+        self.assertEqual((root['start_url'], root['scope']), ('./', './'))
+        group = json.loads((self.out / 'WCY26KY3S1' / 'manifest.webmanifest').read_text(encoding='utf-8'))
+        self.assertEqual((group['start_url'], group['scope'], group['short_name']), ('./', '../', 'WCY26KY3S1'))
+        for icon in group['icons']:
+            self.assertTrue(icon['src'].startswith('../icons/'), icon)
+            self.assertTrue((self.out / 'WCY26KY3S1' / icon['src']).resolve().is_file(), icon)
+        self.assertIn({'maskable'}, [{i['purpose']} for i in group['icons']])
+        page = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('<link rel="manifest" href="manifest.webmanifest">', page)
+        self.assertIn("navigator.serviceWorker.register('../sw.js', { scope: '../' })", page)
+        index = (self.out / 'index.html').read_text(encoding='utf-8')
+        self.assertIn("navigator.serviceWorker.register('sw.js', { scope: './' })", index)
+
+    def test_public_site_files(self):
+        robots = (self.out / 'robots.txt').read_text(encoding='utf-8')
+        self.assertIn('User-agent: *', robots)
+        self.assertIn('Disallow: /PlanWAT/data/', robots)
+        self.assertIn('Disallow: /PlanWAT/dev/', robots)
+        self.assertNotIn('Disallow: /\n', robots)
+        sec = (self.out / '.well-known' / 'security.txt').read_text(encoding='utf-8')
+        self.assertIn('Contact: https://github.com/kilerdevs/PlanWAT/security/advisories/new', sec)
+        expires = dt.datetime.strptime(re.search(r'^Expires: (\S+)$', sec, re.M).group(1), '%Y-%m-%dT%H:%M:%SZ')
+        self.assertTrue(dt.datetime(2026, 10, 15) < expires < dt.datetime(2027, 10, 15))
+        privacy = (self.out / 'prywatnosc' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('nigdy nie poprosi Cię o hasło', privacy)
+        self.assertIn("script-src 'none'", self.meta_csp('prywatnosc/index.html'))
+        for rel in ('index.html', 'WCY26KY3S1/index.html'):
+            html = (self.out / rel).read_text(encoding='utf-8')
+            self.assertIn('nigdy nie poprosi Cię o hasło', html, rel)
+            self.assertRegex(html, r'href="(\.\./)?prywatnosc/"', rel)
+        self.assertNotIn('nofollow', privacy)  # only the dev preview asks not to be indexed
+
+    def test_reminder_calendar_has_one_alarm_per_class_and_valid_lines(self):
+        raw = (self.out / 'WCY26KY3S1' / build.REMINDER_FILE).read_bytes()
+        text = raw.decode('utf-8')
+        self.assertEqual(text.count('BEGIN:VALARM'), text.count('BEGIN:VEVENT'))
+        self.assertGreater(text.count('BEGIN:VALARM'), 0)
+        self.assertEqual(text.count('TRIGGER:-PT15M'), text.count('BEGIN:VEVENT'))
+        self.assertIn('X-WR-CALNAME:Plan zajęć WCY26KY3S1 (przypomnienia)', text)
+        lines = raw.split(b'\r\n')
+        self.assertEqual(lines[-1], b'')
+        self.assertNotIn(b'\n', b''.join(lines))  # CRLF only
+        self.assertTrue(all(len(l) <= 75 for l in lines), 'a line longer than 75 octets')
+        self.assertIn('BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Matematyka I\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT', text)
+        # the same events, and every group gets one
+        plain = (self.out / 'WCY26KY3S1' / 'plan.ics').read_text(encoding='utf-8')
+        self.assertEqual(re.findall(r'^UID:[^\r\n]*', text, re.M), re.findall(r'^UID:[^\r\n]*', plain, re.M))
+        for group in self.groups():
+            self.assertTrue((self.out / group / build.REMINDER_FILE).is_file(), group)
+
     def groups(self):
         return sorted({p.stem for p in (ROOT / 'timetables').glob('*/*.ics')})
 
@@ -199,10 +256,20 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertRegex(csp, r"connect-src 'self' https://tiles\.openfreemap\.org")
         self.assertRegex(csp, r"img-src data: blob: https://tiles\.openfreemap\.org")
         self.assertIn('worker-src blob:', csp)
-        for rel in ('index.html', '404.html', 'WCY26KY3S1/index.html'):
+        for rel in ('index.html', '404.html', 'prywatnosc/index.html', 'WCY26KY3S1/index.html'):
             csp = self.meta_csp(rel)
-            for source in ('unpkg.com', 'openfreemap', 'blob:', 'worker-src'):
+            for source in ('unpkg.com', 'openfreemap', 'blob:'):
                 self.assertNotIn(source, csp, rel)
+
+    def test_only_the_front_and_group_pages_may_register_the_worker_and_manifest(self):
+        for rel in ('index.html', 'WCY26KY3S1/index.html'):
+            csp = self.meta_csp(rel)
+            self.assertIn("worker-src 'self';", csp, rel)
+            self.assertIn("manifest-src 'self';", csp, rel)
+            self.assertIn("img-src data: 'self';", csp, rel)
+        for rel in ('404.html', 'prywatnosc/index.html', 'mapa/index.html'):
+            self.assertNotIn('manifest-src', self.meta_csp(rel), rel)
+        self.assertNotIn("'self'", self.meta_csp('mapa/index.html').split('worker-src')[1].split(';')[0])
 
     def test_map_engine_is_pinned_by_subresource_integrity(self):
         html = (self.out / 'mapa' / 'index.html').read_text(encoding='utf-8')
@@ -235,8 +302,24 @@ class BuildRealSiteTest(unittest.TestCase):
             for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S):
                 self.assertIn(sha(block), header, page)
         self.assertIn('https://unpkg.com', header)
-        self.assertIn('worker-src blob:', header)
+        self.assertIn("worker-src 'self' blob:", header)
+        self.assertIn("manifest-src 'self'", header)
         self.assertIn("connect-src 'self' https://tiles.openfreemap.org", header)
+
+
+class RemindersTest(unittest.TestCase):
+    def test_folds_long_lines_on_character_boundaries_and_keeps_existing_alarms(self):
+        long = 'Ż' * 60
+        cal = ('BEGIN:VCALENDAR\nX-WR-CALNAME:X\nBEGIN:VEVENT\nSUMMARY:' + long + '\nEND:VEVENT\n'
+               'BEGIN:VEVENT\nSUMMARY:B\nBEGIN:VALARM\nTRIGGER:-PT5M\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR\n')
+        out = build.with_reminders(cal.encode('utf-8'))
+        for line in out.split(b'\r\n'):
+            self.assertLessEqual(len(line), 75)
+            line.decode('utf-8')  # no character split across a fold
+        text = out.decode('utf-8')
+        self.assertEqual(text.count('BEGIN:VALARM'), 2)  # the second event keeps its own and gets no extra
+        self.assertIn('DESCRIPTION:' + long, text.replace('\r\n ', ''))
+        self.assertIn('X-WR-CALNAME:X (przypomnienia)', text)
 
 
 class BuildManyGroupsTest(unittest.TestCase):
@@ -325,6 +408,37 @@ class BuildManyGroupsTest(unittest.TestCase):
         path.write_text(path.read_text(encoding='utf-8').replace('SUMMARY:Matematyka', 'SUMMARY:Prowadzenie negocjacji'),
                         encoding='utf-8', newline='')
         build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
+    def test_worker_version_follows_the_content_but_not_the_security_txt_date(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        version = lambda out: re.search(r"VERSION = '(\w+)'", (out / 'sw.js').read_text(encoding='utf-8')).group(1)  # noqa: E731
+        a, b, c = self.tmp / 'a', self.tmp / 'b', self.tmp / 'c'
+        build.build(self.tt, a, today=D(2026, 10, 15), nginx_conf=None)
+        build.build(self.tt, b, today=D(2026, 10, 16), nginx_conf=None)
+        self.assertNotEqual((a / '.well-known' / 'security.txt').read_text(), (b / '.well-known' / 'security.txt').read_text())
+        self.assertEqual(version(a), version(b))
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-06'))
+        build.build(self.tt, c, today=D(2026, 10, 15), nginx_conf=None)
+        self.assertNotEqual(version(a), version(c))
+
+    def test_noindex_marks_every_page_and_closes_robots_txt(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        out = self.tmp / 'site'
+        build.build(self.tt, out, today=D(2026, 10, 15), nginx_conf=None, noindex=True)
+        self.assertEqual((out / 'robots.txt').read_text(), 'User-agent: *\nDisallow: /\n')
+        for page in out.rglob('*.html'):
+            html = page.read_text(encoding='utf-8')
+            self.assertIn('<meta name="robots" content="noindex, nofollow">', html, page)
+            csp = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', html).group(1)
+            for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S):
+                self.assertIn(sha(block), csp, page)  # the extra meta tag leaves the hashes valid
+
+    def test_rejects_groups_named_like_the_site_folders(self):
+        for name in ('icons', 'prywatnosc'):
+            self.add('2026-27-zima', name, calendar(name, '2026-09-28', '2027-02-22', '2026-10-05'))
+            with self.assertRaisesRegex(build.BuildError, 'reserved'):
+                build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+            (self.tt / '2026-27-zima' / f'{name}.ics').unlink()
 
     def test_rejects_a_group_named_like_the_data_folder(self):
         self.add('2026-27-zima', 'data', calendar('data', '2026-09-28', '2027-02-22', '2026-10-05'))

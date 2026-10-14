@@ -69,7 +69,8 @@ window (90 days is customary) before public disclosure.
 | Area | Examples |
 |---|---|
 | `src/ics.js` | A calendar that makes the reader execute code, hang, or render attacker-controlled markup |
-| `src/group.html`, `src/index.html`, `src/404.html` | XSS, DOM clobbering, CSP bypasses, unsafe use of calendar data |
+| `src/group.html`, `src/index.html`, `src/404.html`, `src/mapa.html`, `src/prywatnosc.html` | XSS, DOM clobbering, CSP bypasses, unsafe use of calendar data |
+| `src/sw.js` | The offline worker caching or serving something it should not (another origin, a non-GET request, the other deployment's pages) |
 | `build.py` | Metadata that escapes HTML escaping, path traversal through group or term names, a page shipped without its CSP |
 | `deploy/nginx.conf`, `Dockerfile`, `docker-compose.yml` | A file served that should not be, missing headers, privilege or write access inside the container |
 | `.github/workflows/` | Workflow injection, excessive token permissions, unpinned third-party code |

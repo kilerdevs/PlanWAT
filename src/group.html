@@ -10,6 +10,8 @@
 <meta name="description" content="@@DESCRIPTION@@">
 <title>Plan zajęć @@GROUP@@</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Crect x='13' y='16' width='38' height='35' rx='9' fill='none' stroke='%23f5f5f7' stroke-width='3.5'/%3E%3Cpath d='M13 27h38M24 11v9M40 11v9' stroke='%23f5f5f7' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='40' cy='39.5' r='4.5' fill='%230a84ff'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet">
@@ -962,7 +964,9 @@
   body[data-view="list"] #nav, body[data-view="month"] #nav,
   body[data-view="list"] #weekBody, body[data-view="month"] #weekBody,
   body[data-view="list"] .todaypill, body[data-view="month"] .todaypill, body[data-view] .hint { display: none; }
-  body[data-view="week"] .hint { display: block; }
+  body[data-view="week"] .hint, body[data-view] .hint.pledge { display: block; }
+  .pledge strong { color: var(--t2); font-weight: 600; }
+  .pledge a { color: var(--accent-text); }
 
   /* ================= gaps between classes ================= */
   .gap {
@@ -976,6 +980,9 @@
     font-variant-numeric: tabular-nums;
   }
   .gap .i { color: var(--t3); }
+  .gap a { color: var(--t2); text-decoration: underline; text-underline-offset: 2px; }
+  .gap a:hover { color: var(--t1); }
+  .gap.tight, .gap.tight .i { color: #ffb340; } /* the walk is longer than the break */
 
   /* ================= list view ================= */
   .agenda { padding-top: var(--sp-2); padding-bottom: var(--sp-6); }
@@ -1386,6 +1393,7 @@
   <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
   <symbol id="i-map" viewBox="0 0 24 24"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></symbol>
+  <symbol id="i-footprints" viewBox="0 0 24 24"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/><path d="M16 17h4"/><path d="M4 13h4"/></symbol>
   <symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
@@ -1429,6 +1437,10 @@
         <button class="dl" id="statsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chart"/></svg>Statystyki</button>
         <button class="dl" id="compareBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"/></svg>Porównaj grupy</button>
         <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
+      </div>
+      <div class="notice" id="offlineNotice" role="status" hidden>
+        <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
+        <span class="notice-text">Jesteś offline. Widzisz plan zapisany w przeglądarce przy ostatniej wizycie.</span>
       </div>
       <div class="notice" id="changeNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
@@ -1507,7 +1519,8 @@
     <span class="kb"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> zmieniają tydzień &middot; <kbd>T</kbd> bieżący tydzień &middot; <kbd>Esc</kbd> czyści wyróżnienie</span>
     <span class="touch">Przesuń palcem w bok, aby zmienić tydzień</span>
   </p>
-  <p class="hint wrap pledge">PlanWAT jest nieoficjalnym projektem studentów. Jego opiekun zobowiązuje się, że serwis pozostanie darmowy dla wszystkich.</p>
+  <p class="hint wrap pledge">PlanWAT jest nieoficjalnym projektem studentów. Jego opiekun zobowiązuje się, że serwis pozostanie darmowy dla wszystkich.<br>
+    <strong>PlanWAT nigdy nie poprosi Cię o hasło</strong> ani inne dane logowania. <a href="../prywatnosc/">Prywatność i zasady</a></p>
 </main>
 
 <button class="todaypill" id="todayBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"/></svg>Bieżący tydzień</button>
@@ -1715,16 +1728,35 @@
     return row;
   }
 
-  /* a free stretch between two classes ("okienko"), after the class at index li */
-  function appendGap(group, dayGaps, li) {
-    dayGaps.forEach(function (g) {
-      if (g.index !== li) return;
-      var row = el('div', 'gap');
-      row.appendChild(icon('clock', 'i-sm'));
-      row.appendChild(el('span', null, 'Okienko · ' + window.PlanInsights.fmtDuration(g.minutes) +
-        ' (' + window.PlanInsights.hhmm(g.from) + '–' + window.PlanInsights.hhmm(g.to) + ')'));
-      group.appendChild(row);
-    });
+  function buildingLabel(b) { return /^\d/.test(b.code) ? 'bud. ' + b.code : b.name; }
+
+  /* After the class at index li: a free stretch before the next one ("okienko") and/or the walk to the next
+     class's building, flagged when the walk takes longer than the break. Overlapping classes (subgroups) get none. */
+  function appendGap(group, dayGaps, lessons, li) {
+    var gap = dayGaps.filter(function (g) { return g.index === li; })[0];
+    var next = lessons[li + 1], end = 0, walk = null, brk = 0;
+    for (var k = 0; k <= li; k++) end = Math.max(end, toMin(lessons[k].end));
+    if (next) {
+      brk = toMin(next.start) - end;
+      if (brk >= 0) walk = Campus.transfer(lessons[li].room, next.room);
+    }
+    if (!gap && !walk) return;
+    var tight = !!walk && walk.minutes > brk;
+    var row = el('div', tight ? 'gap tight' : 'gap');
+    row.appendChild(icon(tight ? 'alert' : gap ? 'clock' : 'footprints', 'i-sm'));
+    var text = row.appendChild(el('span'));
+    if (gap) {
+      text.appendChild(document.createTextNode('Okienko · ' + window.PlanInsights.fmtDuration(gap.minutes) +
+        ' (' + window.PlanInsights.hhmm(gap.from) + '–' + window.PlanInsights.hhmm(gap.to) + ')'));
+    }
+    if (walk) {
+      text.appendChild(document.createTextNode(gap ? ' · przejście do ' : 'Do '));
+      var to = text.appendChild(el('a', null, buildingLabel(walk.to)));
+      to.href = '../mapa/?b=' + encodeURIComponent(walk.to.code);
+      to.title = 'Pokaż budynek na mapie kampusu';
+      text.appendChild(document.createTextNode(' · ~' + walk.minutes + ' min pieszo' + (tight ? ', przerwa ' + brk + ' min' : '')));
+    }
+    group.appendChild(row);
   }
 
   /* ---------- rendering ---------- */
@@ -1816,7 +1848,7 @@
             row.style.setProperty('--d', String(6 + (col - 1) + rowIdx * 0.5));
           }
           group.appendChild(row);
-          appendGap(group, dayGaps, li);
+          appendGap(group, dayGaps, lessons, li);
         });
         dayDiv.appendChild(group);
       }
@@ -1927,6 +1959,8 @@
     var nx = $('liveNext');
     if (cur && next) {
       var nextRoom = next.room && next.room !== '-' ? ' · ' + next.room : '';
+      var walk = Campus.transfer(cur.room, next.room);
+      if (walk) nextRoom += ' (~' + walk.minutes + ' min pieszo)';
       nx.textContent = 'Następne · ' + fmtCountdown(toMin(next.start) - mins) + ' · ' + next.subject_full + nextRoom;
       nx.hidden = false;
     } else {
@@ -2444,7 +2478,7 @@
     var dayGaps = PI.gaps(lessons, GAP_MIN);
     lessons.forEach(function (ev, li) {
       group.appendChild(lessonRow(ev, iso));
-      appendGap(group, dayGaps, li);
+      appendGap(group, dayGaps, lessons, li);
     });
     dayDiv.appendChild(group);
     return dayDiv;
@@ -2647,35 +2681,49 @@
   }
 
   function openCalendar() {
-    var feed = new URL('plan.ics', location.href).href;
-    var webcal = feed.replace(/^https?:/, 'webcal:');
+    var feeds = { plain: 'plan.ics', remind: 'plan-przypomnienia.ics' };
     openTool('Dodaj do kalendarza', function (body) {
-      para(body, 'Subskrypcja dodaje plan do aplikacji kalendarza i aktualizuje go sama, gdy plan się zmieni (zwykle w ciągu kilku godzin). Przypomnienia przed zajęciami ustawisz w aplikacji kalendarza.');
+      para(body, 'Subskrypcja dodaje plan do aplikacji kalendarza i aktualizuje go sama, gdy plan się zmieni (zwykle w ciągu kilku godzin).');
+      var chk = body.appendChild(el('label', 'check'));
+      var cb = chk.appendChild(el('input'));
+      cb.type = 'checkbox';
+      cb.id = 'calRemind';
+      chk.appendChild(document.createTextNode('Przypomnienie 15 min przed zajęciami'));
+      var note = para(body, 'Kalendarz Apple zachowa przypomnienia, jeśli przy subskrypcji odznaczysz „Usuń: alerty”. Google Calendar pomija przypomnienia z subskrypcji, więc ustaw je tam w ustawieniach kalendarza. Pobrany plik .ics zachowuje je zawsze.', 'muted');
+      note.hidden = true;
       var box = body.appendChild(el('div', 'actions'));
-      var action = function (tag, title, note, ic) {
+      var action = function (tag, title, sub, ic) {
         var a = el(tag, 'action');
         a.appendChild(icon(ic));
         var t = el('span', null, title);
-        t.appendChild(el('small', null, note));
+        t.appendChild(el('small', null, sub));
         a.appendChild(t);
         box.appendChild(a);
         return a;
       };
       var g = action('a', 'Google Calendar', 'Subskrypcja: otwiera Google Calendar w nowej karcie', 'external');
-      g.href = 'https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(webcal);
       g.target = '_blank';
       g.rel = 'noopener noreferrer';
       g.id = 'calGoogle';
       var ap = action('a', 'Kalendarz Apple (iPhone, iPad, Mac)', 'Subskrypcja przez webcal', 'calendar-plus');
-      ap.href = webcal;
       ap.id = 'calApple';
       var cp = action('button', 'Kopiuj link subskrypcji', 'Outlook i inne aplikacje: „Dodaj kalendarz z adresu URL”', 'copy');
       cp.type = 'button';
       cp.id = 'calCopy';
-      cp.addEventListener('click', function () { copyText(feed, 'Skopiowano link subskrypcji'); });
       var dl = action('a', 'Pobierz plik .ics', 'Jednorazowy import, bez późniejszych aktualizacji', 'download');
-      dl.href = 'plan.ics';
-      dl.setAttribute('download', $('icsLink').getAttribute('download'));
+      dl.id = 'calFile';
+      var feed;
+      function use(file) {
+        feed = new URL(file, location.href).href;
+        var webcal = feed.replace(/^https?:/, 'webcal:');
+        g.href = 'https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(webcal);
+        ap.href = webcal;
+        dl.href = file;
+        dl.setAttribute('download', $('icsLink').getAttribute('download').replace(/\.ics$/, file === feeds.remind ? '-przypomnienia.ics' : '.ics'));
+      }
+      cp.addEventListener('click', function () { copyText(feed, 'Skopiowano link subskrypcji'); });
+      cb.addEventListener('change', function () { use(cb.checked ? feeds.remind : feeds.plain); note.hidden = !cb.checked; });
+      use(feeds.plain);
     });
   }
 
@@ -3108,6 +3156,13 @@
     $('weekBody').replaceChildren(b);
     ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'compareBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
   }
+
+  /* offline: the service worker keeps the last copy of this page and its plan; say that it is a saved copy */
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(function () {});
+  function showOffline() { $('offlineNotice').hidden = navigator.onLine !== false; }
+  window.addEventListener('online', showOffline);
+  window.addEventListener('offline', showOffline);
+  showOffline();
 
   try {
     fetch('plan.ics', { credentials: 'same-origin' })
