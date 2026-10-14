@@ -9,6 +9,10 @@ All notable changes to PlanWAT are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- First-visit tour on touch layouts: a swipeable four-step sheet (change week by swiping, jump from the date, highlight a subject, calendar/subject/app tools) with small looping demos. Shown once per browser, reopened with "Jak korzystać" in the tools row.
+- Okienka (free gaps and walking time) also show on the desktop week grid, at the foot of the class they follow.
+
 ### Removed
 - All personal data of staff: names, surnames and academic titles are gone from the calendars, the page, the converters,
   the tests and the whole Git history. Calendars no longer carry `CONTACT` or instructor lines, and the build refuses

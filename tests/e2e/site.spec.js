@@ -716,3 +716,37 @@ test('printing a week gives one clean A4 sheet without the page chrome', async (
   }
   await expect(page.locator('.dow').first()).toBeVisible();
 });
+
+test('the first-visit tour opens once on a phone, pages with Dalej and is not repeated', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'the tour is for the touch layouts');
+  const problems = await openGroup(page, { path: `${GROUP}?tour=1` });
+  const tour = page.locator('#tourSheet');
+  await expect(tour).toBeVisible();
+  await expect(page.locator('#tourSheet h3').first()).toHaveText('Przesuń, aby zmienić tydzień');
+  await page.click('#tourNext');
+  await expect(page.locator('#tourDots button[aria-current="true"]')).toHaveAttribute('aria-label', 'Krok 2 z 4');
+  await page.click('#tourNext');
+  await page.click('#tourNext');
+  await expect(page.locator('#tourNext')).toHaveText('Zaczynamy');
+  await expect(page.locator('#tourSkip')).toBeHidden();
+  await page.click('#tourNext');
+  await expect(tour).toBeHidden();
+  await page.reload();
+  await page.waitForTimeout(2000);
+  await expect(tour).toBeHidden();
+  await page.click('#tourBtn');
+  await expect(tour).toBeVisible();
+  await page.click('#tourSkip');
+  await expect(tour).toBeHidden();
+  expect(problems).toEqual([]);
+});
+
+test('the tour stays closed for automated browsers unless asked, and on the desktop grid', async ({ page, isMobile }) => {
+  await openGroup(page);
+  await page.waitForTimeout(2000);
+  await expect(page.locator('#tourSheet')).toBeHidden();
+  test.skip(isMobile, 'the desktop part needs the grid layout');
+  await page.goto(`${GROUP}?tour=1`);
+  await page.waitForTimeout(2000);
+  await expect(page.locator('#tourSheet')).toBeHidden();
+});

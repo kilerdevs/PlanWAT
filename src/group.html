@@ -1235,6 +1235,113 @@
     .weekbtn { min-height: 44px; }
   }
 
+  /* ================= first-visit tour: a swipeable sheet with small looping demos ================= */
+  dialog.sheet.tour { max-width: 520px; max-height: min(92vh, 720px); max-height: min(92dvh, 720px); }
+  .tour-track {
+    display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .tour-track::-webkit-scrollbar { display: none; }
+  .tour-track:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .tour-slide { flex: 0 0 100%; scroll-snap-align: center; scroll-snap-stop: always; padding: var(--sp-1) var(--sp-5) var(--sp-2); }
+  .tour-art {
+    position: relative; height: 188px; margin-bottom: var(--sp-5); overflow: hidden; border-radius: 22px;
+    background: color-mix(in srgb, var(--t1) 5%, var(--s2)); box-shadow: var(--edge);
+  }
+  .tour-slide h3 { margin: 0 0 var(--sp-2); font-size: var(--fs-20); font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; color: var(--t1); }
+  .tour-slide p { margin: 0; font-size: var(--fs-15); line-height: 1.45; color: var(--t2); }
+  .tour-slide p + p { margin-top: var(--sp-2); }
+  .tour-slide kbd { font: inherit; font-size: 0.8em; padding: 1px 6px; border-radius: 6px; background: var(--s3); color: var(--t1); }
+  .tour-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-5) var(--sp-5); }
+  .tour-dots { display: flex; gap: 8px; align-items: center; }
+  .tour-dots button { position: relative; width: 8px; height: 8px; padding: 0; border: 0; border-radius: 99px; background: var(--s4); cursor: pointer; transition: width var(--dur-base) var(--spring), background var(--dur-base); }
+  .tour-dots button::after { content: ''; position: absolute; inset: -18px -6px; }
+  .tour-dots button[aria-current="true"] { width: 22px; background: var(--t1); }
+  .tour-actions { display: flex; align-items: center; gap: var(--sp-2); }
+  .tour-skip { font: inherit; font-size: var(--fs-15); color: var(--t2); background: none; border: 0; padding: 12px var(--sp-3); min-height: 44px; border-radius: 99px; cursor: pointer; }
+  .tour-skip[hidden] { display: none; }
+  .tour-next {
+    font: inherit; font-size: var(--fs-15); font-weight: 600; min-height: 44px; min-width: 112px; padding: 0 var(--sp-5);
+    border: 0; border-radius: 99px; background: var(--accent); color: #fff; cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .tour-next:active { transform: scale(0.97); }
+  .tour-skip:focus-visible, .tour-next:focus-visible, .tour-dots button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* demo 1: swipe between weeks */
+  .tm-card {
+    position: relative; width: 150px; height: 112px; padding: 14px 14px 14px 20px; border-radius: 16px;
+    background: var(--s2); box-shadow: var(--edge); display: flex; flex-direction: column; gap: 8px; justify-content: center;
+  }
+  .tm-card::before { content: ''; position: absolute; left: 8px; top: 14px; bottom: 14px; width: 4px; border-radius: 2px; background: var(--c, var(--accent)); }
+  .tm-card i { display: block; height: 8px; border-radius: 4px; background: var(--s4); }
+  .tm-card i:first-child { width: 46%; background: var(--t3); opacity: 0.7; }
+  .tm-card i:nth-child(2) { width: 82%; height: 10px; background: var(--t2); opacity: 0.75; }
+  .tm-card i:nth-child(3) { width: 58%; }
+  .tm-rail { position: absolute; left: calc(50% - 75px); top: 48px; display: flex; gap: 12px; animation: tm-rail 4.2s var(--ease-out) infinite; }
+  .tm-rail .tm-card:nth-child(1) { --c: #ff9f0a; }
+  .tm-rail .tm-card:nth-child(2) { --c: #30d158; }
+  .tm-rail .tm-card:nth-child(3) { --c: #bf5af2; }
+  .tm-week { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: var(--fs-13); font-weight: 600; color: var(--t2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tm-finger {
+    position: absolute; left: 50%; top: 118px; width: 38px; height: 38px; margin: 0 0 0 -19px; border-radius: 50%;
+    background: rgba(var(--hl), 0.22); box-shadow: 0 0 0 1px rgba(var(--hl), 0.35), 0 6px 18px rgba(0, 0, 0, 0.25);
+    opacity: 0; animation: tm-finger 4.2s var(--ease-out) infinite;
+  }
+  @keyframes tm-rail { 0%, 22% { transform: translateX(0); } 48%, 82% { transform: translateX(-162px); } 100% { transform: translateX(0); } }
+  @keyframes tm-finger {
+    0% { opacity: 0; transform: translateX(64px) scale(1.15); }
+    10% { opacity: 1; transform: translateX(64px) scale(1); }
+    48% { opacity: 1; transform: translateX(-64px) scale(1); }
+    58%, 100% { opacity: 0; transform: translateX(-64px) scale(1.15); }
+  }
+
+  /* demo 2: tap the week to jump */
+  .tm-pillwrap { position: absolute; top: 20px; left: 0; right: 0; display: flex; justify-content: center; }
+  .tm-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 99px;
+    background: var(--s2); box-shadow: var(--edge); font-size: var(--fs-15); font-weight: 650; color: var(--t1); font-variant-numeric: tabular-nums;
+    animation: tm-press 4.2s var(--ease-out) infinite;
+  }
+  .tm-pill .i { width: 14px; height: 14px; color: var(--t3); }
+  .tm-list { position: absolute; left: 50%; bottom: 14px; width: 210px; margin-left: -105px; padding: 6px; border-radius: 16px; background: var(--s2); box-shadow: var(--edge); animation: tm-list 4.2s var(--ease-out) infinite; }
+  .tm-list span { display: block; padding: 7px 10px; border-radius: 10px; font-size: var(--fs-13); color: var(--t2); font-variant-numeric: tabular-nums; }
+  .tm-list span:nth-child(2) { background: rgba(var(--hl), 0.1); color: var(--t1); font-weight: 600; }
+  @keyframes tm-press { 0%, 14%, 30%, 100% { transform: scale(1); } 20% { transform: scale(0.94); } }
+  @keyframes tm-list { 0%, 20% { opacity: 0; transform: translateY(14px) scale(0.97); } 38%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(14px) scale(0.97); } }
+
+  /* demo 3: tap a subject to light up all its classes */
+  .tm-stack { position: absolute; left: 50%; top: 50%; width: 220px; margin: -76px 0 0 -110px; display: flex; flex-direction: column; gap: 8px; }
+  .tm-stack .tm-card { width: auto; height: 26px; padding: 0 14px 0 20px; flex-direction: row; align-items: center; justify-content: flex-start; }
+  .tm-stack .tm-card::before { top: 6px; bottom: 6px; }
+  .tm-stack .tm-card i { height: 8px; width: 56%; }
+  .tm-stack .tm-card:nth-child(1) { --c: #0a84ff; animation: tm-lit 4.2s var(--ease-out) infinite; }
+  .tm-stack .tm-card:nth-child(2) { --c: #ff9f0a; animation: tm-dim 4.2s var(--ease-out) infinite; }
+  .tm-stack .tm-card:nth-child(3) { --c: #0a84ff; animation: tm-lit 4.2s var(--ease-out) infinite; }
+  .tm-stack .tm-card:nth-child(4) { --c: #30d158; animation: tm-dim 4.2s var(--ease-out) infinite; }
+  .tm-stack .tm-card:nth-child(5) { --c: #0a84ff; animation: tm-lit 4.2s var(--ease-out) infinite; }
+  .tm-tap { position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -70px 0 0 -20px; border-radius: 50%; background: rgba(var(--hl), 0.22); box-shadow: 0 0 0 1px rgba(var(--hl), 0.35); opacity: 0; animation: tm-tap 4.2s var(--ease-out) infinite; }
+  @keyframes tm-dim { 0%, 22% { opacity: 1; } 36%, 84% { opacity: 0.3; } 100% { opacity: 1; } }
+  @keyframes tm-lit { 0%, 22% { box-shadow: var(--edge); } 36%, 84% { box-shadow: var(--edge), 0 0 0 2px #0a84ff; } 100% { box-shadow: var(--edge); } }
+  @keyframes tm-tap { 0%, 12% { opacity: 0; transform: scale(1.3); } 18% { opacity: 1; transform: scale(1); } 28% { opacity: 1; transform: scale(0.88); } 40%, 100% { opacity: 0; transform: scale(1.3); } }
+
+  /* demo 4: tools */
+  .tm-tools { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .tm-tool { width: 86px; display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 0.75rem; font-weight: 600; color: var(--t2); text-align: center; opacity: 0; animation: tm-pop 0.6s var(--spring) forwards; }
+  .tm-tool:nth-child(2) { animation-delay: 0.12s; }
+  .tm-tool:nth-child(3) { animation-delay: 0.24s; }
+  .tm-tool span { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; background: var(--s2); box-shadow: var(--edge); color: var(--accent-text); }
+  .tm-tool .i { width: 24px; height: 24px; }
+  @keyframes tm-pop { from { opacity: 0; transform: translateY(10px) scale(0.9); } to { opacity: 1; transform: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tm-rail, .tm-finger, .tm-pill, .tm-list, .tm-tap, .tm-stack .tm-card, .tm-tool { animation: none; }
+    .tm-tool, .tm-list { opacity: 1; }
+    .tm-tap, .tm-finger { display: none; }
+    .tm-rail { transform: translateX(-81px); }
+    .tm-stack .tm-card:nth-child(even) { opacity: 0.3; }
+  }
+
   /* ================= desktop: the week as a real timetable grid ================= */
   @media (min-width: 1080px) {
     :root { --maxw: 1240px; }
@@ -1523,6 +1630,7 @@
         <button class="dl" id="statsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chart"/></svg>Statystyki</button>
         <button class="dl" id="compareBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"/></svg>Porównaj grupy</button>
         <span id="installRow" hidden><button class="dl" id="installBtn" type="button" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Zainstaluj aplikację</button><span id="installHint" class="muted"></span></span>
+        <button class="dl" id="tourBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>Jak korzystać</button>
         <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
       </div>
       <div class="notice" id="offlineNotice" role="status" hidden>
@@ -1632,6 +1740,60 @@
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<dialog class="sheet tour" id="tourSheet" aria-labelledby="tourTitle">
+  <div class="sheet-head" id="tourHead">
+    <span class="grab" aria-hidden="true"></span>
+    <h2 id="tourTitle">Jak korzystać z planu</h2>
+    <button class="round round-sm" id="tourClose" type="button" aria-label="Zamknij"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="tour-track" id="tourTrack" tabindex="0" aria-label="Krótki przewodnik, przesuwaj w bok">
+    <section class="tour-slide" aria-label="Krok 1 z 4">
+      <div class="tour-art" aria-hidden="true">
+        <span class="tm-week">12.10–17.10</span>
+        <div class="tm-rail"><div class="tm-card"><i></i><i></i><i></i></div><div class="tm-card"><i></i><i></i><i></i></div><div class="tm-card"><i></i><i></i><i></i></div></div>
+        <span class="tm-finger"></span>
+      </div>
+      <h3>Przesuń, aby zmienić tydzień</h3>
+      <p>Przeciągnij plan w lewo, żeby zobaczyć następny tydzień, albo w prawo, żeby wrócić. Na komputerze użyj klawiszy <kbd>←</kbd> <kbd>→</kbd>.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 2 z 4">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-pillwrap"><span class="tm-pill">12.10–17.10<svg class="i" focusable="false"><use href="#i-chevron-down"/></svg></span></div>
+        <div class="tm-list"><span>5.10–10.10</span><span>12.10–17.10</span><span>19.10–24.10</span></div>
+      </div>
+      <h3>Dotknij daty, aby skoczyć</h3>
+      <p>Dotknięcie zakresu dat u góry otwiera listę wszystkich tygodni semestru. Przycisk „Bieżący tydzień” zawsze zabierze Cię z powrotem.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 3 z 4">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-stack"><div class="tm-card"><i></i></div><div class="tm-card"><i></i></div><div class="tm-card"><i></i></div><div class="tm-card"><i></i></div><div class="tm-card"><i></i></div></div>
+        <span class="tm-tap"></span>
+      </div>
+      <h3>Dotknij przedmiotu, aby go wyróżnić</h3>
+      <p>Wszystkie zajęcia z danego przedmiotu zaświecą się, a reszta przygaśnie. Ponowne dotknięcie albo <kbd>Esc</kbd> to cofa.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 4 z 4">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-tools">
+          <div class="tm-tool"><span><svg class="i" focusable="false"><use href="#i-calendar-plus"/></svg></span>Kalendarz</div>
+          <div class="tm-tool"><span><svg class="i" focusable="false"><use href="#i-user"/></svg></span>Moje przedmioty</div>
+          <div class="tm-tool"><span><svg class="i" focusable="false"><use href="#i-download"/></svg></span>Aplikacja</div>
+        </div>
+      </div>
+      <h3>Plan na Twoich zasadach</h3>
+      <p>Dodaj plan do kalendarza w telefonie, żeby aktualizował się sam. Ukryj przedmioty, których nie masz. Zainstaluj PlanWAT jak aplikację, a plan będzie działał też bez internetu.</p>
+      <p>Tę podpowiedź znajdziesz później pod przyciskiem „Jak korzystać”.</p>
+    </section>
+  </div>
+  <div class="tour-foot">
+    <div class="tour-dots" id="tourDots"></div>
+    <div class="tour-actions">
+      <button class="tour-skip" id="tourSkip" type="button">Pomiń</button>
+      <button class="tour-next" id="tourNext" type="button">Dalej</button>
+    </div>
+  </div>
+</dialog>
 
 <dialog class="sheet" id="weekSheet" aria-labelledby="sheetTitle">
   <div class="sheet-head" id="sheetHead">
@@ -2429,6 +2591,69 @@
     });
   }
 
+  /* ================= first-visit tour (touch layouts) and the "Jak korzystać" button ================= */
+  function initTour() {
+    var d = $('tourSheet'), track = $('tourTrack'), dotsBox = $('tourDots'), nextBtn = $('tourNext'), skipBtn = $('tourSkip'), opener = null;
+    var last = track.children.length - 1, dots = [], pending = -1; /* pending: the slide a smooth scroll is heading to */
+    function current() { return Math.max(0, Math.min(last, Math.round(track.scrollLeft / Math.max(1, track.clientWidth)))); }
+    /* a second tap while a slide is still gliding jumps instead: the browser drops a smooth scroll started mid-glide */
+    function goTo(n) {
+      var gliding = pending >= 0;
+      pending = n;
+      track.scrollTo({ left: n * track.clientWidth, behavior: reduceMotion || gliding ? 'auto' : 'smooth' });
+    }
+    for (var i = 0; i <= last; i++) {
+      (function (n) {
+        var b = el('button');
+        b.type = 'button';
+        b.setAttribute('aria-label', 'Krok ' + (n + 1) + ' z ' + (last + 1));
+        b.addEventListener('click', function () { goTo(n); });
+        dotsBox.appendChild(b);
+        dots.push(b);
+      })(i);
+    }
+    function update() {
+      var n = current();
+      if (n === pending) pending = -1;
+      dots.forEach(function (b, k) { b.setAttribute('aria-current', String(k === n)); });
+      nextBtn.textContent = n === last ? 'Zaczynamy' : 'Dalej';
+      skipBtn.hidden = n === last;
+    }
+    var ticking = false;
+    track.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () { ticking = false; update(); });
+    }, { passive: true });
+    nextBtn.addEventListener('click', function () {
+      var at = pending >= 0 ? pending : current();
+      if (at < last) goTo(at + 1); else sheetOut(d);
+    });
+    skipBtn.addEventListener('click', function () { sheetOut(d); });
+    d.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' && current() < last) { goTo(current() + 1); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' && current() > 0) { goTo(current() - 1); e.preventDefault(); }
+    });
+    initDialog(d, $('tourHead'), $('tourClose'), function () {
+      if (opener && document.body.contains(opener)) opener.focus({ preventScroll: true });
+      opener = null;
+    });
+    function open(from) {
+      if (d.open || sheet.open || tool.open) return;
+      opener = from || null;
+      d.showModal();
+      track.scrollLeft = 0;
+      update();
+      sheetIn(d);
+      nextBtn.focus({ preventScroll: true });
+      store.set('tour', 1);
+    }
+    $('tourBtn').addEventListener('click', function (e) { open(e.currentTarget); });
+    /* once per browser and only where swiping moves the week; automated browsers get it with ?tour=1 */
+    var auto = !isGrid() && !store.get('tour', 0) && (!navigator.webdriver || /[?&]tour=1(&|$)/.test(location.search));
+    if (auto) setTimeout(function () { if (!document.hidden && state.view === 'week') open(null); }, 1400);
+  }
+
   /* ================= tools: everything below is free and works without an account ================= */
   var PI = window.PlanInsights;
   var MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
@@ -3207,7 +3432,7 @@
     initSheet();
 
     document.addEventListener('keydown', function (e) {
-      if (e.altKey || e.ctrlKey || e.metaKey || sheet.open || tool.open) return;
+      if (e.altKey || e.ctrlKey || e.metaKey || sheet.open || tool.open || $('tourSheet').open) return;
       if (state.view !== 'week' && e.key !== 'Escape') return;
       var tag = e.target && e.target.tagName;
       if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -3270,6 +3495,7 @@
     render();
     /* the tools come after the first paint of the timetable */
     initTools();
+    initTour();
     setView(store.get('view', 'week'), true);
     state.booted = true;
 
