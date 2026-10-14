@@ -447,7 +447,7 @@ class BuildManyGroupsTest(unittest.TestCase):
             html = page.read_text(encoding='utf-8')
             self.assertIn('<meta name="robots" content="noindex, nofollow">', html, page)
             csp = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', html).group(1)
-            for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S):
+            for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S | re.I):
                 self.assertIn(sha(block), csp, page)  # the extra meta tag leaves the hashes valid
 
     def test_rejects_groups_named_like_the_site_folders(self):

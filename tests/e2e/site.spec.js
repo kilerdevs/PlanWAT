@@ -754,7 +754,9 @@ test('every finished class has its tick, on earlier days as well as today, and l
   const future = page.locator('.day:not(.is-past):not(.is-today) .lesson');
   if (await future.count()) await expect(future.first().locator('.tick')).toBeHidden();
   // an earlier week is all ticked too
+  const before = await weekLabel(page).innerText();
   await page.keyboard.press('ArrowLeft');
+  await expect(weekLabel(page)).not.toHaveText(before);
   const earlier = page.locator('.lesson');
   await expect(earlier.first()).toBeVisible();
   expect(await page.locator('.lesson:not(.is-done)').count()).toBe(0);
