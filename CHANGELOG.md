@@ -15,6 +15,7 @@ All notable changes to PlanWAT are documented here. The format follows
   any calendar that does.
 
 ### Added
+- Group page: a "Wszystkie grupy" link above the group name goes back to the list of groups.
 - Group page: every class shows which meeting of its subject and type it is over the term, e.g. "Wykład · 3/15"
   (one-off classes stay unnumbered).
 - Group page: tapping a class opens "Gdzie odrobić?" for that very meeting (same subject, type and number in the other

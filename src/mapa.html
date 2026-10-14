@@ -506,13 +506,21 @@
         var source = Object.keys(style.sources).filter(function (k) { return style.sources[k].type === 'vector'; })[0];
         var firstSymbol = (style.layers.filter(function (l) { return l.type === 'symbol'; })[0] || {}).id;
         if (source) {
+          // Light from the upper left so walls and roofs differ in shade, and a sky in the page colour so the
+          // horizon at 55° fades out instead of ending on a hard edge on tall desktop windows.
+          map.setLight({ anchor: 'viewport', color: '#ffffff', intensity: 0.35, position: [1.2, 210, 35] });
+          if (map.setSky) map.setSky({ 'sky-color': '#0c0c0c', 'horizon-color': '#18181b', 'fog-color': '#0c0c0c', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.4 });
           map.addLayer({
             id: 'buildings-3d', type: 'fill-extrusion', source: source, 'source-layer': 'building', minzoom: 14,
+            // building outlines that also come as separate parts are flagged hide_3d; extruding both makes them flicker
+            filter: ['!=', ['get', 'hide_3d'], true],
             paint: {
-              'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#232326', 25, '#2e2e32', 60, '#3a3a40'],
+              'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#2c2d32', 25, '#383a40', 60, '#46484f'],
               'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, ['coalesce', ['get', 'render_height'], 8]],
-              'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
-              'fill-extrusion-opacity': 0.85
+              'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, ['coalesce', ['get', 'render_min_height'], 0]],
+              // opaque on purpose: translucent extrusions show their back walls through the front ones
+              'fill-extrusion-opacity': 1,
+              'fill-extrusion-vertical-gradient': true
             }
           }, firstSymbol);
         }
