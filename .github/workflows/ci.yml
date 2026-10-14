@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master, dev]
+    branches: [dev]  # not master: the release PR already ran these checks, so a merge does not run them again
   pull_request:
 
 # The same commit runs as push:dev and as the release PR; one group per ref
