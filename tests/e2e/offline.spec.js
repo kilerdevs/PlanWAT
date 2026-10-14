@@ -54,7 +54,8 @@ test('Chromium finds nothing that stops the front page, a group and the map from
   }
 });
 
-test('an install button appears when the browser offers installation, and asks it to prompt', async ({ page }) => {
+test('an install button appears when the browser offers installation, and asks it to prompt', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile-safari', 'iOS has no install prompt: it shows a Safari hint instead');
   await page.addInitScript(() => { window.__prompted = 0; });
   await page.goto('/WCY26KY3S1/');
   await expect(page.locator('#installBtn')).toBeHidden();

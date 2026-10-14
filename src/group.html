@@ -272,7 +272,7 @@
     font-size: var(--fs-13);
   }
   .facts div { display: flex; gap: 6px; }
-  .facts div[hidden] { display: none; }
+  .facts div[hidden], .dl[hidden] { display: none; } /* a class that sets display must not unhide a hidden button */
   .dl {
     display: inline-flex;
     align-items: center;
