@@ -83,7 +83,7 @@ test('rooms on the group page link to their building and a day opens its classes
   await page.clock.setFixedTime(THURSDAY_1030);
   await page.goto('/WCY26KY3S1/');
   await expect(page.locator('.lesson').first()).toBeVisible();
-  await expect(page.locator('.lesson a.room').first()).toHaveAttribute('href', /^\.\.\/mapa\/\?b=[0-9A-Z]+$/);
+  await expect(page.locator('.lesson .room a').first()).toHaveAttribute('href', /^\.\.\/mapa\/\?b=[0-9A-Z]+$/);
 
   const dayLink = page.locator('#weekBody .day.is-today a.daymap');
   await expect(dayLink).toHaveAttribute('href', '../mapa/?g=WCY26KY3S1&d=2026-10-15');

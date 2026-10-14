@@ -632,8 +632,8 @@
   .meta > span { display: inline-flex; align-items: flex-start; gap: 5px; min-width: 0; }
   .meta .i { margin-top: 2px; color: var(--t3); }
   .meta .room { color: var(--t1); font-weight: 500; font-variant-numeric: tabular-nums; }
-  a.room { text-decoration: none; border-radius: 6px; }
-  a.room:hover span { text-decoration: underline; text-decoration-color: var(--t3); text-underline-offset: 3px; }
+  .room a { color: inherit; text-decoration: underline; text-decoration-color: var(--t4); text-underline-offset: 3px; border-radius: 4px; }
+  .room a:hover { text-decoration-color: var(--t2); }
   .daymap {
     display: inline-flex;
     align-items: center;
@@ -1692,13 +1692,14 @@
     var metaRow = el('div', 'meta');
     if (ev.room && ev.room !== '-') {
       var code = Campus.roomBuilding(ev.room);
-      var room = el(code ? 'a' : 'span', 'room');
-      if (code) {
-        room.href = '../mapa/?b=' + encodeURIComponent(code);
-        room.title = 'Pokaż budynek na mapie kampusu';
-      }
+      var room = el('span', 'room');
       room.appendChild(icon('map-pin', 'i-sm'));
-      room.appendChild(el('span', null, ev.room));
+      /* only the room text goes to the campus map; the rest of the class opens "Gdzie odrobić?" */
+      var where = room.appendChild(el(code ? 'a' : 'span', null, ev.room));
+      if (code) {
+        where.href = '../mapa/?b=' + encodeURIComponent(code);
+        where.title = 'Pokaż budynek na mapie kampusu';
+      }
       metaRow.appendChild(room);
     }
     if (metaRow.childNodes.length) info.appendChild(metaRow);
