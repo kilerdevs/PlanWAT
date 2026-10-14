@@ -717,8 +717,7 @@ test('printing a week gives one clean A4 sheet without the page chrome', async (
   await expect(page.locator('.dow').first()).toBeVisible();
 });
 
-test('the first-visit tour opens once on a phone, pages with Dalej and is not repeated', async ({ page, isMobile }) => {
-  test.skip(!isMobile, 'the tour is for the touch layouts');
+test('the first-visit tour opens once, pages with Dalej and is not repeated', async ({ page }) => {
   const problems = await openGroup(page, { path: `${GROUP}?tour=1` });
   const tour = page.locator('#tourSheet');
   await expect(tour).toBeVisible();
@@ -740,12 +739,8 @@ test('the first-visit tour opens once on a phone, pages with Dalej and is not re
   expect(problems).toEqual([]);
 });
 
-test('the tour stays closed for automated browsers unless asked, and on the desktop grid', async ({ page, isMobile }) => {
+test('the tour stays closed for automated browsers unless asked', async ({ page }) => {
   await openGroup(page);
-  await page.waitForTimeout(2000);
-  await expect(page.locator('#tourSheet')).toBeHidden();
-  test.skip(isMobile, 'the desktop part needs the grid layout');
-  await page.goto(`${GROUP}?tour=1`);
   await page.waitForTimeout(2000);
   await expect(page.locator('#tourSheet')).toBeHidden();
 });
