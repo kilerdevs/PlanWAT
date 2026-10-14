@@ -1,195 +1,463 @@
 <div align="center">
 
+<img src="src/icons/icon.svg" alt="PlanWAT" width="88" height="88">
+
 # PlanWAT
 
-**Phone-first timetables for WAT study groups, one link per group, rendered from iCalendar files.**
+**Nieoficjalny plan zajęć WAT, który czyta się na telefonie. Bez konta, bez e-maila, bez opłat.**
+
+Jeden stały link dla każdej grupy zawsze otwiera bieżący tydzień. Widzisz, co jest teraz, co za chwilę i w której sali,
+a plan możesz wpiąć do kalendarza w telefonie jedną subskrypcją. Wszystko powstaje z publicznych plików iCalendar.
 
 [![CI](https://github.com/kilerdevs/PlanWAT/actions/workflows/ci.yml/badge.svg)](https://github.com/kilerdevs/PlanWAT/actions/workflows/ci.yml)
 [![SAST](https://github.com/kilerdevs/PlanWAT/actions/workflows/sast.yml/badge.svg)](https://github.com/kilerdevs/PlanWAT/actions/workflows/sast.yml)
 [![Pages](https://github.com/kilerdevs/PlanWAT/actions/workflows/pages.yml/badge.svg)](https://github.com/kilerdevs/PlanWAT/actions/workflows/pages.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/kilerdevs/PlanWAT?style=flat&logo=github)](https://github.com/kilerdevs/PlanWAT/commits)
+[![Licencja: MIT](https://img.shields.io/badge/licencja-MIT-green?style=flat)](LICENSE)
+[![Ostatni commit](https://img.shields.io/github/last-commit/kilerdevs/PlanWAT?style=flat&logo=github&label=ostatni%20commit)](https://github.com/kilerdevs/PlanWAT/commits)
+[![Zgłoszenia](https://img.shields.io/github/issues/kilerdevs/PlanWAT?style=flat&logo=github&label=zg%C5%82oszenia)](https://github.com/kilerdevs/PlanWAT/issues)
+
+![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776ab?style=flat&logo=python&logoColor=white)
+![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?style=flat&logo=nodedotjs&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-nginx%20read--only-2496ED?style=flat&logo=docker&logoColor=white)
+![GitHub Pages](https://img.shields.io/badge/hosting-GitHub%20Pages-222?style=flat&logo=github&logoColor=white)
+![Zależności w runtime](https://img.shields.io/badge/zale%C5%BCno%C5%9Bci%20w%20runtime-zero-brightgreen?style=flat)
+![Frameworki](https://img.shields.io/badge/frameworki-brak-brightgreen?style=flat)
+
+![Bez konta](https://img.shields.io/badge/konto-niepotrzebne-blue?style=flat)
+![Bez śledzenia](https://img.shields.io/badge/%C5%9Bledzenie-brak-blue?style=flat)
+![Bez reklam](https://img.shields.io/badge/reklamy-brak-blue?style=flat)
+![CSP](https://img.shields.io/badge/CSP-hash--pinned-blue?style=flat)
+![PWA](https://img.shields.io/badge/PWA-offline-5a0fc8?style=flat&logo=pwa&logoColor=white)
+![WCAG 2.1 AA](https://img.shields.io/badge/WCAG-2.1%20AA-0a84ff?style=flat)
+
+![Testy jednostkowe](https://img.shields.io/badge/testy%20Node%20%2B%20Python-231-success?style=flat)
+![E2E](https://img.shields.io/badge/E2E-Playwright%20%C2%B7%20Chromium%20%C2%B7%20Firefox%20%C2%B7%20WebKit-45ba4b?style=flat&logo=playwright&logoColor=white)
+![axe](https://img.shields.io/badge/axe--core-skan%20w%20CI-success?style=flat)
+![CodeQL](https://img.shields.io/badge/CodeQL-JS%20%C2%B7%20Python%20%C2%B7%20Actions-success?style=flat&logo=github&logoColor=white)
+![Grype](https://img.shields.io/badge/obraz%20Docker-Grype-success?style=flat)
+
+[**Szybki start**](#szybki-start) ·
+[**Funkcje**](#funkcje) ·
+[**Jak to działa**](#jak-to-działa) ·
+[**Aktualizacja planów**](#automatyczna-aktualizacja-planów) ·
+[**Bezpieczeństwo**](#bezpieczeństwo-i-prywatność) ·
+[**Rozwój**](#rozwój) ·
+[**Dziennik zmian**](CHANGELOG.md) ·
+[**Polityka bezpieczeństwa**](SECURITY.md)
 
 </div>
 
-## Disclaimer
+---
 
-PlanWAT is an **unofficial student project**. It is not affiliated with or endorsed by Wojskowa Akademia Techniczna,
-and it uses no WAT branding. The official plan and e-dziekanat stay authoritative for changes and extra dates; the site
-says so whenever a week has no regular classes.
+## Zastrzeżenie
 
-## Contents
+> [!NOTE]
+> PlanWAT to **nieoficjalny projekt studentów**. Nie jest związany z Wojskową Akademią Techniczną ani przez nią
+> popierany i nie używa jej znaków. Wiążące w sprawie zmian i dodatkowych terminów pozostają oficjalny plan oraz
+> e-dziekanat, a strona przypomina o tym w każdym tygodniu bez regularnych zajęć.
 
-- [Overview](#overview)
-- [Features](#features)
-- [How it works](#how-it-works)
-- [Adding or updating a timetable](#adding-or-updating-a-timetable)
-- [Development](#development)
-- [Deployment](#deployment)
-- [Security](#security)
-- [Branches and releases](#branches-and-releases)
-- [License](#license)
+---
 
-## Overview
-
-The official timetable is a large table built for desktop. PlanWAT turns the same data into a week view that reads well
-on a phone, shows what is on **now** and **next** at a glance, and gives every group one stable link that always opens
-the current week.
+## Spis treści
 
 | | |
 |---|---|
-| Group page | `https://kilerdevs.github.io/PlanWAT/<GROUP>/`, for example [`/WCY26KY3S1/`](https://kilerdevs.github.io/PlanWAT/WCY26KY3S1/) |
-| Calendar file | `…/<GROUP>/plan.ics`: download it, or subscribe to it in a calendar app |
-| All groups | `https://kilerdevs.github.io/PlanWAT/`: lists every group, and goes straight to the group while there is only one |
+| **Start** | [Przegląd](#przegląd) · [Dlaczego PlanWAT](#dlaczego-planwat) · [Szybki start](#szybki-start) · [Funkcje](#funkcje) |
+| **Działanie** | [Jak to działa](#jak-to-działa) · [Pokrycie wydziałów](#pokrycie-wydziałów) · [Automatyczna aktualizacja planów](#automatyczna-aktualizacja-planów) · [Dodawanie lub poprawianie planu](#dodawanie-lub-poprawianie-planu) |
+| **Wdrożenie** | [Wdrożenie](#wdrożenie) · [Dokumentacja](#dokumentacja) |
+| **Jakość** | [Bezpieczeństwo i prywatność](#bezpieczeństwo-i-prywatność) · [Testy](#testy) · [Rozwój](#rozwój) |
+| **Projekt** | [Struktura repozytorium](#struktura-repozytorium) · [Gałęzie i wydania](#gałęzie-i-wydania) · [Licencja](#licencja) |
 
-The interface is Polish; the code and documentation are English.
+---
 
-## Features
+## Przegląd
 
-- **Live card:** the class on now (or next today), its room, time and progress; tapping it jumps to the class.
-- **Week view:** on phones each day is a grouped list; on wide screens the week becomes a day × time-slot grid. Past days
-  and finished classes recede; the class in progress fills its colour capsule as it runs.
-- **Navigation:** arrows, swipe, keyboard (`←` `→` `T` `Esc`), a week picker sheet, and a "Bieżący tydzień" pill to jump
-  back. Phones scroll to the current class on open.
-- **Meeting numbers:** every class shows which meeting of its subject and type it is, e.g. "Wykład · 3/15".
-- **Three views:** Tydzień, **Lista** (today onwards, past days on request) and **Miesiąc** (tap a day to open its week);
-  breaks of 30 minutes or more show as "Okienko" between classes.
-- **Walking time:** between two classes in different buildings the plan shows the walk, e.g. "Do bud. 65 · ~6 min
-  pieszo", linked to the map, and flags it when the walk takes longer than the break. The Live card adds it to the next
-  class.
-- **Offline and installable:** a service worker keeps the last copy of the pages you opened and their plans, so the plan
-  opens without signal (with a notice that it is the saved copy); each group page can be added to the home screen as its
-  own app.
-- **Subject legend** that highlights one subject across the week, and **subject progress** (classes done out of the
-  total, the next one, the count per class type).
-- **Mapa kampusu** (`/mapa/`): every WAT building on a 3D map, coloured by faculty, with search, a faculty legend,
-  a 2D/3D switch and walking directions. Rooms in the plan link to their building, and each day's "Mapa" link shows
-  that day's classes and buildings in order.
-- **Gdzie odrobić?** finds the same class in the other groups of the year, marking the ones that clash with your plan.
-  Tapping a class runs it for that very meeting (same type and number).
-- **Porównaj grupy:** up to four plans side by side, week by week, with the time all of them are free.
-- **Statystyki:** hours per week, per weekday and per class type, earliest start, latest end, longest day, breaks.
-- **Download, subscribe** (Google Calendar, Apple Calendar via webcal, a copyable feed link), optionally as a feed with
-  a reminder 15 minutes before each class (`plan-przypomnienia.ics`), and **share** the plan;
-  **print / PDF** the shown week or list.
-- **Favourites and recent groups** on the front page, and a notice when the plan changed since your last visit. These
-  live only in the browser's storage: no account, no tracking, everything is free.
-- **Public-site basics:** a privacy notice and terms of use at `/prywatnosc/`, the footer note that PlanWAT never asks
-  for a password, `robots.txt` and `/.well-known/security.txt` (RFC 9116); the dev preview is marked `noindex`.
-- **Accessible and fast:** WCAG 2.1 AA contrast, keyboard and screen-reader support, `prefers-reduced-motion` respected,
-  no framework and no third-party scripts.
+Oficjalny plan to wielka tabela zbudowana pod pulpit. PlanWAT zamienia te same dane w widok tygodnia, który dobrze
+wygląda na telefonie, pokazuje, co dzieje się **teraz** i **za chwilę**, i daje każdej grupie jeden stały adres, który
+zawsze prowadzi do bieżącego tygodnia.
 
-The visual system (iOS-style dark theme, one blue accent, SF / Inter) is recorded in [DESIGN.md](DESIGN.md); product
-facts and constraints are in [PRODUCT.md](PRODUCT.md).
+<table>
+<tr>
+<td width="50%" valign="top">
 
-## How it works
+**Dla studentów**
+- Adres grupy w czacie grupy i gotowe: `…/<GRUPA>/`
+- Karta „Teraz”: sala, godziny i postęp zajęć na żywo
+- Numer spotkania (np. „Wykład · 3/15”), okienka i czas przejścia między budynkami
+- Subskrypcja kalendarza (Google, Apple, link) z przypomnieniami 15 minut przed zajęciami
+- Mapa kampusu 3D z akademikami, stołówkami, przystankami i paczkomatami
+- Działa offline i da się ją zainstalować jak aplikację
 
-```
-timetables/<term>/<GROUP>.ics          source of truth: one iCalendar file per group and term
-            │
-            ▼  python3 build.py        validates every calendar, picks each group's current term,
-            │                          writes pages with a hash-pinned Content-Security-Policy
-            ▼
-site/index.html                        group list (redirects while there is only one group)
-site/<GROUP>/index.html                the timetable page
-site/<GROUP>/plan.ics                  byte-for-byte copy of the group's current term
-site/data/groups.json,                group list and each year's classes, read on demand
-     year/<PREFIX>.json                by "Porównaj grupy" and "Gdzie odrobić?"
-site/404.html
-            │
-            ▼  GitHub Pages            deployed on every push to master and rebuilt daily,
-                                       so a new term goes live on its first day
-```
+</td>
+<td width="50%" valign="top">
 
-In the browser, the group page fetches `plan.ics` and renders it with [`src/ics.js`](src/ics.js), a small RFC 5545 reader
-(folded lines, escaping, time zones, weekly repeats, excluded dates). Nothing is pre-rendered into the page, so the
-calendar file and the page can never disagree. [`src/insights.js`](src/insights.js) computes the statistics, subject
-progress, plan changes, shared free time, and catch-up classes; it is pure and unit-tested like the reader.
+**Dla opiekunów**
+- Plany to zwykłe pliki `.ics`, a źródłem prawdy jest repozytorium
+- Codzienna, automatyczna aktualizacja ze stron wydziałów (bez commitów na `master`)
+- Walidacja każdego kalendarza przed publikacją, brak danych kadry
+- Statyczna strona z CSP przypiętym hashami, bez frameworków i trackerów
+- Dwa sposoby wdrożenia: GitHub Pages albo obraz Docker z nginx
+- Podgląd gałęzi `dev` pod adresem `/dev/`
 
-## Adding or updating a timetable
+</td>
+</tr>
+</table>
 
-1. Put the calendar at `timetables/<term>/<GROUP>.ics`, for example `timetables/2027-lato/WCY26KY3S1.ics`.
-   - `<term>`: lowercase letters, digits and dashes. `<GROUP>`: the WAT group code, letters, digits and underscores.
-   - The file must be UTF-8 with CRLF line endings (`.gitattributes` keeps them intact).
-2. Follow the [calendar format](docs/ICS-FORMAT.md): standard events plus a few `X-PLAN-*` properties for the header
-   (group, faculty, term, semester dates).
-3. Run `python3 build.py` (it refuses a malformed calendar and says why) and `npm test`.
-4. Open a pull request against `dev`.
+| | |
+|---|---|
+| Strona grupy | `https://kilerdevs.github.io/PlanWAT/<GRUPA>/`, np. [`/WCY26KY3S1/`](https://kilerdevs.github.io/PlanWAT/WCY26KY3S1/) |
+| Plik kalendarza | `…/<GRUPA>/plan.ics`: pobierz albo zasubskrybuj w aplikacji kalendarza |
+| Wszystkie grupy | [`https://kilerdevs.github.io/PlanWAT/`](https://kilerdevs.github.io/PlanWAT/): lista z wyszukiwarką i filtrem wydziałów |
+| Mapa kampusu | [`…/mapa/`](https://kilerdevs.github.io/PlanWAT/mapa/) |
 
-A group can have several terms. The build serves the term that is running on the build date; between terms, the next
-one; after the last term, the latest. Older terms stay in the repository as history.
+Interfejs jest po polsku. Kod i nazwy techniczne są angielskie, dokumentacja w tym repozytorium: polska.
 
-Not comfortable with Git? Open a [timetable issue](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml)
-with the group code and a link to the official plan.
+---
 
-## Development
+## Dlaczego PlanWAT
 
-Requirements: **Python 3.12+** (build, standard library only) and **Node.js 22+** (tests only; the site ships no npm
-packages).
+Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to oferują konto (na przykład przez
+kod wysyłany na adres studencki). Samo logowanie bywa opcjonalne, ale ta droga ma kilka słabych punktów, których u nas po
+prostu nie ma:
+
+| | **PlanWAT** | **Serwis z opcjonalnym logowaniem kodem na adres studencki** |
+|---|---|---|
+| Logowanie | **Nie ma i nie będzie** | Opcjonalne, ale po co, skoro plan jest publiczny |
+| Co o Tobie wiemy | **Nic: ani adresu, ani konta** | Po zalogowaniu zweryfikowany adres e-mail powiązany z Twoją tożsamością, grupą i datami wizyt |
+| Co wycieknie przy włamaniu | **Nie ma czego wykradać** | Lista adresów zalogowanych studentów z przypisanymi grupami |
+| Phishing | **Nikt nie prosi Cię o kod, więc nie ma czego podrobić** | Przyzwyczaja do wpisywania kodów z poczty uczelnianej na stronie osoby trzeciej, czyli dokładnie tak, jak działają wyłudzacze |
+| Gdy poczta zawiedzie | **Plan działa** | Zalogowany bez wiadomości z kodem (spam, awaria, absolwent bez skrzynki) zostaje bez konta |
+| Eksport i subskrypcja kalendarza (`.ics`) | **Za darmo, dla każdego** | W części za abonamentem |
+| Reklamy, śledzenie, cookies | **Brak** | Różnie |
+| Cena | **0 zł, na zawsze** | Do ustalenia przy płatności |
+| Kod źródłowy | **Otwarty, na licencji MIT** | Jak to działa i co dzieje się z danymi, trzeba przyjąć na słowo |
+
+> [!IMPORTANT]
+> **PlanWAT nigdy nie poprosi Cię o adres e-mail**: ani studencki, ani prywatny, ani żaden inny, a także o hasło czy kod.
+> Jeśli ktoś prosi o nie „w imieniu PlanWAT”, to szemrane zachowanie i warto je zgłosić. Zawsze możesz to sprawdzić
+> samodzielnie: serwis nie ma żadnego formularza logowania i żadnego miejsca, w którym takie dane mogłyby zostać zapisane.
+
+Opiekun projektu zobowiązuje się, że PlanWAT pozostanie darmowy dla wszystkich studentów. To zobowiązanie widnieje też
+w stopce strony.
+
+---
+
+## Szybki start
+
+**Jako student:** otwórz [stronę główną](https://kilerdevs.github.io/PlanWAT/), wpisz kod swojej grupy (np. `WCY26KY3S1`),
+dotknij gwiazdki, żeby dodać grupę do ulubionych, i wyślij link do czatu grupy. Przy pierwszej wizycie pokaże się krótki
+przewodnik. Można go wywołać ponownie przyciskiem **„Jak korzystać”**.
+
+**Jako programista:**
 
 ```bash
-npm ci                                  # test tooling: Playwright and axe-core
-npx playwright install chromium         # once; add firefox webkit for the full matrix
+git clone https://github.com/kilerdevs/PlanWAT.git
+cd PlanWAT
+git switch dev
 
-python3 build.py                        # build site/ for today
-npm run test:unit                       # calendar reader (node:test) + build tests (unittest)
-npm run build && npm run test:e2e       # browser tests against site/ with a frozen clock
-npm test                                # all of the above
+python3 build.py                  # zbuduj site/ na dziś
+node tests/e2e/serve.js           # podgląd: http://127.0.0.1:4173 (tak jak GitHub Pages)
 ```
 
-Preview the built site with `node tests/e2e/serve.js` (http://127.0.0.1:4173), which serves it the way GitHub Pages does.
+> [!TIP]
+> Do samego budowania wystarcza Python 3.12+ i biblioteka standardowa. Node.js jest potrzebny tylko do testów. Strona nie
+> ma żadnych pakietów npm w środowisku uruchomieniowym.
+
+---
+
+## Funkcje
+
+### Plan grupy
+
+- **Karta „Teraz”**: zajęcia trwające teraz (albo następne dzisiaj), sala, godziny i postęp. Dotknięcie przeskakuje do
+  zajęć w tygodniu.
+- **Widok tygodnia**: na telefonie dzień to lista w grupie, na szerokim ekranie tydzień zamienia się w siatkę
+  dzień × godzina. Minione dni i skończone zajęcia przygasają, a każde skończone zajęcia mają ✓.
+- **Trzy widoki**: Tydzień, Lista (od dziś) i Miesiąc.
+- **Nawigacja**: strzałki, przesunięcie palcem, klawiatura (`←` `→` `T` `Esc`), arkusz wyboru tygodnia i przycisk
+  „Bieżący tydzień”. Telefon otwiera się na bieżących zajęciach.
+- **Numer spotkania**: każde zajęcia pokazują, które to spotkanie z danego przedmiotu i rodzaju, np. „Wykład · 3/15”.
+- **Okienka**: przerwa od 30 minut jest podpisana „Okienko”, także na siatce pulpitu. Między budynkami plan dolicza czas
+  przejścia („Do bud. 65 · ~6 min pieszo”) i ostrzega, gdy przerwa jest krótsza.
+- **Dwa semestry**: gdy grupa ma drugi semestr, pojawia się przełącznik Zima / Lato.
+- **Moje przedmioty**: odznacz przedmioty, których nie masz (lektoraty, przedmioty do wyboru). Znikną z widoków,
+  statystyk i pobranego `.ics`. Zapis tylko w przeglądarce.
+- **Przedmioty**: legenda podświetlająca przedmiot w całym tygodniu oraz postęp (zajęcia odbyte z wszystkich).
+
+### Narzędzia
+
+- **Gdzie odrobić?** znajduje te same zajęcia (ten sam przedmiot, rodzaj i numer) w innych grupach rocznika i zaznacza
+  terminy kolidujące z Twoim planem.
+- **Porównaj grupy**: plany do czterech grup obok siebie i godziny, w których wszyscy mają wolne.
+- **Statystyki**: godziny w tygodniu, według dni i rodzajów zajęć, najwcześniejszy początek, najdłuższy dzień, okienka.
+- **Kalendarz**: pobranie `.ics`, subskrypcja (Google, Apple przez `webcal`, link), wariant z przypomnieniem 15 minut
+  przed zajęciami (`plan-przypomnienia.ics`), udostępnianie.
+- **Drukuj / PDF**: jeden czysty arkusz A4 na tydzień, czarno na białym, jedna linia na zajęcia.
+- **Ulubione i ostatnie grupy** na stronie głównej oraz informacja, że plan zmienił się od ostatniej wizyty. Zapis wyłącznie
+  w pamięci przeglądarki.
+
+### Mapa kampusu
+
+Strona `/mapa/` pokazuje wszystkie budynki WAT na mapie 3D, pokolorowane według wydziałów.
+
+- Wyszukiwarka budynków, wydziałów i miejsc, przełącznik 2D/3D, widok całego kampusu i trasa pieszo.
+- Przy każdym dniu w planie jest przycisk „Mapa”, który pokazuje budynki zajęć tego dnia po kolei. Podkreślona sala
+  otwiera mapę przy jej budynku.
+- **Miejsca wokół kampusu** (z OpenStreetMap): przystanki tramwajowe i autobusowe, akademiki, Domki Radiowa, stołówki,
+  bufety, restauracje, bary, sklepy, paczkomaty i parkingi, każde jako oznaczona ikona, z przełącznikami kategorii
+  w panelu „Miejsca”.
+- Zielone tereny, woda, rodzaje zabudowy i bryły 3D mają własną, spójną kolorystykę.
+
+### Wygląd i dostępność
+
+- **Motyw jasny i ciemny**: domyślnie według systemu, z przełącznikiem Auto / Ciemny / Jasny. Mapa zawsze jest ciemna.
+- **Aplikacja offline**: Service Worker zachowuje otwarte strony i plany, a każdą grupę można dodać do ekranu głównego.
+- **Przewodnik** przy pierwszej wizycie: siedem krótkich kroków z animowanymi przykładami.
+- **WCAG 2.1 AA**: kontrast, obsługa klawiatury i czytników ekranu, szanowane `prefers-reduced-motion`.
+- Bez frameworka, bez skryptów firm trzecich, płynnie na przeciętnym telefonie.
+
+System wizualny („Apple, ale ciemny”) opisuje [DESIGN.md](DESIGN.md), a założenia produktu [PRODUCT.md](PRODUCT.md).
+
+---
+
+## Jak to działa
+
+<img src="docs/diagrams/budowa-strony.svg" alt="Pliki .ics z katalogu timetables przechodzą przez build.py, który waliduje je i zapisuje statyczną stronę site/ z CSP przypiętym hashami. Strona trafia na GitHub Pages albo do obrazu Docker. Świeże kalendarze z gałęzi data są nakładane na timetables przed budową." width="760">
 
 ```
-build.py                 static site generator (standard library only)
-src/group.html           group page template: markup, styles and app script (inlined, CSP-hashed)
-src/ics.js               iCalendar reader, inlined into every group page
-src/insights.js          statistics, progress, comparison and catch-up, inlined into every group page
-src/campus.js            campus buildings, room → building, search; inlined into the group page and the map
-src/mapa.html            the campus map page (/mapa/)
-src/index.html, 404.html group list and not-found page
-timetables/              <term>/<GROUP>.ics, the data
-tests/                   ics.test.js (reader), insights.test.js, test_build.py (build), e2e/ (Playwright), fixtures/
-tools/export_ics.py      one-time export of the original page's data into the first calendar
-deploy/nginx.conf        nginx template for the self-hosted Docker image
+timetables/<semestr>/<GRUPA>.ics        źródło prawdy: jeden plik iCalendar na grupę i semestr
+            │
+            ▼  python3 build.py         waliduje każdy kalendarz, wybiera bieżący semestr grupy,
+            │                           zapisuje strony z Content-Security-Policy przypiętym hashami
+            ▼
+site/index.html                         lista grup z wyszukiwarką (przekierowanie przy jednej grupie)
+site/<GRUPA>/index.html                 strona planu
+site/<GRUPA>/plan.ics                   bajt w bajt kopia kalendarza bieżącego semestru
+site/<GRUPA>/plan-<semestr>.ics         drugi semestr grupy (jeśli istnieje)
+site/mapa/index.html                    mapa kampusu
+site/data/…                             lista grup i zajęcia z roczników: „Porównaj” i „Gdzie odrobić?”
+            │
+            ▼  GitHub Pages             wdrożenie po każdym pushu na master i codzienna przebudowa,
+                                        dzięki której nowy semestr startuje pierwszego dnia
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and the pull-request checklist.
+W przeglądarce strona grupy pobiera `plan.ics` i renderuje go za pomocą [`src/ics.js`](src/ics.js), niewielkiego czytnika
+RFC 5545 (składane linie, znaki specjalne, strefy czasowe, powtarzanie tygodniowe, wykluczone daty). Nic nie jest
+generowane wcześniej do HTML, więc kalendarz i strona nie mogą się rozjechać. [`src/insights.js`](src/insights.js) liczy
+statystyki, postęp, zmiany planu, wspólny wolny czas i zajęcia do odrobienia, a [`src/campus.js`](src/campus.js) i
+[`src/places.js`](src/places.js) obsługują budynki i miejsca na mapie.
 
-## Deployment
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Student
+    participant P as GitHub Pages
+    participant SW as Service Worker
+    S->>P: GET /WCY26KY3S1/
+    P-->>S: strona (HTML + CSP z hashami)
+    S->>P: GET plan.ics
+    P-->>S: kalendarz (bajt w bajt ze źródła)
+    Note over S: ics.js renderuje tydzień,<br/>karta „Teraz” liczy się w przeglądarce
+    S->>SW: zapis kopii na później
+    Note over S,SW: bez sieci: ostatnia zapisana kopia<br/>z informacją, że to wersja offline
+```
 
-- **GitHub Pages** (primary): [`.github/workflows/pages.yml`](.github/workflows/pages.yml) builds and deploys on every
-  push to `master` or `dev`, on a daily schedule (term changes) and on demand. It publishes production from `master`
-  at the site root plus a preview of `dev` under `/dev/` (linked from the front page footer).
-- **Docker** (self-hosted): `docker compose up -d --build` builds the site inside the image and serves it from a
-  read-only, unprivileged nginx on `127.0.0.1:8088`, with security headers.
+---
 
-Moving a custom domain from the Docker host to GitHub Pages, and how to restore the security headers Pages cannot send,
-are described in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+## Pokrycie wydziałów
 
-## Security
+Plany ze stron wydziałów są odświeżane automatycznie. Obecnie opublikowanych jest **781 grup**.
 
-- Every page carries a **hash-pinned Content-Security-Policy**: only its own inline script and style run, it may fetch
-  only its own `plan.ics`, and the only external origin is Google Fonts. The campus map page (`/mapa/`) is the one
-  exception: it also loads MapLibre GL JS from `unpkg.com` (pinned to a version and a Subresource Integrity hash) and
-  map tiles from `tiles.openfreemap.org`, and allows the `blob:` workers MapLibre renders with. The front and group
-  pages also allow `worker-src 'self'` and `manifest-src 'self'` for the offline worker (`/sw.js`) and the web app
-  manifest.
-- The service worker caches only same-origin pages, calendars and app files (network first) and Google Fonts; it never
-  touches other requests, and the production worker leaves the `/dev/` preview to its own worker.
-- Calendar text is rendered with `textContent` in the browser and HTML-escaped at build time; colours are accepted only as
-  `#rrggbb`.
-- CI runs CodeQL (JavaScript, Python, workflows), a Grype scan of the Docker image, and dependency audits. Actions are
-  pinned to commit SHAs and base images to digests.
+```mermaid
+pie showData title Grupy według wydziału (stan na 14.10.2026)
+    "WML" : 178
+    "WCY" : 170
+    "WEL" : 165
+    "WLO" : 132
+    "WIM" : 94
+    "WTC" : 23
+    "IOE" : 15
+    "WIG" : 4
+```
 
-Please report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
+| Wydział | Grup | Sterownik | Uwagi |
+|---|---:|---|---|
+| WML | 178 | `wml` | strony Plansoft, aktualny `index.xml` odnajdywany przez ramkę strony głównej |
+| WCY | 170 | `wcy` | lista grup z menu skoku; strony z planem poprzedniego semestru są pomijane |
+| WEL | 165 | `plansoft` | wspólna polityka dostępu z WLO |
+| WLO | 132 | `plansoft` | |
+| WIM | 94 | `plansoft` | |
+| WTC | 23 | `wtc` | plany w PDF konwertowane przez `pymupdf` |
+| IOE | 15 | `plansoft` | zimowe plany leżą pod katalogiem `lato/`, siatka jest transponowana |
+| WIG | 4 | ręcznie | pliki dodane do repozytorium |
 
-## Branches and releases
+Brakuje swojej grupy? Zgłoś [prośbę o plan](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) z kodem
+grupy i linkiem do oficjalnego planu.
 
-- Work lands on **`dev`**; releases are pull requests from `dev` into **`master`**, which deploys.
-- `master` requires **signed commits** and passing checks (unit, build, browser tests, Docker image, CodeQL).
-- Changes are recorded in [CHANGELOG.md](CHANGELOG.md) ([Keep a Changelog](https://keepachangelog.com/), SemVer).
+---
 
-## License
+## Automatyczna aktualizacja planów
 
-[MIT](LICENSE). Icons are from [Lucide](https://lucide.dev) (ISC); the Inter typeface is loaded from Google Fonts (SIL
-OFL 1.1). See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+<img src="docs/diagrams/aktualizacja-planow.svg" alt="Codziennie w nocy runner odczytuje strony wydziałów przez proxy z listą dozwolonych hostów, konwertuje plany do kalendarzy, waliduje je i wypycha na gałąź data. Pages nakłada je na strony i publikuje." width="760">
+
+- Zaplanowany workflow co noc czyta strony wydziałów, konwertuje plany, **waliduje** je i wypycha wyłącznie zmienione
+  kalendarze na gałąź `data`. Pages nakłada je na strony przed budową, więc **żaden commit na `master` ani `dev` nie jest
+  potrzebny**.
+- Crawler jest uprzejmy: jedno żądanie naraz, losowe przerwy, `robots.txt`, warunkowe pobieranie (`304`), ominięcie grup
+  sprawdzonych niedawno. Po napotkaniu blokady wydział jest odkładany, a nie obchodzony.
+- Każda strona grupy pokazuje **Zaktualizowano** (kiedy plan faktycznie się zmienił) i **Sprawdzono** (kiedy go ostatnio
+  zweryfikowano).
+- W sierpniu oraz od stycznia do lutego odświeżany jest także **nadchodzący semestr**, we własnym katalogu.
+- Opublikowane kalendarze **nie zawierają danych kadry**: konwertery nie zapisują ani nazwisk, ani tytułów, a `build.py`
+  odrzuca każdy kalendarz, który by je miał.
+
+Szczegóły, w tym model zagrożeń dla samego runnera, opisuje [docs/REFRESH.md](docs/REFRESH.md).
+
+---
+
+## Dodawanie lub poprawianie planu
+
+1. Umieść kalendarz w `timetables/<semestr>/<GRUPA>.ics`, np. `timetables/2027-lato/WCY26KY3S1.ics`.
+   - `<semestr>`: małe litery, cyfry i myślniki. `<GRUPA>`: kod grupy WAT (litery, cyfry, podkreślenia).
+   - Plik musi być w UTF-8 z zakończeniami linii CRLF (pilnuje tego `.gitattributes`).
+2. Zastosuj [format kalendarza](docs/ICS-FORMAT.md): standardowe zdarzenia i kilka właściwości `X-PLAN-*` dla nagłówka.
+3. Uruchom `python3 build.py` (odrzuci zły kalendarz i powie dlaczego) oraz `npm test`.
+4. Otwórz pull request do gałęzi `dev`.
+
+Grupa może mieć kilka semestrów. Budowa pokazuje semestr trwający w dniu budowy, między semestrami następny, a po ostatnim
+najnowszy. Starsze semestry zostają w repozytorium jako historia.
+
+Nie czujesz się pewnie z Gitem? Otwórz [zgłoszenie planu](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml).
+
+---
+
+## Wdrożenie
+
+| Sposób | Opis |
+|---|---|
+| **GitHub Pages** (docelowy) | [`pages.yml`](.github/workflows/pages.yml) buduje i wdraża po każdym pushu na `master` lub `dev`, codziennie i na żądanie. Produkcja zawsze powstaje z `master`, a `dev` jako podgląd pod `/dev/`. |
+| **Docker** (własny hosting) | `docker compose up -d --build` buduje stronę w obrazie i serwuje ją z nginx tylko do odczytu, bez uprawnień roota, na `127.0.0.1:8088`, z nagłówkami bezpieczeństwa. |
+
+Jak przenieść własną domenę na Pages i jak odtworzyć nagłówki, których Pages nie wysyła, opisuje
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+---
+
+## Dokumentacja
+
+| Dokument | O czym |
+|---|---|
+| [PRODUCT.md](PRODUCT.md) | Użytkownicy, cel produktu, ograniczenia i zasady |
+| [DESIGN.md](DESIGN.md) | System wizualny: kolory, typografia, komponenty, ruch |
+| [docs/ICS-FORMAT.md](docs/ICS-FORMAT.md) | Format kalendarza, który czyta PlanWAT |
+| [docs/REFRESH.md](docs/REFRESH.md) | Automatyczna aktualizacja planów i model zagrożeń runnera |
+| [docs/EGRESS.md](docs/EGRESS.md) | Proxy wyjściowe runnera |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | GitHub Pages, Docker, domena i nagłówki |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Jak współtworzyć projekt |
+| [SECURITY.md](SECURITY.md) | Zgłaszanie podatności |
+| [CHANGELOG.md](CHANGELOG.md) | Dziennik zmian |
+
+---
+
+## Bezpieczeństwo i prywatność
+
+- Każda strona ma **Content-Security-Policy z hashami**: uruchamia się tylko jej własny skrypt i styl, a pobierać może
+  jedynie własne pliki. Jedynym zewnętrznym źródłem jest Google Fonts. Strona mapy dodatkowo ładuje MapLibre GL JS z
+  `unpkg.com` (przypięty wersją i sumą SRI) oraz kafelki z `tiles.openfreemap.org`.
+- Tekst z kalendarza trafia do strony wyłącznie przez `textContent`, a w budowie jest escapowany. Kolory przyjmowane są tylko
+  jako `#rrggbb`.
+- Service Worker buforuje tylko strony, kalendarze i pliki aplikacji z własnej domeny oraz Google Fonts.
+- **Nie ma kont, adresów e-mail ani plików cookie.** Ulubione grupy, wybór motywu i ukryte przedmioty zapisują się wyłącznie w
+  pamięci przeglądarki. Nic nie jest wysyłane do serwera, bo serwera nie ma.
+- CI uruchamia CodeQL (JavaScript, Python, workflowy), skan obrazu Docker (Grype) i audyty zależności. Akcje są przypięte do
+  skrótów commitów, a obrazy bazowe do digestów.
+- Notatka o prywatności i zasadach korzystania: `/prywatnosc/` w serwisie.
+
+Podatności zgłaszaj prywatnie. Zasady i terminy opisuje [SECURITY.md](SECURITY.md).
+
+---
+
+## Testy
+
+```mermaid
+flowchart LR
+    A[Commit na dev] --> B[Testy Node: czytnik .ics, insights, campus, places]
+    A --> C[Testy Python: build i odświeżanie]
+    A --> D[Playwright: Chromium · Firefox · WebKit, pulpit i telefon]
+    D --> E[axe-core: WCAG]
+    A --> F[Obraz Docker: Grype + test dymny]
+    A --> G[CodeQL: JS · Python · Actions]
+    B & C & E & F & G --> H{{Pull request do master}}
+```
+
+| Warstwa | Narzędzie | Co sprawdza |
+|---|---|---|
+| Czytnik kalendarza | `node:test` | RFC 5545, strefy, powtarzanie, błędne dane |
+| Logika planu | `node:test` | statystyki, postęp, porównanie grup, odrabianie, budynki i miejsca |
+| Budowa i aktualizacja | `unittest` | walidacja kalendarzy, CSP, wybór semestru, crawler, konwertery |
+| Przeglądarka | Playwright | pełne przepływy na zamrożonym zegarze, w trzech silnikach, na pulpicie i telefonie |
+| Dostępność | axe-core | brak naruszeń WCAG w jasnym i ciemnym motywie |
+| Obraz | Grype + test dymny | podatności i działanie kontenera |
+
+---
+
+## Rozwój
+
+Wymagania: **Python 3.12+** (budowa, tylko biblioteka standardowa) oraz **Node.js 22+** (tylko testy).
+
+```bash
+npm ci                                  # narzędzia testowe: Playwright i axe-core
+npx playwright install chromium         # raz; dodaj firefox webkit dla pełnej macierzy
+
+python3 build.py                        # zbuduj site/ na dziś
+npm run test:unit                       # czytnik (node:test) i testy budowy (unittest)
+npm run build && npm run test:e2e       # testy przeglądarkowe na site/ z zamrożonym zegarem
+npm test                                # wszystko powyższe
+```
+
+Konwencje i listę kontrolną pull requesta opisuje [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## Struktura repozytorium
+
+```
+build.py                  generator strony (tylko biblioteka standardowa)
+src/group.html            szablon strony grupy: znaczniki, style i skrypt aplikacji (inline, z hashami CSP)
+src/index.html, 404.html  lista grup i strona błędu
+src/mapa.html             mapa kampusu (/mapa/)
+src/ics.js                czytnik iCalendar
+src/insights.js           statystyki, postęp, porównanie, odrabianie
+src/campus.js             budynki kampusu, sala → budynek, wyszukiwanie
+src/places.js             miejsca wokół kampusu (generowany z OpenStreetMap)
+src/theme*.css, theme.js  motyw jasny i ciemny
+src/sw.js                 Service Worker (tryb offline)
+timetables/               <semestr>/<GRUPA>.ics: dane
+tools/refresh/            crawler, konwertery i sterowniki wydziałów
+tools/egress/             proxy wyjściowe runnera
+tools/places/             generator src/places.js
+tests/                    Node, Python i Playwright (e2e/)
+deploy/nginx.conf         szablon nginx dla obrazu Docker
+docs/                     dokumentacja i diagramy
+```
+
+---
+
+## Gałęzie i wydania
+
+- Praca trafia na **`dev`**, a wydania to pull requesty z `dev` do **`master`**, który wdraża produkcję.
+- `master` wymaga **podpisanych commitów** i zielonych testów (jednostkowe, budowa, przeglądarkowe, obraz Docker, CodeQL).
+- Zmiany opisuje [CHANGELOG.md](CHANGELOG.md) ([Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), SemVer).
+
+---
+
+## Licencja
+
+[MIT](LICENSE). Ikony pochodzą z [Lucide](https://lucide.dev) (ISC), krój Inter jest ładowany z Google Fonts (SIL OFL 1.1),
+a dane mapy to © współtwórcy OpenStreetMap (ODbL). Szczegóły: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+<div align="center">
+
+<sub>PlanWAT to nieoficjalny projekt studentów. Nie prosimy o Twój e-mail. Nigdy. Naprawdę.</sub>
+
+</div>

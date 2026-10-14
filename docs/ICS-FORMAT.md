@@ -1,53 +1,74 @@
-# Calendar format
+<div align="center">
 
-Each timetable is a standard iCalendar file ([RFC 5545](https://www.rfc-editor.org/rfc/rfc5545)) at
-`timetables/<term>/<GROUP>.ics`. Any calendar app can read it; PlanWAT reads the properties below.
+<img src="../src/icons/icon.svg" alt="PlanWAT" width="56" height="56">
 
-## File
+# Format kalendarza
 
-- UTF-8, **CRLF** line endings, lines folded at 75 octets (continuation lines start with one space).
-- `<GROUP>` (the file name) is the WAT group code: 2–32 letters, digits and underscores, e.g. `WCY26KY3S1`.
-- `<term>` (the folder) is lowercase letters, digits and dashes, e.g. `2026-27-zima`.
+**Każdy plan to zwykły plik iCalendar.** Czyta go każda aplikacja kalendarza, a PlanWAT korzysta z kilku dodatkowych właściwości.
 
-## Calendar properties
+[![RFC 5545](https://img.shields.io/badge/RFC-5545-0a84ff?style=flat)](https://www.rfc-editor.org/rfc/rfc5545)
+[![UTF-8](https://img.shields.io/badge/kodowanie-UTF--8-blue?style=flat)](#plik)
+[![CRLF](https://img.shields.io/badge/linie-CRLF-blue?style=flat)](#plik)
+[![Bez danych kadry](https://img.shields.io/badge/dane%20kadry-zabronione-critical?style=flat)](#właściwości-zdarzeń)
 
-| Property | Required | Used for |
+</div>
+
+Każdy plan to standardowy plik iCalendar ([RFC 5545](https://www.rfc-editor.org/rfc/rfc5545)) w
+`timetables/<semestr>/<GRUPA>.ics`.
+
+```mermaid
+flowchart LR
+    F["timetables/2026-27-zima/<br/>WCY26KY3S1.ics"] --> V{"build.load_term<br/>walidacja"}
+    V -- poprawny --> S["site/WCY26KY3S1/plan.ics<br/>bajt w bajt"]
+    V -- poprawny --> R["plan-przypomnienia.ics<br/>alarm 15 min"]
+    V -- błąd --> X[["build odrzuca plik<br/>i mówi dlaczego"]]
+```
+
+## Plik
+
+- UTF-8, zakończenia linii **CRLF**, linie składane po 75 oktetach (linie kontynuacji zaczynają się jedną spacją).
+- `<GRUPA>` (nazwa pliku) to kod grupy WAT: 2–32 liter, cyfr i podkreśleń, np. `WCY26KY3S1`.
+- `<semestr>` (katalog) to małe litery, cyfry i myślniki, np. `2026-27-zima`.
+
+## Właściwości kalendarza
+
+| Właściwość | Wymagana | Do czego służy |
 |---|---|---|
-| `X-PLAN-GROUP` | recommended | Group code shown in the header. Must equal the file name; falls back to `X-WR-CALNAME` minus a leading "Plan zajęć". |
-| `X-PLAN-FACULTY` | optional | "Wydział …" in the header, and the section on the group list. Hidden when absent. |
-| `X-PLAN-TERM` | optional | "Plan zajęć · semestr zimowy 2026/27". |
-| `X-PLAN-SEMESTER-START` | recommended | First day of the term (`YYYYMMDD`). Weeks start on its Monday. Without it, the first class. |
-| `X-PLAN-SEMESTER-END` | recommended | Last day shown in the header. Weeks run to its week. Without it, the last class. |
-| `X-PLAN-GENERATED` | optional | "Wygenerowano …" in the header. |
-| `X-WR-CALNAME`, `X-WR-CALDESC`, `X-WR-TIMEZONE` | optional | For calendar apps. |
-| `REFRESH-INTERVAL`, `X-PUBLISHED-TTL` | optional | How often subscribed calendar apps refetch (e.g. `PT12H`). |
+| `X-PLAN-GROUP` | zalecana | Kod grupy w nagłówku. Musi być równy nazwie pliku. Wraca do `X-WR-CALNAME` bez wiodącego „Plan zajęć”. |
+| `X-PLAN-FACULTY` | opcjonalna | „Wydział …” w nagłówku oraz sekcja na liście grup. Ukryta, gdy jej brak. |
+| `X-PLAN-TERM` | opcjonalna | „Plan zajęć · semestr zimowy 2026/27”. |
+| `X-PLAN-SEMESTER-START` | zalecana | Pierwszy dzień semestru (`RRRRMMDD`). Tygodnie zaczynają się od jego poniedziałku. Bez niej: pierwsze zajęcia. |
+| `X-PLAN-SEMESTER-END` | zalecana | Ostatni dzień pokazany w nagłówku. Tygodnie sięgają jego tygodnia. Bez niej: ostatnie zajęcia. |
+| `X-PLAN-GENERATED` | opcjonalna | „Wygenerowano …” w nagłówku. |
+| `X-WR-CALNAME`, `X-WR-CALDESC`, `X-WR-TIMEZONE` | opcjonalne | Dla aplikacji kalendarza. |
+| `REFRESH-INTERVAL`, `X-PUBLISHED-TTL` | opcjonalne | Jak często zasubskrybowane aplikacje pobierają kalendarz ponownie (np. `PT12H`). |
 
-Weeks without classes (holidays, exam session) still appear between the semester start and end, with a note pointing to
-e-dziekanat.
+Tygodnie bez zajęć (święta, sesja) nadal pojawiają się między początkiem a końcem semestru, z adnotacją odsyłającą do
+e-dziekanatu.
 
-## Event properties
+## Właściwości zdarzeń
 
-| Property | Required | Used for |
+| Właściwość | Wymagana | Do czego służy |
 |---|---|---|
-| `UID` | yes | Stable identity for calendar apps. Keep it the same when a class is corrected, e.g. `20261002T0800-wcy26ky3s1@planwat`. |
-| `DTSTART`, `DTEND` (or `DURATION`) | yes | Start and end. Local times with `TZID=Europe/Warsaw` are read as wall-clock times; UTC times (`…Z`) are converted. All-day events are ignored. |
-| `SUMMARY` | yes | Subject name, e.g. `Matematyka I`. Events with the same summary share a colour and a legend entry. |
-| `CATEGORIES` | recommended | Class type: `Wykład`, `Ćwiczenia`, `Laboratorium`, `Zaliczenie`, `Spotkanie organizacyjne`. The first value is used. |
-| `LOCATION` | recommended | Room, e.g. `314 S`. |
-| `X-PLAN-COLOR` | optional | Subject colour as `#rrggbb`. Anything else falls back to a fixed palette colour derived from the subject name. |
-| `DESCRIPTION` | optional | Shown by calendar apps; not read by PlanWAT. |
-| `CONTACT` | **not allowed** | PlanWAT keeps no personal data of staff: a calendar with a `CONTACT` line, or a description naming the instructor, fails the build. |
-| `RRULE` | optional | `FREQ=WEEKLY` or `DAILY` with `INTERVAL`, `COUNT`, `UNTIL` and `BYDAY`. Other rules show only the first occurrence. |
-| `EXDATE` | optional | Dates or date-times removed from a repeating event. |
-| `STATUS:CANCELLED` | optional | The event is skipped. |
+| `UID` | tak | Stała tożsamość dla aplikacji kalendarza. Zachowaj ją przy poprawianiu zajęć, np. `20261002T0800-wcy26ky3s1@planwat`. |
+| `DTSTART`, `DTEND` (lub `DURATION`) | tak | Początek i koniec. Czasy lokalne z `TZID=Europe/Warsaw` są czytane jako czas ścienny, czasy UTC (`…Z`) są przeliczane. Zdarzenia całodniowe są ignorowane. |
+| `SUMMARY` | tak | Nazwa przedmiotu, np. `Matematyka I`. Zdarzenia o tym samym `SUMMARY` dzielą kolor i wpis legendy. |
+| `CATEGORIES` | zalecana | Rodzaj zajęć: `Wykład`, `Ćwiczenia`, `Laboratorium`, `Zaliczenie`, `Spotkanie organizacyjne`. Używana jest pierwsza wartość. |
+| `LOCATION` | zalecana | Sala, np. `314 S`. |
+| `X-PLAN-COLOR` | opcjonalna | Kolor przedmiotu jako `#rrggbb`. Cokolwiek innego wraca do stałego koloru z palety wyliczanego z nazwy przedmiotu. |
+| `DESCRIPTION` | opcjonalna | Pokazywana przez aplikacje kalendarza. PlanWAT jej nie czyta. |
+| `CONTACT` | **zabroniona** | PlanWAT nie przechowuje danych osobowych kadry: kalendarz z linią `CONTACT` albo opisem z nazwiskiem prowadzącego nie przejdzie budowy. |
+| `RRULE` | opcjonalna | `FREQ=WEEKLY` lub `DAILY` z `INTERVAL`, `COUNT`, `UNTIL` i `BYDAY`. Inne reguły pokazują tylko pierwsze wystąpienie. |
+| `EXDATE` | opcjonalna | Daty lub daty z godziną usunięte z powtarzanego zdarzenia. |
+| `STATUS:CANCELLED` | opcjonalna | Zdarzenie jest pomijane. |
 
-Text values use iCalendar escaping (`\,` `\;` `\\` `\n`).
+Wartości tekstowe używają escapowania iCalendar (`\,` `\;` `\\` `\n`).
 
-Alarms (`VALARM`) inside an event are ignored by the page. The build publishes each calendar twice: `plan.ics`
-byte-for-byte, and `plan-przypomnienia.ics` with a `DISPLAY` alarm 15 minutes before every event that has none
-(CRLF line endings, lines refolded at 75 octets, `X-WR-CALNAME` suffixed with " (przypomnienia)").
+Alarmy (`VALARM`) wewnątrz zdarzenia są ignorowane przez stronę. Budowa publikuje każdy kalendarz dwa razy: `plan.ics` bajt w
+bajt oraz `plan-przypomnienia.ics` z alarmem `DISPLAY` 15 minut przed każdym zdarzeniem, które go nie ma (zakończenia linii
+CRLF, linie składane ponownie po 75 oktetach, `X-WR-CALNAME` z dopiskiem „ (przypomnienia)”).
 
-## Example
+## Przykład
 
 ```
 BEGIN:VCALENDAR
@@ -76,5 +97,5 @@ END:VEVENT
 END:VCALENDAR
 ```
 
-`timetables/2026-27-zima/WCY26KY3S1.ics` is a complete real example (216 classes), and
-[`tools/export_ics.py`](../tools/export_ics.py) shows how one is written.
+`timetables/2026-27-zima/WCY26KY3S1.ics` to kompletny, prawdziwy przykład (216 zajęć), a
+[`tools/export_ics.py`](../tools/export_ics.py) pokazuje, jak taki plik powstaje.

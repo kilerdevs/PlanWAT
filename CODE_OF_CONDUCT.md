@@ -1,141 +1,125 @@
 <div align="center">
 
-# Contributor Covenant Code of Conduct
+<img src="src/icons/icon.svg" alt="PlanWAT" width="64" height="64">
+
+# Kodeks postępowania Contributor Covenant
 
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa?style=flat)](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html)
+[![Zgłoś naruszenie](https://img.shields.io/badge/zg%C5%82o%C5%9B-prywatnie%20przez%20GitHub-critical?style=flat&logo=github)](https://github.com/kilerdevs/PlanWAT/security/advisories/new)
 
 </div>
 
-## Our Pledge
+> [!NOTE]
+> To jest polskie tłumaczenie Contributor Covenant 2.1 przygotowane na potrzeby projektu. Rozstrzygający jest
+> [oryginał w języku angielskim](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html).
 
-We as members, contributors, and leaders pledge to make participation in our
-community a harassment-free experience for everyone, regardless of age, body
-size, visible or invisible disability, ethnicity, sex characteristics, gender
-identity and expression, level of experience, education, socio-economic status,
-nationality, personal appearance, race, caste, color, religion, or sexual
-identity and orientation.
+## Nasze zobowiązanie
 
-We pledge to act and interact in ways that contribute to an open, welcoming,
-diverse, inclusive, and healthy community.
+My, członkowie, współtwórcy i liderzy, zobowiązujemy się sprawić, by udział w naszej społeczności był wolny od
+nękania dla każdego, niezależnie od wieku, rozmiaru ciała, widocznej lub niewidocznej niepełnosprawności, pochodzenia
+etnicznego, cech płciowych, tożsamości i ekspresji płciowej, poziomu doświadczenia, wykształcenia, statusu
+społeczno-ekonomicznego, narodowości, wyglądu, rasy, kasty, koloru skóry, religii oraz tożsamości i orientacji seksualnej.
 
-## Our Standards
+Zobowiązujemy się działać i współdziałać w sposób, który buduje otwartą, przyjazną, różnorodną, włączającą i zdrową
+społeczność.
 
-Examples of behavior that contributes to a positive environment for our
-community include:
+## Nasze standardy
 
-* Demonstrating empathy and kindness toward other people
-* Being respectful of differing opinions, viewpoints, and experiences
-* Giving and gracefully accepting constructive feedback
-* Accepting responsibility and apologizing to those affected by our mistakes,
-  and learning from the experience
-* Focusing on what is best not just for us as individuals, but for the overall
-  community
+Przykłady zachowań, które przyczyniają się do pozytywnego środowiska w naszej społeczności:
 
-Examples of unacceptable behavior include:
+* Okazywanie empatii i życzliwości wobec innych osób
+* Szacunek dla odmiennych opinii, poglądów i doświadczeń
+* Udzielanie konstruktywnej informacji zwrotnej i przyjmowanie jej z klasą
+* Branie odpowiedzialności i przepraszanie osób dotkniętych naszymi błędami oraz wyciąganie z nich wniosków
+* Skupianie się na tym, co najlepsze nie tylko dla nas jako jednostek, ale dla całej społeczności
 
-* The use of sexualized language or imagery, and sexual attention or advances of
-  any kind
-* Trolling, insulting or derogatory comments, and personal or political attacks
-* Public or private harassment
-* Publishing others' private information, such as a physical or email address,
-  without their explicit permission
-* Other conduct which could reasonably be considered inappropriate in a
-  professional setting
+Przykłady niedopuszczalnych zachowań:
 
-## Enforcement Responsibilities
+* Używanie seksualizującego języka lub obrazów oraz zwracanie niechcianej uwagi seksualnej i zaloty jakiegokolwiek rodzaju
+* Trolling, obraźliwe lub poniżające komentarze oraz ataki osobiste lub polityczne
+* Nękanie publiczne lub prywatne
+* Publikowanie cudzych prywatnych informacji, takich jak adres zamieszkania lub e-mail, bez wyraźnej zgody
+* Inne zachowania, które można rozsądnie uznać za niestosowne w środowisku zawodowym
 
-Community leaders are responsible for clarifying and enforcing our standards of
-acceptable behavior and will take appropriate and fair corrective action in
-response to any behavior that they deem inappropriate, threatening, offensive,
-or harmful.
+## Obowiązki w zakresie egzekwowania
 
-Community leaders have the right and responsibility to remove, edit, or reject
-comments, commits, code, wiki edits, issues, and other contributions that are
-not aligned to this Code of Conduct, and will communicate reasons for moderation
-decisions when appropriate.
+Liderzy społeczności odpowiadają za wyjaśnianie i egzekwowanie naszych standardów dopuszczalnego zachowania i podejmą
+odpowiednie, sprawiedliwe działania naprawcze w odpowiedzi na każde zachowanie, które uznają za niestosowne, groźne,
+obraźliwe lub szkodliwe.
 
-## Scope
+Liderzy społeczności mają prawo i obowiązek usuwać, edytować lub odrzucać komentarze, commity, kod, edycje wiki, zgłoszenia
+i inne wkłady niezgodne z tym Kodeksem postępowania, a w stosownych przypadkach będą przekazywać powody decyzji
+moderacyjnych.
 
-This Code of Conduct applies within all community spaces, and also applies when
-an individual is officially representing the community in public spaces.
-Examples of representing our community include using an official e-mail address,
-posting via an official social media account, or acting as an appointed
-representative at an online or offline event.
+## Zakres
 
-## Enforcement
+Ten Kodeks postępowania obowiązuje we wszystkich przestrzeniach społeczności, a także wtedy, gdy osoba oficjalnie
+reprezentuje społeczność w przestrzeniach publicznych. Przykłady reprezentowania naszej społeczności to używanie oficjalnego
+adresu e-mail, publikowanie przez oficjalne konto w mediach społecznościowych lub pełnienie roli wyznaczonego przedstawiciela
+na wydarzeniu online lub stacjonarnym.
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement through GitHub's
-private reporting form for this repository:
+## Egzekwowanie
+
+Przypadki obraźliwych, nękających lub w inny sposób niedopuszczalnych zachowań można zgłaszać odpowiedzialnym za egzekwowanie
+liderom społeczności przez prywatny formularz zgłoszeniowy GitHub dla tego repozytorium:
 
 > https://github.com/kilerdevs/PlanWAT/security/advisories/new
 
-Start the title with `Conduct report` so it is routed as one. If you cannot use
-that channel, open a regular issue titled only `[conduct] please contact you
-privately` with no details and wait for a maintainer to reach out.
+Rozpocznij tytuł od `Conduct report`, aby zgłoszenie trafiło właściwą drogą. Jeśli nie możesz użyć tego kanału, otwórz
+zwykłe zgłoszenie zatytułowane wyłącznie `[conduct] please contact you privately`, bez szczegółów, i poczekaj, aż skontaktuje
+się z Tobą opiekun.
 
-All complaints will be reviewed and investigated promptly and fairly.
+Wszystkie skargi będą rozpatrywane i wyjaśniane niezwłocznie i sprawiedliwie.
 
-All community leaders are obligated to respect the privacy and security of the
-reporter of any incident.
+Wszyscy liderzy społeczności są zobowiązani do poszanowania prywatności i bezpieczeństwa osoby zgłaszającej zdarzenie.
 
-## Enforcement Guidelines
+## Wytyczne egzekwowania
 
-Community leaders will follow these Community Impact Guidelines in determining
-the consequences for any action they deem in violation of this Code of Conduct:
+Liderzy społeczności będą stosować poniższe Wytyczne wpływu na społeczność, określając konsekwencje działań, które uznają za
+naruszenie tego Kodeksu postępowania:
 
-### 1. Correction
+### 1. Korekta
 
-**Community Impact**: Use of inappropriate language or other behavior deemed
-unprofessional or unwelcome in the community.
+**Wpływ na społeczność**: Użycie niestosownego języka lub inne zachowanie uznane za nieprofesjonalne albo niemile widziane w
+społeczności.
 
-**Consequence**: A private, written warning from community leaders, providing
-clarity around the nature of the violation and an explanation of why the
-behavior was inappropriate. A public apology may be requested.
+**Konsekwencja**: Prywatne, pisemne ostrzeżenie od liderów społeczności, wyjaśniające charakter naruszenia i powód, dla
+którego zachowanie było niestosowne. Można poprosić o publiczne przeprosiny.
 
-### 2. Warning
+### 2. Ostrzeżenie
 
-**Community Impact**: A violation through a single incident or series of
-actions.
+**Wpływ na społeczność**: Naruszenie w postaci jednego zdarzenia lub serii działań.
 
-**Consequence**: A warning with consequences for continued behavior. No
-interaction with the people involved, including unsolicited interaction with
-those enforcing the Code of Conduct, for a specified period of time. This
-includes avoiding interactions in community spaces as well as external channels
-like social media. Violating these terms may lead to a temporary or permanent
-ban.
+**Konsekwencja**: Ostrzeżenie z konsekwencjami w razie kontynuowania zachowania. Zakaz interakcji z osobami, których sprawa
+dotyczy, w tym niezamówionych kontaktów z osobami egzekwującymi Kodeks, przez określony czas. Obejmuje to unikanie
+interakcji w przestrzeniach społeczności oraz w kanałach zewnętrznych, takich jak media społecznościowe. Złamanie tych
+warunków może prowadzić do czasowego lub stałego zakazu.
 
-### 3. Temporary Ban
+### 3. Czasowy zakaz
 
-**Community Impact**: A serious violation of community standards, including
-sustained inappropriate behavior.
+**Wpływ na społeczność**: Poważne naruszenie standardów społeczności, w tym uporczywe niestosowne zachowanie.
 
-**Consequence**: A temporary ban from any sort of interaction or public
-communication with the community for a specified period of time. No public or
-private interaction with the people involved, including unsolicited interaction
-with those enforcing the Code of Conduct, is allowed during this period.
-Violating these terms may lead to a permanent ban.
+**Konsekwencja**: Czasowy zakaz jakiejkolwiek interakcji i komunikacji publicznej ze społecznością na określony czas. W tym
+okresie zabroniona jest jakakolwiek publiczna lub prywatna interakcja z osobami, których sprawa dotyczy, w tym niezamówione
+kontakty z osobami egzekwującymi Kodeks. Złamanie tych warunków może prowadzić do stałego zakazu.
 
-### 4. Permanent Ban
+### 4. Stały zakaz
 
-**Community Impact**: Demonstrating a pattern of violation of community
-standards, including sustained inappropriate behavior, harassment of an
-individual, or aggression toward or disparagement of classes of individuals.
+**Wpływ na społeczność**: Wykazywanie wzorca naruszania standardów społeczności, w tym uporczywe niestosowne zachowanie,
+nękanie osoby lub agresja wobec grup osób albo ich poniżanie.
 
-**Consequence**: A permanent ban from any sort of public interaction within the
-community.
+**Konsekwencja**: Stały zakaz jakiejkolwiek publicznej interakcji w społeczności.
 
-## Attribution
+## Źródło
 
-This Code of Conduct is adapted from the [Contributor Covenant][homepage],
-version 2.1, available at
+Ten Kodeks postępowania jest adaptacją [Contributor Covenant][homepage] w wersji 2.1, dostępnego pod adresem
 [https://www.contributor-covenant.org/version/2/1/code_of_conduct.html][v2.1].
 
-Community Impact Guidelines were inspired by
-[Mozilla's code of conduct enforcement ladder][Mozilla CoC].
+Wytyczne wpływu na społeczność zainspirowała
+[drabina egzekwowania kodeksu postępowania Mozilli][Mozilla CoC].
 
-For answers to common questions about this code of conduct, see the FAQ at
-[https://www.contributor-covenant.org/faq][FAQ]. Translations are available at
+Odpowiedzi na typowe pytania o ten kodeks znajdziesz w FAQ pod adresem
+[https://www.contributor-covenant.org/faq][FAQ]. Tłumaczenia są dostępne pod adresem
 [https://www.contributor-covenant.org/translations][translations].
 
 [homepage]: https://www.contributor-covenant.org

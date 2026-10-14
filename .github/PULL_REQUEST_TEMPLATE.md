@@ -1,53 +1,54 @@
 <!--
-Thanks for contributing! Fill in what applies and delete the rest. Open the PR against `dev`.
-Security vulnerability? Do NOT describe it here — use private reporting:
+Dziękujemy za wkład! Wypełnij to, co dotyczy, a resztę usuń. Otwórz PR do gałęzi `dev`.
+Podatność bezpieczeństwa? NIE opisuj jej tutaj, użyj prywatnego zgłaszania:
 https://github.com/kilerdevs/PlanWAT/security/advisories/new
 -->
 
-## Summary
+## Podsumowanie
 
-<!-- What does this change, in a sentence or two? -->
+<!-- Co zmienia ta zmiana, w jednym lub dwóch zdaniach? -->
 
-## Why
+## Dlaczego
 
-<!-- The problem or motivation. Link the issue: Closes #123 -->
+<!-- Problem lub motywacja. Podlinkuj zgłoszenie: Closes #123 -->
 
-## Type of change
+## Rodzaj zmiany
 
-- [ ] Timetable (new group, new term or a correction)
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Accessibility or design
-- [ ] Refactor / cleanup (no behavior change)
-- [ ] Documentation only
-- [ ] Tests / CI / tooling
+- [ ] Plan (nowa grupa, nowy semestr lub poprawka)
+- [ ] Poprawka błędu
+- [ ] Nowa funkcja
+- [ ] Dostępność lub wygląd
+- [ ] Refaktoryzacja / porządki (bez zmiany zachowania)
+- [ ] Tylko dokumentacja
+- [ ] Testy / CI / narzędzia
 
-## How was this tested?
+## Jak to przetestowano?
 
-- [ ] `npm test` passes (reader + build tests, then the browser tests)
-- [ ] Added or updated a test that fails without this change
-- [ ] Looked at the result on a phone, and with reduced motion on (UI changes)
+- [ ] `npm test` przechodzi (czytnik i budowa, potem testy przeglądarkowe)
+- [ ] Dodano lub zaktualizowano test, który bez tej zmiany nie przechodzi
+- [ ] Obejrzano wynik na telefonie i z włączonym ograniczeniem ruchu (zmiany interfejsu)
 
-## Timetable checklist
+## Lista kontrolna: plany
 
-- [ ] File is `timetables/<term>/<GROUP>.ics`, UTF-8 with CRLF line endings
-- [ ] `X-PLAN-GROUP` matches the file name; semester start and end are set
-- [ ] Corrected events keep their `UID`
-- [ ] Not applicable
+- [ ] Plik to `timetables/<semestr>/<GRUPA>.ics`, UTF-8 z zakończeniami linii CRLF
+- [ ] `X-PLAN-GROUP` zgadza się z nazwą pliku, ustawiono początek i koniec semestru
+- [ ] Poprawiane zdarzenia zachowały swój `UID`
+- [ ] Brak danych kadry: nazwisk, tytułów, kontaktów
+- [ ] Nie dotyczy
 
-## Security and design checklist
+## Lista kontrolna: bezpieczeństwo i wygląd
 
-- [ ] No inline `style="…"` attributes or `on…=` handlers; script and style stay in the hashed blocks
-- [ ] Calendar data is rendered with `textContent`, never `innerHTML`
-- [ ] No new runtime dependency, third-party script or external origin
-- [ ] Follows DESIGN.md (tokens, one accent colour, 44 px touch targets, transform/opacity motion)
-- [ ] Not applicable
+- [ ] Brak atrybutów `style="…"` i obsługi `on…=`. Skrypt i styl zostają w haszowanych blokach
+- [ ] Dane z kalendarza renderowane przez `textContent`, nigdy `innerHTML`
+- [ ] Brak nowej zależności w runtime, skryptu firm trzecich lub zewnętrznego źródła
+- [ ] Zgodne z DESIGN.md (tokeny, jeden akcent, cele dotyku 44 px, ruch przez transform/opacity)
+- [ ] Nie dotyczy
 
-## Documentation
+## Dokumentacja
 
-- [ ] `CHANGELOG.md` entry under **Unreleased**
-- [ ] README / docs updated if behavior or the calendar format changed
+- [ ] Wpis w `CHANGELOG.md` w sekcji **Unreleased**
+- [ ] README / dokumentacja zaktualizowane, jeśli zmieniło się zachowanie lub format kalendarza
 
-## Screenshots
+## Zrzuty ekranu
 
-<!-- UI changes: before / after, phone and desktop. -->
+<!-- Zmiany interfejsu: przed / po, telefon i pulpit. -->

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" role="img" aria-labelledby="t d" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif">
+  <title id="t">Automatyczna aktualizacja planów</title>
+  <desc id="d">Codziennie w nocy runner odczytuje strony wydziałów przez zamkniętą sieć i proxy, konwertuje plany do kalendarzy, waliduje je i wypycha na gałąź data. Pages nakłada je na strony i publikuje.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#0a84ff"/></marker>
+  </defs>
+  <rect width="800" height="360" rx="18" fill="#0b0f17"/>
+  <text x="400" y="36" text-anchor="middle" fill="#f5f5f7" font-size="18" font-weight="700">Plany odświeżają się same, bez commitów</text>
+
+  <g fill="#1c1c1e" stroke="#2c2c2e" stroke-width="1.5">
+    <rect x="30" y="70" width="150" height="76" rx="14"/>
+    <rect x="215" y="70" width="150" height="76" rx="14"/>
+    <rect x="400" y="70" width="170" height="76" rx="14"/>
+    <rect x="605" y="70" width="165" height="76" rx="14"/>
+    <rect x="400" y="206" width="170" height="76" rx="14"/>
+    <rect x="605" y="206" width="165" height="76" rx="14"/>
+  </g>
+  <g fill="#f5f5f7" font-size="14" font-weight="600" text-anchor="middle">
+    <text x="105" y="102">Strony wydziałów</text>
+    <text x="290" y="102">Proxy egress</text>
+    <text x="485" y="102">Runner self-hosted</text>
+    <text x="687" y="102">Walidacja</text>
+    <text x="485" y="238">Gałąź data</text>
+    <text x="687" y="238">Pages + build.py</text>
+  </g>
+  <g fill="#a1a1a6" font-size="12" text-anchor="middle">
+    <text x="105" y="124">WLO · WEL · WIM · IOE</text>
+    <text x="105" y="140">WML · WTC · WCY</text>
+    <text x="290" y="124">lista dozwolonych</text>
+    <text x="290" y="140">hostów, reszta 403</text>
+    <text x="485" y="124">kontener bez wejścia,</text>
+    <text x="485" y="140">crawl → konwersja</text>
+    <text x="687" y="124">build.load_term,</text>
+    <text x="687" y="140">brak danych kadry</text>
+    <text x="485" y="260">kalendarze i</text>
+    <text x="485" y="276">refresh-state.json</text>
+    <text x="687" y="260">nakłada kalendarze,</text>
+    <text x="687" y="276">publikuje stronę</text>
+  </g>
+  <g stroke="#0a84ff" stroke-width="2" fill="none" marker-end="url(#a)">
+    <path d="M180 108H209"/>
+    <path d="M365 108H394"/>
+    <path d="M570 108H599"/>
+    <path d="M687 146V176H485V200"/>
+    <path d="M570 244H599"/>
+  </g>
+  <g fill="#86868b" font-size="12">
+    <text x="296" y="64" text-anchor="middle">jedno żądanie naraz, losowe przerwy</text>
+    <text x="400" y="320" text-anchor="middle">Codziennie około 03:00 czasu warszawskiego. Zmieniony plan to nowy commit na data, niezmieniony nie zostawia śladu.</text>
+  </g>
+</svg>

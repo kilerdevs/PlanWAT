@@ -98,7 +98,7 @@ test('the privacy page is linked from the footer, accessible and runs no script'
     document.addEventListener('securitypolicyviolation', (e) => { window.__csp = (window.__csp || []).concat(e.violatedDirective); });
   });
   await page.goto('/');
-  await expect(page.locator('footer')).toContainText('PlanWAT nigdy nie poprosi Cię o hasło');
+  await expect(page.locator('footer')).toContainText('PlanWAT nigdy nie poprosi Cię o adres e-mail');
   await page.locator('footer a[href="prywatnosc/"]').click();
   await expect(page).toHaveURL(/\/prywatnosc\/$/);
   await expect(page.locator('h1')).toHaveText('Prywatność i zasady');

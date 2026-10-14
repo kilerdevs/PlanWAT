@@ -142,11 +142,11 @@ class BuildRealSiteTest(unittest.TestCase):
         expires = dt.datetime.strptime(re.search(r'^Expires: (\S+)$', sec, re.M).group(1), '%Y-%m-%dT%H:%M:%SZ')
         self.assertTrue(dt.datetime(2026, 10, 15) < expires < dt.datetime(2027, 10, 15))
         privacy = (self.out / 'prywatnosc' / 'index.html').read_text(encoding='utf-8')
-        self.assertIn('nigdy nie poprosi Cię o hasło', privacy)
+        self.assertIn('nigdy nie poprosi Cię o adres e-mail', privacy)
         self.assertIn("script-src 'none'", self.meta_csp('prywatnosc/index.html'))
         for rel in ('index.html', 'WCY26KY3S1/index.html'):
             html = (self.out / rel).read_text(encoding='utf-8')
-            self.assertIn('nigdy nie poprosi Cię o hasło', html, rel)
+            self.assertIn('nigdy nie poprosi Cię o adres e-mail', html, rel)
             self.assertRegex(html, r'href="(\.\./)?prywatnosc/"', rel)
         self.assertNotIn('nofollow', privacy)  # only the dev preview asks not to be indexed
 
