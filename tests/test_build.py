@@ -267,8 +267,9 @@ class BuildRealSiteTest(unittest.TestCase):
             self.assertIn("worker-src 'self';", csp, rel)
             self.assertIn("manifest-src 'self';", csp, rel)
             self.assertIn("img-src data: 'self';", csp, rel)
-        for rel in ('404.html', 'prywatnosc/index.html', 'mapa/index.html'):
+        for rel in ('404.html', 'prywatnosc/index.html'):
             self.assertNotIn('manifest-src', self.meta_csp(rel), rel)
+        self.assertIn("manifest-src 'self';", self.meta_csp('mapa/index.html'))
         self.assertNotIn("'self'", self.meta_csp('mapa/index.html').split('worker-src')[1].split(';')[0])
 
     def test_map_engine_is_pinned_by_subresource_integrity(self):

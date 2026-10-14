@@ -63,6 +63,8 @@ APP_CSP = {
     'worker-src': ["'self'"],
     'manifest-src': ["'self'"],
 }
+# The map links the manifest too (so it can be installed from there), but registers no worker of its own.
+MAP_APP_CSP = {'manifest-src': ["'self'"]}
 ICONS_DIR = 'icons'  # site/icons/: app icons named by the manifests
 PRIVACY_DIR = 'prywatnosc'  # site/prywatnosc/: privacy notice and terms of use
 REPO_URL = 'https://github.com/kilerdevs/PlanWAT'
@@ -631,7 +633,7 @@ def render_index(template, current, ics_js=''):
 
 def render_map(template, ics_js, campus_js):
     page = template.replace('@@ICS_JS@@', ics_js).replace('@@CAMPUS_JS@@', campus_js)
-    return finish(page, connect=True, extra=MAP_CSP)
+    return finish(page, connect=True, extra=merge_csp(MAP_APP_CSP, MAP_CSP))
 
 
 def render_privacy(template):
