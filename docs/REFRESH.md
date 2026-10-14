@@ -25,22 +25,7 @@ gałąź data    timetables/<semestr>/<GRUPA>.ics oraz refresh-state.json
 pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomieniem build.py
 ```
 
-```mermaid
-stateDiagram-v2
-    [*] --> Kolejka: start przebiegu
-    Kolejka --> Pobieranie: grupa sprawdzona > 20 h temu
-    Kolejka --> [*]: sprawdzona niedawno (pominięta)
-    Pobieranie --> Niezmieniona: 304 lub ten sam plan
-    Pobieranie --> Konwersja: nowa treść
-    Pobieranie --> Odłożony: blokada (nie 200 / 304 / 404, strona Incapsula)
-    Konwersja --> Walidacja
-    Walidacja --> Opublikowana: poprawna i zmieniona
-    Walidacja --> Stary_zostaje: błąd lub utrata > 40% zajęć
-    Odłożony --> Pobieranie: sen i sonda indeksu
-    Opublikowana --> [*]
-    Niezmieniona --> [*]
-    Stary_zostaje --> [*]
-```
+<img src="diagrams/przebieg-odswiezania.svg" alt="Los jednej grupy: kolejka, pobieranie, konwersja, walidacja i publikacja. Brak zmian, blokada z odczekaniem oraz błąd walidacji kończą się bez nowego commita." width="760">
 
 ## Jak zachowuje się przebieg
 

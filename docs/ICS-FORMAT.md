@@ -16,13 +16,7 @@
 Każdy plan to standardowy plik iCalendar ([RFC 5545](https://www.rfc-editor.org/rfc/rfc5545)) w
 `timetables/<semestr>/<GRUPA>.ics`.
 
-```mermaid
-flowchart LR
-    F["timetables/2026-27-zima/<br/>WCY26KY3S1.ics"] --> V{"build.load_term<br/>walidacja"}
-    V -- poprawny --> S["site/WCY26KY3S1/plan.ics<br/>bajt w bajt"]
-    V -- poprawny --> R["plan-przypomnienia.ics<br/>alarm 15 min"]
-    V -- błąd --> X[["build odrzuca plik<br/>i mówi dlaczego"]]
-```
+<img src="diagrams/walidacja-kalendarza.svg" alt="Plik .ics przechodzi walidację build.load_term. Poprawny jest publikowany jako plan.ics i plan-przypomnienia.ics, błędny jest odrzucany z wyjaśnieniem." width="760">
 
 ## Plik
 

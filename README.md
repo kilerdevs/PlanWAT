@@ -126,7 +126,7 @@ prostu nie ma:
 | Co o Tobie wiemy | **Nic: ani adresu, ani konta** | Po zalogowaniu zweryfikowany adres e-mail powiązany z Twoją tożsamością, grupą i datami wizyt |
 | Co wycieknie przy włamaniu | **Nie ma czego wykradać** | Lista adresów zalogowanych studentów z przypisanymi grupami |
 | Phishing | **Nikt nie prosi Cię o kod, więc nie ma czego podrobić** | Przyzwyczaja do wpisywania kodów z poczty uczelnianej na stronie osoby trzeciej, czyli dokładnie tak, jak działają wyłudzacze |
-| Gdy poczta zawiedzie | **Plan działa** | Zalogowany bez wiadomości z kodem (spam, awaria, absolwent bez skrzynki) zostaje bez konta |
+| Obowiązki wobec RODO | **Żadne: nie zbieramy danych osobowych** | Zgody, polityka przetwarzania, obsługa próśb o wgląd i usunięcie danych |
 | Eksport i subskrypcja kalendarza (`.ics`) | **Za darmo, dla każdego** | W części za abonamentem |
 | Reklamy, śledzenie, cookies | **Brak** | Różnie |
 | Cena | **0 zł, na zawsze** | Do ustalenia przy płatności |
@@ -247,20 +247,7 @@ generowane wcześniej do HTML, więc kalendarz i strona nie mogą się rozjecha�
 statystyki, postęp, zmiany planu, wspólny wolny czas i zajęcia do odrobienia, a [`src/campus.js`](src/campus.js) i
 [`src/places.js`](src/places.js) obsługują budynki i miejsca na mapie.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant S as Student
-    participant P as GitHub Pages
-    participant SW as Service Worker
-    S->>P: GET /WCY26KY3S1/
-    P-->>S: strona (HTML + CSP z hashami)
-    S->>P: GET plan.ics
-    P-->>S: kalendarz (bajt w bajt ze źródła)
-    Note over S: ics.js renderuje tydzień,<br/>karta „Teraz” liczy się w przeglądarce
-    S->>SW: zapis kopii na później
-    Note over S,SW: bez sieci: ostatnia zapisana kopia<br/>z informacją, że to wersja offline
-```
+<img src="docs/diagrams/zadanie-http.svg" alt="Student pobiera stronę z GitHub Pages, potem plik plan.ics. Przeglądarka renderuje tydzień, a Service Worker zapisuje kopię, z której korzysta bez sieci." width="760">
 
 ---
 
@@ -268,17 +255,7 @@ sequenceDiagram
 
 Plany ze stron wydziałów są odświeżane automatycznie. Obecnie opublikowanych jest **781 grup**.
 
-```mermaid
-pie showData title Grupy według wydziału (stan na 14.10.2026)
-    "WML" : 178
-    "WCY" : 170
-    "WEL" : 165
-    "WLO" : 132
-    "WIM" : 94
-    "WTC" : 23
-    "IOE" : 15
-    "WIG" : 4
-```
+<img src="docs/diagrams/pokrycie-wydzialow.svg" alt="Wykres słupkowy grup według wydziału: WML 178, WCY 170, WEL 165, WLO 132, WIM 94, WTC 23, IOE 15, WIG 4, razem 781." width="760">
 
 | Wydział | Grup | Sterownik | Uwagi |
 |---|---:|---|---|
@@ -379,16 +356,7 @@ Podatności zgłaszaj prywatnie. Zasady i terminy opisuje [SECURITY.md](SECURITY
 
 ## Testy
 
-```mermaid
-flowchart LR
-    A[Commit na dev] --> B[Testy Node: czytnik .ics, insights, campus, places]
-    A --> C[Testy Python: build i odświeżanie]
-    A --> D[Playwright: Chromium · Firefox · WebKit, pulpit i telefon]
-    D --> E[axe-core: WCAG]
-    A --> F[Obraz Docker: Grype + test dymny]
-    A --> G[CodeQL: JS · Python · Actions]
-    B & C & E & F & G --> H{{Pull request do master}}
-```
+<img src="docs/diagrams/pipeline-testow.svg" alt="Commit na dev uruchamia testy Node, testy Python, Playwright z axe, skan obrazu Docker i CodeQL. Wszystkie bramy muszą przejść przed pull requestem do master." width="760">
 
 | Warstwa | Narzędzie | Co sprawdza |
 |---|---|---|

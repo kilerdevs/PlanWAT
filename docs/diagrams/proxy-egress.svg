@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" role="img" aria-labelledby="t d" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif">
+  <title id="t">Polityka proxy wyjściowego</title>
+  <desc id="d">Runner wysyła cały ruch przez proxy egress. GitHub, PyPI i listy proxy idą bezpośrednio, strony wydziałów przez pulę proxy, a wszystko inne dostaje 403. Panel monitoringu w sieci LAN odbiera raporty i pokazuje status.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#0a84ff"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#86868b"/></marker>
+  </defs>
+  <rect width="800" height="380" rx="18" fill="#0b0f17"/>
+  <text x="400" y="34" text-anchor="middle" fill="#f5f5f7" font-size="18" font-weight="700">Jedno wyjście, osobna polityka dla każdego celu</text>
+
+  <g fill="#1c1c1e" stroke="#2c2c2e" stroke-width="1.5">
+    <rect x="24"  y="140" width="130" height="76" rx="14"/>
+    <rect x="224" y="124" width="170" height="108" rx="14" stroke="#0a84ff"/>
+    <rect x="500" y="58"  width="270" height="66" rx="14"/>
+    <rect x="500" y="150" width="270" height="76" rx="14"/>
+    <rect x="500" y="252" width="270" height="66" rx="14" stroke="#ff453a"/>
+    <rect x="224" y="290" width="170" height="60" rx="14" stroke-dasharray="5 4"/>
+  </g>
+  <g fill="#f5f5f7" font-size="14" font-weight="600" text-anchor="middle">
+    <text x="89"  y="172">Runner</text>
+    <text x="309" y="164">Proxy egress</text>
+    <text x="635" y="86">Infrastruktura</text>
+    <text x="635" y="178">*.wat.edu.pl</text>
+    <text x="635" y="280">Cała reszta</text>
+    <text x="309" y="316">Panel monitoringu</text>
+  </g>
+  <g fill="#a1a1a6" font-size="11.5" text-anchor="middle">
+    <text x="89"  y="190">kontener bez trasy</text>
+    <text x="89"  y="204">na zewnątrz</text>
+    <text x="309" y="184">:8888, tylko porty</text>
+    <text x="309" y="200">443 i 80, domyślnie</text>
+    <text x="309" y="216">odmowa</text>
+    <text x="635" y="104">GitHub · PyPI · listy proxy: bezpośrednio</text>
+    <text x="635" y="198">przez rotującą pulę proxy,</text>
+    <text x="635" y="214">inny adres na połączenie</text>
+    <text x="635" y="300">403 Filtered (także gołe adresy IP)</text>
+    <text x="309" y="334">:8080 w LAN, status i raporty</text>
+  </g>
+  <g stroke="#0a84ff" stroke-width="2" fill="none" marker-end="url(#a)">
+    <path d="M154 178H218"/>
+    <path d="M394 160C440 160 440 91 494 91"/>
+    <path d="M394 178C440 178 440 188 494 188"/>
+    <path d="M394 196C440 196 440 285 494 285"/>
+  </g>
+  <g stroke="#86868b" stroke-width="1.6" fill="none" stroke-dasharray="5 5" marker-end="url(#g)">
+    <path d="M309 290V238"/>
+    <path d="M89 216V320H218"/>
+  </g>
+  <text x="98" y="310" fill="#86868b" font-size="11.5">raport przebiegu</text>
+</svg>

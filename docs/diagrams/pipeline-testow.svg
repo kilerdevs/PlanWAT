@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" role="img" aria-labelledby="t d" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif">
+  <title id="t">Co sprawdza CI</title>
+  <desc id="d">Commit na dev uruchamia równolegle testy Node, testy Python, testy przeglądarkowe Playwright w trzech silnikach z kontrolą dostępności axe, skan obrazu Docker i CodeQL. Wszystkie muszą przejść, by otworzyć pull request do master.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#0a84ff"/></marker>
+  </defs>
+  <rect width="800" height="360" rx="18" fill="#0b0f17"/>
+  <text x="400" y="30" text-anchor="middle" fill="#f5f5f7" font-size="18" font-weight="700">Pięć niezależnych bram przed wydaniem</text>
+
+  <g fill="#1c1c1e" stroke="#2c2c2e" stroke-width="1.5">
+    <rect x="30" y="150" width="140" height="70" rx="14"/>
+    <rect x="300" y="52"  width="250" height="46" rx="12"/>
+    <rect x="300" y="110" width="250" height="46" rx="12"/>
+    <rect x="300" y="168" width="250" height="46" rx="12"/>
+    <rect x="300" y="226" width="250" height="46" rx="12"/>
+    <rect x="300" y="284" width="250" height="46" rx="12"/>
+    <rect x="650" y="150" width="120" height="70" rx="14" stroke="#0a84ff"/>
+  </g>
+  <g fill="#f5f5f7" font-size="13.5" font-weight="600" text-anchor="middle">
+    <text x="100" y="181">Commit</text>
+    <text x="425" y="73">Testy Node</text>
+    <text x="425" y="131">Testy Python</text>
+    <text x="425" y="189">Playwright + axe</text>
+    <text x="425" y="247">Obraz Docker</text>
+    <text x="425" y="305">CodeQL</text>
+    <text x="710" y="181">Pull request</text>
+  </g>
+  <g fill="#a1a1a6" font-size="11.5" text-anchor="middle">
+    <text x="100" y="199">na dev</text>
+    <text x="425" y="89">czytnik .ics · insights · campus · places</text>
+    <text x="425" y="147">budowa, odświeżanie, konwertery</text>
+    <text x="425" y="205">Chromium · Firefox · WebKit · WCAG</text>
+    <text x="425" y="263">skan Grype + test dymny</text>
+    <text x="425" y="321">JavaScript · Python · Actions</text>
+    <text x="710" y="199">do master</text>
+  </g>
+  <g stroke="#0a84ff" stroke-width="1.8" fill="none" marker-end="url(#a)">
+    <path d="M170 185C235 185 235 75 294 75"/>
+    <path d="M170 185C235 185 235 133 294 133"/>
+    <path d="M170 185H294"/>
+    <path d="M170 185C235 185 235 249 294 249"/>
+    <path d="M170 185C235 185 235 307 294 307"/>
+  </g>
+  <g stroke="#30d158" stroke-width="1.8" fill="none" marker-end="url(#a)" opacity="0.9">
+    <path d="M550 75C610 75 610 185 644 185"/>
+    <path d="M550 133C610 133 610 185 644 185"/>
+    <path d="M550 191C610 191 610 185 644 185"/>
+    <path d="M550 249C610 249 610 185 644 185"/>
+    <path d="M550 307C610 307 610 185 644 185"/>
+  </g>
+</svg>

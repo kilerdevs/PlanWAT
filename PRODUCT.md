@@ -114,25 +114,7 @@ produktu: gdyby któraś musiała zniknąć, znikałby sens projektu.
 
 ## Zasady produktu
 
-```mermaid
-mindmap
-  root((PlanWAT))
-    Jedno spojrzenie
-      co
-      kiedy
-      gdzie
-    Telefon najpierw
-      płynność ponad efekty
-    Link jest produktem
-      jeden stały adres
-      zawsze właściwy tydzień
-    Uczciwie i nieoficjalnie
-      e-dziekanat rozstrzyga
-    Bez kont
-      bez e-maila
-      bez reklam
-      bez opłat
-```
+<img src="docs/diagrams/zasady-produktu.svg" alt="Sześć zasad produktu: jedno spojrzenie, telefon najpierw, link jest produktem, uczciwie i nieoficjalnie, bez kont i bez e-maila, rośnie bez komplikowania." width="760">
 
 1. **Jedno spojrzenie odpowiada na „co, kiedy, gdzie”.** Bieżący tydzień, trwające lub następne zajęcia i ich sala wyprzedzają
    wszystko inne.

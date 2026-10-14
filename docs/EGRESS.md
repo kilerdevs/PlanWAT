@@ -21,16 +21,7 @@ Zastępuje rolę tinyproxy:
 | wydziały (`*.wat.edu.pl`) | przez rotującą pulę publicznych proxy, inny adres wyjściowy na każde połączenie |
 | cokolwiek innego | 403 (ta sama domyślna odmowa co w tinyproxy) |
 
-```mermaid
-flowchart LR
-    R[Runner] -->|HTTP_PROXY| E{Proxy egress :8888}
-    E -->|GitHub · PyPI · listy| D[(bezpośrednio)]
-    E -->|*.wat.edu.pl| P[pula proxy]
-    E -->|reszta| X[[403 Filtered]]
-    P --> W[(strony wydziałów)]
-    G[GUI :8080] -.status.-> E
-    R -.raport przebiegu.-> G
-```
+<img src="diagrams/proxy-egress.svg" alt="Runner wysyła ruch przez proxy egress: infrastruktura bezpośrednio, strony wydziałów przez pulę proxy, reszta dostaje 403. Panel monitoringu w LAN odbiera raporty." width="760">
 
 Dlaczego pula mieszka tutaj, a nie w `refresh.py`: kontener runnera nie ma bezpośredniej trasy na zewnątrz, wszystko przechodzi
 przez warstwę proxy, która odrzuca kodem 403 wszystko spoza listy dozwolonych (także gołe adresy proxy). Proces w runnerze
