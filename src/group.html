@@ -1310,19 +1310,14 @@
   @keyframes tm-press { 0%, 14%, 30%, 100% { transform: scale(1); } 20% { transform: scale(0.94); } }
   @keyframes tm-list { 0%, 20% { opacity: 0; transform: translateY(14px) scale(0.97); } 38%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(14px) scale(0.97); } }
 
-  /* demo 3: tap a subject to light up all its classes */
-  .tm-stack { position: absolute; left: 50%; top: 50%; width: 220px; margin: -76px 0 0 -110px; display: flex; flex-direction: column; gap: 8px; }
-  .tm-stack .tm-card { width: auto; height: 26px; padding: 0 14px 0 20px; flex-direction: row; align-items: center; justify-content: flex-start; }
-  .tm-stack .tm-card::before { top: 6px; bottom: 6px; }
-  .tm-stack .tm-card i { height: 8px; width: 56%; }
-  .tm-stack .tm-card:nth-child(1) { --c: #0a84ff; animation: tm-lit 4.2s var(--ease-out) infinite; }
-  .tm-stack .tm-card:nth-child(2) { --c: #ff9f0a; animation: tm-dim 4.2s var(--ease-out) infinite; }
-  .tm-stack .tm-card:nth-child(3) { --c: #0a84ff; animation: tm-lit 4.2s var(--ease-out) infinite; }
-  .tm-stack .tm-card:nth-child(4) { --c: #30d158; animation: tm-dim 4.2s var(--ease-out) infinite; }
-  .tm-stack .tm-card:nth-child(5) { --c: #0a84ff; animation: tm-lit 4.2s var(--ease-out) infinite; }
-  .tm-tap { position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -70px 0 0 -20px; border-radius: 50%; background: rgba(var(--hl), 0.22); box-shadow: 0 0 0 1px rgba(var(--hl), 0.35); opacity: 0; animation: tm-tap 4.2s var(--ease-out) infinite; }
-  @keyframes tm-dim { 0%, 22% { opacity: 1; } 36%, 84% { opacity: 0.3; } 100% { opacity: 1; } }
-  @keyframes tm-lit { 0%, 22% { box-shadow: var(--edge); } 36%, 84% { box-shadow: var(--edge), 0 0 0 2px #0a84ff; } 100% { box-shadow: var(--edge); } }
+  /* demo 3: tap a class, see where else the same meeting takes place */
+  .tm-pick { position: absolute; left: 50%; top: 12px; width: 256px; height: 54px; margin-left: -128px; gap: 7px; --c: #0a84ff; animation: tm-press 4.2s var(--ease-out) infinite; }
+  .tm-tap { position: absolute; left: 50%; top: 21px; width: 36px; height: 36px; margin-left: 20px; border-radius: 50%; background: rgba(var(--hl), 0.22); box-shadow: 0 0 0 1px rgba(var(--hl), 0.35); opacity: 0; animation: tm-tap 4.2s var(--ease-out) infinite; }
+  .tm-found { position: absolute; left: 50%; bottom: 12px; width: 256px; margin-left: -128px; padding: 8px 6px 6px; border-radius: 16px; background: var(--s2); box-shadow: var(--edge); animation: tm-list 4.2s var(--ease-out) infinite; }
+  .tm-found b { display: block; padding: 0 10px 4px; font-size: 0.75rem; font-weight: 650; color: var(--t3); letter-spacing: 0.01em; }
+  .tm-found span { display: flex; justify-content: space-between; gap: 8px; padding: 5px 10px; white-space: nowrap; border-radius: 10px; font-size: var(--fs-13); color: var(--t2); font-variant-numeric: tabular-nums; }
+  .tm-found span + span { background: rgba(var(--hl), 0.07); }
+  .tm-found em { font-style: normal; color: var(--t1); font-weight: 600; }
   @keyframes tm-tap { 0%, 12% { opacity: 0; transform: scale(1.3); } 18% { opacity: 1; transform: scale(1); } 28% { opacity: 1; transform: scale(0.88); } 40%, 100% { opacity: 0; transform: scale(1.3); } }
 
   /* demo 4: tools */
@@ -1335,11 +1330,10 @@
   @keyframes tm-pop { from { opacity: 0; transform: translateY(10px) scale(0.9); } to { opacity: 1; transform: none; } }
 
   @media (prefers-reduced-motion: reduce) {
-    .tm-rail, .tm-finger, .tm-pill, .tm-list, .tm-tap, .tm-stack .tm-card, .tm-tool { animation: none; }
-    .tm-tool, .tm-list { opacity: 1; }
+    .tm-rail, .tm-finger, .tm-pill, .tm-list, .tm-tap, .tm-pick, .tm-found, .tm-tool { animation: none; }
+    .tm-tool, .tm-list, .tm-found { opacity: 1; }
     .tm-tap, .tm-finger { display: none; }
     .tm-rail { transform: translateX(-81px); }
-    .tm-stack .tm-card:nth-child(even) { opacity: 0.3; }
   }
 
   /* ================= desktop: the week as a real timetable grid ================= */
@@ -1767,11 +1761,13 @@
     </section>
     <section class="tour-slide" aria-label="Krok 3 z 4">
       <div class="tour-art" aria-hidden="true">
-        <div class="tm-stack"><div class="tm-card"><i></i></div><div class="tm-card"><i></i></div><div class="tm-card"><i></i></div><div class="tm-card"><i></i></div><div class="tm-card"><i></i></div></div>
+        <div class="tm-card tm-pick"><i></i><i></i></div>
         <span class="tm-tap"></span>
+        <div class="tm-found"><b>Gdzie odrobić?</b><span><em>WCY26KY2S1</em>śr 16.10 · 09:50</span><span><em>WCY26KY4S1</em>czw 17.10 · 11:40</span></div>
       </div>
-      <h3>Dotknij przedmiotu, aby go wyróżnić</h3>
-      <p>Wszystkie zajęcia z danego przedmiotu zaświecą się, a reszta przygaśnie. Ponowne dotknięcie albo <kbd>Esc</kbd> to cofa.</p>
+      <h3>Dotknij zajęć, aby je odrobić</h3>
+      <p>Nie byłeś na zajęciach? Dotknij ich, a PlanWAT pokaże, kiedy i gdzie te same zajęcia mają inne grupy kierunku.</p>
+      <p>Przedmiot możesz też podświetlić w legendzie na dole strony.</p>
     </section>
     <section class="tour-slide" aria-label="Krok 4 z 4">
       <div class="tour-art" aria-hidden="true">
