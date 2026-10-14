@@ -724,9 +724,8 @@ test('the first-visit tour opens once on a phone, pages with Dalej and is not re
   await expect(tour).toBeVisible();
   await expect(page.locator('#tourSheet h3').first()).toHaveText('Przesuń, aby zmienić tydzień');
   await page.click('#tourNext');
-  await expect(page.locator('#tourDots button[aria-current="true"]')).toHaveAttribute('aria-label', 'Krok 2 z 4');
-  await page.click('#tourNext');
-  await page.click('#tourNext');
+  await expect(page.locator('#tourDots button[aria-current="true"]')).toHaveAttribute('aria-label', 'Krok 2 z 7');
+  for (let i = 0; i < 5; i++) await page.click('#tourNext');
   await expect(page.locator('#tourNext')).toHaveText('Zaczynamy');
   await expect(page.locator('#tourSkip')).toBeHidden();
   await page.click('#tourNext');
