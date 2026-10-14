@@ -126,7 +126,7 @@ test('the map page passes an accessibility scan', async ({ page }) => {
 
 test('a day on the map dims the other buildings, keeps the tapped class in view and the search hint fits', async ({ page }) => {
   await open(page, '/mapa/?g=WCY26KY3S1&d=2026-10-13');
-  test.skip(await page.locator('#q').isHidden(), 'needs the map engine');
+  test.skip(await page.locator('#tools').isHidden(), 'map controls need the map engine');
   await expect(page.locator('html')).toHaveClass(/day-on/);
   const onDay = await page.locator('.bldg.on-day').count();
   expect(onDay).toBeGreaterThan(0);
@@ -145,7 +145,7 @@ test('a day on the map dims the other buildings, keeps the tapped class in view 
 
 test('collapsing the sheet re-frames the map and a tap on the map closes the legend', async ({ page }) => {
   await open(page, '/mapa/?g=WCY26KY3S1&d=2026-10-13');
-  test.skip(await page.locator('#q').isHidden(), 'needs the map engine');
+  test.skip(await page.locator('#tools').isHidden(), 'map controls need the map engine');
   await page.locator('#legendToggle').click();
   await expect(page.locator('#legendBody')).toBeVisible();
   // a point of bare map: neither a marker nor a control sits on it
@@ -167,7 +167,7 @@ test('collapsing the sheet re-frames the map and a tap on the map closes the leg
 
 test('places: the Miejsca panel switches categories and a searched place opens its card with directions', async ({ page }) => {
   await open(page, '/mapa/');
-  test.skip(await page.locator('#q').isHidden(), 'needs the map engine');
+  test.skip(await page.locator('#tools').isHidden(), 'map controls need the map engine');
   await page.locator('#placesToggle').click();
   const rows = page.locator('#placesBody .legend-row');
   expect(await rows.count()).toBe(11);
