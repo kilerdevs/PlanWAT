@@ -2,7 +2,7 @@ name: Egress
 
 on:
   push:
-    branches: [master, dev]
+    branches: [dev]  # not master: the release PR already ran these checks, so a merge does not run them again
     paths:
       - tools/egress/**
       - tests/test_egress.py
