@@ -2166,7 +2166,10 @@
       var wasDone = row.classList.contains('is-done');
       row.classList.remove('is-now', 'is-next', 'is-done');
       row.style.removeProperty('--prog');
-      if (date !== today) continue;
+      if (date !== today) {
+        if (date < today) row.classList.add('is-done'); /* every earlier day is finished, not only today's classes */
+        continue;
+      }
       if (mins >= e) {
         row.classList.add('is-done');
         if (!wasDone && !fresh) restartAnim(row, 'just-done');

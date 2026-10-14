@@ -363,9 +363,7 @@
   .footbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
   .footlinks { display: flex; flex-wrap: wrap; gap: 4px 18px; }
   .footlinks a { padding: 8px 0; }
-  footer #installRow { margin-top: 4px; }
   footer a { color: var(--accent-text); }
-  .appbtn { font: inherit; color: var(--accent-text); background: none; border: 0; padding: 12px 0; min-height: 44px; cursor: pointer; text-decoration: underline; }
   @media (hover: hover) and (pointer: fine) {
     .group:hover, .pick:hover, .fac-sec summary:hover, .now-card:hover { background: var(--s3); }
     .chip:hover { background: var(--s3); color: var(--t1); }
@@ -431,7 +429,6 @@
       <p class="footlinks"><a href="prywatnosc/">Prywatność i zasady</a><a href="https://github.com/kilerdevs/PlanWAT/issues">Zgłoś błąd</a></p>
       <div class="themerow"><div class="themeswitch" role="group" aria-label="Motyw"><button type="button" data-theme-set="auto" aria-pressed="true">Auto</button><button type="button" data-theme-set="dark" aria-pressed="false">Ciemny</button><button type="button" data-theme-set="light" aria-pressed="false">Jasny</button></div></div>
     </div>
-    <p id="installRow" hidden><button class="appbtn" id="installBtn" type="button" hidden>Zainstaluj PlanWAT jako aplikację</button> <span id="installHint"></span></p>
   </footer>
 </main>
 <script>@@ICS_JS@@</script>
@@ -719,32 +716,6 @@
     });
   }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {});
-  /* installing the site as an app: Chrome/Edge/Android offer a prompt we can trigger; iOS Safari has only the share menu */
-  (function () {
-    var btn = document.getElementById('installBtn'), hint = document.getElementById('installHint');
-    if (!btn) return;
-    var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
-    var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    var offer = null;
-    function show(on) { var row = document.getElementById('installRow'); if (row) row.hidden = !on; btn.hidden = !on; }
-    if (standalone) return;
-    if (ios) {
-      if (hint) hint.textContent = 'W Safari: Udostępnij → „Do ekranu początkowego”.';
-      btn.hidden = true;
-      var row = document.getElementById('installRow');
-      if (row) row.hidden = false;
-      return;
-    }
-    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); offer = e; show(true); });
-    window.addEventListener('appinstalled', function () { offer = null; show(false); });
-    btn.addEventListener('click', function () {
-      if (!offer) return;
-      var p = offer;
-      offer = null;
-      show(false);
-      p.prompt();
-    });
-  })();
   renderSaved();
   renderLive();
   /* keep "now" honest while the page stays open */
