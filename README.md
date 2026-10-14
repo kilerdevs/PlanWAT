@@ -163,8 +163,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and the pull-request chec
 - **Docker** (self-hosted): `docker compose up -d --build` builds the site inside the image and serves it from a
   read-only, unprivileged nginx on `127.0.0.1:8088`, with security headers.
 
-Moving a custom domain from the Docker host to GitHub Pages, and the Cloudflare rules that restore the security
-headers Pages cannot send, are described in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Moving a custom domain from the Docker host to GitHub Pages, and how to restore the security headers Pages cannot send,
+are described in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Security
 
