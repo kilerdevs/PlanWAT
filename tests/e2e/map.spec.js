@@ -107,9 +107,16 @@ test('a bad group in the day link is ignored', async ({ page }) => {
 
 test('the map page passes an accessibility scan', async ({ page }) => {
   await open(page, '/mapa/');
+  // Building markers sit where the buildings are, so neighbours overlap at campus zoom (WCAG 2.2 target size).
+  // The search box and the legend reach every building too (the "equivalent control" exception), so only the
+  // markers' names are checked here.
+  for (const name of await page.locator('.bldg').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))) {
+    expect(name).toBeTruthy();
+  }
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .exclude('.maplibregl-canvas')
+    .exclude('.maplibregl-marker')
     .analyze();
   const serious = results.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')

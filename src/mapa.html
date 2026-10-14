@@ -218,7 +218,7 @@
 <a class="ctl back" id="back" href="../"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chevron-left"/></svg>Plan</a>
 
 <div class="search" id="searchWrap" role="search">
-  <input class="ctl" type="search" id="q" aria-label="Szukaj budynku lub wydziału" aria-controls="results" aria-expanded="false" placeholder="Budynek, wydział, biblioteka…" autocomplete="off" spellcheck="false" enterkeyhint="search">
+  <input class="ctl" type="search" id="q" aria-label="Szukaj budynku lub wydziału" aria-controls="results" placeholder="Budynek, wydział, biblioteka…" autocomplete="off" spellcheck="false" enterkeyhint="search">
   <div class="ctl results" id="results" hidden></div>
 </div>
 
@@ -327,7 +327,7 @@
 
   /* ---- search ---- */
   var q = $('q'), results = $('results');
-  function closeResults() { results.hidden = true; q.setAttribute('aria-expanded', 'false'); }
+  function closeResults() { results.hidden = true; }
   function runSearch() {
     var found = C.search(q.value);
     if (!q.value.trim()) { results.replaceChildren(); closeResults(); return; }
@@ -350,7 +350,6 @@
       results.appendChild(btn);
     });
     results.hidden = false;
-    q.setAttribute('aria-expanded', 'true');
   }
   q.addEventListener('input', runSearch);
   q.addEventListener('focus', function () { if (q.value.trim()) runSearch(); });
