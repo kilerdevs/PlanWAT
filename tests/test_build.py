@@ -104,7 +104,7 @@ class BuildRealSiteTest(unittest.TestCase):
         return sorted(self.out.rglob('*.html'))
 
     def test_writes_group_page_calendar_index_and_404(self):
-        for rel in ('index.html', '404.html', 'WCY26KY3S1/index.html', 'WCY26KY3S1/plan.ics'):
+        for rel in ('index.html', '404.html', 'mapa/index.html', 'WCY26KY3S1/index.html', 'WCY26KY3S1/plan.ics'):
             self.assertTrue((self.out / rel).is_file(), rel)
 
     def test_group_calendar_is_a_byte_copy_of_the_current_term(self):
@@ -189,6 +189,39 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn('<dd>28.09.2026 &ndash; 22.02.2027</dd>', html)
         self.assertIn('download="plan-WCY26KY3S1.ics"', html)
 
+    def meta_csp(self, rel):
+        html = (self.out / rel).read_text(encoding='utf-8')
+        return re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', html).group(1)
+
+    def test_only_the_map_page_may_load_the_map_engine_and_tiles(self):
+        csp = self.meta_csp('mapa/index.html')
+        self.assertRegex(csp, r"script-src [^;]*https://unpkg\.com")
+        self.assertRegex(csp, r"connect-src 'self' https://tiles\.openfreemap\.org")
+        self.assertRegex(csp, r"img-src data: blob: https://tiles\.openfreemap\.org")
+        self.assertIn('worker-src blob:', csp)
+        for rel in ('index.html', '404.html', 'WCY26KY3S1/index.html'):
+            csp = self.meta_csp(rel)
+            for source in ('unpkg.com', 'openfreemap', 'blob:', 'worker-src'):
+                self.assertNotIn(source, csp, rel)
+
+    def test_map_engine_is_pinned_by_subresource_integrity(self):
+        html = (self.out / 'mapa' / 'index.html').read_text(encoding='utf-8')
+        tags = re.findall(r'<(?:script|link)[^>]+unpkg\.com[^>]*>', html)
+        self.assertEqual(len(tags), 2)
+        for tag in tags:
+            self.assertRegex(tag, r'integrity="sha384-[A-Za-z0-9+/=]{64}"')
+            self.assertIn('crossorigin="anonymous"', tag)
+            self.assertIn('@4.7.1/', tag)
+
+    def test_map_links_use_relative_urls(self):
+        html = (self.out / 'mapa' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('href="../"', html)
+        self.assertIn("'../' + encodeURIComponent(group) + '/plan.ics'", html)
+        self.assertIn('href="mapa/"', (self.out / 'index.html').read_text(encoding='utf-8'))
+        group = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn("'../mapa/?b='", group)
+        self.assertIn("'../mapa/?g='", group)
+
     def test_404_links_home_through_the_base_path(self):
         self.assertIn('href="/PlanWAT/"', (self.out / '404.html').read_text(encoding='utf-8'))
 
@@ -201,6 +234,9 @@ class BuildRealSiteTest(unittest.TestCase):
             html = page.read_text(encoding='utf-8')
             for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S):
                 self.assertIn(sha(block), header, page)
+        self.assertIn('https://unpkg.com', header)
+        self.assertIn('worker-src blob:', header)
+        self.assertIn("connect-src 'self' https://tiles.openfreemap.org", header)
 
 
 class BuildManyGroupsTest(unittest.TestCase):
@@ -292,6 +328,11 @@ class BuildManyGroupsTest(unittest.TestCase):
 
     def test_rejects_a_group_named_like_the_data_folder(self):
         self.add('2026-27-zima', 'data', calendar('data', '2026-09-28', '2027-02-22', '2026-10-05'))
+        with self.assertRaisesRegex(build.BuildError, 'reserved'):
+            build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
+    def test_rejects_a_group_named_like_the_map_page(self):
+        self.add('2026-27-zima', 'mapa', calendar('mapa', '2026-09-28', '2027-02-22', '2026-10-05'))
         with self.assertRaisesRegex(build.BuildError, 'reserved'):
             build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 

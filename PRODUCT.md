@@ -34,6 +34,7 @@ The official WAT plan is a large table built for desktop. This site turns the sa
   - Live "Teraz" (now) and "Następne" (next) status with a countdown on today's classes.
   - Semester progress.
   - A subject legend that highlights one subject across the week.
+  - Campus map at `/mapa/`: building markers by faculty, search, walking directions; rooms in the plan link to their building and each day opens its classes on the map.
   - Dark theme only. The light/system switch was removed in the owner's 2026-10-11 redesign brief ("Dark theme only").
 - **Terminology** (keep in Polish): blok (one class slot), Wykład / Ćwiczenia / Laboratorium / Zaliczenie / Spotkanie organizacyjne, tydzień, sesja egzaminacyjna, e-dziekanat. Group codes follow the WAT format, e.g. `WCY26KY3S1`.
 - **Technical setup:**
@@ -42,7 +43,7 @@ The official WAT plan is a large table built for desktop. This site turns the sa
   - `/<GROUP>/plan.ics` is public, so the same link also works as a calendar subscription.
   - Served by a hardened, read-only, non-root nginx container (`PLAN-WAT`, localhost:8088), reached through a Cloudflare tunnel on the project's custom domain. GitHub Pages (repository kilerdevs/PlanWAT) is the target deployment.
 - **Security** (the owner's explicit requirement: "as secure as possible, used by public"):
-  - Strict Content-Security-Policy with hash-pinned inline script and style. The only external origin is Google Fonts; `connect-src 'self'` lets the page fetch only its own `plan.ics`. Each page carries the CSP in a meta tag (GitHub Pages cannot send headers); the Docker image also sends it as a header.
+  - Strict Content-Security-Policy with hash-pinned inline script and style. The only external origin is Google Fonts (the campus map page alone adds SRI-pinned MapLibre from unpkg and OpenFreeMap tiles); `connect-src 'self'` lets the page fetch only its own `plan.ics`. Each page carries the CSP in a meta tag (GitHub Pages cannot send headers); the Docker image also sends it as a header.
   - Only GET/HEAD requests, rate limiting, and standard security headers.
   - Third-party scripts aren't banned outright, but any addition must fit the CSP and be justified.
 - **Performance:** must stay smooth on ordinary phones. Heavy effects such as backdrop blur, continuous repaints and filters on many elements made the page lag on the owner's phone. Rich motion belongs on capable desktop devices only, and reduced-motion preferences are respected.
