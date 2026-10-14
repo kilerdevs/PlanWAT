@@ -637,3 +637,29 @@ test('a group with two terms switches between them with ?t= and exports the term
   await expect(page.locator('#icsLink')).toHaveAttribute('href', 'plan.ics');
   expect(problems).toEqual([]);
 });
+
+test('"Moje przedmioty" hides a subject everywhere, remembers it, and the downloaded file leaves it out', async ({ page }) => {
+  const problems = await openGroup(page);
+  const before = await page.locator('#weekBody .lesson').count();
+  const firstSubject = (await page.locator('#weekBody .lesson .subj').first().textContent()).trim();
+  await page.locator('#subjectsBtn').click();
+  const boxes = page.locator('#toolBody .mysubjects input');
+  expect(await boxes.count()).toBeGreaterThan(1);
+  await page.locator('#toolBody .mysubjects label').filter({ has: page.getByText(firstSubject, { exact: true }) }).locator('input').uncheck();
+  await page.getByRole('button', { name: 'Zastosuj' }).click();
+  await expect(page.locator('#hiddenNotice')).toBeVisible();
+  expect(await page.locator('#weekBody .lesson').count()).toBeLessThan(before);
+  const shown = (await page.locator('#weekBody .lesson .subj').allTextContents()).map((t) => t.trim());
+  expect(shown).not.toContain(firstSubject);
+  const href = await page.locator('#icsLink').getAttribute('href');
+  expect(href.startsWith('blob:')).toBe(true);
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#icsLink').click()]);
+  const text = fs.readFileSync(await download.path(), 'utf-8');
+  expect(text.split(/\r?\n/)).not.toContain('SUMMARY:' + firstSubject);
+  expect(text).toContain('BEGIN:VCALENDAR');
+  await page.locator('#hiddenEdit').click();
+  await page.getByRole('button', { name: 'Pokaż wszystkie' }).click();
+  await expect(page.locator('#hiddenNotice')).toBeHidden();
+  expect(await page.locator('#weekBody .lesson').count()).toBe(before);
+  expect(problems).toEqual([]);
+});

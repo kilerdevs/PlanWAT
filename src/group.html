@@ -1109,6 +1109,10 @@
   }
   .choice[aria-pressed="true"] { background: var(--t1); color: var(--bg); }
   .sheet-body > .field { margin-top: var(--sp-3); }
+  .mysubjects { display: grid; gap: 2px; margin: var(--sp-3) 0; }
+  .mysubjects .check { align-items: flex-start; padding: 6px 0; }
+  .mysubjects .check input { flex: none; margin-top: 1px; }
+  #toolBody > .dl { margin: 0 var(--sp-2) var(--sp-2) 0; }
   .check { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; font-size: var(--fs-13); color: var(--t2); }
   .check input { width: 20px; height: 20px; accent-color: var(--accent); }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-2); }
@@ -1440,6 +1444,7 @@
         <a class="dl" id="icsLink" href="plan.ics" download="plan-@@GROUP@@.ics"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Pobierz plan (.ics)</a>
         <button class="dl" id="calBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-calendar-plus"/></svg>Dodaj do kalendarza</button>
         <button class="dl" id="shareBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-share"/></svg>Udostępnij</button>
+        <button class="dl" id="subjectsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-user"/></svg>Moje przedmioty</button>
         <button class="dl" id="statsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chart"/></svg>Statystyki</button>
         <button class="dl" id="compareBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"/></svg>Porównaj grupy</button>
         <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
@@ -1447,6 +1452,11 @@
       <div class="notice" id="offlineNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
         <span class="notice-text">Jesteś offline. Widzisz plan zapisany w przeglądarce przy ostatniej wizycie.</span>
+      </div>
+      <div class="notice" id="hiddenNotice" role="status" hidden>
+        <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
+        <span class="notice-text" id="hiddenText"></span>
+        <span class="notice-actions"><button class="link" id="hiddenEdit" type="button">Zmień</button></span>
       </div>
       <div class="notice" id="staleNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
@@ -1591,7 +1601,7 @@
   var finePointer = mq('(hover: hover) and (pointer: fine)');
   var gridQuery = mql('(min-width: 1080px)');
   function isGrid() { return !!(gridQuery && gridQuery.matches); }
-  var state = { weekIndex: 0, currentIndex: 0, data: null, byDate: {}, dir: 0, focus: null, pending: null, booted: false, liveTarget: null, days: DAY_ORDER, view: 'week', showPast: false, month: null };
+  var state = { weekIndex: 0, currentIndex: 0, data: null, byDate: {}, dir: 0, focus: null, pending: null, booted: false, liveTarget: null, subjects: [], hidden: [], rawText: '', days: DAY_ORDER, view: 'week', showPast: false, month: null };
   var revealIO = null;
 
   function noop() {}
@@ -2738,6 +2748,51 @@
   }
 
   /* ---------- statistics ---------- */
+  /* "Moje przedmioty": untick what you do not attend; kept in this browser only, per group and term */
+  function hideKey() {
+    var parts = location.pathname.split('/').filter(Boolean);
+    return (parts[parts.length - 1] || '') + (planFile === 'plan.ics' ? '' : ':' + planFile);
+  }
+  function initHidden() {
+    var n = state.hidden.length;
+    $('hiddenNotice').hidden = !n;
+    if (n) {
+      $('hiddenText').textContent = 'Ukryto ' + n + ' ' + PI.plural(n, 'przedmiot', 'przedmioty', 'przedmiotów') + ' (tylko w tej przeglądarce). Statystyki i pobrany plik też ich nie zawierają.';
+      var href = URL.createObjectURL(new Blob([window.PlanICS.filterText(state.rawText, state.hidden)], { type: 'text/calendar' }));
+      $('icsLink').setAttribute('href', href);
+    }
+  }
+  function openSubjects() {
+    var pending = state.hidden.slice();
+    openTool('Moje przedmioty', function (body) {
+      para(body, 'Odznacz przedmioty, których nie masz (np. lektoraty do wyboru). Znikną z widoków, statystyk i pobranego pliku .ics. Zapisujemy to tylko w tej przeglądarce; subskrypcja kalendarza nadal zawiera cały plan.');
+      var list = body.appendChild(el('div', 'mysubjects'));
+      state.subjects.forEach(function (sub) {
+        var row = list.appendChild(el('label', 'check'));
+        var cb = row.appendChild(el('input'));
+        cb.type = 'checkbox';
+        cb.checked = pending.indexOf(sub.name) < 0;
+        cb.addEventListener('change', function () {
+          pending = pending.filter(function (n) { return n !== sub.name; });
+          if (!cb.checked) pending.push(sub.name);
+          apply.disabled = pending.length >= state.subjects.length;
+        });
+        row.appendChild(el('span', null, sub.name));
+      });
+      var apply = body.appendChild(el('button', 'dl', 'Zastosuj'));
+      apply.type = 'button';
+      apply.addEventListener('click', function () {
+        store.set('hide:' + hideKey(), pending);
+        location.reload();
+      });
+      var reset = body.appendChild(el('button', 'dl', 'Pokaż wszystkie'));
+      reset.type = 'button';
+      reset.addEventListener('click', function () {
+        store.set('hide:' + hideKey(), []);
+        location.reload();
+      });
+    });
+  }
   function openStats() {
     var st = PI.stats(state.data);
     var hours = function (min) { return PI.fmtDuration(min); };
@@ -3034,6 +3089,9 @@
     $('calBtn').addEventListener('click', openCalendar);
     $('shareBtn').addEventListener('click', sharePlan);
     $('statsBtn').addEventListener('click', openStats);
+    $('subjectsBtn').addEventListener('click', openSubjects);
+    $('hiddenEdit').addEventListener('click', openSubjects);
+    initHidden();
     $('compareBtn').addEventListener('click', openCompare);
     $('printBtn').addEventListener('click', function () { window.print(); });
     var seg = $('viewSeg').querySelectorAll('button');
@@ -3198,7 +3256,14 @@
         return res.arrayBuffer();
       })
       .then(function (buf) {
-        var data = window.PlanICS.toPlan(window.PlanICS.parse(window.PlanICS.decode(buf)));
+        state.rawText = window.PlanICS.decode(buf);
+        var parsed = window.PlanICS.parse(state.rawText);
+        state.subjects = window.PlanICS.subjectsOf(parsed);
+        var known = state.subjects.map(function (x) { return x.name; });
+        var saved = store.get('hide:' + hideKey(), []);
+        state.hidden = Array.isArray(saved) ? saved.filter(function (n) { return known.indexOf(n) >= 0; }) : [];
+        if (state.hidden.length >= known.length) state.hidden = []; /* never hide everything */
+        var data = window.PlanICS.toPlan(window.PlanICS.withoutSubjects(parsed, state.hidden));
         if (!data.weeks.length) throw new Error('plik planu nie zawiera zajęć');
         boot(data);
       })
