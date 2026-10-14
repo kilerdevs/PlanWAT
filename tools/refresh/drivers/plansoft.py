@@ -40,8 +40,11 @@ class Driver:
         """
         groups_re = self.cfg.get('groups_re')
         rx = re.compile(groups_re, re.IGNORECASE) if groups_re else None
+        hrefs = re.findall(r'<gro href="([^"]+)"', text)
+        if not hrefs:
+            hrefs = self._xml_hrefs(text)  # odd quoting or spacing defeated the regex
         items, seen = [], set()
-        for href in re.findall(r'<gro href="([^"]+)"', text):
+        for href in hrefs:
             stem = href[:-4] if href.lower().endswith('.htm') else href
             if rx is not None and not rx.search(stem):
                 continue
@@ -50,6 +53,18 @@ class Driver:
                 seen.add(code)
                 items.append(Item(code, self.base + href, stem))
         return items
+
+    @staticmethod
+    def _xml_hrefs(text):
+        """The same <gro href> list through a real XML parse, for indexes the regex cannot read."""
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(text.encode('utf-8', errors='replace'))
+        except Exception:
+            return []
+        return [href for el in root.iter()
+                if isinstance(el.tag, str) and el.tag.rsplit('}', 1)[-1].lower() == 'gro'
+                for href in [el.get('href')] if href]
 
     def page_ok(self, text):
         return 'mergeWith' in text and 'Plansoft' in text
