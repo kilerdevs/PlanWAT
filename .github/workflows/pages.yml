@@ -71,16 +71,20 @@ jobs:
         run: |
           python3 - <<'EOF'
           from pathlib import Path
-          prod = Path('site/index.html')
-          html = prod.read_text(encoding='utf-8')
-          link = '<a href="dev/">Wersja testowa (dev)</a>'
-          assert link not in html and 'Zgłoś błąd</a></p>' in html
-          prod.write_text(html.replace('Zgłoś błąd</a></p>', 'Zgłoś błąd</a>' + link + '</p>', 1), encoding='utf-8')
-          dev = Path('site/dev/index.html')
-          html = dev.read_text(encoding='utf-8')
-          link = '<a href="../">Wersja stabilna</a>'
-          assert link not in html and 'Zgłoś błąd</a></p>' in html
-          dev.write_text(html.replace('Zgłoś błąd</a></p>', 'Zgłoś błąd</a>' + link + '</p>', 1), encoding='utf-8')
+          def add(path, link):
+              p = Path(path)
+              html = p.read_text(encoding='utf-8')
+              assert link not in html
+              # new footer keeps its links in one row; the older one just ends with </footer>
+              marker = 'Zgłoś błąd</a></p>'
+              if marker in html:
+                  html = html.replace(marker, 'Zgłoś błąd</a>' + link + '</p>', 1)
+              else:
+                  assert '</footer>' in html
+                  html = html.replace('</footer>', ' ' + link + '</footer>', 1)
+              p.write_text(html, encoding='utf-8')
+          add('site/index.html', '<a href="dev/">Wersja testowa (dev)</a>')
+          add('site/dev/index.html', '<a href="../">Wersja stabilna</a>')
           print('linked production <-> dev preview')
           EOF
       # The artifact includes dotfiles for .well-known/security.txt; the build markers are internal.
