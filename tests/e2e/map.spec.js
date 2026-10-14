@@ -123,3 +123,44 @@ test('the map page passes an accessibility scan', async ({ page }) => {
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
   expect(serious).toEqual([]);
 });
+
+test('a day on the map dims the other buildings, keeps the tapped class in view and the search hint fits', async ({ page }) => {
+  await open(page, '/mapa/?g=WCY26KY3S1&d=2026-10-13');
+  test.skip(await page.locator('#q').isHidden(), 'needs the map engine');
+  await expect(page.locator('html')).toHaveClass(/day-on/);
+  const onDay = await page.locator('.bldg.on-day').count();
+  expect(onDay).toBeGreaterThan(0);
+  const dim = page.locator('.bldg:not(.on-day)').first();
+  expect(await dim.evaluate((e) => getComputedStyle(e).filter)).toContain('opacity');
+  await expect(page.locator('.bldg.on-day').first()).not.toHaveCSS('filter', /opacity/);
+  // the hint is short enough not to be cut mid-letter
+  expect(await page.locator('#q').evaluate((e) => e.getAttribute('placeholder').length)).toBeLessThan(24);
+  // tapping a class compacts the card and leaves that class on screen
+  const stop = page.locator('.stops [data-stop]:not([disabled])').nth(1);
+  await stop.scrollIntoViewIfNeeded();
+  await stop.click();
+  await expect(page.locator('#selection')).toHaveClass(/compact/);
+  await expect(stop).toBeInViewport();
+});
+
+test('collapsing the sheet re-frames the map and a tap on the map closes the legend', async ({ page }) => {
+  await open(page, '/mapa/?g=WCY26KY3S1&d=2026-10-13');
+  test.skip(await page.locator('#q').isHidden(), 'needs the map engine');
+  await page.locator('#legendToggle').click();
+  await expect(page.locator('#legendBody')).toBeVisible();
+  // a point of bare map: neither a marker nor a control sits on it
+  const spot = await page.evaluate(() => {
+    for (let y = 130; y < innerHeight * 0.5; y += 14) {
+      for (let x = 20; x < innerWidth - 60; x += 14) {
+        const e = document.elementFromPoint(x, y);
+        if (e && e.classList.contains('maplibregl-canvas')) return { x, y };
+      }
+    }
+    return null;
+  });
+  expect(spot).not.toBeNull();
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.locator('#legendBody')).toBeHidden();
+  await page.locator('#sheet > summary').click();
+  await expect(page.locator('#sheet')).not.toHaveAttribute('open', '');
+});
