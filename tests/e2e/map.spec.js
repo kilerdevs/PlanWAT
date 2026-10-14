@@ -58,8 +58,8 @@ test('the faculty legend and the 2D/3D switch work', async ({ page }) => {
   test.skip(await page.locator('#tools').isHidden(), 'map controls need the map engine');
   await page.locator('#legendToggle').click();
   await expect(page.locator('#legendToggle')).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.locator('.legend-row')).toHaveCount(9);
-  await page.locator('.legend-row', { hasText: 'WCY' }).click();
+  await expect(page.locator('#legendBody .legend-row')).toHaveCount(9);
+  await page.locator('#legendBody .legend-row', { hasText: 'WCY' }).click();
   await expect(page.locator('#legendBody')).toBeHidden();
   const t3d = page.locator('#toggle3d');
   await expect(t3d).toHaveText('2D');
@@ -163,4 +163,24 @@ test('collapsing the sheet re-frames the map and a tap on the map closes the leg
   await expect(page.locator('#legendBody')).toBeHidden();
   await page.locator('#sheet > summary').click();
   await expect(page.locator('#sheet')).not.toHaveAttribute('open', '');
+});
+
+test('places: the Miejsca panel switches categories and a searched place opens its card with directions', async ({ page }) => {
+  await open(page, '/mapa/');
+  test.skip(await page.locator('#q').isHidden(), 'needs the map engine');
+  await page.locator('#placesToggle').click();
+  const rows = page.locator('#placesBody .legend-row');
+  expect(await rows.count()).toBe(11);
+  await expect(rows.first()).toHaveAttribute('aria-pressed', 'true');
+  await rows.first().click();
+  await expect(rows.first()).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#placesBody .places-head button', { hasText: 'Wszystkie' }).click();
+  await expect(rows.first()).toHaveAttribute('aria-pressed', 'true');
+  // opening the faculties legend closes the places panel
+  await page.locator('#legendToggle').click();
+  await expect(page.locator('#placesBody')).toBeHidden();
+  await page.locator('#q').fill('domki');
+  await page.locator('#results .result', { hasText: 'Domki Radiowa' }).click();
+  await expect(page.locator('#selection h1')).toHaveText('Domki Radiowa');
+  await expect(page.locator('#selection a.navigate')).toHaveAttribute('href', /destination=52\.26\d+,20\.89\d+&travelmode=walking/);
 });

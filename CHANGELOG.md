@@ -14,6 +14,8 @@ All notable changes to PlanWAT are documented here. The format follows
 - Map: in a day view the other buildings step back, the building card is compact so the tapped class stays in view, collapsing the sheet re-frames the map, a tap on the map closes the legend, and the search hint is no longer cut mid-letter.
 
 ### Added
+- Map: places around the campus as labelled badges (tram and bus stops, akademiki, Domki Radiowa, stołówki, bufety, restaurants, bars, shops, paczkomaty, parkings) with a "Miejsca" panel to switch categories, search, and a card with walking directions. Data in `src/places.js`, rebuilt with `tools/places/make_places.py` from OpenStreetMap.
+- Map: a richer dark style with green parks and grass, blue water, tinted land use and a cooler 3D building palette.
 - First-visit tour: a swipeable seven-step sheet (swipe weeks, jump from the date, "Gdzie odrobić?", the Mapa button and room links, comparing groups, statistics, calendar/subject/app tools) with small looping demos. Shown once per browser, reopened with "Jak korzystać" in the tools row.
 - Okienka (free gaps and walking time) also show on the desktop week grid, at the foot of the class they follow.
 

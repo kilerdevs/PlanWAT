@@ -645,8 +645,8 @@ def render_index(template, current, ics_js=''):
     return finish(page, connect=True, extra=APP_CSP)
 
 
-def render_map(template, ics_js, campus_js):
-    page = template.replace('@@ICS_JS@@', ics_js).replace('@@CAMPUS_JS@@', campus_js)
+def render_map(template, ics_js, campus_js, places_js):
+    page = template.replace('@@ICS_JS@@', ics_js).replace('@@CAMPUS_JS@@', campus_js).replace('@@PLACES_JS@@', places_js)
     return finish(page, connect=True, extra=merge_csp(MAP_APP_CSP, MAP_CSP))
 
 
@@ -749,7 +749,8 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     ics_js = (SRC / 'ics.js').read_text(encoding='utf-8')
     insights_js = (SRC / 'insights.js').read_text(encoding='utf-8')
     campus_js = (SRC / 'campus.js').read_text(encoding='utf-8')
-    for name, code in (('ics.js', ics_js), ('insights.js', insights_js), ('campus.js', campus_js)):
+    places_js = (SRC / 'places.js').read_text(encoding='utf-8')
+    for name, code in (('ics.js', ics_js), ('insights.js', insights_js), ('campus.js', campus_js), ('places.js', places_js)):
         if '@@' in code:
             raise BuildError(f'src/{name} must not contain "@@"')
 
@@ -779,7 +780,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
                 shutil.copyfile(other.path, out / group / f'plan-{other.term_id}.ics')
                 (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.path.read_bytes()))
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js))
-    write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js))
+    write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8')))
     (out / 'robots.txt').write_text(robots_txt(base_path, noindex), encoding='utf-8')
     (out / '.well-known').mkdir()

@@ -118,6 +118,11 @@
   .legend-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fc); flex: none; }
   .legend-row .n { margin-left: auto; color: var(--t3); font-variant-numeric: tabular-nums; }
   .row-btns { display: flex; gap: 8px; }
+  .places-body { min-width: 236px; }
+  .places-body .legend-row[aria-pressed="false"] { opacity: 0.45; }
+  .places-body .legend-row[aria-pressed="false"] .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--fc); }
+  .places-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px 6px; color: var(--t3); font-size: 0.75rem; }
+  .places-head button { font: inherit; font-size: 0.75rem; color: var(--accent-text); background: none; border: 0; padding: 6px 4px; cursor: pointer; }
   .row-btns .ctl { min-width: 44px; font-weight: 600; }
 
   /* the sheet: bottom on phones, a side panel on wide screens */
@@ -201,6 +206,7 @@
   .maplibregl-ctrl-attrib-button { filter: invert(1); }
   .maplibregl-ctrl-top-right { top: calc(var(--top) - 10px); right: calc(var(--gr) - 10px); }
 
+  @media (max-width: 360px) { button.ctl { padding: 0 9px; } .row-btns { gap: 6px; } }
   @media (max-width: 800px) {
     .search { left: calc(var(--gl) + 88px); right: calc(var(--gr) + 52px); }
     .back { padding-right: 10px; }
@@ -238,10 +244,12 @@
 <div class="tools" id="tools">
   <div class="row-btns">
     <button class="ctl" type="button" id="legendToggle" aria-expanded="false" aria-controls="legendBody">Wydziały</button>
+    <button class="ctl" type="button" id="placesToggle" aria-expanded="false" aria-controls="placesBody">Miejsca</button>
     <button class="ctl" type="button" id="toggle3d">2D</button>
     <button class="ctl" type="button" id="overview" aria-label="Pokaż cały kampus" title="Cały kampus"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-maximize"/></svg></button>
   </div>
   <div class="ctl legend-body" id="legendBody" hidden></div>
+  <div class="ctl legend-body places-body" id="placesBody" hidden></div>
 </div>
 
 <details class="sheet" id="sheet" open>
@@ -261,10 +269,11 @@
 
 <script>@@ICS_JS@@</script>
 <script>@@CAMPUS_JS@@</script>
+<script>@@PLACES_JS@@</script>
 <script>
 (function () {
   'use strict';
-  var C = window.Campus;
+  var C = window.Campus, P = window.Places;
   var STYLE = 'https://tiles.openfreemap.org/styles/dark';
   var CENTER = [20.9005, 52.2527];
   var GROUP_RE = /^[A-Za-z0-9_]{2,32}$/;
@@ -293,7 +302,8 @@
   function dot(color, cls) { var d = el('span', cls || 'dot'); d.style.setProperty('--fc', color); return d; }
   function markerLabel(b) { return b.code === 'BIBL' ? 'B' : b.code || (/^Brama/.test(b.name) ? '↗' : ''); }
 
-  var map = null, pitched = true, markers = [];
+  var map = null, pitched = true, markers = [], placesOn = {};
+  P.CATEGORIES.forEach(function (c) { placesOn[c.id] = true; });
   var sheet = $('sheet'), selection = $('selection');
 
   function padding() {
@@ -325,6 +335,7 @@
 
   function select(b, fromList) {
     sheet.open = true;
+    selectPlaceRing(null);
     showBuilding(b);
     markers.forEach(function (m) { m.el.setAttribute('aria-pressed', String(m.b === b)); });
     document.querySelectorAll('[data-stop]').forEach(function (s) { s.setAttribute('aria-pressed', String(s.getAttribute('data-code') === b.code)); });
@@ -333,6 +344,33 @@
     if (dayMode && tapped && fromList) tapped.scrollIntoView({ block: 'nearest' });
     else $('sheetBody').scrollTop = 0;
     if (map) map.flyTo({ center: [b.lng, b.lat], zoom: 17.2, pitch: pitched ? 55 : 0, padding: padding(), duration: reduced.matches ? 0 : 850 });
+  }
+
+  /* ---- a place (stop, shop, dormitory…) in the sheet ---- */
+  function selectPlaceRing(p) {
+    if (map && map.getLayer && map.getLayer('place-ring')) map.setFilter('place-ring', ['==', ['get', 'id'], p ? p.id : -1]);
+  }
+  function selectPlace(p) {
+    sheet.open = true;
+    selection.replaceChildren();
+    selection.classList.toggle('compact', dayMode);
+    var fac = el('div', 'faculty');
+    fac.appendChild(dot(p.cat.color));
+    fac.appendChild(document.createTextNode(p.cat.label));
+    selection.appendChild(fac);
+    selection.appendChild(el('h1', null, p.name));
+    var go = el('a', 'navigate');
+    go.href = P.directionsUrl(p);
+    go.target = '_blank';
+    go.rel = 'noopener noreferrer';
+    go.appendChild(icon('navigation'));
+    go.appendChild(document.createTextNode('Wyznacz drogę pieszo'));
+    selection.appendChild(go);
+    $('sheetBody').scrollTop = 0;
+    markers.forEach(function (m) { m.el.setAttribute('aria-pressed', 'false'); });
+    document.querySelectorAll('[data-stop]').forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
+    selectPlaceRing(p);
+    if (map) map.flyTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 17.4), pitch: pitched ? 55 : 0, padding: padding(), duration: reduced.matches ? 0 : 800 });
   }
 
   function fit(list) {
@@ -351,9 +389,10 @@
   function closeResults() { results.hidden = true; }
   function runSearch() {
     var found = C.search(q.value);
+    var spots = P.search(q.value, 6);
     if (!q.value.trim()) { results.replaceChildren(); closeResults(); return; }
     results.replaceChildren();
-    if (!found.length) results.appendChild(el('div', 'noresult', 'Brak wyników'));
+    if (!found.length && !spots.length) results.appendChild(el('div', 'noresult', 'Brak wyników'));
     found.forEach(function (b) {
       var btn = el('button', 'result');
       btn.type = 'button';
@@ -367,6 +406,22 @@
         closeResults();
         if (phone.matches) q.blur();
         select(b);
+      });
+      results.appendChild(btn);
+    });
+    spots.forEach(function (p) {
+      var btn = el('button', 'result');
+      btn.type = 'button';
+      btn.appendChild(dot(p.cat.color));
+      var t = el('span');
+      t.appendChild(el('b', null, p.name));
+      t.appendChild(el('small', null, p.cat.label));
+      btn.appendChild(t);
+      btn.addEventListener('click', function () {
+        q.value = p.name;
+        closeResults();
+        if (phone.matches) q.blur();
+        selectPlace(p);
       });
       results.appendChild(btn);
     });
@@ -390,7 +445,17 @@
 
   /* ---- legend ---- */
   var legendToggle = $('legendToggle'), legendBody = $('legendBody');
-  function setLegend(open) { legendBody.hidden = !open; legendToggle.setAttribute('aria-expanded', String(open)); }
+  var placesToggle = $('placesToggle'), placesBody = $('placesBody');
+  function setLegend(open) {
+    legendBody.hidden = !open;
+    legendToggle.setAttribute('aria-expanded', String(open));
+    if (open) setPlacesPanel(false);
+  }
+  function setPlacesPanel(open) {
+    placesBody.hidden = !open;
+    placesToggle.setAttribute('aria-expanded', String(open));
+    if (open) { legendBody.hidden = true; legendToggle.setAttribute('aria-expanded', 'false'); }
+  }
   C.FACULTIES.forEach(function (f) {
     var members = C.BUILDINGS.filter(function (b) { return b.faculty === f; });
     if (!members.length) return;
@@ -403,6 +468,45 @@
     legendBody.appendChild(row);
   });
   legendToggle.addEventListener('click', function () { setLegend(legendBody.hidden); });
+  placesToggle.addEventListener('click', function () { setPlacesPanel(placesBody.hidden); });
+
+  /* the places panel: one switch per category, applied to the map layers once they exist */
+  var placeRows = {};
+  function applyPlaces() {
+    P.CATEGORIES.forEach(function (c) {
+      placeRows[c.id].setAttribute('aria-pressed', String(placesOn[c.id]));
+      if (map && map.getLayer && map.getLayer('places-' + c.id)) map.setLayoutProperty('places-' + c.id, 'visibility', placesOn[c.id] ? 'visible' : 'none');
+    });
+    if (map && map.getLayer && map.getLayer('places-label')) {
+      var on = P.CATEGORIES.filter(function (c) { return placesOn[c.id]; }).map(function (c) { return c.id; });
+      map.setFilter('places-label', ['in', ['get', 'cat'], ['literal', on]]);
+    }
+  }
+  (function () {
+    var head = el('div', 'places-head');
+    head.appendChild(el('span', null, 'Pokaż na mapie'));
+    var all = el('button', null, 'Wszystkie'), none = el('button', null, 'Żadne');
+    all.type = none.type = 'button';
+    var setAll = function (v) { P.CATEGORIES.forEach(function (c) { placesOn[c.id] = v; }); applyPlaces(); };
+    all.addEventListener('click', function () { setAll(true); });
+    none.addEventListener('click', function () { setAll(false); });
+    var acts = el('span');
+    acts.appendChild(all);
+    acts.appendChild(none);
+    head.appendChild(acts);
+    placesBody.appendChild(head);
+    P.CATEGORIES.forEach(function (c) {
+      var row = el('button', 'legend-row');
+      row.type = 'button';
+      row.setAttribute('aria-pressed', 'true');
+      row.appendChild(dot(c.color));
+      row.appendChild(el('span', null, c.label));
+      row.appendChild(el('span', 'n', String(P.count(c.id))));
+      row.addEventListener('click', function () { placesOn[c.id] = !placesOn[c.id]; applyPlaces(); });
+      placeRows[c.id] = row;
+      placesBody.appendChild(row);
+    });
+  })();
 
   /* ---- "Twój dzień na kampusie": ?g=<GROUP>&d=YYYY-MM-DD ---- */
   var dayCodes = {};
@@ -502,6 +606,133 @@
     sheet.open = true;
   }
 
+  /* ---- a richer dark style: greens for parks and grass, blue water, tinted land use, warmer roads ---- */
+  function paint(id, prop, value) {
+    if (map.getLayer(id)) map.setPaintProperty(id, prop, value);
+  }
+  function restyle() {
+    paint('background', 'background-color', '#0a0f17');
+    paint('water', 'fill-color', '#0f2c4a');
+    paint('waterway', 'line-color', '#14395d');
+    paint('landuse_residential', 'fill-color', '#0f1520');
+    paint('landcover_wood', 'fill-color', '#113a24');
+    paint('landuse_park', 'fill-color', '#1a5733');
+    paint('building', 'fill-color', '#141b27');
+    paint('highway_path', 'line-color', '#2b4a38');
+    paint('highway_minor', 'line-color', '#242d3c');
+    paint('highway_major_casing', 'line-color', '#0a0f17');
+    paint('highway_major_inner', 'line-color', '#323d52');
+    paint('highway_major_subtle', 'line-color', '#323d52');
+    paint('railway', 'line-color', '#40395c');
+    paint('railway_transit', 'line-color', '#40395c');
+    paint('railway_minor', 'line-color', '#40395c');
+    paint('highway_name_other', 'text-color', '#8f9ab0');
+    paint('place_suburb', 'text-color', '#7d889e');
+    var tints = [
+      ['pw-grass', 'landcover', ['==', ['get', 'class'], 'grass'], '#18492d', 0.95],
+      ['pw-farm', 'landcover', ['==', ['get', 'class'], 'farmland'], '#173222', 0.9],
+      ['pw-wetland', 'landcover', ['==', ['get', 'class'], 'wetland'], '#0f3b3d', 0.9],
+      ['pw-green', 'landuse', ['in', ['get', 'class'], ['literal', ['pitch', 'playground', 'garden', 'allotments', 'recreation_ground', 'village_green']]], '#1a5030', 0.95],
+      ['pw-cemetery', 'landuse', ['==', ['get', 'class'], 'cemetery'], '#173a29', 0.95],
+      ['pw-campus', 'landuse', ['in', ['get', 'class'], ['literal', ['school', 'university', 'college', 'kindergarten']]], '#14223a', 0.95],
+      ['pw-retail', 'landuse', ['in', ['get', 'class'], ['literal', ['retail', 'commercial']]], '#2d2414', 0.9],
+      ['pw-industrial', 'landuse', ['in', ['get', 'class'], ['literal', ['industrial', 'railway', 'garages']]], '#231d30', 0.9],
+      ['pw-hospital', 'landuse', ['==', ['get', 'class'], 'hospital'], '#331c26', 0.9]
+    ];
+    var source = map.getLayer('landuse_park') && map.getLayer('landuse_park').source;
+    if (!source) return;
+    tints.forEach(function (t) {
+      if (map.getLayer(t[0])) return;
+      map.addLayer({ id: t[0], type: 'fill', source: source, 'source-layer': t[1], filter: t[2], paint: { 'fill-color': t[3], 'fill-opacity': t[4] } }, 'landcover_wood');
+    });
+    if (!map.getLayer('pw-park')) {
+      map.addLayer({ id: 'pw-park', type: 'fill', source: source, 'source-layer': 'park', paint: { 'fill-color': '#1b5c37', 'fill-opacity': 0.9 } }, 'waterway');
+      map.addLayer({ id: 'pw-park-edge', type: 'line', source: source, 'source-layer': 'park', paint: { 'line-color': '#2f8a55', 'line-width': 1, 'line-opacity': 0.45 } }, 'waterway');
+    }
+  }
+
+  /* ---- places: round badges drawn with canvas, one symbol layer per category ---- */
+  var GLYPHS = {
+    shop: ['M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z', 'M3 6h18', 'M16 10a4 4 0 0 1-8 0'],
+    park: 'P',
+    dorm: ['M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M9 22V12h6v10'],
+    domki: ['M3.5 21 14 3', 'M20.5 21 10 3', 'M15.5 21 12 15l-3.5 6', 'M2 21h20'],
+    bus: ['M8 6v6', 'M15 6v6', 'M2 12h19.6', 'M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3', 'M5 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0', 'M14 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0', 'M9 18h5'],
+    tram: ['M6 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M4 11h16', 'M12 3v8', 'm8 19-2 3', 'm18 22-2-3', 'M8 15h.01', 'M16 15h.01'],
+    parcel: ['m7.5 4.27 9 5.15', 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z', 'm3.3 7 8.7 5 8.7-5', 'M12 22V12'],
+    canteen: ['M12 21a9 9 0 0 0 9-9H3a9 9 0 0 0 9 9Z', 'M7 21h10', 'M8 6c0-1.5 1-1.5 1-3', 'M12 6c0-1.5 1-1.5 1-3', 'M16 6c0-1.5 1-1.5 1-3'],
+    bufet: ['M10 2v2', 'M14 2v2', 'M6 2v2', 'M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1'],
+    rest: ['M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2', 'M7 2v20', 'M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7'],
+    bar: ['M8 22h8', 'M12 11v11', 'm19 3-7 8-7-8Z']
+  };
+  function badge(cat) {
+    var size = 30, ratio = 2, cv = document.createElement('canvas');
+    cv.width = cv.height = size * ratio;
+    var x = cv.getContext('2d');
+    x.scale(ratio, ratio);
+    x.beginPath();
+    x.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
+    x.fillStyle = cat.color;
+    x.fill();
+    x.lineWidth = 2;
+    x.strokeStyle = 'rgba(8, 12, 20, 0.85)';
+    x.stroke();
+    x.strokeStyle = x.fillStyle = C.inkOn(cat.color);
+    var g = GLYPHS[cat.id];
+    if (typeof g === 'string') {
+      x.font = '800 16px ' + getComputedStyle(document.body).fontFamily;
+      x.textAlign = 'center';
+      x.textBaseline = 'middle';
+      x.fillText(g, size / 2, size / 2 + 1);
+    } else {
+      x.translate(size / 2 - 8.5, size / 2 - 8.5);
+      x.scale(17 / 24, 17 / 24);
+      x.lineWidth = 2.2;
+      x.lineCap = x.lineJoin = 'round';
+      g.forEach(function (d) { x.stroke(new Path2D(d)); });
+    }
+    return x.getImageData(0, 0, cv.width, cv.height);
+  }
+  function addPlaces() {
+    var features = P.PLACES.map(function (p) {
+      return { type: 'Feature', id: p.id, properties: { id: p.id, cat: p.cat.id, name: p.name }, geometry: { type: 'Point', coordinates: [p.lng, p.lat] } };
+    });
+    map.addSource('places', { type: 'geojson', data: { type: 'FeatureCollection', features: features } });
+    map.addLayer({
+      id: 'place-ring', type: 'circle', source: 'places', filter: ['==', ['get', 'id'], -1],
+      paint: { 'circle-radius': 20, 'circle-color': 'rgba(10, 132, 255, 0.18)', 'circle-stroke-color': '#0a84ff', 'circle-stroke-width': 2.5, 'circle-pitch-alignment': 'viewport' }
+    });
+    /* labels go under the icons: layers on top are placed first, and an icon must never lose its spot to a name */
+    map.addLayer({
+      id: 'places-label', type: 'symbol', source: 'places', minzoom: 16.6,
+      layout: {
+        'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 11.5, 'text-offset': [0, 1.9], 'text-anchor': 'top',
+        'text-max-width': 8, 'text-optional': true, 'text-padding': 1
+      },
+      paint: { 'text-color': '#dfe6f3', 'text-halo-color': 'rgba(8, 12, 20, 0.92)', 'text-halo-width': 1.4 }
+    });
+    var cats = P.CATEGORIES.slice().reverse(); // later layers win a collision: transit and dormitories go last
+    cats.forEach(function (c) {
+      map.addImage('pl-' + c.id, badge(c), { pixelRatio: 2 });
+      map.addLayer({
+        id: 'places-' + c.id, type: 'symbol', source: 'places', minzoom: c.zoom, filter: ['==', ['get', 'cat'], c.id],
+        layout: {
+          'icon-image': 'pl-' + c.id, 'icon-size': ['interpolate', ['linear'], ['zoom'], 14.5, 0.7, 17, 1],
+          'icon-allow-overlap': false, 'icon-padding': 2, 'icon-pitch-alignment': 'viewport'
+        }
+      });
+    });
+    P.CATEGORIES.forEach(function (c) {
+      map.on('click', 'places-' + c.id, function (e) {
+        var f = e.features && e.features[0];
+        if (f) selectPlace(P.PLACES[f.properties.id]);
+      });
+      map.on('mouseenter', 'places-' + c.id, function () { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'places-' + c.id, function () { map.getCanvas().style.cursor = ''; });
+    });
+    applyPlaces();
+  }
+
   function startMap() {
     if (typeof maplibregl === 'undefined') throw new Error('no map engine');  // the Map constructor throws without WebGL
     map = new maplibregl.Map({
@@ -519,11 +750,13 @@
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     // A failed tile or glyph is not fatal and MapLibre keeps rendering; listening stops it logging each one.
     map.on('error', function () {});
-    map.on('click', function () { setLegend(false); closeResults(); });
+    map.on('click', function () { setLegend(false); setPlacesPanel(false); closeResults(); });
     var slow = setTimeout(function () { $('status').textContent = 'Mapa ładuje się dłużej. Wyszukiwanie budynków nadal działa.'; }, 18000);
     map.on('load', function () {
       clearTimeout(slow);
       $('status').hidden = true;
+      try { restyle(); } catch (e) { /* the stock style still works */ }
+      try { addPlaces(); } catch (e) { /* the buildings and the search still work */ }
       try {
         var style = map.getStyle();
         var source = Object.keys(style.sources).filter(function (k) { return style.sources[k].type === 'vector'; })[0];
@@ -536,13 +769,13 @@
           // Light from the upper left so walls and roofs differ in shade, and a sky in the page colour so the
           // horizon at 55° fades out instead of ending on a hard edge on tall desktop windows.
           map.setLight({ anchor: 'viewport', color: '#ffffff', intensity: 0.2, position: [1.2, 210, 35] });
-          if (map.setSky) map.setSky({ 'sky-color': '#0c0c0c', 'horizon-color': '#18181b', 'fog-color': '#0c0c0c', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.4 });
+          if (map.setSky) map.setSky({ 'sky-color': '#0a1020', 'horizon-color': '#1b2a47', 'fog-color': '#0a1020', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.4 });
           map.addLayer({
             id: 'buildings-3d', type: 'fill-extrusion', source: source, 'source-layer': 'building', minzoom: 14,
             // building outlines that also come as separate parts are flagged hide_3d; extruding both makes them flicker
             filter: ['!=', ['get', 'hide_3d'], true],
             paint: {
-              'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#3a3b41', 25, '#45474e', 60, '#52545c'],
+              'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#3b4458', 12, '#465068', 30, '#546079', 70, '#667391'],
               'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, ['coalesce', ['get', 'render_height'], 8]],
               'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, ['coalesce', ['get', 'render_min_height'], 0]],
               // opaque on purpose: translucent extrusions show their back walls through the front ones
