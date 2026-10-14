@@ -228,6 +228,12 @@
         });
       });
     });
+    /* the faculties sometimes list one class twice (same time, subject, type and room): show it once */
+    var seen = {};
+    lessons = lessons.filter(function (l) {
+      var k = [l.date, l.start, l.end, l.subject_full, l.type_full, l.room].join('|');
+      return seen[k] ? false : (seen[k] = true);
+    });
     lessons.forEach(function (l) { if (!colors[l.subject_full]) colors[l.subject_full] = paletteColor(l.subject_full); });
     lessons.sort(function (a, b) {
       return a.date < b.date ? -1 : a.date > b.date ? 1 : a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
@@ -273,7 +279,40 @@
     return cur;
   }
 
-  var PlanICS = { decode: decode, parse: parse, toPlan: toPlan, initialWeekIndex: initialWeekIndex };
+  /* ---------- "my subjects": a personal filter, applied in the browser only ---------- */
+  /* every subject of the calendar, [{ name, count, color }] sorted by name, with the number of its calendar entries */
+  function subjectsOf(parsed) {
+    var by = {};
+    (parsed.events || []).forEach(function (ev) {
+      var name = text(ev, 'SUMMARY');
+      if (!name || text(ev, 'STATUS').toUpperCase() === 'CANCELLED') return;
+      var s = by[name] || (by[name] = { name: name, count: 0, color: '' });
+      s.count++;
+      var color = text(ev, 'X-PLAN-COLOR');
+      if (!s.color && HEX.test(color)) s.color = color.toLowerCase();
+    });
+    return Object.keys(by).sort(function (a, b) { return a.localeCompare(b, 'pl'); }).map(function (k) { return by[k]; });
+  }
+  /* the parsed calendar without the classes of the hidden subjects (an array of names) */
+  function withoutSubjects(parsed, hidden) {
+    if (!hidden || !hidden.length) return parsed;
+    var drop = {};
+    hidden.forEach(function (n) { drop[n] = true; });
+    return { calendar: parsed.calendar, events: (parsed.events || []).filter(function (ev) { return !drop[text(ev, 'SUMMARY')]; }) };
+  }
+  /* the calendar file's own text without the hidden subjects' events: what "Pobierz plan" saves after filtering */
+  function filterText(raw, hidden) {
+    if (!hidden || !hidden.length) return raw;
+    var drop = {};
+    hidden.forEach(function (n) { drop[n] = true; });
+    return String(raw).replace(/BEGIN:VEVENT[\s\S]*?END:VEVENT(\r?\n)?/g, function (block) {
+      var m = /^SUMMARY[^:\r\n]*:(.*)$/m.exec(block.replace(/\r?\n[ \t]/g, ''));
+      return m && drop[unescapeText(m[1].replace(/\r$/, '')).trim()] ? '' : block;
+    });
+  }
+
+  var PlanICS = { decode: decode, parse: parse, toPlan: toPlan, initialWeekIndex: initialWeekIndex,
+    subjectsOf: subjectsOf, withoutSubjects: withoutSubjects, filterText: filterText };
   if (typeof module === 'object' && module.exports) module.exports = PlanICS;
   else root.PlanICS = PlanICS;
 })(this);

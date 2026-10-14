@@ -104,12 +104,69 @@ class BuildRealSiteTest(unittest.TestCase):
         return sorted(self.out.rglob('*.html'))
 
     def test_writes_group_page_calendar_index_and_404(self):
-        for rel in ('index.html', '404.html', 'WCY26KY3S1/index.html', 'WCY26KY3S1/plan.ics'):
+        for rel in ('index.html', '404.html', 'mapa/index.html', 'WCY26KY3S1/index.html', 'WCY26KY3S1/plan.ics'):
             self.assertTrue((self.out / rel).is_file(), rel)
 
     def test_group_calendar_is_a_byte_copy_of_the_current_term(self):
         self.assertEqual((self.out / 'WCY26KY3S1' / 'plan.ics').read_bytes(),
                          (ROOT / 'timetables' / '2026-27-zima' / 'WCY26KY3S1.ics').read_bytes())
+
+    def test_offline_worker_manifests_and_icons(self):
+        sw = (self.out / 'sw.js').read_text(encoding='utf-8')
+        self.assertRegex(sw, r"var VERSION = '[0-9a-f]{16}';")
+        self.assertNotIn('@@', sw)
+        for name in ('icon.svg', 'icon-192.png', 'icon-512.png', 'maskable-512.png', 'apple-touch-icon.png'):
+            self.assertTrue((self.out / 'icons' / name).is_file(), name)
+        root = json.loads((self.out / 'manifest.webmanifest').read_text(encoding='utf-8'))
+        self.assertEqual((root['start_url'], root['scope']), ('./', './'))
+        group = json.loads((self.out / 'WCY26KY3S1' / 'manifest.webmanifest').read_text(encoding='utf-8'))
+        self.assertEqual((group['start_url'], group['scope'], group['short_name']), ('./', '../', 'WCY26KY3S1'))
+        for icon in group['icons']:
+            self.assertTrue(icon['src'].startswith('../icons/'), icon)
+            self.assertTrue((self.out / 'WCY26KY3S1' / icon['src']).resolve().is_file(), icon)
+        self.assertIn({'maskable'}, [{i['purpose']} for i in group['icons']])
+        page = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('<link rel="manifest" href="manifest.webmanifest">', page)
+        self.assertIn("navigator.serviceWorker.register('../sw.js', { scope: '../' })", page)
+        index = (self.out / 'index.html').read_text(encoding='utf-8')
+        self.assertIn("navigator.serviceWorker.register('sw.js', { scope: './' })", index)
+
+    def test_public_site_files(self):
+        robots = (self.out / 'robots.txt').read_text(encoding='utf-8')
+        self.assertIn('User-agent: *', robots)
+        self.assertIn('Disallow: /PlanWAT/data/', robots)
+        self.assertIn('Disallow: /PlanWAT/dev/', robots)
+        self.assertNotIn('Disallow: /\n', robots)
+        sec = (self.out / '.well-known' / 'security.txt').read_text(encoding='utf-8')
+        self.assertIn('Contact: https://github.com/kilerdevs/PlanWAT/security/advisories/new', sec)
+        expires = dt.datetime.strptime(re.search(r'^Expires: (\S+)$', sec, re.M).group(1), '%Y-%m-%dT%H:%M:%SZ')
+        self.assertTrue(dt.datetime(2026, 10, 15) < expires < dt.datetime(2027, 10, 15))
+        privacy = (self.out / 'prywatnosc' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('nigdy nie poprosi Cię o hasło', privacy)
+        self.assertIn("script-src 'none'", self.meta_csp('prywatnosc/index.html'))
+        for rel in ('index.html', 'WCY26KY3S1/index.html'):
+            html = (self.out / rel).read_text(encoding='utf-8')
+            self.assertIn('nigdy nie poprosi Cię o hasło', html, rel)
+            self.assertRegex(html, r'href="(\.\./)?prywatnosc/"', rel)
+        self.assertNotIn('nofollow', privacy)  # only the dev preview asks not to be indexed
+
+    def test_reminder_calendar_has_one_alarm_per_class_and_valid_lines(self):
+        raw = (self.out / 'WCY26KY3S1' / build.REMINDER_FILE).read_bytes()
+        text = raw.decode('utf-8')
+        self.assertEqual(text.count('BEGIN:VALARM'), text.count('BEGIN:VEVENT'))
+        self.assertGreater(text.count('BEGIN:VALARM'), 0)
+        self.assertEqual(text.count('TRIGGER:-PT15M'), text.count('BEGIN:VEVENT'))
+        self.assertIn('X-WR-CALNAME:Plan zajęć WCY26KY3S1 (przypomnienia)', text)
+        lines = raw.split(b'\r\n')
+        self.assertEqual(lines[-1], b'')
+        self.assertNotIn(b'\n', b''.join(lines))  # CRLF only
+        self.assertTrue(all(len(l) <= 75 for l in lines), 'a line longer than 75 octets')
+        self.assertIn('BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Matematyka I\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT', text)
+        # the same events, and every group gets one
+        plain = (self.out / 'WCY26KY3S1' / 'plan.ics').read_text(encoding='utf-8')
+        self.assertEqual(re.findall(r'^UID:[^\r\n]*', text, re.M), re.findall(r'^UID:[^\r\n]*', plain, re.M))
+        for group in self.groups():
+            self.assertTrue((self.out / group / build.REMINDER_FILE).is_file(), group)
 
     def groups(self):
         return sorted({p.stem for p in (ROOT / 'timetables').glob('*/*.ics')})
@@ -178,7 +235,7 @@ class BuildRealSiteTest(unittest.TestCase):
     def test_group_page_uses_relative_urls_for_its_calendar(self):
         html = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
         self.assertIn('href="plan.ics"', html)
-        self.assertIn("fetch('plan.ics'", html)
+        self.assertIn("fetch(planFile", html)
         self.assertNotIn('/plan.ics', html)
 
     def test_group_page_first_paint_shows_the_calendar_metadata(self):
@@ -188,6 +245,50 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn('Plan zajęć &middot; semestr zimowy 2026/27', html)
         self.assertIn('<dd>28.09.2026 &ndash; 22.02.2027</dd>', html)
         self.assertIn('download="plan-WCY26KY3S1.ics"', html)
+
+    def meta_csp(self, rel):
+        html = (self.out / rel).read_text(encoding='utf-8')
+        return re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', html).group(1)
+
+    def test_only_the_map_page_may_load_the_map_engine_and_tiles(self):
+        csp = self.meta_csp('mapa/index.html')
+        self.assertRegex(csp, r"script-src [^;]*https://unpkg\.com")
+        self.assertRegex(csp, r"connect-src 'self' https://tiles\.openfreemap\.org")
+        self.assertRegex(csp, r"img-src data: blob: https://tiles\.openfreemap\.org")
+        self.assertIn('worker-src blob:', csp)
+        for rel in ('index.html', '404.html', 'prywatnosc/index.html', 'WCY26KY3S1/index.html'):
+            csp = self.meta_csp(rel)
+            for source in ('unpkg.com', 'openfreemap', 'blob:'):
+                self.assertNotIn(source, csp, rel)
+
+    def test_only_the_front_and_group_pages_may_register_the_worker_and_manifest(self):
+        for rel in ('index.html', 'WCY26KY3S1/index.html'):
+            csp = self.meta_csp(rel)
+            self.assertIn("worker-src 'self';", csp, rel)
+            self.assertIn("manifest-src 'self';", csp, rel)
+            self.assertIn("img-src data: 'self';", csp, rel)
+        for rel in ('404.html', 'prywatnosc/index.html'):
+            self.assertNotIn('manifest-src', self.meta_csp(rel), rel)
+        self.assertIn("manifest-src 'self';", self.meta_csp('mapa/index.html'))
+        self.assertNotIn("'self'", self.meta_csp('mapa/index.html').split('worker-src')[1].split(';')[0])
+
+    def test_map_engine_is_pinned_by_subresource_integrity(self):
+        html = (self.out / 'mapa' / 'index.html').read_text(encoding='utf-8')
+        tags = re.findall(r'<(?:script|link)[^>]+unpkg\.com[^>]*>', html)
+        self.assertEqual(len(tags), 2)
+        for tag in tags:
+            self.assertRegex(tag, r'integrity="sha384-[A-Za-z0-9+/=]{64}"')
+            self.assertIn('crossorigin="anonymous"', tag)
+            self.assertIn('@4.7.1/', tag)
+
+    def test_map_links_use_relative_urls(self):
+        html = (self.out / 'mapa' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('href="../"', html)
+        self.assertIn("'../' + encodeURIComponent(group) + '/plan.ics'", html)
+        self.assertIn('href="mapa/"', (self.out / 'index.html').read_text(encoding='utf-8'))
+        group = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn("'../mapa/?b='", group)
+        self.assertIn("'../mapa/?g='", group)
 
     def test_404_links_home_through_the_base_path(self):
         self.assertIn('href="/PlanWAT/"', (self.out / '404.html').read_text(encoding='utf-8'))
@@ -199,8 +300,27 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn('upgrade-insecure-requests', header)
         for page in self.pages():
             html = page.read_text(encoding='utf-8')
-            for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S):
+            for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S | re.I):
                 self.assertIn(sha(block), header, page)
+        self.assertIn('https://unpkg.com', header)
+        self.assertIn("worker-src 'self' blob:", header)
+        self.assertIn("manifest-src 'self'", header)
+        self.assertIn("connect-src 'self' https://tiles.openfreemap.org", header)
+
+
+class RemindersTest(unittest.TestCase):
+    def test_folds_long_lines_on_character_boundaries_and_keeps_existing_alarms(self):
+        long = 'Ż' * 60
+        cal = ('BEGIN:VCALENDAR\nX-WR-CALNAME:X\nBEGIN:VEVENT\nSUMMARY:' + long + '\nEND:VEVENT\n'
+               'BEGIN:VEVENT\nSUMMARY:B\nBEGIN:VALARM\nTRIGGER:-PT5M\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR\n')
+        out = build.with_reminders(cal.encode('utf-8'))
+        for line in out.split(b'\r\n'):
+            self.assertLessEqual(len(line), 75)
+            line.decode('utf-8')  # no character split across a fold
+        text = out.decode('utf-8')
+        self.assertEqual(text.count('BEGIN:VALARM'), 2)  # the second event keeps its own and gets no extra
+        self.assertIn('DESCRIPTION:' + long, text.replace('\r\n ', ''))
+        self.assertIn('X-WR-CALNAME:X (przypomnienia)', text)
 
 
 class BuildManyGroupsTest(unittest.TestCase):
@@ -214,6 +334,22 @@ class BuildManyGroupsTest(unittest.TestCase):
     def add(self, term, group, text):
         (self.tt / term).mkdir(parents=True, exist_ok=True)
         (self.tt / term / f'{group}.ics').write_text(text, encoding='utf-8', newline='')
+
+    def test_a_group_with_two_terms_gets_a_switcher_and_the_other_terms_calendar(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        self.add('2026-27-lato', 'WCY26KY3S1', calendar('WCY26KY3S1', '2027-03-01', '2027-06-21', '2027-03-02'))
+        self.add('2026-27-zima', 'WCY25IY1S1', calendar('WCY25IY1S1', '2026-09-28', '2027-02-22', '2026-10-06'))
+        out = self.tmp / 'site'
+        build.build(self.tt, out, today=D(2026, 10, 14), nginx_conf=None)
+        page = (out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('id="termSwitch"', page)
+        self.assertIn('<a href="./" data-term="2026-27-zima" aria-current="true">Zima 2026/27</a>', page)
+        self.assertIn('data-term="2026-27-lato">Lato 2026/27</a>', page)
+        self.assertIn('X-PLAN-SEMESTER-START:20270301',
+                      (out / 'WCY26KY3S1' / 'plan-2026-27-lato.ics').read_text(encoding='utf-8'))
+        self.assertTrue((out / 'WCY26KY3S1' / 'plan-2026-27-lato-przypomnienia.ics').exists())
+        self.assertNotIn('termSwitch', (out / 'WCY25IY1S1' / 'index.html').read_text(encoding='utf-8').split('<script>')[0])
+        self.assertFalse((out / 'WCY25IY1S1' / 'plan-2026-27-lato.ics').exists())
 
     def test_each_group_gets_its_current_term_and_the_root_lists_all_groups(self):
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
@@ -290,8 +426,44 @@ class BuildManyGroupsTest(unittest.TestCase):
                         encoding='utf-8', newline='')
         build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
+    def test_worker_version_follows_the_content_but_not_the_security_txt_date(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        version = lambda out: re.search(r"VERSION = '(\w+)'", (out / 'sw.js').read_text(encoding='utf-8')).group(1)  # noqa: E731
+        a, b, c = self.tmp / 'a', self.tmp / 'b', self.tmp / 'c'
+        build.build(self.tt, a, today=D(2026, 10, 15), nginx_conf=None)
+        build.build(self.tt, b, today=D(2026, 10, 16), nginx_conf=None)
+        self.assertNotEqual((a / '.well-known' / 'security.txt').read_text(), (b / '.well-known' / 'security.txt').read_text())
+        self.assertEqual(version(a), version(b))
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-06'))
+        build.build(self.tt, c, today=D(2026, 10, 15), nginx_conf=None)
+        self.assertNotEqual(version(a), version(c))
+
+    def test_noindex_marks_every_page_and_closes_robots_txt(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        out = self.tmp / 'site'
+        build.build(self.tt, out, today=D(2026, 10, 15), nginx_conf=None, noindex=True)
+        self.assertEqual((out / 'robots.txt').read_text(), 'User-agent: *\nDisallow: /\n')
+        for page in out.rglob('*.html'):
+            html = page.read_text(encoding='utf-8')
+            self.assertIn('<meta name="robots" content="noindex, nofollow">', html, page)
+            csp = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', html).group(1)
+            for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S | re.I):
+                self.assertIn(sha(block), csp, page)  # the extra meta tag leaves the hashes valid
+
+    def test_rejects_groups_named_like_the_site_folders(self):
+        for name in ('icons', 'prywatnosc'):
+            self.add('2026-27-zima', name, calendar(name, '2026-09-28', '2027-02-22', '2026-10-05'))
+            with self.assertRaisesRegex(build.BuildError, 'reserved'):
+                build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+            (self.tt / '2026-27-zima' / f'{name}.ics').unlink()
+
     def test_rejects_a_group_named_like_the_data_folder(self):
         self.add('2026-27-zima', 'data', calendar('data', '2026-09-28', '2027-02-22', '2026-10-05'))
+        with self.assertRaisesRegex(build.BuildError, 'reserved'):
+            build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
+    def test_rejects_a_group_named_like_the_map_page(self):
+        self.add('2026-27-zima', 'mapa', calendar('mapa', '2026-09-28', '2027-02-22', '2026-10-05'))
         with self.assertRaisesRegex(build.BuildError, 'reserved'):
             build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 

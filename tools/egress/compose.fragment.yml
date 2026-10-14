@@ -1,0 +1,58 @@
+# Merge into <runner dir>/compose.yml (do NOT replace the file blindly).
+# The egress rotator keeps tinyproxy's threat model (default-deny, port 443/80
+# only) but chains *.wat.edu.pl through rotating public proxies. tinyproxy
+# stays up during the transition as the rollback path (runner points back at
+# <proxy-ip>:8888).
+services:
+  egress:
+    build:
+      context: ./egress  # scp tools/egress/ to <runner dir>/egress/ on deploy
+      dockerfile: Dockerfile.egress
+    image: planwat/egress:1
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 256m
+    pids_limit: 128
+    ulimits:
+      nofile: 4096
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      EGRESS_DATA: /data
+      # Fall back to direct egress when the pool is empty (fail-open, operator choice).
+      # Set to 0 for DeadDropMGMT-style fail-closed (crawl stops instead).
+      PLANWAT_EGRESS_DIRECT_FALLBACK: "1"
+    volumes:
+      - egress-data:/data
+    ports:
+      # LAN-only monitoring GUI (host port 18080: 8080 was taken by cAdvisor on the runner host).
+      # Bind tighter if the box is more exposed than a home LAN,
+      # e.g. "127.0.0.1:18080:8080" + an SSH tunnel.
+      - "18080:8080"
+    healthcheck:
+      # Quoteless on purpose: compose+shell layers eat quotes, so this TCP-checks the GUI
+      # listener with chr() instead of asserting /api/status (proven by a broken first version).
+      test: ["CMD", "python", "-c", "import socket;socket.create_connection((chr(49)+chr(50)+chr(55)+chr(46)+chr(48)+chr(46)+chr(48)+chr(46)+chr(49),8080),timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      inner:
+        ipv4_address: <egress-ip>
+      egress: {}
+
+volumes:
+  egress-data:
+
+# Cutover (after `up -d --build egress` + GUI shows ROTATING):
+#   runner.environment: HTTP_PROXY/HTTPS_PROXY/http_proxy/https_proxy ->
+#     http://<egress-ip>:8888, then `up -d runner`.
+# Rollback: point the runner back at http://<proxy-ip>:8888, `up -d runner`.

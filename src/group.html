@@ -5,11 +5,19 @@
 @@CSP@@
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+@@THEME_HEAD@@
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PlanWAT">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="description" content="@@DESCRIPTION@@">
 <title>Plan zajęć @@GROUP@@</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Crect x='13' y='16' width='38' height='35' rx='9' fill='none' stroke='%23f5f5f7' stroke-width='3.5'/%3E%3Cpath d='M13 27h38M24 11v9M40 11v9' stroke='%23f5f5f7' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='40' cy='39.5' r='4.5' fill='%230a84ff'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet">
@@ -32,9 +40,9 @@
     --t4: #6e6e73;
 
     /* hairlines and edge light */
-    --line: rgba(255, 255, 255, 0.08);
-    --line-2: rgba(255, 255, 255, 0.14);
-    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --line: rgba(var(--hl), 0.08);
+    --line-2: rgba(var(--hl), 0.14);
+    --edge: inset 0 1px 0 rgba(var(--hl), 0.06);
 
     /* the one accent */
     --accent: #0a84ff;
@@ -213,6 +221,13 @@
     padding-top: calc(env(safe-area-inset-top) + 40px);
     padding-bottom: var(--sp-5);
   }
+  .backlink {
+    display: inline-flex; align-items: center; gap: 2px;
+    min-height: 32px; margin: -8px 0 var(--sp-2) -6px; padding: 0 8px 0 2px;
+    border-radius: 8px; color: var(--t2); font-size: var(--fs-15); text-decoration: none;
+  }
+  .backlink:hover { color: var(--t1); background: var(--s2); }
+  .backlink .i { width: 18px; height: 18px; }
   .title {
     font-size: var(--fs-40);
     font-weight: 700;
@@ -257,7 +272,7 @@
     font-size: var(--fs-13);
   }
   .facts div { display: flex; gap: 6px; }
-  .facts div[hidden] { display: none; }
+  .facts div[hidden], .dl[hidden] { display: none; } /* a class that sets display must not unhide a hidden button */
   .dl {
     display: inline-flex;
     align-items: center;
@@ -354,7 +369,7 @@
     width: 4px;
     min-height: 100%;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--hl), 0.12);
     background: color-mix(in srgb, var(--c) 26%, transparent);
     overflow: hidden;
   }
@@ -401,7 +416,7 @@
     pointer-events: none;
   }
   :root[data-vt] .bar { view-transition-name: bar; }
-  :root[data-vt] .bar.stuck::before { background: rgba(22, 22, 24, 0.95); }
+  :root[data-vt] .bar.stuck::before { background: var(--glass-solid); }
   :root[data-vt] .todaypill { view-transition-name: todaypill; }
   .bar::before {
     content: '';
@@ -503,7 +518,7 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+    background: linear-gradient(90deg, transparent, rgba(var(--hl), 0.05), transparent);
     transform: translateX(-100%);
     animation: shimmer 1.6s var(--ease-out) infinite;
   }
@@ -542,7 +557,7 @@
   .day.is-empty .dayhead { padding-bottom: 0; }
 
   /* past days and finished classes recede through the text tokens, keeping AA contrast */
-  .day.is-past, .lesson.is-done { --t1: #a1a1a6; --t2: #86868b; }
+  .day.is-past, .lesson.is-done { --t1: var(--past-1); --t2: var(--past-2); }
   .dayhead, .lesson { color: var(--t1); }
   .day.is-past .cap, .lesson.is-done .cap { opacity: 0.45; }
 
@@ -605,6 +620,20 @@
     letter-spacing: -0.012em;
     overflow-wrap: anywhere;
   }
+  button.subj {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .lesson[data-catchup] { cursor: pointer; }
+  @media (hover: hover) { .lesson[data-catchup]:hover .subj { text-decoration: underline; text-decoration-color: var(--t3); text-underline-offset: 3px; } }
   .type { margin-top: 2px; font-size: var(--fs-13); color: var(--t2); }
   .meta {
     display: flex;
@@ -618,6 +647,22 @@
   .meta > span { display: inline-flex; align-items: flex-start; gap: 5px; min-width: 0; }
   .meta .i { margin-top: 2px; color: var(--t3); }
   .meta .room { color: var(--t1); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .room a { color: inherit; text-decoration: underline; text-decoration-color: var(--t4); text-underline-offset: 3px; border-radius: 4px; }
+  .room a:hover { text-decoration-color: var(--t2); }
+  .daymap {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    align-self: center;
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    background: var(--s2);
+    color: var(--t2);
+    font-size: var(--fs-13);
+    text-decoration: none;
+  }
+  .daymap:hover { color: var(--t1); background: var(--s3); }
+  @media print { .daymap { display: none; } }
 
   .lesson.is-now { background: color-mix(in srgb, var(--accent) 9%, var(--s2)); }
   .lesson.flash { animation: flash 1.4s var(--ease-out); }
@@ -751,7 +796,7 @@
     white-space: nowrap;
     cursor: pointer;
     touch-action: manipulation;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.1), 0 16px 40px -12px rgba(0, 0, 0, 0.8);
+    box-shadow: inset 0 1px 0 rgba(var(--hl), 0.1), 0 0 0 1px rgba(var(--hl), 0.1), 0 16px 40px -12px rgba(0, 0, 0, 0.8);
     opacity: 0;
     visibility: hidden;
     transform: translate(-50%, calc(100% + 40px)) scale(0.9);
@@ -788,7 +833,7 @@
   dialog.sheet[open] { display: flex; flex-direction: column; }
   dialog.sheet.dragging { transition: none; }
   dialog.sheet::backdrop {
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--scrim);
     animation: fade-in var(--dur-base) var(--ease-out);
     transition: opacity var(--dur-base) var(--ease-out);
   }
@@ -865,6 +910,11 @@
     .tools .dl { flex: none; }
   }
   #favBtn[aria-pressed="true"] .i { fill: currentColor; color: var(--t1); }
+  .termswitch { display: inline-flex; gap: 2px; padding: 3px; margin-top: 10px; border-radius: 999px; background: var(--s3); }
+  .termswitch a { padding: 6px 14px; border-radius: 999px; color: var(--t2); font-size: 13px; font-weight: 600; text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; }
+  .termswitch a[aria-current] { background: var(--t1); color: var(--bg); }
+  .termswitch a:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+
   .notice {
     display: flex;
     flex-wrap: wrap;
@@ -925,7 +975,9 @@
   body[data-view="list"] #nav, body[data-view="month"] #nav,
   body[data-view="list"] #weekBody, body[data-view="month"] #weekBody,
   body[data-view="list"] .todaypill, body[data-view="month"] .todaypill, body[data-view] .hint { display: none; }
-  body[data-view="week"] .hint { display: block; }
+  body[data-view="week"] .hint, body[data-view] .hint.pledge { display: block; }
+  .pledge strong { color: var(--t2); font-weight: 600; }
+  .pledge a { color: var(--accent-text); }
 
   /* ================= gaps between classes ================= */
   .gap {
@@ -939,6 +991,10 @@
     font-variant-numeric: tabular-nums;
   }
   .gap .i { color: var(--t3); }
+  .gap a { color: var(--t2); text-decoration: underline; text-underline-offset: 2px; }
+  .gap a:hover { color: var(--t1); }
+  .gap.tight, .gap.tight .i { color: var(--warn); } /* the walk is longer than the break */
+  .gaptag { display: none; }
 
   /* ================= list view ================= */
   .agenda { padding-top: var(--sp-2); padding-bottom: var(--sp-6); }
@@ -972,7 +1028,7 @@
     transition: background-color var(--dur-fast), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
   }
   .mday:disabled { background: transparent; box-shadow: none; color: var(--t4); cursor: default; }
-  .mday.is-past { --t1: #a1a1a6; }
+  .mday.is-past { --t1: var(--past-1); }
   .mday.is-today { box-shadow: var(--edge), 0 0 0 1px var(--accent-line); }
   .mday .mnum { font-size: var(--fs-13); font-weight: 600; }
   .mday.is-today .mnum { color: var(--accent-text); }
@@ -1042,7 +1098,7 @@
     color: var(--t1);
     font: 500 var(--fs-15) / 1.3 var(--font);
     font-variant-numeric: tabular-nums;
-    color-scheme: dark;
+    color-scheme: inherit;
   }
   .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .choices { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1060,6 +1116,10 @@
   }
   .choice[aria-pressed="true"] { background: var(--t1); color: var(--bg); }
   .sheet-body > .field { margin-top: var(--sp-3); }
+  .mysubjects { display: grid; gap: 2px; margin: var(--sp-3) 0; }
+  .mysubjects .check { align-items: flex-start; padding: 6px 0; }
+  .mysubjects .check input { flex: none; margin-top: 1px; }
+  #toolBody > .dl { margin: 0 var(--sp-2) var(--sp-2) 0; }
   .check { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; font-size: var(--fs-13); color: var(--t2); }
   .check input { width: 20px; height: 20px; accent-color: var(--accent); }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-2); }
@@ -1138,13 +1198,13 @@
     .dl:hover { background: var(--s3); }
     .chip[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--sw) 28%, var(--s2)); }
     .chip:hover .sw { transform: scale(1.3); }
-    .lesson:hover { background-color: rgba(255, 255, 255, 0.025); }
+    .lesson:hover { background-color: rgba(var(--hl), 0.025); }
     .lesson.is-now:hover { background: color-mix(in srgb, var(--accent) 12%, var(--s2)); }
     .opt:hover { background: var(--s3); }
     .seg button:hover { color: var(--t1); }
     .action:hover, .link:hover, .choice:not([aria-pressed="true"]):hover { background: var(--s4); }
     .mday:not(:disabled):hover { background: var(--s3); }
-    .todaypill.show:hover { background: rgba(58, 58, 60, 0.78); }
+    .todaypill.show:hover { background: var(--pill-hover); }
     .legend summary:hover .i { color: var(--t1); }
   }
 
@@ -1173,6 +1233,145 @@
   @media (pointer: coarse) {
     .chip, .dl, .link, .seg button, .choice { min-height: 44px; }
     .weekbtn { min-height: 44px; }
+  }
+
+  /* ================= first-visit tour: a swipeable sheet with small looping demos ================= */
+  dialog.sheet.tour { max-width: 520px; max-height: min(92vh, 720px); max-height: min(92dvh, 720px); }
+  .tour-track {
+    display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .tour-track::-webkit-scrollbar { display: none; }
+  .tour-track:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .tour-slide { flex: 0 0 100%; scroll-snap-align: center; scroll-snap-stop: always; padding: var(--sp-1) var(--sp-5) var(--sp-2); }
+  .tour-art {
+    position: relative; height: 188px; margin-bottom: var(--sp-5); overflow: hidden; border-radius: 22px;
+    background: color-mix(in srgb, var(--t1) 5%, var(--s2)); box-shadow: var(--edge);
+  }
+  .tour-slide h3 { margin: 0 0 var(--sp-2); font-size: var(--fs-20); font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; color: var(--t1); }
+  .tour-slide p { margin: 0; font-size: var(--fs-15); line-height: 1.45; color: var(--t2); }
+  .tour-slide p + p { margin-top: var(--sp-2); }
+  .tour-slide kbd { font: inherit; font-size: 0.8em; padding: 1px 6px; border-radius: 6px; background: var(--s3); color: var(--t1); }
+  .tour-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-5) var(--sp-5); }
+  .tour-dots { display: flex; gap: 8px; align-items: center; }
+  .tour-dots button { position: relative; width: 8px; height: 8px; padding: 0; border: 0; border-radius: 99px; background: var(--s4); cursor: pointer; transition: width var(--dur-base) var(--spring), background var(--dur-base); }
+  .tour-dots button::after { content: ''; position: absolute; inset: -18px -6px; }
+  .tour-dots button[aria-current="true"] { width: 22px; background: var(--t1); }
+  .tour-actions { display: flex; align-items: center; gap: var(--sp-2); }
+  .tour-skip { font: inherit; font-size: var(--fs-15); color: var(--t2); background: none; border: 0; padding: 12px var(--sp-3); min-height: 44px; border-radius: 99px; cursor: pointer; }
+  .tour-skip[hidden] { display: none; }
+  .tour-next {
+    font: inherit; font-size: var(--fs-15); font-weight: 600; min-height: 44px; min-width: 112px; padding: 0 var(--sp-5);
+    border: 0; border-radius: 99px; background: var(--accent); color: #fff; cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .tour-next:active { transform: scale(0.97); }
+  .tour-skip:focus-visible, .tour-next:focus-visible, .tour-dots button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* demo 1: swipe between weeks */
+  .tm-card {
+    position: relative; width: 150px; height: 112px; padding: 14px 14px 14px 20px; border-radius: 16px;
+    background: var(--s2); box-shadow: var(--edge); display: flex; flex-direction: column; gap: 8px; justify-content: center;
+  }
+  .tm-card::before { content: ''; position: absolute; left: 8px; top: 14px; bottom: 14px; width: 4px; border-radius: 2px; background: var(--c, var(--accent)); }
+  .tm-card i { display: block; height: 8px; border-radius: 4px; background: var(--s4); }
+  .tm-card i:first-child { width: 46%; background: var(--t3); opacity: 0.7; }
+  .tm-card i:nth-child(2) { width: 82%; height: 10px; background: var(--t2); opacity: 0.75; }
+  .tm-card i:nth-child(3) { width: 58%; }
+  .tm-rail { position: absolute; left: calc(50% - 75px); top: 48px; display: flex; gap: 12px; animation: tm-rail 4.2s var(--ease-out) infinite; }
+  .tm-rail .tm-card:nth-child(1) { --c: #ff9f0a; }
+  .tm-rail .tm-card:nth-child(2) { --c: #30d158; }
+  .tm-rail .tm-card:nth-child(3) { --c: #bf5af2; }
+  .tm-week { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: var(--fs-13); font-weight: 600; color: var(--t2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tm-finger {
+    position: absolute; left: 50%; top: 118px; width: 38px; height: 38px; margin: 0 0 0 -19px; border-radius: 50%;
+    background: rgba(var(--hl), 0.22); box-shadow: 0 0 0 1px rgba(var(--hl), 0.35), 0 6px 18px rgba(0, 0, 0, 0.25);
+    opacity: 0; animation: tm-finger 4.2s var(--ease-out) infinite;
+  }
+  @keyframes tm-rail { 0%, 22% { transform: translateX(0); } 48%, 82% { transform: translateX(-162px); } 100% { transform: translateX(0); } }
+  @keyframes tm-finger {
+    0% { opacity: 0; transform: translateX(64px) scale(1.15); }
+    10% { opacity: 1; transform: translateX(64px) scale(1); }
+    48% { opacity: 1; transform: translateX(-64px) scale(1); }
+    58%, 100% { opacity: 0; transform: translateX(-64px) scale(1.15); }
+  }
+
+  /* demo 2: tap the week to jump */
+  .tm-pillwrap { position: absolute; top: 20px; left: 0; right: 0; display: flex; justify-content: center; }
+  .tm-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 99px;
+    background: var(--s2); box-shadow: var(--edge); font-size: var(--fs-15); font-weight: 650; color: var(--t1); font-variant-numeric: tabular-nums;
+    animation: tm-press 4.2s var(--ease-out) infinite;
+  }
+  .tm-pill .i { width: 14px; height: 14px; color: var(--t3); }
+  .tm-list { position: absolute; left: 50%; bottom: 14px; width: 210px; margin-left: -105px; padding: 6px; border-radius: 16px; background: var(--s2); box-shadow: var(--edge); animation: tm-list 4.2s var(--ease-out) infinite; }
+  .tm-list span { display: block; padding: 7px 10px; border-radius: 10px; font-size: var(--fs-13); color: var(--t2); font-variant-numeric: tabular-nums; }
+  .tm-list span:nth-child(2) { background: rgba(var(--hl), 0.1); color: var(--t1); font-weight: 600; }
+  @keyframes tm-press { 0%, 14%, 30%, 100% { transform: scale(1); } 20% { transform: scale(0.94); } }
+  @keyframes tm-list { 0%, 20% { opacity: 0; transform: translateY(14px) scale(0.97); } 38%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(14px) scale(0.97); } }
+
+  /* demo 3: tap a class, see where else the same meeting takes place */
+  .tm-pick { position: absolute; left: 50%; top: 12px; width: 256px; height: 54px; margin-left: -128px; gap: 7px; --c: #0a84ff; animation: tm-press 4.2s var(--ease-out) infinite; }
+  .tm-tap { position: absolute; left: 50%; top: 21px; width: 36px; height: 36px; margin-left: 20px; border-radius: 50%; background: rgba(var(--hl), 0.22); box-shadow: 0 0 0 1px rgba(var(--hl), 0.35); opacity: 0; animation: tm-tap 4.2s var(--ease-out) infinite; }
+  .tm-found { position: absolute; left: 50%; bottom: 12px; width: 256px; margin-left: -128px; padding: 8px 6px 6px; border-radius: 16px; background: var(--s2); box-shadow: var(--edge); animation: tm-list 4.2s var(--ease-out) infinite; }
+  .tm-found b { display: block; padding: 0 10px 4px; font-size: 0.75rem; font-weight: 650; color: var(--t3); letter-spacing: 0.01em; }
+  .tm-found span { display: flex; justify-content: space-between; gap: 8px; padding: 5px 10px; white-space: nowrap; border-radius: 10px; font-size: var(--fs-13); color: var(--t2); font-variant-numeric: tabular-nums; }
+  .tm-found span + span { background: rgba(var(--hl), 0.07); }
+  .tm-found em { font-style: normal; color: var(--t1); font-weight: 600; }
+  @keyframes tm-tap { 0%, 12% { opacity: 0; transform: scale(1.3); } 18% { opacity: 1; transform: scale(1); } 28% { opacity: 1; transform: scale(0.88); } 40%, 100% { opacity: 0; transform: scale(1.3); } }
+
+  /* demo 4: the Mapa button of a day and an underlined room */
+  .tm-dayhead { position: absolute; left: 18px; right: 18px; top: 16px; display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-17); font-weight: 650; color: var(--t1); }
+  .tm-mapbtn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px; border-radius: 99px; background: var(--s2); box-shadow: var(--edge); font-size: var(--fs-13); font-weight: 600; color: var(--t2); animation: tm-press 4.2s var(--ease-out) infinite; }
+  .tm-mapbtn .i { width: 14px; height: 14px; }
+  .tm-room { position: absolute; left: 18px; top: 62px; width: 148px; height: 64px; gap: 7px; --c: #0a84ff; }
+  .tm-roomlink { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-13); font-weight: 600; color: var(--t1); animation: tm-room 4.2s var(--ease-out) infinite; }
+  .tm-roomlink .i { width: 14px; height: 14px; color: var(--t3); }
+  .tm-mini { position: absolute; right: 18px; top: 62px; width: 124px; height: 108px; border-radius: 16px; background: var(--s2); box-shadow: var(--edge); overflow: hidden; animation: tm-list 4.2s var(--ease-out) infinite;
+    background-image: linear-gradient(rgba(var(--hl), 0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(var(--hl), 0.07) 1px, transparent 1px); background-size: 22px 22px; }
+  .tm-pin { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.28); animation: tm-pulse 2.1s ease-out infinite; }
+  .tm-tap2 { position: absolute; left: calc(100% - 78px); top: 12px; width: 34px; height: 34px; border-radius: 50%; background: rgba(var(--hl), 0.22); box-shadow: 0 0 0 1px rgba(var(--hl), 0.35); opacity: 0; animation: tm-tap 4.2s var(--ease-out) infinite; }
+  @keyframes tm-room { 0%, 24% { text-decoration: none; color: var(--t1); } 40%, 86% { color: var(--accent-text); } 100% { color: var(--t1); } }
+  @keyframes tm-pulse { 0% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.45); } 100% { box-shadow: 0 0 0 16px rgba(10, 132, 255, 0); } }
+
+  /* demo 5: compare groups, with the common free slot lighting up */
+  .tm-cmp { position: absolute; left: 18px; right: 18px; top: 22px; bottom: 22px; display: flex; flex-direction: column; justify-content: space-between; }
+  .tm-row { display: flex; align-items: center; gap: 10px; height: 34px; }
+  .tm-row em { flex: none; width: 52px; font-style: normal; font-size: 0.75rem; font-weight: 600; color: var(--t2); }
+  .tm-track { position: relative; flex: 1; height: 100%; display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; align-items: stretch; }
+  .tm-track i { border-radius: 8px; background: var(--s2); box-shadow: var(--edge); border-left: 3px solid var(--c, var(--accent)); }
+  .tm-row:nth-child(1) { --c: #0a84ff; } .tm-row:nth-child(2) { --c: #ff9f0a; } .tm-row:nth-child(3) { --c: #30d158; }
+  .tm-row:nth-child(1) i:nth-child(1) { grid-column: 1 / 3; } .tm-row:nth-child(1) i:nth-child(2) { grid-column: 6 / 8; } .tm-row:nth-child(1) i:nth-child(3) { grid-column: 8 / 9; }
+  .tm-row:nth-child(2) i:nth-child(1) { grid-column: 2 / 3; } .tm-row:nth-child(2) i:nth-child(2) { grid-column: 7 / 9; } .tm-row:nth-child(2) i:nth-child(3) { display: none; }
+  .tm-row:nth-child(3) i:nth-child(1) { grid-column: 1 / 2; } .tm-row:nth-child(3) i:nth-child(2) { grid-column: 6 / 7; } .tm-row:nth-child(3) i:nth-child(3) { grid-column: 8 / 9; }
+  .tm-free { position: absolute; top: -8px; bottom: -8px; left: calc(52px + 10px + (100% - 62px) * 0.375 + 1px); width: calc((100% - 62px) * 0.25 - 4px); border-radius: 12px; background: rgba(48, 209, 88, 0.16); box-shadow: 0 0 0 1.5px rgba(48, 209, 88, 0.7); display: flex; align-items: flex-end; justify-content: center; animation: tm-free 4.2s var(--ease-out) infinite; }
+  .tm-free b { margin-bottom: 4px; font-size: 0.6875rem; font-weight: 700; color: #30d158; letter-spacing: 0.02em; }
+  @keyframes tm-free { 0%, 24% { opacity: 0; transform: scaleY(0.6); } 42%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: scaleY(0.6); } }
+
+  /* demo 6: statistics */
+  .tm-bars { position: absolute; left: 24px; right: 24px; top: 20px; height: 86px; display: flex; align-items: flex-end; gap: 10px; }
+  .tm-bars i { flex: 1; border-radius: 7px 7px 3px 3px; background: var(--accent); transform-origin: bottom; animation: tm-grow 4.2s var(--ease-out) infinite; }
+  .tm-bars i:nth-child(1) { height: 70%; } .tm-bars i:nth-child(2) { height: 95%; animation-delay: 0.08s; } .tm-bars i:nth-child(3) { height: 48%; animation-delay: 0.16s; }
+  .tm-bars i:nth-child(4) { height: 82%; animation-delay: 0.24s; } .tm-bars i:nth-child(5) { height: 30%; animation-delay: 0.32s; }
+  .tm-facts { position: absolute; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 8px; }
+  .tm-facts span { flex: 1; display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 12px; background: var(--s2); box-shadow: var(--edge); font-size: 0.6875rem; color: var(--t3); }
+  .tm-facts b { font-size: var(--fs-15); font-weight: 650; color: var(--t1); font-variant-numeric: tabular-nums; }
+  @keyframes tm-grow { 0% { transform: scaleY(0.05); } 22%, 88% { transform: scaleY(1); } 100% { transform: scaleY(0.05); } }
+
+  /* demo 7: tools */
+  .tm-tools { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .tm-tool { width: 86px; display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 0.75rem; font-weight: 600; color: var(--t2); text-align: center; opacity: 0; animation: tm-pop 0.6s var(--spring) forwards; }
+  .tm-tool:nth-child(2) { animation-delay: 0.12s; }
+  .tm-tool:nth-child(3) { animation-delay: 0.24s; }
+  .tm-tool span { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; background: var(--s2); box-shadow: var(--edge); color: var(--accent-text); }
+  .tm-tool .i { width: 24px; height: 24px; }
+  @keyframes tm-pop { from { opacity: 0; transform: translateY(10px) scale(0.9); } to { opacity: 1; transform: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tm-rail, .tm-finger, .tm-pill, .tm-list, .tm-tap, .tm-pick, .tm-found, .tm-tool, .tm-mapbtn, .tm-roomlink, .tm-mini, .tm-pin, .tm-tap2, .tm-free, .tm-bars i { animation: none; }
+    .tm-tool, .tm-list, .tm-found { opacity: 1; }
+    .tm-tap, .tm-tap2, .tm-finger { display: none; }
+    .tm-rail { transform: translateX(-81px); }
   }
 
   /* ================= desktop: the week as a real timetable grid ================= */
@@ -1222,6 +1421,8 @@
     .week .dsub { grid-area: sub; display: flex; gap: var(--sp-2); align-items: baseline; }
     .week .date { font-size: var(--fs-13); }
     .week .count, .week .empty-day { margin-left: 0; font-size: var(--fs-13); }
+    .week .daymap { margin-left: auto; padding: 2px 6px; }
+    .week .daymap span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .week .today-pill { grid-area: pill; justify-self: end; margin: 0; }
     .week .day.is-empty { margin-top: 0; }
     .week .lesson {
@@ -1249,6 +1450,14 @@
     .week .lesson .meta { flex-direction: column; gap: 2px; }
     .week .lesson.is-now { background: color-mix(in srgb, var(--accent) 9%, var(--s2)); box-shadow: var(--edge), 0 0 0 1px var(--accent-line); }
     .week .gap { display: none; }
+    .week .gaptag {
+      display: flex; align-items: flex-start; gap: 6px; grid-column: 1 / -1; align-self: end;
+      margin: 2px 0 -4px; padding: 6px 0 0; border-top: 1px dashed var(--line);
+      color: var(--t2); font-size: var(--fs-13); line-height: 1.35; font-variant-numeric: tabular-nums;
+    }
+    .week .gaptag .i { flex: none; margin-top: 2px; color: var(--t3); }
+    .week .gaptag a { color: var(--t2); text-decoration: underline; text-underline-offset: 2px; }
+    .week .gaptag.tight, .week .gaptag.tight .i { color: var(--warn); }
     .week .lesson.flash { animation: flash-ring 1.4s var(--ease-out); }
     @keyframes flash-ring { 0%, 25% { box-shadow: var(--edge), 0 0 0 3px rgba(10, 132, 255, 0.6); } }
   }
@@ -1259,7 +1468,7 @@
       inset: 0;
       z-index: -1;
       border-radius: inherit;
-      background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, 0.07), transparent 70%);
+      background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), rgba(var(--hl), 0.07), transparent 70%);
       opacity: 0;
       transition: opacity var(--dur-base) var(--ease-out);
       pointer-events: none;
@@ -1329,15 +1538,75 @@
     ::view-transition-group(*) { animation-duration: 0s; }
   }
 
+  /* ---------- print / "Zapisz jako PDF": the shown week as a plain A4 sheet ---------- */
+  @page { size: A4; margin: 0; } /* no margin box, so the browser prints no URL/date header; the body pads instead */
   @media print {
-    :root { --bg: #fff; --s1: #fff; --s2: #fff; --s2-hover: #fff; --s3: #f2f2f2; --s4: #e5e5e5; --t1: #111; --t2: #444; --t3: #555; --line: #ddd; --accent-text: #0a5ec0; color-scheme: light; }
-    .page::before, .bar .round, .weekbtn .i, .todaypill, .hint, .live, .skel, .dl, .tools, .notice, .viewbar, #progress, .legend-tip, .month-head .round, .toast, .gap { display: none !important; }
-    *, *::before, *::after { animation: none !important; transition: none !important; }
-    .bar { position: static; }
-    .bar::before { display: none; }
-    .group, .lesson, .session-banner { box-shadow: 0 0 0 1px #ddd !important; break-inside: avoid; }
-    .hero-main, .rv { transform: none !important; opacity: 1 !important; }
+    :root:root:root {
+      --hl: 0, 0, 0; --bg: #fff; --s1: #fff; --s2: #fff; --s2-hover: #fff; --s3: #f2f2f2; --s4: #e5e5e5;
+      --t1: #111; --t2: #444; --t3: #555; --past-1: #111; --past-2: #444; --line: #ddd; --accent-text: #0a5ec0;
+      color-scheme: light;
+    }
+    html, body { background: #fff !important; }
+    body { padding: 10mm 14mm 8mm; font-size: 9.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    *, *::before, *::after { animation: none !important; transition: none !important; box-shadow: none !important; text-shadow: none !important; }
+    .rv, .enter, .hero-main { transform: none !important; opacity: 1 !important; }
+
+    /* what a sheet of paper does not need */
+    .page::before, .backlink, .semprog, .tools, .notice, .viewbar, .live, .skel, .hint, .themeswitch, .toast, .todaypill,
+    .bar .round, .weekbtn .i, .month-head .round, #progress, .legend-tip, .gap, .gaptag, .daymap, .count, .today-pill, .colbg,
+    .st, .dur, .tick, .room .i, .room svg, .bar::before, .legend { display: none !important; }
+    .wrap { max-width: none; padding-left: 0; padding-right: 0; margin: 0; }
+
+    /* header: group, term and facts on three quiet lines */
+    .hero { display: block; margin: 0 0 4mm; padding: 0; }
+    .title { font-size: 20pt; line-height: 1.1; letter-spacing: -0.02em; margin: 0; }
+    .sub { font-size: 10pt; color: #444; margin: 1mm 0 0; }
+    .facts { display: flex; flex-wrap: wrap; gap: 0 6mm; margin: 2mm 0 0; font-size: 8.5pt; color: #555; }
+    .facts > div { display: flex; gap: 1.5mm; }
+    .facts dt { color: #777; }
+    .facts dd { margin: 0; }
+
+    /* the shown week as the sheet's heading */
+    .bar, .bar-inner { position: static; height: auto; min-height: 0; padding: 0; margin: 0 0 1mm; background: none; }
+    .bar-inner { margin: 0; }
+    #weekBody { margin-top: 0; padding-top: 0; }
+    .bar-inner { display: block; padding: 0 0 2mm; }
+    .navcenter { display: flex; align-items: baseline; gap: 4mm; }
+    .weekbtn { display: inline-flex; gap: 1.2mm; width: auto; min-width: 0; height: auto; overflow: visible; padding: 0; background: none; border: 0; font-size: 13pt; font-weight: 700; color: #111; }
+    .navcenter::before { content: 'Tydzień'; font-size: 13pt; font-weight: 600; color: #111; margin-right: 0; }
+    .weekmeta { font-size: 9pt; color: #555; }
+
+    /* days: heading with a rule, then dense rows; a day never splits from its heading */
+    .week { display: block !important; }
+    .week { margin: 0; padding-top: 0; gap: 0; }
+    .day { display: block; margin: 0 0 2.6mm; padding: 0; break-inside: avoid; opacity: 1 !important; }
+    .dayhead { display: flex; align-items: baseline; gap: 2mm; padding: 0 0 1mm; margin: 0; border-bottom: 1.1pt solid #111; break-after: avoid; }
+    .dow { font-size: 11.5pt; font-weight: 700; letter-spacing: 0; }
+    .date { font-size: 9.5pt; color: #444; }
+    .empty-day { margin-left: auto; font-size: 8.5pt; color: #777; }
+    .day.is-empty { margin-top: 0; }
+    .group { padding: 0; margin: 0; background: none !important; border-radius: 0; }
+    .lesson, .lesson.is-now, .lesson.is-done, .lesson.flash {
+      display: grid; grid-template-columns: 21mm 1.1mm minmax(0, 1fr); column-gap: 2.5mm; align-items: stretch;
+      padding: 0.9mm 0; margin: 0; border-radius: 0; background: none !important; border-bottom: 0.5pt solid #ddd; break-inside: avoid;
+    }
+    .group > .lesson:last-child { border-bottom: 0; }
+    .time { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1mm; padding: 0; }
+    .time b { font-size: 10pt; font-weight: 700; color: #111; }
+    .time .end { font-size: 9pt; color: #555; }
+    .time .end::before { content: '\2013\00a0'; }
+    .cap, .day.is-past .cap, .lesson.is-done .cap { width: 1.1mm; min-height: 0; border-radius: 0.6mm; opacity: 1 !important; background: var(--c) !important; }
+    .cap::after { display: none; }
+    .info { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 4mm; align-items: center; padding: 0; }
+    .subj { grid-column: 1; padding: 0; margin: 0; border: 0; background: none; font: inherit; font-size: 10.5pt; font-weight: 600; text-align: left; color: #111; cursor: default; }
+    .type { grid-column: 1; font-size: 8.5pt; color: #555; }
+    .meta { grid-column: 2; grid-row: 1 / span 2; margin: 0; font-size: 9.5pt; font-weight: 600; white-space: nowrap; }
+    .room a, .room { color: #111; text-decoration: none; border: 0; }
+
+    /* a quiet colophon, so a printed sheet says where it came from */
+    .page::after { content: 'Nieoficjalny plan zajęć · PlanWAT · zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie'; display: block; margin-top: 2mm; padding-top: 1.5mm; border-top: 0.5pt solid #ccc; font-size: 7.5pt; color: #777; }
   }
+/*@@THEME_CSS@@*/
 </style>
 </head>
 <body>
@@ -1346,6 +1615,8 @@
   <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
   <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></symbol>
+  <symbol id="i-footprints" viewBox="0 0 24 24"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/><path d="M16 17h4"/><path d="M4 13h4"/></symbol>
   <symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
@@ -1361,6 +1632,7 @@
   <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-2.9 2.6-2.9 4"/><path d="M12 17.5h.01"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
 </svg>
@@ -1368,8 +1640,10 @@
 <main class="page">
   <header class="hero wrap" id="hero">
     <div class="hero-main">
+      <a class="backlink enter" id="backLink" href="../"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chevron-left"/></svg>Wszystkie grupy</a>
       <h1 class="title enter" id="groupName">@@GROUP@@</h1>
       <p class="sub enter d1" id="termLine">@@TERM_LINE@@</p>
+      @@TERM_SWITCH@@
       <div class="semprog enter d2" id="semProg">
         <div class="semprog-top"><span>Postęp semestru</span><span class="num" id="semPct">0%</span></div>
         <div class="track" role="progressbar" aria-label="Postęp semestru" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="semTrack"><div class="fill" id="semFill"></div></div>
@@ -1385,9 +1659,25 @@
         <a class="dl" id="icsLink" href="plan.ics" download="plan-@@GROUP@@.ics"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Pobierz plan (.ics)</a>
         <button class="dl" id="calBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-calendar-plus"/></svg>Dodaj do kalendarza</button>
         <button class="dl" id="shareBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-share"/></svg>Udostępnij</button>
+        <button class="dl" id="subjectsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-user"/></svg>Moje przedmioty</button>
         <button class="dl" id="statsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chart"/></svg>Statystyki</button>
         <button class="dl" id="compareBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"/></svg>Porównaj grupy</button>
+        <span id="installRow" hidden><button class="dl" id="installBtn" type="button" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Zainstaluj aplikację</button><span id="installHint" class="muted"></span></span>
+        <button class="dl" id="tourBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-help"/></svg>Jak korzystać</button>
         <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
+      </div>
+      <div class="notice" id="offlineNotice" role="status" hidden>
+        <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
+        <span class="notice-text">Jesteś offline. Widzisz plan zapisany w przeglądarce przy ostatniej wizycie.</span>
+      </div>
+      <div class="notice" id="hiddenNotice" role="status" hidden>
+        <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
+        <span class="notice-text" id="hiddenText"></span>
+        <span class="notice-actions"><button class="link" id="hiddenEdit" type="button">Zmień</button></span>
+      </div>
+      <div class="notice" id="staleNotice" role="status" hidden>
+        <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
+        <span class="notice-text">Wydział nie opublikował jeszcze planu na ten semestr. Widzisz ostatni dostępny plan; zajrzyj później, odświeżamy go codziennie.</span>
       </div>
       <div class="notice" id="changeNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
@@ -1462,11 +1752,13 @@
     </details>
   </div>
 
+  <div class="themerow wrap"><div class="themeswitch" role="group" aria-label="Motyw"><button type="button" data-theme-set="auto" aria-pressed="true">Auto</button><button type="button" data-theme-set="dark" aria-pressed="false">Ciemny</button><button type="button" data-theme-set="light" aria-pressed="false">Jasny</button></div></div>
   <p class="hint wrap" id="pageHint">
     <span class="kb"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> zmieniają tydzień &middot; <kbd>T</kbd> bieżący tydzień &middot; <kbd>Esc</kbd> czyści wyróżnienie</span>
     <span class="touch">Przesuń palcem w bok, aby zmienić tydzień</span>
   </p>
-  <p class="hint wrap pledge">PlanWAT jest nieoficjalnym projektem studentów. Jego opiekun zobowiązuje się, że serwis pozostanie darmowy dla wszystkich.</p>
+  <p class="hint wrap pledge">PlanWAT jest nieoficjalnym projektem studentów. Jego opiekun zobowiązuje się, że serwis pozostanie darmowy dla wszystkich.<br>
+    <strong>PlanWAT nigdy nie poprosi Cię o hasło</strong> ani inne dane logowania. <a href="../prywatnosc/">Prywatność i zasady</a></p>
 </main>
 
 <button class="todaypill" id="todayBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"/></svg>Bieżący tydzień</button>
@@ -1481,6 +1773,95 @@
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<dialog class="sheet tour" id="tourSheet" aria-labelledby="tourTitle">
+  <div class="sheet-head" id="tourHead">
+    <span class="grab" aria-hidden="true"></span>
+    <h2 id="tourTitle">Jak korzystać z planu</h2>
+    <button class="round round-sm" id="tourClose" type="button" aria-label="Zamknij"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="tour-track" id="tourTrack" tabindex="0" aria-label="Krótki przewodnik, przesuwaj w bok">
+    <section class="tour-slide" aria-label="Krok 1 z 7">
+      <div class="tour-art" aria-hidden="true">
+        <span class="tm-week">12.10–17.10</span>
+        <div class="tm-rail"><div class="tm-card"><i></i><i></i><i></i></div><div class="tm-card"><i></i><i></i><i></i></div><div class="tm-card"><i></i><i></i><i></i></div></div>
+        <span class="tm-finger"></span>
+      </div>
+      <h3>Przesuń, aby zmienić tydzień</h3>
+      <p>Przeciągnij plan w lewo, żeby zobaczyć następny tydzień, albo w prawo, żeby wrócić. Na komputerze użyj klawiszy <kbd>←</kbd> <kbd>→</kbd>.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 2 z 7">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-pillwrap"><span class="tm-pill">12.10–17.10<svg class="i" focusable="false"><use href="#i-chevron-down"/></svg></span></div>
+        <div class="tm-list"><span>5.10–10.10</span><span>12.10–17.10</span><span>19.10–24.10</span></div>
+      </div>
+      <h3>Dotknij daty, aby skoczyć</h3>
+      <p>Dotknięcie zakresu dat u góry otwiera listę wszystkich tygodni semestru. Przycisk „Bieżący tydzień” zawsze zabierze Cię z powrotem.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 3 z 7">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-card tm-pick"><i></i><i></i></div>
+        <span class="tm-tap"></span>
+        <div class="tm-found"><b>Gdzie odrobić?</b><span><em>WCY26KY2S1</em>śr 16.10 · 09:50</span><span><em>WCY26KY4S1</em>czw 17.10 · 11:40</span></div>
+      </div>
+      <h3>Dotknij zajęć, aby je odrobić</h3>
+      <p>Nie byłeś na zajęciach? Dotknij ich, a PlanWAT pokaże, kiedy i gdzie te same zajęcia mają inne grupy kierunku.</p>
+      <p>Przedmiot możesz też podświetlić w legendzie na dole strony.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 4 z 7">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-dayhead"><b>Czwartek</b><span class="tm-mapbtn"><svg class="i" focusable="false"><use href="#i-map"/></svg>Mapa</span></div>
+        <div class="tm-card tm-room"><i></i><span class="tm-roomlink"><svg class="i" focusable="false"><use href="#i-map-pin"/></svg><u>314 S</u></span></div>
+        <div class="tm-mini"><span class="tm-pin"></span></div>
+        <span class="tm-tap2"></span>
+      </div>
+      <h3>Zajęcia na mapie kampusu</h3>
+      <p>Przycisk „Mapa” przy dniu pokazuje na mapie wszystkie budynki, w których tego dnia masz zajęcia.</p>
+      <p>Podkreślona sala otwiera mapę przy jej budynku, a stamtąd wyznaczysz drogę pieszo.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 5 z 7">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-cmp">
+          <div class="tm-row"><em>Twoja</em><span class="tm-track"><i></i><i></i><i></i></span></div>
+          <div class="tm-row"><em>Grupa 2</em><span class="tm-track"><i></i><i></i><i></i></span></div>
+          <div class="tm-row"><em>Grupa 3</em><span class="tm-track"><i></i><i></i><i></i></span></div>
+          <span class="tm-free"><b>Wolne</b></span>
+        </div>
+      </div>
+      <h3>Porównaj grupy</h3>
+      <p>Dodaj do trzech innych grup, a plany staną obok siebie. PlanWAT wskaże godziny, w których wszyscy mają wolne, więc łatwo umówić wspólną naukę.</p>
+      <p>Znajdziesz to w narzędziach pod „Porównaj grupy”.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 6 z 7">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-bars"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tm-facts"><span><b>4</b>okienka</span><span><b>8:00</b>najwcześniej</span><span><b>19 h</b>w tygodniu</span></div>
+      </div>
+      <h3>Statystyki planu</h3>
+      <p>Ile godzin zajęć masz w tygodniu, które dni są najcięższe, ile jest okienek, kiedy zaczynasz najwcześniej i jaką salę widzisz najczęściej.</p>
+      <p>Otworzysz je przyciskiem „Statystyki” w narzędziach.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 7 z 7">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-tools">
+          <div class="tm-tool"><span><svg class="i" focusable="false"><use href="#i-calendar-plus"/></svg></span>Kalendarz</div>
+          <div class="tm-tool"><span><svg class="i" focusable="false"><use href="#i-user"/></svg></span>Moje przedmioty</div>
+          <div class="tm-tool"><span><svg class="i" focusable="false"><use href="#i-download"/></svg></span>Aplikacja</div>
+        </div>
+      </div>
+      <h3>Plan na Twoich zasadach</h3>
+      <p>Dodaj plan do kalendarza w telefonie, żeby aktualizował się sam. Ukryj przedmioty, których nie masz. Zainstaluj PlanWAT jak aplikację, a plan będzie działał też bez internetu.</p>
+      <p>Tę podpowiedź znajdziesz później pod przyciskiem „Jak korzystać”.</p>
+    </section>
+  </div>
+  <div class="tour-foot">
+    <div class="tour-dots" id="tourDots"></div>
+    <div class="tour-actions">
+      <button class="tour-skip" id="tourSkip" type="button">Pomiń</button>
+      <button class="tour-next" id="tourNext" type="button">Dalej</button>
+    </div>
+  </div>
+</dialog>
 
 <dialog class="sheet" id="weekSheet" aria-labelledby="sheetTitle">
   <div class="sheet-head" id="sheetHead">
@@ -1527,7 +1908,7 @@
   var finePointer = mq('(hover: hover) and (pointer: fine)');
   var gridQuery = mql('(min-width: 1080px)');
   function isGrid() { return !!(gridQuery && gridQuery.matches); }
-  var state = { weekIndex: 0, currentIndex: 0, data: null, byDate: {}, dir: 0, focus: null, pending: null, booted: false, liveTarget: null, days: DAY_ORDER, view: 'week', showPast: false, month: null };
+  var state = { weekIndex: 0, currentIndex: 0, data: null, byDate: {}, dir: 0, focus: null, pending: null, booted: false, liveTarget: null, subjects: [], hidden: [], rawText: '', days: DAY_ORDER, view: 'week', showPast: false, month: null };
   var revealIO = null;
 
   function noop() {}
@@ -1601,6 +1982,25 @@
     return n;
   }
 
+  /* "Mapa" link from a day header to that day's buildings on the campus map (only when one is known) */
+  function appendDayMap(parent, iso, lessons) {
+    if (!lessons.some(function (l) { return Campus.roomBuilding(l.room); })) return;
+    var a = el('a', 'daymap');
+    a.href = '../mapa/?g=' + encodeURIComponent(groupCode()) + '&d=' + iso;
+    a.setAttribute('aria-label', 'Budynki zajęć tego dnia na mapie kampusu');
+    a.appendChild(icon('map', 'i-sm'));
+    a.appendChild(el('span', null, 'Mapa'));
+    parent.appendChild(a);
+  }
+
+  /* "Wykład · 3/15": the class type and which meeting of its subject and type it is (no number for a one-off) */
+  function typeLine(ev) {
+    var type = TYPE_SHORT[ev.type_full] || ev.type_full || '';
+    var o = state.ord && state.ord[PI.lessonKey(ev)];
+    if (!o || o.of < 2) return type;
+    return (type ? type + ' · ' : '') + o.n + '/' + o.of;
+  }
+
   /* one class as a row (phone list, list view) or a tile (desktop week grid) */
   function lessonRow(ev, dtIso) {
     var row = el('div', 'lesson');
@@ -1624,14 +2024,30 @@
     st.appendChild(icon('clock', 'i-sm st-clock'));
     st.appendChild(el('span', 'st-text'));
     info.appendChild(st);
-    info.appendChild(el('div', 'subj', ev.subject_full));
-    info.appendChild(el('div', 'type', TYPE_SHORT[ev.type_full] || ev.type_full));
+    /* tapping the class finds where to make up this very meeting ("Gdzie odrobić?"); the subject is the
+       keyboard-reachable button for it, and links inside the row (the room) keep their own job */
+    var subj = el('button', 'subj', ev.subject_full);
+    subj.type = 'button';
+    subj.title = 'Gdzie odrobić to spotkanie?';
+    info.appendChild(subj);
+    row.setAttribute('data-catchup', '');
+    row.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('a')) return;
+      openMeeting(ev);
+    });
+    info.appendChild(el('div', 'type', typeLine(ev)));
 
     var metaRow = el('div', 'meta');
     if (ev.room && ev.room !== '-') {
+      var code = Campus.roomBuilding(ev.room);
       var room = el('span', 'room');
       room.appendChild(icon('map-pin', 'i-sm'));
-      room.appendChild(el('span', null, ev.room));
+      /* only the room text goes to the campus map; the rest of the class opens "Gdzie odrobić?" */
+      var where = room.appendChild(el(code ? 'a' : 'span', null, ev.room));
+      if (code) {
+        where.href = '../mapa/?b=' + encodeURIComponent(code);
+        where.title = 'Pokaż budynek na mapie kampusu';
+      }
       metaRow.appendChild(room);
     }
     if (metaRow.childNodes.length) info.appendChild(metaRow);
@@ -1639,16 +2055,42 @@
     return row;
   }
 
-  /* a free stretch between two classes ("okienko"), after the class at index li */
-  function appendGap(group, dayGaps, li) {
-    dayGaps.forEach(function (g) {
-      if (g.index !== li) return;
-      var row = el('div', 'gap');
-      row.appendChild(icon('clock', 'i-sm'));
-      row.appendChild(el('span', null, 'Okienko · ' + window.PlanInsights.fmtDuration(g.minutes) +
-        ' (' + window.PlanInsights.hhmm(g.from) + '–' + window.PlanInsights.hhmm(g.to) + ')'));
-      group.appendChild(row);
-    });
+  function buildingLabel(b) { return /^\d/.test(b.code) ? 'bud. ' + b.code : b.name; }
+
+  /* After the class at index li: a free stretch before the next one ("okienko") and/or the walk to the next
+     class's building, flagged when the walk takes longer than the break. Overlapping classes (subgroups) get none. */
+  function appendGap(group, dayGaps, lessons, li) {
+    var gap = dayGaps.filter(function (g) { return g.index === li; })[0];
+    var next = lessons[li + 1], end = 0, walk = null, brk = 0;
+    for (var k = 0; k <= li; k++) end = Math.max(end, toMin(lessons[k].end));
+    if (next) {
+      brk = toMin(next.start) - end;
+      if (brk >= 0) walk = Campus.transfer(lessons[li].room, next.room);
+    }
+    if (!gap && !walk) return;
+    var tight = !!walk && walk.minutes > brk;
+    var row = el('div', tight ? 'gap tight' : 'gap');
+    row.appendChild(icon(tight ? 'alert' : gap ? 'clock' : 'footprints', 'i-sm'));
+    var text = row.appendChild(el('span'));
+    if (gap) {
+      text.appendChild(document.createTextNode('Okienko · ' + window.PlanInsights.fmtDuration(gap.minutes) +
+        ' (' + window.PlanInsights.hhmm(gap.from) + '–' + window.PlanInsights.hhmm(gap.to) + ')'));
+    }
+    if (walk) {
+      text.appendChild(document.createTextNode(gap ? ' · przejście do ' : 'Do '));
+      var to = text.appendChild(el('a', null, buildingLabel(walk.to)));
+      to.href = '../mapa/?b=' + encodeURIComponent(walk.to.code);
+      to.title = 'Pokaż budynek na mapie kampusu';
+      text.appendChild(document.createTextNode(' · ~' + walk.minutes + ' min pieszo' + (tight ? ', przerwa ' + brk + ' min' : '')));
+    }
+    group.appendChild(row);
+    /* the desktop grid hides the full-width row; the same line then sits at the foot of the class it follows */
+    var card = row.previousElementSibling;
+    if (card && card.classList.contains('lesson')) {
+      var tag = row.cloneNode(true);
+      tag.className = tight ? 'gaptag tight' : 'gaptag';
+      card.appendChild(tag);
+    }
   }
 
   /* ---------- rendering ---------- */
@@ -1716,6 +2158,7 @@
       sub.appendChild(el('span', 'date', fmtDayDate(dt)));
       if (lessons.length) sub.appendChild(el('span', 'count', blocks(lessons.length)));
       else sub.appendChild(el('span', 'empty-day', 'Brak zajęć'));
+      appendDayMap(sub, dtIso, lessons);
       head.appendChild(sub);
       if (dtIso === today) {
         var pill = el('span', 'today-pill');
@@ -1739,7 +2182,7 @@
             row.style.setProperty('--d', String(6 + (col - 1) + rowIdx * 0.5));
           }
           group.appendChild(row);
-          appendGap(group, dayGaps, li);
+          appendGap(group, dayGaps, lessons, li);
         });
         dayDiv.appendChild(group);
       }
@@ -1795,7 +2238,10 @@
       var wasDone = row.classList.contains('is-done');
       row.classList.remove('is-now', 'is-next', 'is-done');
       row.style.removeProperty('--prog');
-      if (date !== today) continue;
+      if (date !== today) {
+        if (date < today) row.classList.add('is-done'); /* every earlier day is finished, not only today's classes */
+        continue;
+      }
       if (mins >= e) {
         row.classList.add('is-done');
         if (!wasDone && !fresh) restartAnim(row, 'just-done');
@@ -1846,10 +2292,12 @@
     $('liveRoomWrap').hidden = !hasRoom;
     $('liveRoom').textContent = hasRoom ? main.room : '';
     $('liveTime').textContent = main.start + '–' + main.end;
-    $('liveType').textContent = TYPE_SHORT[main.type_full] || main.type_full;
+    $('liveType').textContent = typeLine(main);
     var nx = $('liveNext');
     if (cur && next) {
       var nextRoom = next.room && next.room !== '-' ? ' · ' + next.room : '';
+      var walk = Campus.transfer(cur.room, next.room);
+      if (walk) nextRoom += ' (~' + walk.minutes + ' min pieszo)';
       nx.textContent = 'Następne · ' + fmtCountdown(toMin(next.start) - mins) + ' · ' + next.subject_full + nextRoom;
       nx.hidden = false;
     } else {
@@ -2214,6 +2662,69 @@
     });
   }
 
+  /* ================= first-visit tour (touch layouts) and the "Jak korzystać" button ================= */
+  function initTour() {
+    var d = $('tourSheet'), track = $('tourTrack'), dotsBox = $('tourDots'), nextBtn = $('tourNext'), skipBtn = $('tourSkip'), opener = null;
+    var last = track.children.length - 1, dots = [], pending = -1; /* pending: the slide a smooth scroll is heading to */
+    function current() { return Math.max(0, Math.min(last, Math.round(track.scrollLeft / Math.max(1, track.clientWidth)))); }
+    /* a second tap while a slide is still gliding jumps instead: the browser drops a smooth scroll started mid-glide */
+    function goTo(n) {
+      var gliding = pending >= 0;
+      pending = n;
+      track.scrollTo({ left: n * track.clientWidth, behavior: reduceMotion || gliding ? 'auto' : 'smooth' });
+    }
+    for (var i = 0; i <= last; i++) {
+      (function (n) {
+        var b = el('button');
+        b.type = 'button';
+        b.setAttribute('aria-label', 'Krok ' + (n + 1) + ' z ' + (last + 1));
+        b.addEventListener('click', function () { goTo(n); });
+        dotsBox.appendChild(b);
+        dots.push(b);
+      })(i);
+    }
+    function update() {
+      var n = current();
+      if (n === pending) pending = -1;
+      dots.forEach(function (b, k) { b.setAttribute('aria-current', String(k === n)); });
+      nextBtn.textContent = n === last ? 'Zaczynamy' : 'Dalej';
+      skipBtn.hidden = n === last;
+    }
+    var ticking = false;
+    track.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () { ticking = false; update(); });
+    }, { passive: true });
+    nextBtn.addEventListener('click', function () {
+      var at = pending >= 0 ? pending : current();
+      if (at < last) goTo(at + 1); else sheetOut(d);
+    });
+    skipBtn.addEventListener('click', function () { sheetOut(d); });
+    d.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' && current() < last) { goTo(current() + 1); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' && current() > 0) { goTo(current() - 1); e.preventDefault(); }
+    });
+    initDialog(d, $('tourHead'), $('tourClose'), function () {
+      if (opener && document.body.contains(opener)) opener.focus({ preventScroll: true });
+      opener = null;
+    });
+    function open(from) {
+      if (d.open || sheet.open || tool.open) return;
+      opener = from || null;
+      d.showModal();
+      track.scrollLeft = 0;
+      update();
+      sheetIn(d);
+      nextBtn.focus({ preventScroll: true });
+      store.set('tour', 1);
+    }
+    $('tourBtn').addEventListener('click', function (e) { open(e.currentTarget); });
+    /* once per browser, on every layout; automated browsers get it with ?tour=1 */
+    var auto = !store.get('tour', 0) && (!navigator.webdriver || /[?&]tour=1(&|$)/.test(location.search));
+    if (auto) setTimeout(function () { if (!document.hidden && state.view === 'week') open(null); }, 1400);
+  }
+
   /* ================= tools: everything below is free and works without an account ================= */
   var PI = window.PlanInsights;
   var MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
@@ -2360,13 +2871,14 @@
     var sub = el('span', 'dsub');
     sub.appendChild(el('span', 'date', fmtDayDate(isoToLocalDate(iso))));
     sub.appendChild(el('span', 'count', blocks(lessons.length)));
+    appendDayMap(sub, iso, lessons);
     head.appendChild(sub);
     dayDiv.appendChild(head);
     var group = el('div', 'group');
     var dayGaps = PI.gaps(lessons, GAP_MIN);
     lessons.forEach(function (ev, li) {
       group.appendChild(lessonRow(ev, iso));
-      appendGap(group, dayGaps, li);
+      appendGap(group, dayGaps, lessons, li);
     });
     dayDiv.appendChild(group);
     return dayDiv;
@@ -2569,39 +3081,98 @@
   }
 
   function openCalendar() {
-    var feed = new URL('plan.ics', location.href).href;
-    var webcal = feed.replace(/^https?:/, 'webcal:');
+    var feeds = { plain: planFile, remind: planFile.replace(/\.ics$/, '-przypomnienia.ics') };
     openTool('Dodaj do kalendarza', function (body) {
-      para(body, 'Subskrypcja dodaje plan do aplikacji kalendarza i aktualizuje go sama, gdy plan się zmieni (zwykle w ciągu kilku godzin). Przypomnienia przed zajęciami ustawisz w aplikacji kalendarza.');
+      para(body, 'Subskrypcja dodaje plan do aplikacji kalendarza i aktualizuje go sama, gdy plan się zmieni (zwykle w ciągu kilku godzin).');
+      var chk = body.appendChild(el('label', 'check'));
+      var cb = chk.appendChild(el('input'));
+      cb.type = 'checkbox';
+      cb.id = 'calRemind';
+      chk.appendChild(document.createTextNode('Przypomnienie 15 min przed zajęciami'));
+      var note = para(body, 'Kalendarz Apple zachowa przypomnienia, jeśli przy subskrypcji odznaczysz „Usuń: alerty”. Google Calendar pomija przypomnienia z subskrypcji, więc ustaw je tam w ustawieniach kalendarza. Pobrany plik .ics zachowuje je zawsze.', 'muted');
+      note.hidden = true;
       var box = body.appendChild(el('div', 'actions'));
-      var action = function (tag, title, note, ic) {
+      var action = function (tag, title, sub, ic) {
         var a = el(tag, 'action');
         a.appendChild(icon(ic));
         var t = el('span', null, title);
-        t.appendChild(el('small', null, note));
+        t.appendChild(el('small', null, sub));
         a.appendChild(t);
         box.appendChild(a);
         return a;
       };
       var g = action('a', 'Google Calendar', 'Subskrypcja: otwiera Google Calendar w nowej karcie', 'external');
-      g.href = 'https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(webcal);
       g.target = '_blank';
       g.rel = 'noopener noreferrer';
       g.id = 'calGoogle';
       var ap = action('a', 'Kalendarz Apple (iPhone, iPad, Mac)', 'Subskrypcja przez webcal', 'calendar-plus');
-      ap.href = webcal;
       ap.id = 'calApple';
       var cp = action('button', 'Kopiuj link subskrypcji', 'Outlook i inne aplikacje: „Dodaj kalendarz z adresu URL”', 'copy');
       cp.type = 'button';
       cp.id = 'calCopy';
-      cp.addEventListener('click', function () { copyText(feed, 'Skopiowano link subskrypcji'); });
       var dl = action('a', 'Pobierz plik .ics', 'Jednorazowy import, bez późniejszych aktualizacji', 'download');
-      dl.href = 'plan.ics';
-      dl.setAttribute('download', $('icsLink').getAttribute('download'));
+      dl.id = 'calFile';
+      var feed;
+      function use(file) {
+        feed = new URL(file, location.href).href;
+        var webcal = feed.replace(/^https?:/, 'webcal:');
+        g.href = 'https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(webcal);
+        ap.href = webcal;
+        dl.href = file;
+        dl.setAttribute('download', $('icsLink').getAttribute('download').replace(/\.ics$/, file === feeds.remind ? '-przypomnienia.ics' : '.ics'));
+      }
+      cp.addEventListener('click', function () { copyText(feed, 'Skopiowano link subskrypcji'); });
+      cb.addEventListener('change', function () { use(cb.checked ? feeds.remind : feeds.plain); note.hidden = !cb.checked; });
+      use(feeds.plain);
     });
   }
 
   /* ---------- statistics ---------- */
+  /* "Moje przedmioty": untick what you do not attend; kept in this browser only, per group and term */
+  function hideKey() {
+    var parts = location.pathname.split('/').filter(Boolean);
+    return (parts[parts.length - 1] || '') + (planFile === 'plan.ics' ? '' : ':' + planFile);
+  }
+  function initHidden() {
+    var n = state.hidden.length;
+    $('hiddenNotice').hidden = !n;
+    if (n) {
+      $('hiddenText').textContent = 'Ukryto ' + n + ' ' + PI.plural(n, 'przedmiot', 'przedmioty', 'przedmiotów') + ' (tylko w tej przeglądarce). Statystyki i pobrany plik też ich nie zawierają.';
+      var href = URL.createObjectURL(new Blob([window.PlanICS.filterText(state.rawText, state.hidden)], { type: 'text/calendar' }));
+      $('icsLink').setAttribute('href', href);
+    }
+  }
+  function openSubjects() {
+    var pending = state.hidden.slice();
+    openTool('Moje przedmioty', function (body) {
+      para(body, 'Odznacz przedmioty, których nie masz (np. lektoraty do wyboru). Znikną z widoków, statystyk i pobranego pliku .ics. Zapisujemy to tylko w tej przeglądarce; subskrypcja kalendarza nadal zawiera cały plan.');
+      var list = body.appendChild(el('div', 'mysubjects'));
+      state.subjects.forEach(function (sub) {
+        var row = list.appendChild(el('label', 'check'));
+        var cb = row.appendChild(el('input'));
+        cb.type = 'checkbox';
+        cb.checked = pending.indexOf(sub.name) < 0;
+        cb.addEventListener('change', function () {
+          pending = pending.filter(function (n) { return n !== sub.name; });
+          if (!cb.checked) pending.push(sub.name);
+          apply.disabled = pending.length >= state.subjects.length;
+        });
+        row.appendChild(el('span', null, sub.name));
+      });
+      var apply = body.appendChild(el('button', 'dl', 'Zastosuj'));
+      apply.type = 'button';
+      apply.addEventListener('click', function () {
+        store.set('hide:' + hideKey(), pending);
+        location.reload();
+      });
+      var reset = body.appendChild(el('button', 'dl', 'Pokaż wszystkie'));
+      reset.type = 'button';
+      reset.addEventListener('click', function () {
+        store.set('hide:' + hideKey(), []);
+        location.reload();
+      });
+    });
+  }
   function openStats() {
     var st = PI.stats(state.data);
     var hours = function (min) { return PI.fmtDuration(min); };
@@ -2823,17 +3394,34 @@
   }
 
   /* ---------- "Odrabianie": the same class in another group of the year ---------- */
-  function openCatchUp(subject, types) {
+  /* "Gdzie odrobić?" for one class: the same subject, type and meeting number in the other groups */
+  function openMeeting(ev) {
+    var o = state.ord && state.ord[PI.lessonKey(ev)];
+    var types = {};
+    PI.lessons(state.data).forEach(function (l) { if (l.subject_full === ev.subject_full) types[l.type_full || 'Inne'] = 1; });
+    openCatchUp(ev.subject_full, Object.keys(types), o ? { type: ev.type_full || '', n: o.n, of: o.of, date: ev.date } : null);
+  }
+
+  function openCatchUp(subject, types, meeting) {
     var me = groupCode(), year = PI.yearOf(me);
-    var opts = { type: '', free: true, limit: 40 };
+    var opts = { type: meeting ? meeting.type : '', free: true, limit: 40 };
     var draw = function (data) {
       openTool('Gdzie odrobić: ' + subject, function (body) {
-        para(body, 'Te same zajęcia, o tym samym numerze w semestrze, w innych grupach Twojego kierunku i rocznika, od dziś do końca semestru. Numer (nr) musi się zgadzać: drugie ćwiczenia odrabiasz na drugich ćwiczeniach. Udział w zajęciach innej grupy uzgodnij z prowadzącym.');
-        var kinds = [['', 'Wszystkie']].concat(types.filter(function (t) { return t !== 'Inne'; }).map(function (t) { return [t, t]; }));
-        body.appendChild(choices('Rodzaj zajęć', 'cuType', kinds, opts.type, function (v) {
-          opts.type = v; opts.limit = 40; draw(data);
-          $('cuType').querySelector('[aria-pressed="true"]').focus();
-        }));
+        if (meeting) {
+          para(body, 'Spotkanie: ' + (meeting.type || 'zajęcia') + ' nr ' + meeting.n + ' z ' + meeting.of + ' (' + shortDate(meeting.date) + '). ' +
+            'Poniżej to samo spotkanie, o tym samym numerze, w innych grupach Twojego kierunku i rocznika, od dziś do końca semestru. Udział w zajęciach innej grupy uzgodnij z prowadzącym.');
+          var all = body.appendChild(el('button', 'link', 'Pokaż wszystkie terminy przedmiotu'));
+          all.type = 'button';
+          all.id = 'cuAll';
+          all.addEventListener('click', function () { meeting = null; opts.type = ''; opts.limit = 40; draw(data); $('cuType').querySelector('[aria-pressed="true"]').focus(); });
+        } else {
+          para(body, 'Te same zajęcia, o tym samym numerze w semestrze, w innych grupach Twojego kierunku i rocznika, od dziś do końca semestru. Numer (nr) musi się zgadzać: drugie ćwiczenia odrabiasz na drugich ćwiczeniach. Udział w zajęciach innej grupy uzgodnij z prowadzącym.');
+          var kinds = [['', 'Wszystkie']].concat(types.filter(function (t) { return t !== 'Inne'; }).map(function (t) { return [t, t]; }));
+          body.appendChild(choices('Rodzaj zajęć', 'cuType', kinds, opts.type, function (v) {
+            opts.type = v; opts.limit = 40; draw(data);
+            $('cuType').querySelector('[aria-pressed="true"]').focus();
+          }));
+        }
         var chk = el('label', 'check');
         var cb = el('input');
         cb.type = 'checkbox';
@@ -2847,9 +3435,11 @@
         if (data.error) { para(body, 'Nie udało się wczytać planów rocznika. Spróbuj ponownie później.', 'muted'); return; }
         var today = todayIso(), mins = nowMinutes();
         var found = PI.catchUp(data, me, state.byDate, subject, opts.type, today).filter(function (f) {
+          if (meeting && (f.n !== meeting.n || PI.norm(f.type) !== PI.norm(meeting.type))) return false;
           return !(f.date === today && f.end <= mins) && (!opts.free || !f.clash);
         });
         var count = body.appendChild(el('p', 'muted', found.length ? 'Znaleziono ' + found.length + ' ' + PI.plural(found.length, 'termin', 'terminy', 'terminów') + '.' :
+          meeting ? 'Brak tego spotkania w innych grupach kierunku od dziś do końca semestru.' :
           'Brak takich zajęć w innych grupach kierunku do końca semestru.'));
         count.setAttribute('role', 'status');
         if (!found.length) return;
@@ -2879,6 +3469,9 @@
     $('calBtn').addEventListener('click', openCalendar);
     $('shareBtn').addEventListener('click', sharePlan);
     $('statsBtn').addEventListener('click', openStats);
+    $('subjectsBtn').addEventListener('click', openSubjects);
+    $('hiddenEdit').addEventListener('click', openSubjects);
+    initHidden();
     $('compareBtn').addEventListener('click', openCompare);
     $('printBtn').addEventListener('click', function () { window.print(); });
     var seg = $('viewSeg').querySelectorAll('button');
@@ -2891,6 +3484,7 @@
 
   function boot(data) {
     state.data = data;
+    state.ord = window.PlanInsights.ordinals(data);
     state.byDate = window.PlanInsights.byDate(data);
     state.days = DAY_ORDER.filter(function (k) {
       return WEEKEND.indexOf(k) < 0 || data.weeks.some(function (w) { return ((w.days && w.days[k]) || []).length > 0; });
@@ -2909,7 +3503,7 @@
     initSheet();
 
     document.addEventListener('keydown', function (e) {
-      if (e.altKey || e.ctrlKey || e.metaKey || sheet.open || tool.open) return;
+      if (e.altKey || e.ctrlKey || e.metaKey || sheet.open || tool.open || $('tourSheet').open) return;
       if (state.view !== 'week' && e.key !== 'Escape') return;
       var tag = e.target && e.target.tagName;
       if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -2972,6 +3566,7 @@
     render();
     /* the tools come after the first paint of the timetable */
     initTools();
+    initTour();
     setView(store.get('view', 'week'), true);
     state.booted = true;
 
@@ -2997,6 +3592,13 @@
       document.title = 'Plan zajęć ' + m.group;
       $('icsLink').setAttribute('download', 'plan-' + m.group.replace(/[^\w.-]+/g, '-') + '.ics');
     }
+    /* the faculty may still show last semester's lessons: none of them falls into this semester yet */
+    var stale = !!m.semesterStart && weeks.every(function (w) {
+      return Object.keys(w.days).every(function (k) {
+        return w.days[k].every(function (l) { return l.date < m.semesterStart; });
+      });
+    });
+    $('staleNotice').hidden = !stale;
     $('termLine').textContent = m.term ? 'Plan zajęć · ' + m.term : 'Plan zajęć';
     fact('factFaculty', m.faculty);
     fact('factSemester', fmtFullDate(m.semesterStart || weeks[0].monday) + ' – ' +
@@ -3011,14 +3613,66 @@
     ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'compareBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
   }
 
+  /* offline: the service worker keeps the last copy of this page and its plan; say that it is a saved copy */
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(function () {});
+  /* installing the site as an app: Chrome/Edge/Android offer a prompt we can trigger; iOS Safari has only the share menu */
+  (function () {
+    var btn = document.getElementById('installBtn'), hint = document.getElementById('installHint');
+    if (!btn) return;
+    var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+    var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var offer = null;
+    function show(on) { var row = document.getElementById('installRow'); if (row) row.hidden = !on; btn.hidden = !on; }
+    if (standalone) return;
+    if (ios) {
+      if (hint) hint.textContent = 'W Safari: Udostępnij → „Do ekranu początkowego”.';
+      btn.hidden = true;
+      var row = document.getElementById('installRow');
+      if (row) row.hidden = false;
+      return;
+    }
+    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); offer = e; show(true); });
+    window.addEventListener('appinstalled', function () { offer = null; show(false); });
+    btn.addEventListener('click', function () {
+      if (!offer) return;
+      var p = offer;
+      offer = null;
+      show(false);
+      p.prompt();
+    });
+  })();
+  /* another term of this group: ?t=<term> opens plan-<term>.ics, but only for a term the page itself links to */
+  var planFile = (function () {
+    var t = new URLSearchParams(location.search).get('t');
+    /* the file name is built from the validated query value, never from page text */
+    if (!t || !/^[\w-]{1,40}$/.test(t)) return 'plan.ics';
+    var link = Array.prototype.filter.call(document.querySelectorAll('#termSwitch a[data-term]'), function (a) { return a.getAttribute('data-term') === t; })[0];
+    return link && !link.hasAttribute('aria-current') ? 'plan-' + t + '.ics' : 'plan.ics';
+  })();
+  if (planFile !== 'plan.ics') {
+    $('icsLink').setAttribute('href', planFile);
+    ['factUpdated', 'factChecked'].forEach(function (id) { $(id).hidden = true; });
+  }
+  function showOffline() { $('offlineNotice').hidden = navigator.onLine !== false; }
+  window.addEventListener('online', showOffline);
+  window.addEventListener('offline', showOffline);
+  showOffline();
+
   try {
-    fetch('plan.ics', { credentials: 'same-origin' })
+    fetch(planFile, { credentials: 'same-origin' })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.arrayBuffer();
       })
       .then(function (buf) {
-        var data = window.PlanICS.toPlan(window.PlanICS.parse(window.PlanICS.decode(buf)));
+        state.rawText = window.PlanICS.decode(buf);
+        var parsed = window.PlanICS.parse(state.rawText);
+        state.subjects = window.PlanICS.subjectsOf(parsed);
+        var known = state.subjects.map(function (x) { return x.name; });
+        var saved = store.get('hide:' + hideKey(), []);
+        state.hidden = Array.isArray(saved) ? saved.filter(function (n) { return known.indexOf(n) >= 0; }) : [];
+        if (state.hidden.length >= known.length) state.hidden = []; /* never hide everything */
+        var data = window.PlanICS.toPlan(window.PlanICS.withoutSubjects(parsed, state.hidden));
         if (!data.weeks.length) throw new Error('plik planu nie zawiera zajęć');
         boot(data);
       })

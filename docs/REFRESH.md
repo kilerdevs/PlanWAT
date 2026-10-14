@@ -14,11 +14,18 @@ pages.yml     checks out `data` and lays its timetables over prod/ and dev/ befo
 - One session, one request at a time, a random pause between pages (2.5–6 s on the self-hosted runner, 4–9 s with `--profile hosted`), `robots.txt`
   honoured, conditional revalidation (`If-Modified-Since`/`ETag` remembered per group, so unchanged pages answer
   `304` without a body), groups checked less than 20 hours ago skipped.
-- **The first block stops the crawl.** Any status other than 200 (304 excluded), or an Incapsula incident page, ends that run: nothing
-  is retried and nothing half-converted is published. The last good calendars stay, a GitHub issue is opened, and the
+- **A block defers the faculty, it no longer ends the run.** Any status other than 200 (304 and 404 excluded), or an Incapsula incident page,
+  parks that faculty while the others are covered then sleeps the block out and resumes where it stopped. How long to sleep is learned per
+  policy group from past recoveries (median, 20 min – 12 h, 2 h with no history yet; wall episodes weigh more than flaky ones), recovery is probed with cheap index fetches on a sparse-then-dense
+  schedule (`--block-probes`, default 5, always inside the remaining budget), and the whole wait is capped (`--max-block-wait-minutes`, default 90, split fairly: each wait gets its share but at least 15 min). A block verdict is never retried and
+  nothing half-converted is published. The last good calendars stay, a GitHub issue is opened only if the run ends still blocked, and the
   self-hosted job tries later from the same state. (`_Incapsula_Resource` script tags on good pages are not blocks.)
-  WLO and WEL share one Incapsula policy: crawling either too fast blocks both addresses for hours. After a block,
-  leave that faculty alone for 24–48 h before resuming (the state keeps the last good calendars meanwhile).
+  Only transient fetches (transport errors, 408/425/429/500/502/503/504, an empty 200) are retried with backoff first (`--retries/--retry-backoff`); everything else is a verdict. Exhaustion tells a wall (`cause: wall`) from a wobble (`cause: flaky`), and the queue runs stalest-first so a cut-short
+  run always covers the longest-unseen groups.
+  WLO and WEL share one Incapsula policy (`wat-edge`): one wait covers both, then each resumes on its own fresh session. The learned cooldown replaces the old fixed
+  24–48 h rule (the state keeps the last good calendars meanwhile).
+- **A degraded run says so loudly.** Five-plus checks with over 30% skipped, or a group listing under half its previous size (from 10 up), flags the faculty `degraded`: the run exits incomplete and exports `degraded=true`.
+- **Cadence and pacing adapt.** `--fresh-hours` (per-faculty overridable, never below 1 h) halves in August/January/February while the faculties publish the coming semester. The pause between pages scales per policy group (AIMD: ×1.5 on a block up to 3×, ×0.9 on a clean faculty down to 1×).
 - A page is only published when the calendar passes the site's own validation (`build.load_term`), carries its file's
   group code and has not lost more than 40% of its events. Otherwise the old calendar is kept and the group is logged.
 - A calendar is rewritten only when the plan changed (the generation date is ignored), so `data` history shows real
@@ -33,7 +40,7 @@ pages.yml     checks out `data` and lays its timetables over prod/ and dev/ befo
 | WLO, WEL, WIM | `plansoft` | enabled |
 | IOE | `plansoft` (pinned base: the winter plans live under the stale `lato/` dir; the grid is transposed and its cells read SUBJ/type/room/alias, converted with `wlo2ics --faculty ioe`) | enabled |
 | WML | `wml` (Plansoft pages; the live `index.xml` is resolved via the landing-page iframe, since the faculty republishes under revisioned directories) | enabled |
-| WCY | `wcy` | disabled until a dry run proves plain HTTP works (the old crawler used a browser) |
+| WCY | `wcy` | plain HTTP works (checked 2026-10-14); pages still showing last semester are skipped, so old calendars stay until the new plan is published |
 | WTC | `wtc` | enabled; `index.xml` lists one Plansoft PDF per group, converted with `pymupdf` (installed by the refresh action) |
 
 Each group has exactly one canonical owner, so no plan is published twice under two codes: WEL skips the
@@ -116,3 +123,15 @@ while the runner host must stay clean and the published site must stay safe:
 
 Every group page shows **Zaktualizowano** (when the plan last changed) and **Sprawdzono** (when the crawler last verified
 it), taken from `refresh-state.json` at build time; groups never refreshed show the calendar's own generation date.
+
+## Two semesters at once
+
+Faculties publish the coming semester's plans before it starts. In August (winter semester) and January–February
+(summer semester) each run therefore refreshes the running semester first and then the coming one, into its own
+`timetables/<term>/` folder (`core.upcoming_reference`). The coming semester is tracked in `refresh-state.json` under
+`<GROUP>@<term>`, so the running semester's "checked" and "changed" dates stay intact; whatever is not published yet is
+simply not there and never makes a run incomplete. A calendar is accepted only when most of its lessons fall into the
+term's window (`core.term_window`), so a faculty that still shows last year's plan is not filed under the new term.
+
+The site builds every term it finds: a group's page shows the running (or next) semester and, when the group has
+another one, a Zima/Lato switch (`?t=<term>`, calendar at `plan-<term>.ics`).

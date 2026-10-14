@@ -9,12 +9,55 @@ All notable changes to PlanWAT are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Plan: a tick on every finished class, not only on today's.
+- Map: in a day view the other buildings step back, the building card is compact so the tapped class stays in view, collapsing the sheet re-frames the map, a tap on the map closes the legend, and the search hint is no longer cut mid-letter.
+
+### Added
+- Map: places around the campus as labelled badges (tram and bus stops, akademiki, Domki Radiowa, stołówki, bufety, restaurants, bars, shops, paczkomaty, parkings) with a "Miejsca" panel to switch categories, search, and a card with walking directions. Data in `src/places.js`, rebuilt with `tools/places/make_places.py` from OpenStreetMap.
+- Map: a richer dark style with green parks and grass, blue water, tinted land use and a cooler 3D building palette.
+- First-visit tour: a swipeable seven-step sheet (swipe weeks, jump from the date, "Gdzie odrobić?", the Mapa button and room links, comparing groups, statistics, calendar/subject/app tools) with small looping demos. Shown once per browser, reopened with "Jak korzystać" in the tools row.
+- Okienka (free gaps and walking time) also show on the desktop week grid, at the foot of the class they follow.
+
 ### Removed
 - All personal data of staff: names, surnames and academic titles are gone from the calendars, the page, the converters,
   the tests and the whole Git history. Calendars no longer carry `CONTACT` or instructor lines, and the build refuses
   any calendar that does.
 
 ### Added
+- Light theme: follows the system by default, with an Auto / Ciemny / Jasny switch on the front and group pages (stored in the browser only; the map stays dark).
+- "Drukuj / PDF" now produces one clean A4 sheet per week: black on white, one line per class, no buttons or browser header and footer.
+- Installable app: a "Zainstaluj aplikację" button on group pages (not on the front page) when the browser offers installation
+  (Chrome, Edge, Android), a Safari hint on iOS, iOS web-app meta tags, and the map page links the manifest too; tests read
+  Chromium's own installability check for the front page, a group and the map.
+- "Moje przedmioty" on the group page: untick the subjects you do not attend (electives, languages); they disappear from the
+  views, statistics and the downloaded .ics. Stored in the browser only; the subscription feed stays the full plan.
+- A class that a faculty lists twice (same time, subject, type and room) is shown once.
+- Two semesters per group: the group page gets a Zima/Lato switch (`?t=<term>`) when a second term exists, and the other
+  term's calendars are published as `plan-<term>.ics` (and `plan-<term>-przypomnienia.ics`).
+- Refresh backend: while the coming semester is being published (August, January–February) it is refreshed next to the
+  running one, with its own state, and calendars whose lessons mostly fall outside the term are rejected.
+- Group page: when every class of a plan predates the semester (the faculty has not published the new plan yet), a notice says so.
+- Automatic refresh now covers WCY: group list read from the faculty's jump menu, term label and dates set by the driver, and
+  pages that still show last semester's lessons are skipped instead of being filed under the new term.
+- Group page: walking time between classes in different buildings ("Do bud. 65 · ~6 min pieszo", linked to the map),
+  flagged when the walk is longer than the break; the Live card adds it to the next class.
+- Offline and installable: a service worker (`/sw.js`, network first) keeps the pages and plans you opened, the group
+  page says when it shows the saved copy, and web app manifests and icons let each group be added to the home screen.
+- Calendar reminders: `<GROUP>/plan-przypomnienia.ics`, the same calendar with a reminder 15 minutes before each class,
+  offered by a switch in "Dodaj do kalendarza".
+- Public-site basics: `/prywatnosc/` (privacy notice and terms of use), a footer note that PlanWAT never asks for a
+  password, `robots.txt`, `/.well-known/security.txt`, and `build.py --noindex` for the dev preview.
+- Group page: a "Wszystkie grupy" link above the group name goes back to the list of groups.
+- Group page: every class shows which meeting of its subject and type it is over the term, e.g. "Wykład · 3/15"
+  (one-off classes stay unnumbered).
+- Group page: tapping a class opens "Gdzie odrobić?" for that very meeting (same subject, type and number in the other
+  groups of the year), with a link to all of the subject's dates.
+- Campus map (`/mapa/`): all WAT buildings on a dark 3D map (MapLibre GL JS, OpenFreeMap tiles), coloured by faculty,
+  with search, a faculty legend, 2D/3D, an overview button, walking directions and `?b=<building>` links; it falls back
+  to a plain building list when the map cannot load. Rooms on the group page link to their building, and each day's
+  "Mapa" link opens that day's classes and buildings (`?g=<GROUP>&d=<date>`). Only this page may load the map engine
+  and tiles; every other page's CSP is unchanged.
 - Group page: "Zaktualizowano" and "Sprawdzono" dates from the refresh, and a pledge by the maintainer that PlanWAT stays free
   (also in the front page footer).
 - Automatic refresh: a scheduled workflow re-reads the WLO, WEL and WIM timetable pages (WCY and WTC drivers are

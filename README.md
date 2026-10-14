@@ -51,17 +51,31 @@ The interface is Polish; the code and documentation are English.
   and finished classes recede; the class in progress fills its colour capsule as it runs.
 - **Navigation:** arrows, swipe, keyboard (`←` `→` `T` `Esc`), a week picker sheet, and a "Bieżący tydzień" pill to jump
   back. Phones scroll to the current class on open.
+- **Meeting numbers:** every class shows which meeting of its subject and type it is, e.g. "Wykład · 3/15".
 - **Three views:** Tydzień, **Lista** (today onwards, past days on request) and **Miesiąc** (tap a day to open its week);
   breaks of 30 minutes or more show as "Okienko" between classes.
+- **Walking time:** between two classes in different buildings the plan shows the walk, e.g. "Do bud. 65 · ~6 min
+  pieszo", linked to the map, and flags it when the walk takes longer than the break. The Live card adds it to the next
+  class.
+- **Offline and installable:** a service worker keeps the last copy of the pages you opened and their plans, so the plan
+  opens without signal (with a notice that it is the saved copy); each group page can be added to the home screen as its
+  own app.
 - **Subject legend** that highlights one subject across the week, and **subject progress** (classes done out of the
   total, the next one, the count per class type).
+- **Mapa kampusu** (`/mapa/`): every WAT building on a 3D map, coloured by faculty, with search, a faculty legend,
+  a 2D/3D switch and walking directions. Rooms in the plan link to their building, and each day's "Mapa" link shows
+  that day's classes and buildings in order.
 - **Gdzie odrobić?** finds the same class in the other groups of the year, marking the ones that clash with your plan.
+  Tapping a class runs it for that very meeting (same type and number).
 - **Porównaj grupy:** up to four plans side by side, week by week, with the time all of them are free.
 - **Statystyki:** hours per week, per weekday and per class type, earliest start, latest end, longest day, breaks.
-- **Download, subscribe** (Google Calendar, Apple Calendar via webcal, a copyable feed link) and **share** the plan;
+- **Download, subscribe** (Google Calendar, Apple Calendar via webcal, a copyable feed link), optionally as a feed with
+  a reminder 15 minutes before each class (`plan-przypomnienia.ics`), and **share** the plan;
   **print / PDF** the shown week or list.
 - **Favourites and recent groups** on the front page, and a notice when the plan changed since your last visit. These
   live only in the browser's storage: no account, no tracking, everything is free.
+- **Public-site basics:** a privacy notice and terms of use at `/prywatnosc/`, the footer note that PlanWAT never asks
+  for a password, `robots.txt` and `/.well-known/security.txt` (RFC 9116); the dev preview is marked `noindex`.
 - **Accessible and fast:** WCAG 2.1 AA contrast, keyboard and screen-reader support, `prefers-reduced-motion` respected,
   no framework and no third-party scripts.
 
@@ -130,6 +144,8 @@ build.py                 static site generator (standard library only)
 src/group.html           group page template: markup, styles and app script (inlined, CSP-hashed)
 src/ics.js               iCalendar reader, inlined into every group page
 src/insights.js          statistics, progress, comparison and catch-up, inlined into every group page
+src/campus.js            campus buildings, room → building, search; inlined into the group page and the map
+src/mapa.html            the campus map page (/mapa/)
 src/index.html, 404.html group list and not-found page
 timetables/              <term>/<GROUP>.ics, the data
 tests/                   ics.test.js (reader), insights.test.js, test_build.py (build), e2e/ (Playwright), fixtures/
@@ -147,13 +163,19 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and the pull-request chec
 - **Docker** (self-hosted): `docker compose up -d --build` builds the site inside the image and serves it from a
   read-only, unprivileged nginx on `127.0.0.1:8088`, with security headers.
 
-Moving a custom domain from the Docker host to GitHub Pages, and the Cloudflare rules that restore the security
-headers Pages cannot send, are described in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Moving a custom domain from the Docker host to GitHub Pages, and how to restore the security headers Pages cannot send,
+are described in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Security
 
 - Every page carries a **hash-pinned Content-Security-Policy**: only its own inline script and style run, it may fetch
-  only its own `plan.ics`, and the only external origin is Google Fonts.
+  only its own `plan.ics`, and the only external origin is Google Fonts. The campus map page (`/mapa/`) is the one
+  exception: it also loads MapLibre GL JS from `unpkg.com` (pinned to a version and a Subresource Integrity hash) and
+  map tiles from `tiles.openfreemap.org`, and allows the `blob:` workers MapLibre renders with. The front and group
+  pages also allow `worker-src 'self'` and `manifest-src 'self'` for the offline worker (`/sw.js`) and the web app
+  manifest.
+- The service worker caches only same-origin pages, calendars and app files (network first) and Google Fonts; it never
+  touches other requests, and the production worker leaves the `/dev/` preview to its own worker.
 - Calendar text is rendered with `textContent` in the browser and HTML-escaped at build time; colours are accepted only as
   `#rrggbb`.
 - CI runs CodeQL (JavaScript, Python, workflows), a Grype scan of the Docker image, and dependency audits. Actions are

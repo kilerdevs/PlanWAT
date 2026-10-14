@@ -34,15 +34,20 @@ The official WAT plan is a large table built for desktop. This site turns the sa
   - Live "Teraz" (now) and "Następne" (next) status with a countdown on today's classes.
   - Semester progress.
   - A subject legend that highlights one subject across the week.
-  - Dark theme only. The light/system switch was removed in the owner's 2026-10-11 redesign brief ("Dark theme only").
+  - Walking time between classes in different buildings, flagged when the walk is longer than the break.
+  - Offline: a service worker keeps the opened pages and plans; each group can be installed as a home-screen app.
+  - Calendar feed with a reminder 15 minutes before each class (`plan-przypomnienia.ics`).
+  - Public-site basics: privacy notice and terms at `/prywatnosc/`, "PlanWAT never asks for your password" in the footer, `robots.txt`, `/.well-known/security.txt`.
+  - Campus map at `/mapa/`: building markers by faculty, search, walking directions; rooms in the plan link to their building and each day opens its classes on the map.
+  - Dark and light themes: the system's choice by default, with an Auto / Ciemny / Jasny switch (stored in the browser only). The map stays dark. This restores a switch the 2026-10-11 redesign had removed; dark remains the reference design.
 - **Terminology** (keep in Polish): blok (one class slot), Wykład / Ćwiczenia / Laboratorium / Zaliczenie / Spotkanie organizacyjne, tydzień, sesja egzaminacyjna, e-dziekanat. Group codes follow the WAT format, e.g. `WCY26KY3S1`.
 - **Technical setup:**
   - Timetables live in `timetables/<term>/<GROUP>.ics` (iCalendar, RFC 5545; format in `docs/ICS-FORMAT.md`). `build.py` validates them, picks each group's current term by date and writes `site/`: `/<GROUP>/index.html` + `/<GROUP>/plan.ics`, a group list at `/` (redirects while there is one group) and `404.html`. The group page fetches `plan.ics` and renders it in the browser with `src/ics.js` (tests: `tests/ics.test.js`, `tests/test_build.py`, `tests/e2e/`).
   - Group, faculty, term, semester range and generation date come from the calendar's `X-PLAN-*` properties; each class uses `SUMMARY` (subject), `CATEGORIES` (type), `LOCATION` (room) and `X-PLAN-COLOR` (subject colour).
   - `/<GROUP>/plan.ics` is public, so the same link also works as a calendar subscription.
-  - Served by a hardened, read-only, non-root nginx container (`PLAN-WAT`, localhost:8088), reached through a Cloudflare tunnel on the project's custom domain. GitHub Pages (repository kilerdevs/PlanWAT) is the target deployment.
+  - Served by a hardened, read-only, non-root nginx container (`PLAN-WAT`, localhost:8088), for self-hosting behind a reverse proxy. GitHub Pages (repository kilerdevs/PlanWAT) is the target deployment.
 - **Security** (the owner's explicit requirement: "as secure as possible, used by public"):
-  - Strict Content-Security-Policy with hash-pinned inline script and style. The only external origin is Google Fonts; `connect-src 'self'` lets the page fetch only its own `plan.ics`. Each page carries the CSP in a meta tag (GitHub Pages cannot send headers); the Docker image also sends it as a header.
+  - Strict Content-Security-Policy with hash-pinned inline script and style. The only external origin is Google Fonts (the campus map page alone adds SRI-pinned MapLibre from unpkg and OpenFreeMap tiles); `connect-src 'self'` lets the page fetch only its own `plan.ics`. Each page carries the CSP in a meta tag (GitHub Pages cannot send headers); the Docker image also sends it as a header.
   - Only GET/HEAD requests, rate limiting, and standard security headers.
   - Third-party scripts aren't banned outright, but any addition must fit the CSP and be justified.
 - **Performance:** must stay smooth on ordinary phones. Heavy effects such as backdrop blur, continuous repaints and filters on many elements made the page lag on the owner's phone. Rich motion belongs on capable desktop devices only, and reduced-motion preferences are respected.

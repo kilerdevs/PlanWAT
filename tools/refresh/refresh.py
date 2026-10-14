@@ -9,11 +9,20 @@ conditional revalidation so unchanged pages answer 304), converts pages that cha
 way the site's build does, and writes <out>/timetables/<term>/<GROUP>.ics only when the plan really changed.
 Progress lives in <out>/refresh-state.json, so a stopped run resumes where it stopped.
 
-The first sign of a block (any status but 200/304, an Incapsula incident page) stops that faculty at once: nothing is
-retried, nothing half-converted is published, the old calendars stay. Exit codes: 0 done, 3 blocked, 4 incomplete.
+A block (any status but 200/304/404, an Incapsula incident page) no longer ends the run: that faculty is
+deferred while the others are covered, then the run sleeps out the block and resumes. How long to sleep is
+learned per policy group from past recoveries (median, 20 min .. 12 h, 2 h without history; wall-caused
+episodes count more than flaky ones), recovery is probed with cheap index fetches on a sparse-then-dense
+schedule (--block-probes), and the whole wait is capped (--max-block-wait-minutes). A block verdict is never
+retried, nothing half-converted is published, the old calendars stay. A merely transient fetch (transport
+error, 408/425/429/500/502/503/504, an empty 200) is retried a few times with exponential backoff first
+(--retries/--retry-backoff); exhaustion raises core.Blocked for HTTP transients (a wall) and the transport
+error itself for flakiness, so the run learns the cause.
+Exit codes: 0 done, 3 blocked, 4 incomplete.
 With GITHUB_OUTPUT set, `blocked`, `incomplete` and `changed` are exported for the workflow.
 """
 import argparse
+import datetime as dt
 import json
 import os
 import random
@@ -36,17 +45,131 @@ def log(msg):
     print(msg, flush=True)
 
 
-def robots_allows(session, url):
-    """False when the host's robots.txt disallows the URL. An unreadable robots.txt does not block."""
+# Statuses worth one more try: the host is wobbling, not walling us out.
+TRANSIENT_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+
+def get_with_retry(session, url, timeout, headers, retries=3, backoff=2.0, sleep=time.sleep):
+    """GET that rides out transient trouble: transport errors, TRANSIENT_STATUSES, an empty 200.
+
+    Anything else is a verdict and is returned at once, never retried: a block page,
+    an unexpected status, a 404. Raises the last error (core.Blocked for exhausted
+    HTTP transients, the transport error itself for exhausted flakiness) when every
+    attempt fails, so the caller can tell a wall from a wobble.
+    """
+    last = None
+    for attempt in range(retries + 1):
+        try:
+            r = session.get(url, timeout=timeout, headers=headers)
+        except Exception as err:
+            last = err
+        else:
+            if r.status_code in (200, 304, 404):
+                if r.status_code == 200 and not r.content:
+                    last = core.Blocked('HTTP 200 with an empty body')
+                else:
+                    return r
+            elif r.status_code in TRANSIENT_STATUSES:
+                last = core.Blocked(f'HTTP {r.status_code}')
+            else:
+                return r  # any other status is a verdict, not a wobble (never retried)
+        if attempt < retries:
+            sleep(backoff * (2 ** attempt) + random.uniform(0, 1))
+    raise last
+
+
+def post_run_report(report, url=None, timeout=10):
+    """Tell the egress GUI how the run went. Best effort: never fails the crawl.
+
+    Uses a proxy-less opener on purpose — the report goes to the egress box over
+    the inner network, not through the proxy itself.
+    """
+    import urllib.request
+    url = url or os.environ.get('PLANWAT_EGRESS_STATUS', 'http://egress:8080/api/run')
+    if not url:
+        return
+    try:
+        req = urllib.request.Request(url, data=json.dumps(report).encode('utf-8'),
+                                     headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.build_opener().open(req, timeout=timeout).read()
+    except Exception as err:
+        log(f'run report not delivered ({err}); continuing')
+
+
+def wait_for_recovery(name, probe, model, budget, max_probes=5, sleep=time.sleep, clock=time.monotonic):
+    """Sleep out a block, probing rarely and late: (recovered, waited_sec, probes).
+
+    `probe()` costs one cheap request (the faculty index) and answers True when the
+    wall is gone; any failure means it is still up. Probes land on a quadratic schedule
+    — sparse while the block is young, denser near the learned end — over a horizon of
+    min(estimate, budget), so every probe still lands inside the budget when the learned
+    cooldown overshoots it.
+    """
+    est = model.estimate(name)
+    horizon = min(est, budget)
+    log(f'[{name}] blocked; learned cooldown is {est / 60:.0f} min, probing up to {max_probes}x')
+    waited, probes, start = 0.0, 0, clock()
+    for i in range(1, max_probes + 1):
+        target = horizon * (i / max_probes) ** 2  # absolute offset of probe i
+        remaining = budget - (clock() - start)
+        if remaining <= 0:
+            break
+        pause = min(target - waited, remaining)
+        if pause > 0:
+            sleep(pause)
+        waited = clock() - start
+        probes += 1
+        try:
+            recovered = probe()
+        except Exception:
+            recovered = False
+        if recovered:
+            duration = model.note_recovered(name)
+            if duration is not None:
+                log(f'[{name}] wall is down after {duration / 60:.0f} min; resuming')
+            else:
+                log(f'[{name}] wall is down; resuming')
+            return True, waited, probes
+        log(f'[{name}] still blocked ({probes}/{max_probes} probes)')
+    return False, waited, probes
+
+
+def robots_allows(session, url, state=None):
+    """False when the host's robots.txt disallows the URL. An unreadable robots.txt does not block.
+
+    With `state`, answers younger than 24 h are reused from state.data['robots']
+    (host -> {fetched_iso, text}) and fresh fetches are stored there, so one run
+    fetches each host's robots.txt at most once a day; without it every call fetches.
+    """
     from urllib import robotparser
     from urllib.parse import urlsplit
     parts = urlsplit(url)
-    try:
-        r = session.get(f'{parts.scheme}://{parts.netloc}/robots.txt', timeout=20)
-        if r.status_code != 200 or core.is_blocked(200, r.text[:4000]):
+    text = None
+    if state is not None:
+        entry = state.data.get('robots', {}).get(parts.netloc)
+        if entry:
+            try:
+                fetched = dt.datetime.fromisoformat(entry.get('fetched_iso', ''))
+            except ValueError:
+                fetched = None
+            if fetched is not None and core.now_utc() - fetched < dt.timedelta(hours=24):
+                text = entry.get('text')
+    if text is None:
+        try:
+            r = session.get(f'{parts.scheme}://{parts.netloc}/robots.txt', timeout=20)
+            if r.status_code != 200 or core.is_blocked(200, r.text[:4000]):
+                return True
+            text = r.text
+        except Exception:
             return True
+        if state is not None:
+            state.data.setdefault('robots', {})[parts.netloc] = {
+                'fetched_iso': core.now_utc().isoformat(), 'text': text}
+    if core.is_blocked(200, (text or '')[:4000]):
+        return True
+    try:
         rp = robotparser.RobotFileParser()
-        rp.parse(r.text.splitlines())
+        rp.parse((text or '').splitlines())
         return rp.can_fetch('*', url)
     except Exception:
         return True
@@ -88,45 +211,93 @@ def remember_validators(entry, response):
         entry['etag'] = etag
 
 
-def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic):
-    """Returns (changed codes, blocked, complete)."""
+def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic, ahead=False):
+    """Returns (changed codes, blocked, complete). `today` is a date inside the semester to refresh; with `ahead`
+    that is the coming semester, tracked under its own state keys so the running one keeps its dates."""
     driver = drivers.load(cfg['driver'], name, cfg, today)
     tid = core.term_id(today)
     out = Path(args.out)
     fac = state.faculties.setdefault(name, {})
+    group = core.group_of(name)
+    # AIMD pacing: the policy group's multiplier stretches the pause between pages. It grows on
+    # every block verdict and decays on every clean faculty, persisting through state.save.
+    mult = state.data.get('pacing', {}).get(group, 1.0)
+
+    def pace(blocked):
+        pacing = state.data.setdefault('pacing', {})
+        pacing[group] = min(3.0, mult * 1.5) if blocked else max(1.0, mult * 0.9)
+
     try:
         items = driver.discover(session)
     except core.Blocked as err:
         log(f'[{name}] BLOCKED while listing groups: {err}')
         fac['blocked_at'] = core.now_utc().isoformat()
+        fac['run'] = {'at': fac['blocked_at'], 'checked': 0, 'changed': 0,
+                      'skipped': 0, 'blocked': True, 'ahead': ahead, 'cause': 'wall', 'degraded': False}
+        pace(True)
         return [], True, False
     except Exception as err:
         log(f'[{name}] cannot list groups: {err}')
         return [], False, False
+    # The ahead pass must not clear a degraded flag the main pass already raised.
+    degraded = fac.get('run', {}).get('degraded', False) if ahead else False
+    # Listed-count canary: a site that suddenly lists half its groups is partially broken,
+    # not freshly tidy.
+    prev_count = fac.get('last_count')
+    fac['last_count'] = len(items)
+    if prev_count is not None and prev_count >= 10 and len(items) < 0.5 * prev_count:
+        degraded = True
+        log(f'[{name}] DEGRADED: only {len(items)} groups listed (was {prev_count}); flagging the run')
     if not items:
         log(f'[{name}] no groups listed; leaving the faculty untouched')
+        if degraded:
+            fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0,
+                          'changed': 0, 'skipped': 0, 'blocked': False, 'ahead': ahead,
+                          'cause': None, 'degraded': True}
         return [], False, False
-    if not robots_allows(session, items[0].url):
+    if not robots_allows(session, items[0].url, state):
         log(f'[{name}] robots.txt disallows the timetable pages; skipping the faculty')
         return [], False, False
     now = core.now_utc()
-    todo = [i for i in items if args.force or not state.fresh(i.code, now, args.fresh_hours)]
+    key = (lambda code: f'{code}@{tid}') if ahead else (lambda code: code)
+    # Twice the cadence while the faculties publish the coming semester; a per-faculty
+    # override wins over the default but never drops below one hour.
+    fresh_hours = core.effective_fresh_hours(max(1, cfg.get('fresh_hours', args.fresh_hours)), today)
+    todo = [i for i in items if args.force or not state.fresh(key(i.code), now, fresh_hours, tid)]
+    # Stalest first: a run cut short by --max-minutes, --limit or a block refreshes the groups
+    # unseen the longest. Never-checked ('') sorts before any ISO timestamp; the code breaks ties
+    # so the order is deterministic. The limit slices after the sort, keeping the stalest N.
+    todo.sort(key=lambda i: (state.groups.get(key(i.code), {}).get('checked', ''), i.code))
     if args.limit:
         todo = todo[:args.limit]
     log(f'[{name}] {len(items)} groups, {len(items) - len(todo)} fresh, {len(todo)} to check (term {tid})')
-    started, changed, failed = clock(), [], 0
+    started, changed, failed, checked = clock(), [], 0, 0
     for n, item in enumerate(todo, 1):
         if args.max_minutes and (clock() - started) / 60 > args.max_minutes:
             log(f'[{name}] time budget used up after {n - 1} groups')
             return changed, False, False
         if n > 1:
-            sleep(random.uniform(*args.delay))
-        entry = state.groups.setdefault(item.code, {})
+            sleep(random.uniform(args.delay[0] * mult, args.delay[1] * mult))
+        entry = state.groups.setdefault(key(item.code), {})
         try:
-            r = session.get(item.url, timeout=60, headers=conditional_headers(entry))
-        except Exception as err:
-            log(f'[{name}] BLOCKED/NETWORK on {item.code}: {err}')
+            r = get_with_retry(session, item.url, timeout=60, headers=conditional_headers(entry),
+                               retries=args.retries, backoff=args.retry_backoff, sleep=sleep)
+            checked += 1
+        except core.Blocked as err:
+            log(f'[{name}] BLOCKED on {item.code}: {err}')
             fac['blocked_at'] = core.now_utc().isoformat()
+            fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
+                          'changed': len(changed), 'skipped': failed, 'blocked': True, 'ahead': ahead,
+                          'cause': 'wall', 'degraded': degraded}
+            pace(True)
+            return changed, True, False
+        except Exception as err:
+            log(f'[{name}] flaky fetch on {item.code}, {checked} responses in: {err}')
+            fac['blocked_at'] = core.now_utc().isoformat()
+            fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
+                          'changed': len(changed), 'skipped': failed, 'blocked': True, 'ahead': ahead,
+                          'cause': 'flaky', 'degraded': degraded}
+            pace(True)
             return changed, True, False
         if r.status_code == 304:
             # The server says the page is byte-identical: no download, no conversion, just a fresh check mark.
@@ -141,6 +312,10 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if core.is_blocked(r.status_code, text):
             log(f'[{name}] BLOCKED on {item.code} (HTTP {r.status_code}) after {n - 1} pages')
             fac['blocked_at'] = core.now_utc().isoformat()
+            fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
+                          'changed': len(changed), 'skipped': failed, 'blocked': True, 'ahead': ahead,
+                          'cause': 'wall', 'degraded': degraded}
+            pace(True)
             return changed, True, False
         if not driver.page_ok(text):
             log(f'[{name}] {item.code}: not a timetable page, skipped')
@@ -177,10 +352,20 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if not args.dry_run:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(ics.encode('utf-8'))
-            if n % 25 == 0:
-                state.save()
-    fac['last_ok'] = core.now_utc().isoformat()
-    fac['blocked_at'] = None
+        if n % 25 == 0:
+            state.save()  # checkpoint every 25 checks, not only on change-writes
+    # Skips (unreadable pages, failed conversions, rejected calendars) against responses
+    # received: too many means the site is half-broken, not the plans half-changed.
+    if checked >= 5 and failed / checked > 0.3:
+        degraded = True
+        log(f'[{name}] DEGRADED: {failed} of {checked} checked groups skipped; flagging the run')
+    pace(False)
+    if not ahead:
+        fac['last_ok'] = core.now_utc().isoformat()
+        fac['blocked_at'] = None
+    fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': checked,
+                  'changed': len(changed), 'skipped': failed, 'blocked': False, 'ahead': ahead,
+                  'cause': None, 'degraded': degraded}
     log(f'[{name}] done: {len(changed)} changed, {failed} skipped')
     return changed, False, True
 
@@ -203,14 +388,35 @@ def parse(argv=None):
     ap.add_argument('--fresh-hours', type=float, default=20, help='skip groups checked more recently than this')
     ap.add_argument('--force', action='store_true', help='ignore --fresh-hours')
     ap.add_argument('--dry-run', action='store_true', help='fetch and convert, write nothing')
+    ap.add_argument('--retries', type=int, default=3,
+                    help='retry a flaky page fetch this many times (blocks are never retried)')
+    ap.add_argument('--retry-backoff', type=float, default=2.0,
+                    help='base seconds between fetch retries (exponential + jitter)')
+    ap.add_argument('--max-block-wait-minutes', type=float, default=90,
+                    help='total minutes a run may sleep out blocks before giving up (0 = exit on block)')
+    ap.add_argument('--block-probes', type=int, default=5,
+                    help='recovery probes per block (one cheap index fetch each)')
     args = ap.parse_args(argv)
     args.delay = PROFILES[args.profile]
     return args
 
 
-def main(argv=None, session=None, today=None):
+def refresh_ahead(name, sources, args, state, today, session, coming, tallies, sleep, clock):
+    """The coming semester's pass for one faculty; folds its results into `tallies`."""
+    # The next semester's plans may already be up. Whatever is not published yet is just not there:
+    # that never makes the run incomplete, only a block stops it.
+    log(f'[{name}] looking for the coming semester ({core.term_id(coming)})')
+    done, was_blocked, _ = refresh_faculty(name, sources[name], args, state, coming, session,
+                                           sleep=sleep, clock=clock, ahead=True)
+    tallies['changed'] += done
+    tallies['blocked'] |= was_blocked
+    return was_blocked
+
+
+def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monotonic):
     args = parse(argv)
     today = today or core.now_utc().date()
+    started = core.now_utc().isoformat()
     sources = json.loads((HERE / 'sources.json').read_text(encoding='utf-8'))
     named = [f for f in args.faculty.split(',') if f]
     wanted = named or [f for f, c in sources.items() if c.get('enabled')]
@@ -219,20 +425,116 @@ def main(argv=None, session=None, today=None):
         log(f'unknown faculty: {", ".join(unknown)}')
         return 2
     state = core.State(Path(args.out) / core.STATE_FILE)
+    model = core.BlockModel(state.data)
     session = session or new_session()
-    changed, blocked, incomplete = [], False, False
+    coming = core.upcoming_reference(today)
+    tallies = {'changed': [], 'blocked': False, 'incomplete': set()}
+    deferred = []  # (name, main_ok): main_ok says the main pass finished cleanly
     for name in wanted:
-        done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today, session)
-        changed += done
-        blocked |= was_blocked
-        incomplete |= not complete
+        # A blocked faculty no longer stops the others: each host has its own wall (and its own
+        # egress through the proxy pool), so the run covers everything reachable and comes back.
+        saved_headers = dict(session.headers) if getattr(session, 'headers', None) is not None else None
+        try:
+            done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today,
+                                                           session, sleep=sleep, clock=clock)
+        finally:
+            # Drivers may tune the shared session (WTC sets Referer): never leak that into others.
+            if saved_headers is not None:
+                try:
+                    session.headers.clear()
+                    session.headers.update(saved_headers)
+                except Exception:
+                    pass
+        tallies['changed'] += done
+        tallies['blocked'] |= was_blocked
+        if complete:
+            tallies['incomplete'].discard(name)  # a clean rerun clears the earlier mark
+        else:
+            tallies['incomplete'].add(name)
         if was_blocked:
-            break  # the same egress is probably blocked everywhere: stop, do not probe the other hosts
+            model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
+            deferred.append((name, False))
+            continue
+        if coming and refresh_ahead(name, sources, args, state, today, session, coming,
+                                    tallies, sleep, clock):
+            model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
+            deferred.append((name, True))
+    # Faculties behind one policy share one wall: one wait per group, then every member resumes.
+    grouped, order = {}, []
+    for name, main_ok in deferred:
+        group = core.group_of(name)
+        if group not in grouped:
+            grouped[group] = []
+            order.append(group)
+        grouped[group].append((name, main_ok))
+    wait_budget = args.max_block_wait_minutes * 60
+    for pos, group in enumerate(order):
+        members = grouped[group]
+        if wait_budget <= 0:
+            break
+        # Each wait is capped to its fair share of the remaining budget (but always gets a
+        # real chance: at least 15 minutes), so one slow group cannot eat the whole run.
+        budget = min(wait_budget, max(900.0, wait_budget / (len(order) - pos)))
+        first = members[0][0]
+        driver = drivers.load(sources[first]['driver'], first, sources[first], today)
+        probe_session = new_session()  # probe with a clean jar, like a new visitor
+
+        def probe(driver=driver, probe_session=probe_session):
+            try:
+                driver.discover(probe_session)
+                return True
+            except Exception:
+                return False
+
+        recovered, waited, probes = wait_for_recovery(group, probe, model, budget,
+                                                       args.block_probes, sleep, clock)
+        wait_budget -= waited
+        for name, main_ok in members:
+            fac = state.faculties.setdefault(name, {})
+            fac['wait'] = {'waited': round(waited), 'probes': probes, 'recovered': recovered}
+            if not recovered:
+                continue
+            fac['blocked_at'] = None  # the wall is down; the rerun re-decides from scratch
+            resume = new_session()  # fresh cookies/jar: the old ones may be the blocked ones
+            if main_ok and coming:
+                # The main pass already finished: only the coming semester is still missing.
+                refresh_ahead(name, sources, args, state, today, resume, coming,
+                              tallies, sleep, clock)
+            else:
+                done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today,
+                                                              resume, sleep=sleep, clock=clock)
+                tallies['changed'] += done
+                if complete:
+                    tallies['incomplete'].discard(name)
+                else:
+                    tallies['incomplete'].add(name)
+                if was_blocked:
+                    model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
+                    tallies['blocked'] = True
+                    continue
+                if coming:
+                    refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock)
+        tallies['blocked'] = any(state.faculties.get(n, {}).get('blocked_at') for n, _ in deferred)
+    blocked = tallies['blocked']
+    degraded_any = any(state.faculties.get(n, {}).get('run', {}).get('degraded')
+                       for n in wanted if n in sources)
+    incomplete = bool(tallies['incomplete']) or degraded_any
+    if degraded_any:
+        log('DEGRADED: one or more faculties checked out degraded (skips or a shrunken listing); '
+            'forcing incomplete so the run gets attention')
     if not args.dry_run:
         state.save()
-    export(blocked=blocked, incomplete=incomplete, changed=len(changed))
-    log(f'changed: {len(changed)}; blocked: {blocked}; incomplete: {incomplete}')
-    return 3 if blocked else 4 if incomplete else 0
+    exit_code = 3 if blocked else 4 if incomplete else 0
+    export(blocked=blocked, incomplete=incomplete, changed=len(tallies['changed']),
+           degraded=degraded_any)
+    log(f'changed: {len(tallies["changed"])}; blocked: {blocked}; incomplete: {incomplete}')
+    post_run_report({'started': started, 'ended': core.now_utc().isoformat(), 'exit': exit_code,
+                     'profile': args.profile, 'dry_run': args.dry_run,
+                     'faculties': {n: {**(state.faculties.get(n, {}).get('run', {})),
+                                       **({'wait': state.faculties[n]['wait']}
+                                          if 'wait' in state.faculties.get(n, {}) else {})}
+                                   for n in wanted if n in sources}})
+    return exit_code
 
 
 if __name__ == '__main__':

@@ -27,6 +27,9 @@ outputs:
   incomplete:
     description: 'true when some groups were not checked'
     value: ${{ steps.run.outputs.incomplete }}
+  degraded:
+    description: 'true when mass skips/degradation detected'
+    value: ${{ steps.run.outputs.degraded }}
   changed:
     description: Number of calendars that changed
     value: ${{ steps.run.outputs.changed }}
@@ -92,6 +95,7 @@ runs:
         GH_TOKEN: ${{ inputs.token }}
         BLOCKED: ${{ steps.run.outputs.blocked }}
         INCOMPLETE: ${{ steps.run.outputs.incomplete }}
+        DEGRADED: ${{ steps.run.outputs.degraded }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
         # One issue tells the owner that the crawl is blocked; it closes itself after a clean run.
@@ -106,4 +110,17 @@ runs:
           fi
         elif [ "$INCOMPLETE" != 'true' ] && [ -n "$open" ]; then
           gh issue close "$open" --repo "$GITHUB_REPOSITORY" --comment "Pobieranie znów działa: $RUN_URL"
+        fi
+        # A second issue tracks degraded-but-not-blocked runs (mass skips); same open/comment/create/close pattern.
+        dtitle='Odświeżanie planów zdegradowane (masowe pominięcia)'
+        dopen=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$dtitle\" in:title" --json number --jq '.[0].number // empty')
+        if [ "$DEGRADED" = 'true' ] && [ "$BLOCKED" != 'true' ]; then
+          dbody="Przebieg odświeżania zdegradowany (masowe pominięcia), ale nie zablokowany. Ostatnie poprawne plany zostają bez zmian. Przebieg: $RUN_URL"
+          if [ -n "$dopen" ]; then
+            gh issue comment "$dopen" --repo "$GITHUB_REPOSITORY" --body "$dbody"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$dtitle" --body "$dbody"
+          fi
+        elif [ "$BLOCKED" != 'true' ] && [ "$DEGRADED" != 'true' ] && [ "$INCOMPLETE" != 'true' ] && [ -n "$dopen" ]; then
+          gh issue close "$dopen" --repo "$GITHUB_REPOSITORY" --comment "Odświeżanie znów pełne: $RUN_URL"
         fi

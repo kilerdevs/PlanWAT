@@ -227,3 +227,9 @@ A button card at the top of the page, shown only when today has a class on now o
 - **Don't** put backdrop blur on anything that does not float over content, or loop an animation on anything that is not live.
 - **Don't** tint text or surfaces with subject colours (The Capsule Rule).
 - **Don't** add WAT logos, crests or official-looking wording; the site is an unofficial student view.
+
+## Light theme and print
+
+The dark ramp above is the reference. `src/theme-light.css` restates the same tokens for light (grouped-list grey ground `#f2f2f7`, white surfaces, hairlines `rgba(0,0,0,0.12)`, link blue `#0060df`); `build.py` injects it with the switch's styles and a small early script, so a stored choice applies before first paint. Auto follows `prefers-color-scheme`. Literal white/black tints are tokens (`--hl`, `--past-1/2`, `--warn`, `--scrim`), never hard-coded. The map page stays dark.
+
+Print ("Drukuj / PDF") is its own layout in `src/group.html`: the shown week on one A4 sheet, black on white, a rule under each day, one line per class (time, subject and type, room), the subject colour as a thin bar. `@page { margin: 0 }` with body padding keeps the browser from adding its URL/date header and footer.

@@ -69,7 +69,8 @@ window (90 days is customary) before public disclosure.
 | Area | Examples |
 |---|---|
 | `src/ics.js` | A calendar that makes the reader execute code, hang, or render attacker-controlled markup |
-| `src/group.html`, `src/index.html`, `src/404.html` | XSS, DOM clobbering, CSP bypasses, unsafe use of calendar data |
+| `src/group.html`, `src/index.html`, `src/404.html`, `src/mapa.html`, `src/prywatnosc.html` | XSS, DOM clobbering, CSP bypasses, unsafe use of calendar data |
+| `src/sw.js` | The offline worker caching or serving something it should not (another origin, a non-GET request, the other deployment's pages) |
 | `build.py` | Metadata that escapes HTML escaping, path traversal through group or term names, a page shipped without its CSP |
 | `deploy/nginx.conf`, `Dockerfile`, `docker-compose.yml` | A file served that should not be, missing headers, privilege or write access inside the container |
 | `.github/workflows/` | Workflow injection, excessive token permissions, unpinned third-party code |
@@ -78,11 +79,13 @@ window (90 days is customary) before public disclosure.
 
 - **Wrong timetable data** (a room or time): please open a
   [timetable issue](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) instead.
-- Headers that GitHub Pages cannot send (`X-Frame-Options`, `frame-ancestors`, …): documented, with the Cloudflare
-  rules that restore them, in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#security-headers-on-pages).
-- Scripts injected by an intermediary such as Cloudflare's bot detection: the page's CSP blocks them.
+- Headers that GitHub Pages cannot send (`X-Frame-Options`, `frame-ancestors`, …): documented, with how to restore
+  them, in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#security-headers-on-pages).
+- Scripts injected by an intermediary such as a proxy's bot detection: the page's CSP blocks them.
 - Loading the Inter typeface from Google Fonts: a documented, deliberate third-party request.
-- Denial of service against GitHub Pages or Cloudflare infrastructure, and automated scanner output without a
+- On the campus map (`/mapa/`) only: loading MapLibre GL JS from unpkg (SRI-pinned) and map tiles from OpenFreeMap,
+  both documented, deliberate third-party requests.
+- Denial of service against GitHub Pages infrastructure, and automated scanner output without a
   demonstrated impact.
 
 ## Safe harbor

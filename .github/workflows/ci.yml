@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master, dev]
+    branches: [dev]  # not master: the release PR already ran these checks, so a merge does not run them again
   pull_request:
 
 # The same commit runs as push:dev and as the release PR; one group per ref
@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  # The iCalendar reader (src/ics.js) and the plan insights (src/insights.js) run in every visitor's browser; Node runs
-  # its tests with the built-in runner (no npm dependencies) and enforces
+  # The iCalendar reader (src/ics.js), the plan insights (src/insights.js) and the campus helpers (src/campus.js)
+  # run in every visitor's browser; Node runs their tests with the built-in runner (no npm dependencies) and enforces
   # coverage floors, so a regression fails the build instead of lowering a number.
   unit:
     name: unit tests (Node ${{ matrix.node }})
@@ -38,7 +38,7 @@ jobs:
           node --test --experimental-test-coverage
           --test-coverage-include='src/**'
           --test-coverage-lines=95 --test-coverage-branches=80 --test-coverage-functions=100
-          tests/ics.test.js tests/insights.test.js
+          tests/ics.test.js tests/insights.test.js tests/campus.test.js
 
   # build.py validates every calendar, picks each group's current term and
   # writes the site. Its tests cover term selection, the per-page CSP, the

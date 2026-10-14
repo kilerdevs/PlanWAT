@@ -1,0 +1,43 @@
+name: Egress
+
+on:
+  push:
+    branches: [dev]  # not master: the release PR already ran these checks, so a merge does not run them again
+    paths:
+      - tools/egress/**
+      - tests/test_egress.py
+      - .github/workflows/egress.yml
+  pull_request:
+    paths:
+      - tools/egress/**
+      - tests/test_egress.py
+      - .github/workflows/egress.yml
+
+# Same grouping as ci.yml: one run per ref, master always runs to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+# Build-only checks: nothing here needs write access.
+permissions:
+  contents: read
+
+jobs:
+  # Offline unit tests for the rotator (pool, routing, retry/report) plus a
+  # build-only check that the egress image still builds. No push, no deploy.
+  egress:
+    name: egress tests + image build
+    runs-on: ubuntu-24.04
+    steps:
+      # Third-party actions are pinned to commit SHAs, not moving tags (as in ci.yml).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install egress dependencies
+        run: python -m pip install --disable-pip-version-check -r tools/egress/requirements.txt
+      # Cross-platform unittest entrypoint (py -3 launcher exists only on Windows).
+      - name: Egress tests
+        run: python -m unittest discover -s tests -p "test_egress.py" -v
+      - name: Build egress image (no push)
+        run: docker build -f tools/egress/Dockerfile.egress -t planwat-egress:ci tools/egress

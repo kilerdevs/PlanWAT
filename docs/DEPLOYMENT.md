@@ -1,7 +1,7 @@
 # Deployment
 
-PlanWAT is a static site. It runs on GitHub Pages (the target) or on the self-hosted Docker image behind a Cloudflare
-tunnel. The examples use `plan.example.org` for the custom domain.
+PlanWAT is a static site. It runs on GitHub Pages (the target) or on the self-hosted Docker image behind a reverse
+proxy. The examples use `plan.example.org` for the custom domain.
 
 ## GitHub Pages
 
@@ -19,7 +19,13 @@ on a custom domain; only the 404 page needs the base path, which the workflow ta
 Every deploy also builds the tip of `dev` into `/dev/` (e.g. <https://kilerdevs.github.io/PlanWAT/dev/>), linked as
 "Wersja testowa (dev)" from the production front-page footer, with a "Wersja stabilna" link back. Pushing to `dev`
 refreshes the preview; production is always built from `master`, so a dev push can never promote unfinished content
-to the site root. The daily rebuild keeps the preview's current-term pick fresh too.
+to the site root. The daily rebuild keeps the preview's current-term pick fresh too. The preview is built with
+`--noindex` (a `noindex, nofollow` meta tag on every page and a closed `robots.txt`), and has its own service worker
+at `/dev/sw.js`, which the production worker never interferes with.
+
+`robots.txt` and `/.well-known/security.txt` are only read at the root of a host, so on `kilerdevs.github.io/PlanWAT/`
+they take effect once the site has a custom domain; the Pages artifact includes dotfiles for `.well-known/` and drops
+the internal `.planwat-site` build markers.
 
 > [!NOTE]
 > GitHub disables scheduled workflows in public repositories after 60 days without activity. If that happens, re-enable
@@ -29,11 +35,10 @@ to the site root. The daily rebuild keeps the preview's current-term pick fresh 
 
 1. Repository **Settings → Pages → Custom domain**: enter `plan.example.org` and save. GitHub stores this setting
    itself; with Actions-based deployment no `CNAME` file is needed.
-2. In Cloudflare DNS, replace the tunnel route for `plan` with a `CNAME plan → kilerdevs.github.io`. Keep it **DNS only**
-   (grey cloud) until GitHub shows the certificate as issued, then turn on **Enforce HTTPS** in the Pages settings.
+2. At your DNS provider, point `plan` at Pages with a `CNAME plan → kilerdevs.github.io`. Once GitHub shows the
+   certificate as issued, turn on **Enforce HTTPS** in the Pages settings.
 3. The next Pages build picks up the new base path (empty) automatically. Check `https://plan.example.org/` and a group
-   page, then remove the Public Hostname from the Cloudflare tunnel and stop the container
-   (`docker compose down` in the project folder).
+   page; if the Docker container served the domain before, stop it (`docker compose down` in the project folder).
 
 ### Security headers on Pages
 
@@ -46,8 +51,8 @@ GitHub Pages cannot send custom headers. What still applies, and how to restore 
 | `frame-ancestors` / `X-Frame-Options` (no framing) | No: browsers ignore `frame-ancestors` in a meta tag. |
 | `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP/CORP | No (each page sets `referrer` to `no-referrer` via meta). |
 
-If the custom domain is proxied through Cloudflare (orange cloud), add the missing headers with a **Rules → Transform
-Rules → Modify Response Header** rule for the domain:
+To get them, serve the site with the Docker image below (its nginx sends all of them), or put the Pages site behind a
+proxy or CDN that can add response headers, set to:
 
 ```
 X-Frame-Options: DENY
@@ -57,10 +62,6 @@ Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), m
 Cross-Origin-Opener-Policy: same-origin
 Strict-Transport-Security: max-age=31536000; includeSubDomains
 ```
-
-Proxying a GitHub Pages site through Cloudflare needs SSL/TLS mode **Full (strict)**. Also turn off Cloudflare's
-"JavaScript detections" / Bot Fight Mode for this hostname: it injects a script that the page's CSP blocks (harmless, but
-it logs a console error).
 
 ## Docker (self-hosted)
 
@@ -75,8 +76,9 @@ The [`Dockerfile`](../Dockerfile) builds in two stages:
 2. `nginx-unprivileged` (digest-pinned, `apk upgrade`d) serves only those files.
 
 [`docker-compose.yml`](../docker-compose.yml) runs it read-only, as a non-root user, with all capabilities dropped,
-`no-new-privileges`, memory/CPU/PID limits, and the port bound to `127.0.0.1:8088` only; public traffic arrives through
-the Cloudflare tunnel. nginx allows only `GET`/`HEAD`, rate-limits per client IP (taken from `CF-Connecting-IP`), and sends
+`no-new-privileges`, memory/CPU/PID limits, and the port bound to `127.0.0.1:8088` only; publish it through a reverse
+proxy that terminates TLS (and set its client-IP header in `deploy/nginx.conf`). nginx allows only `GET`/`HEAD`,
+rate-limits per client IP, and sends
 the security headers listed above.
 
 Terms are picked when the image is built, so **rebuild when a new term starts** (or switch to Pages, which rebuilds

@@ -92,6 +92,28 @@ test('the root page has no serious or critical accessibility violations', async 
   expect(serious).toEqual([]);
 });
 
+test('the privacy page is linked from the footer, accessible and runs no script', async ({ page }) => {
+  const csp = [];
+  await page.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (e) => { window.__csp = (window.__csp || []).concat(e.violatedDirective); });
+  });
+  await page.goto('/');
+  await expect(page.locator('footer')).toContainText('PlanWAT nigdy nie poprosi Cię o hasło');
+  await page.locator('footer a[href="prywatnosc/"]').click();
+  await expect(page).toHaveURL(/\/prywatnosc\/$/);
+  await expect(page.locator('h1')).toHaveText('Prywatność i zasady');
+  // read before the scan: axe-core fetches stylesheets itself, which this page's connect-src 'none' blocks
+  csp.push(...(await page.evaluate(() => window.__csp || [])));
+  expect(csp).toEqual([]);
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  expect(serious).toEqual([]);
+});
+
 test('on a weekend without classes the next week is shown', async ({ page }) => {
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
@@ -149,6 +171,24 @@ test('renders the current week from plan.ics with live status and no CSP violati
 
   expect(await page.evaluate(() => window.__csp)).toEqual([]);
   expect(problems).toEqual([]);
+});
+
+test('the group page links back to the list of groups', async ({ page }) => {
+  await openGroup(page);
+  const back = page.locator('#backLink');
+  await expect(back).toBeVisible();
+  await expect(back).toHaveAttribute('href', '../');
+  await expect(back).toHaveText('Wszystkie grupy');
+});
+
+test('a change of building between classes shows the walk and links to the map', async ({ page }) => {
+  await openGroup(page);
+  await page.locator('#viewSeg button[data-view="list"]').click();
+  // Friday 16 Oct: 307 S until 9:35, then 201 65 from 9:50
+  const walk = page.locator('#listView .gap').filter({ hasText: 'Do bud. 65' }).first();
+  await expect(walk).toContainText('~6 min pieszo');
+  await expect(walk).not.toHaveClass(/tight/);
+  await expect(walk.locator('a')).toHaveAttribute('href', '../mapa/?b=65');
 });
 
 test('arrow buttons, keys and the current-week pill move between weeks', async ({ page }) => {
@@ -362,6 +402,15 @@ test('the calendar sheet offers subscription links and the file', async ({ page 
   await expect(page.locator('#calApple')).toHaveAttribute('href', /^webcal:\/\/127\.0\.0\.1:\d+\/WCY26KY3S1\/plan\.ics$/);
   await expect(page.locator('#calGoogle')).toHaveAttribute('href', /^https:\/\/calendar\.google\.com\/calendar\/render\?cid=webcal%3A%2F%2F/);
   await expect(tool(page).locator('a[download="plan-WCY26KY3S1.ics"]')).toHaveAttribute('href', 'plan.ics');
+
+  // the reminder switch points every action at the calendar with alarms
+  await page.locator('#calRemind').check();
+  await expect(page.locator('#calApple')).toHaveAttribute('href', /^webcal:\/\/127\.0\.0\.1:\d+\/WCY26KY3S1\/plan-przypomnienia\.ics$/);
+  await expect(page.locator('#calGoogle')).toHaveAttribute('href', /plan-przypomnienia\.ics$/);
+  await expect(page.locator('#calFile')).toHaveAttribute('href', 'plan-przypomnienia.ics');
+  await expect(page.locator('#calFile')).toHaveAttribute('download', 'plan-WCY26KY3S1-przypomnienia.ics');
+  await page.locator('#calRemind').uncheck();
+  await expect(page.locator('#calFile')).toHaveAttribute('href', 'plan.ics');
 });
 
 test('share hands the page link to the system share sheet', async ({ page }) => {
@@ -506,4 +555,235 @@ test('the front page search takes the "/" key and a ?q= link', async ({ page }) 
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('/');
   await expect(page.locator('#groupSearch')).toBeFocused();
+});
+
+test('each class shows which meeting of its subject and type it is', async ({ page }) => {
+  const problems = await openGroup(page);
+  const types = await page.locator('#weekBody .lesson .type').allTextContents();
+  expect(types.some((t) => /^(Wykład|Ćwiczenia|Laboratorium) · \d+\/\d+$/.test(t))).toBe(true);
+  for (const t of types) {
+    const m = t.match(/(\d+)\/(\d+)$/);
+    if (m) expect(Number(m[1])).toBeLessThanOrEqual(Number(m[2]));
+  }
+  expect(problems).toEqual([]);
+});
+
+test('tapping a class finds where to make up that very meeting', async ({ page }) => {
+  await openGroup(page);
+  const lesson = page.locator('#weekBody .lesson.is-now');
+  const type = (await lesson.locator('.type').textContent()).match(/^(.+) · (\d+)\/(\d+)$/);
+  expect(type).not.toBeNull();
+  await lesson.locator('.time').click();
+  await expect(tool(page)).toBeVisible();
+  await expect(page.locator('#toolTitle')).toHaveText('Gdzie odrobić: Matematyka II');
+  await expect(tool(page)).toContainText(`Spotkanie: ${type[1]} nr ${type[2]} z ${type[3]}`);
+  await expect(tool(page).locator('p[role="status"]')).toContainText(/Znaleziono \d+ termin|Brak tego spotkania/);
+  for (const li of await tool(page).locator('ul.rows li').all()) {
+    await expect(li.locator('.m')).toContainText(`· nr ${type[2]}`);
+  }
+  // the whole subject is one step away
+  await tool(page).getByRole('button', { name: 'Pokaż wszystkie terminy przedmiotu' }).click();
+  await expect(tool(page).locator('#cuType')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(tool(page)).toBeHidden();
+
+  // the room link inside the class keeps going to the map, and the subject is a keyboard-reachable button
+  await expect(lesson.locator('.room a')).toHaveAttribute('href', /^\.\.\/mapa\/\?b=/);
+  // only the room text is the map link: the pin next to it belongs to the class like everything else
+  await lesson.locator('.room svg').click();
+  await expect(tool(page)).toBeVisible();
+  await expect(page).toHaveURL(/\/WCY26KY3S1\/$/);
+  await page.keyboard.press('Escape');
+  await expect(tool(page)).toBeHidden();
+  await lesson.locator('button.subj').focus();
+  await page.keyboard.press('Enter');
+  await expect(tool(page)).toBeVisible();
+  await noCsp(page);
+});
+
+test('a plan whose lessons all predate the semester says the faculty has not published it yet', async ({ page }) => {
+  await page.route('**/plan.ics', async (route) => {
+    const res = await route.fetch();
+    const body = (await res.text()).replace(/X-PLAN-SEMESTER-START:\d+/, 'X-PLAN-SEMESTER-START:20990101');
+    await route.fulfill({ response: res, body });
+  });
+  const problems = await openGroup(page);
+  await expect(page.locator('#staleNotice')).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+test('a current plan does not show the unpublished notice', async ({ page }) => {
+  await openGroup(page);
+  await expect(page.locator('#staleNotice')).toBeHidden();
+});
+
+test('a group with two terms switches between them with ?t= and exports the term on show', async ({ page }) => {
+  const nav = '<nav class="termswitch" id="termSwitch" aria-label="Semestr"><a href="./" data-term="2026-27-zima" aria-current="true">Zima 2026/27</a>' +
+    '<a href="./?t=2026-27-lato" data-term="2026-27-lato">Lato 2026/27</a></nav>';
+  await page.route(/\/WCY26KY3S1\/(\?.*)?$/, async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, body: (await res.text()).replace(/(<p class="sub[^>]*id="termLine">[^<]*<\/p>)/, `$1${nav}`) });
+  });
+  await page.route('**/plan-2026-27-lato.ics', async (route) => {
+    const res = await page.request.get(new URL('plan.ics', route.request().url()).href);
+    await route.fulfill({ status: 200, contentType: 'text/calendar', body: (await res.text()).replace(/X-PLAN-TERM:.*/, 'X-PLAN-TERM:semestr letni 2026/27') });
+  });
+  const problems = await openGroup(page, { path: `${GROUP}?t=2026-27-lato` });
+  await expect(page.locator('#termLine')).toContainText('letni');
+  await expect(page.locator('#icsLink')).toHaveAttribute('href', 'plan-2026-27-lato.ics');
+  await expect(page.locator('#factUpdated')).toBeHidden();
+  await expect(page.locator('#termSwitch a[aria-current]')).toHaveText('Zima 2026/27'); // markup is static: current term of the build
+  await page.goto(GROUP + '?t=nope');
+  await expect(page.locator('#icsLink')).toHaveAttribute('href', 'plan.ics');
+  expect(problems).toEqual([]);
+});
+
+test('"Moje przedmioty" hides a subject everywhere, remembers it, and the downloaded file leaves it out', async ({ page }) => {
+  const problems = await openGroup(page);
+  const before = await page.locator('#weekBody .lesson').count();
+  const firstSubject = (await page.locator('#weekBody .lesson .subj').first().textContent()).trim();
+  await page.locator('#subjectsBtn').click();
+  const boxes = page.locator('#toolBody .mysubjects input');
+  expect(await boxes.count()).toBeGreaterThan(1);
+  await page.locator('#toolBody .mysubjects label').filter({ has: page.getByText(firstSubject, { exact: true }) }).locator('input').uncheck();
+  await page.getByRole('button', { name: 'Zastosuj' }).click();
+  await expect(page.locator('#hiddenNotice')).toBeVisible();
+  expect(await page.locator('#weekBody .lesson').count()).toBeLessThan(before);
+  const shown = (await page.locator('#weekBody .lesson .subj').allTextContents()).map((t) => t.trim());
+  expect(shown).not.toContain(firstSubject);
+  const href = await page.locator('#icsLink').getAttribute('href');
+  expect(href.startsWith('blob:')).toBe(true);
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#icsLink').click()]);
+  const text = fs.readFileSync(await download.path(), 'utf-8');
+  expect(text.split(/\r?\n/)).not.toContain('SUMMARY:' + firstSubject);
+  expect(text).toContain('BEGIN:VCALENDAR');
+  await page.locator('#hiddenEdit').click();
+  await page.getByRole('button', { name: 'Pokaż wszystkie' }).click();
+  await expect(page.locator('#hiddenNotice')).toBeHidden();
+  expect(await page.locator('#weekBody .lesson').count()).toBe(before);
+  expect(problems).toEqual([]);
+});
+
+test('the system light theme is followed, and a stored choice wins and survives a reload', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  const problems = await openGroup(page);
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(await bg()).toBe('rgb(242, 242, 247)');
+  await page.locator('[data-theme-set="dark"]').click();
+  expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
+  expect(await bg()).toBe('rgb(0, 0, 0)');
+  await page.reload();
+  await expect(page.locator('.lesson').first()).toBeVisible();
+  expect(await bg()).toBe('rgb(0, 0, 0)');
+  await expect(page.locator('[data-theme-set="dark"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('[data-theme-set="auto"]').click();
+  expect(await bg()).toBe('rgb(242, 242, 247)');
+  expect(problems).toEqual([]);
+});
+
+test('the front page and a group page in the light theme have no serious or critical accessibility violations', async ({ page }) => {
+  test.slow();
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+  const scan = async () => {
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+    return results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
+      .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  };
+  await openGroup(page);
+  expect(await scan()).toEqual([]);
+  await page.locator('#viewSeg button[data-view="list"]').click();
+  expect(await scan()).toEqual([]);
+  await page.goto('/');
+  await expect(page.locator('h1')).toBeVisible();
+  expect(await scan()).toEqual([]);
+});
+
+test('the map page stays dark whatever the system theme', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/mapa/');
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(0, 0, 0)');
+});
+
+test('printing a week gives one clean A4 sheet without the page chrome', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'page.pdf is Chromium only');
+  await openGroup(page);
+  await page.emulateMedia({ media: 'print' });
+  const pdf = await page.pdf({ format: 'A4', preferCSSPageSize: true });
+  expect((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+  for (const gone of ['.tools', '.viewbar', '.live', '#progress', '.legend', '.themeswitch']) {
+    await expect(page.locator(gone).first()).toBeHidden();
+  }
+  await expect(page.locator('.dow').first()).toBeVisible();
+});
+
+test('the first-visit tour opens once, pages with Dalej and is not repeated', async ({ page }) => {
+  const problems = await openGroup(page, { path: `${GROUP}?tour=1` });
+  const tour = page.locator('#tourSheet');
+  await expect(tour).toBeVisible();
+  await expect(page.locator('#tourSheet h3').first()).toHaveText('Przesuń, aby zmienić tydzień');
+  await page.click('#tourNext');
+  await expect(page.locator('#tourDots button[aria-current="true"]')).toHaveAttribute('aria-label', 'Krok 2 z 7');
+  for (let i = 0; i < 5; i++) await page.click('#tourNext');
+  await expect(page.locator('#tourNext')).toHaveText('Zaczynamy');
+  await expect(page.locator('#tourSkip')).toBeHidden();
+  await page.click('#tourNext');
+  await expect(tour).toBeHidden();
+  await page.reload();
+  await page.waitForTimeout(2000);
+  await expect(tour).toBeHidden();
+  await page.click('#tourBtn');
+  await expect(tour).toBeVisible();
+  await page.click('#tourSkip');
+  await expect(tour).toBeHidden();
+  expect(problems).toEqual([]);
+});
+
+test('the tour stays closed for automated browsers unless asked', async ({ page }) => {
+  await openGroup(page);
+  await page.waitForTimeout(2000);
+  await expect(page.locator('#tourSheet')).toBeHidden();
+});
+
+test('every finished class has its tick, on earlier days as well as today, and later ones do not', async ({ page }) => {
+  await openGroup(page);
+  const past = page.locator('.day.is-past .lesson');
+  expect(await past.count()).toBeGreaterThan(0);
+  expect(await page.locator('.day.is-past .lesson:not(.is-done)').count()).toBe(0);
+  await expect(past.first().locator('.tick')).toBeVisible();
+  const future = page.locator('.day:not(.is-past):not(.is-today) .lesson');
+  if (await future.count()) await expect(future.first().locator('.tick')).toBeHidden();
+  // an earlier week is all ticked too
+  const before = await weekLabel(page).innerText();
+  await page.keyboard.press('ArrowLeft');
+  await expect(weekLabel(page)).not.toHaveText(before);
+  const earlier = page.locator('.lesson');
+  await expect(earlier.first()).toBeVisible();
+  expect(await page.locator('.lesson:not(.is-done)').count()).toBe(0);
+  await expect(earlier.first().locator('.tick')).toBeVisible();
+});
+
+test('the front page has no install link; installing is offered on the group page only', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#installBtn')).toHaveCount(0);
+  await page.goto(GROUP);
+  await expect(page.locator('#installBtn')).toHaveCount(1);
+});
+
+test('"Gdzie odrobić?" lists only the type of the class that was clicked', async ({ page }) => {
+  await openGroup(page);
+  const subject = 'Podstawy grafiki inżynierskiej'; // has both a lecture and exercises in this plan
+  for (const [type, other] of [['Ćwiczenia', 'Wykład'], ['Wykład', 'Ćwiczenia']]) {
+    await page.goto(GROUP);
+    const row = page.locator(`#weekBody .lesson[data-subject="${subject}"]`).filter({ hasText: type }).first();
+    await row.locator('.subj').click({ force: true });
+    await expect(page.locator('#toolSheet')).toBeVisible();
+    await expect(page.locator('#toolBody > p').first()).toContainText(`Spotkanie: ${type} nr`);
+    await expect(page.locator('#cuType')).toHaveCount(0); // no "all types" switch while a meeting is chosen
+    const rows = page.locator('#toolBody .rows li');
+    await expect(page.locator('#toolBody [role="status"]')).toBeVisible();
+    const texts = await rows.allInnerTexts();
+    for (const t of texts) { expect(t).toContain(type); expect(t).not.toContain(other); }
+    await page.keyboard.press('Escape');
+  }
 });

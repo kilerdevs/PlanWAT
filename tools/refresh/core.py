@@ -24,6 +24,85 @@ class Blocked(Exception):
     """The host answered with a block page or an unexpected status. The run must stop, never retry."""
 
 
+# How long a faculty stays blocked: learned from history, so the crawler waits out
+# the block instead of hammering a wall. Bounds keep a thin history honest.
+BLOCK_DEFAULT = 2 * 3600   # no history yet: assume a couple of hours
+BLOCK_MIN = 20 * 60        # never wait less than this between recovery probes
+BLOCK_MAX = 12 * 3600      # never assume longer than this
+BLOCK_KEEP = 10            # remembered recoveries per faculty
+
+
+# Faculties behind one Incapsula policy share one learned cooldown: a wall tripped
+# through either address is the same wall.
+POLICY_GROUPS = {'wlo': 'wat-edge', 'wel': 'wat-edge'}
+
+
+def group_of(name):
+    """The policy group a faculty learns its block cooldown with (its own name unless shared)."""
+    return POLICY_GROUPS.get(name, name)
+
+
+class BlockModel:
+    """Learned block durations, persisted in refresh-state.json under 'blocks'.
+
+    Every recovery teaches the model how long that policy group's wall usually lasts;
+    the estimate (median, clamped) tells the waiter when probing is worth a request.
+    Durations remember their cause: a 'wall' (the host said no) predicts the next wall
+    better than a 'flaky' (our own network wobbled) episode, so wall-caused durations
+    win when any exist. Method arguments stay faculty names; grouping happens inside.
+    """
+
+    def __init__(self, data):
+        self.data = data.setdefault('blocks', {})
+
+    def _entry(self, name):
+        return self.data.setdefault(group_of(name), {'durations': [], 'blocked_at': None, 'cause': None})
+
+    def _pool(self, name):
+        pool = []
+        for item in self._entry(name)['durations']:
+            if isinstance(item, dict):
+                dur, cause = item.get('dur'), item.get('cause')
+            else:  # pre-cause entries written by older runs
+                dur, cause = item, None
+            if isinstance(dur, (int, float)):
+                pool.append((float(dur), cause))
+        walls = [(d, c) for d, c in pool if c == 'wall']
+        return walls or pool
+
+    def estimate(self, name):
+        """Seconds to wait before the block is probably gone."""
+        import statistics
+        pool = [dur for dur, _ in self._pool(name)]
+        if not pool:
+            return BLOCK_DEFAULT
+        return min(BLOCK_MAX, max(BLOCK_MIN, statistics.median(pool)))
+
+    def note_blocked(self, name, cause=None, at=None):
+        entry = self._entry(name)
+        entry['blocked_at'] = (at or now_utc()).isoformat()
+        entry['cause'] = cause
+
+    def note_recovered(self, name, at=None):
+        """Close the episode: remember how long this block lasted. Returns the duration or None."""
+        entry = self._entry(name)
+        if not entry['blocked_at']:
+            return None
+        try:
+            start = dt.datetime.fromisoformat(entry['blocked_at'])
+        except ValueError:
+            start = None
+        entry['blocked_at'] = None
+        if start is None:
+            return None
+        now = at or now_utc()
+        duration = max(0, (now - start).total_seconds())
+        entry['durations'].append({'dur': duration, 'cause': entry.get('cause'), 'at_iso': now.isoformat()})
+        del entry['durations'][:-BLOCK_KEEP]
+        entry['cause'] = None
+        return duration
+
+
 def is_blocked(status, text):
     """True for an Incapsula block or any status other than 200.
 
@@ -51,6 +130,36 @@ def season_of(today):
 def term_id(today):
     season, year = season_of(today)
     return f'{year}-{(year + 1) % 100:02d}-{season}'
+
+
+def effective_fresh_hours(base, today):
+    """The skip threshold actually used: halved during the publication windows.
+
+    In August (winter plans) and January/February (summer plans) the faculties
+    publish the coming semester, so pages go stale twice as fast.
+    """
+    if today.month in (1, 2, 8):
+        return base / 2
+    return base
+
+
+def upcoming_reference(today):
+    """A date inside the semester that is about to start, while the faculties publish its plans ahead of time.
+
+    August -> the winter semester (from 1 September), January and February -> the summer one (from 1 March).
+    None the rest of the year. Both semesters are then refreshed side by side, each into its own term folder."""
+    if today.month == 8:
+        return dt.date(today.year, 9, 1)
+    if today.month in (1, 2):
+        return dt.date(today.year, 3, 1)
+    return None
+
+
+def term_window(tid):
+    """(first, last) day, as YYYYMMDD, that lessons of the term `2026-27-zima` / `2026-27-lato` may fall on."""
+    year, _, season = tid.split('-')
+    year = int(year)
+    return (f'{year}0901', f'{year + 1}0229') if season == 'zima' else (f'{year + 1}0201', f'{year + 1}0930')
 
 
 def period_label(prefix, today):
@@ -98,6 +207,11 @@ def validate(ics, code, tid, previous=None, max_loss=0.4):
             return False, str(err).replace(str(path), f'{tid}/{code}.ics')
     if not event_count(ics):
         return False, 'no events'
+    first, last = term_window(tid)
+    starts = re.findall(r'BEGIN:VEVENT.*?DTSTART[^:\r\n]*:(\d{8})', ics, re.S)
+    inside = sum(first <= d <= last for d in starts)
+    if starts and inside * 2 < len(starts):
+        return False, f'most lessons fall outside the term ({min(starts)}..{max(starts)}): the faculty shows another semester'
     if previous:
         before, now = event_count(previous), event_count(ics)
         if before >= 5 and now < before * (1 - max_loss):
@@ -120,7 +234,18 @@ class State:
                 loaded = json.loads(self.path.read_text(encoding='utf-8'))
                 if loaded.get('version') == 1:
                     self.data = loaded
-            except (OSError, ValueError):
+            except ValueError:
+                # Unparseable JSON: quarantine the file so the evidence survives, then start fresh.
+                stamp = now_utc().strftime('%Y%m%dT%H%M%SZ')
+                backup = self.path.with_name(self.path.name + f'.corrupt-{stamp}')
+                try:
+                    self.path.rename(backup)
+                    where = f' (quarantined to {backup.name})'
+                except OSError:
+                    where = ' (quarantine failed, dropping it)'
+                print(f'REFRESH STATE CORRUPT: {self.path} is not valid JSON{where}; starting fresh',
+                      flush=True)
+            except OSError:
                 pass
 
     @property
@@ -131,9 +256,23 @@ class State:
     def faculties(self):
         return self.data['faculties']
 
-    def fresh(self, code, now, hours):
-        seen = self.groups.get(code, {}).get('checked')
-        return bool(seen) and now - dt.datetime.fromisoformat(seen) < dt.timedelta(hours=hours)
+    def fresh(self, code, now, hours, tid=None):
+        """True when the group was checked recently enough to skip. False when the checked
+        stamp lies in the future (clock skew: recheck rather than trust it) and, when `tid`
+        is given, when the entry belongs to another term (stale-term entries recheck once)."""
+        entry = self.groups.get(code, {})
+        seen = entry.get('checked')
+        if not seen:
+            return False
+        if tid is not None and entry.get('term') != tid:
+            return False
+        try:
+            checked = dt.datetime.fromisoformat(seen)
+        except ValueError:
+            return False
+        if checked > now:
+            return False
+        return now - checked < dt.timedelta(hours=hours)
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)

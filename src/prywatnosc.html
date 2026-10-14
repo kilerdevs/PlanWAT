@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+@@CSP@@
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+@@THEME_HEAD@@
+<meta name="description" content="Jakie dane przetwarza PlanWAT, zasady korzystania i kontakt.">
+<title>Prywatność i zasady · PlanWAT</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Crect x='13' y='16' width='38' height='35' rx='9' fill='none' stroke='%23f5f5f7' stroke-width='3.5'/%3E%3Cpath d='M13 27h38M24 11v9M40 11v9' stroke='%23f5f5f7' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='40' cy='39.5' r='4.5' fill='%230a84ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #000000;
+    --s1: #111113;
+    --s2: #1c1c1e;
+    --line: #2c2c2e;
+    --t1: #f5f5f7;
+    --t2: #a1a1a6;
+    --accent: #0a84ff;
+    --accent-text: #4da3ff;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: var(--bg); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--t1);
+    font-family: var(--font);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  main {
+    max-width: calc(680px + 32px);
+    margin: 0 auto;
+    padding: calc(env(safe-area-inset-top) + 32px) max(16px, env(safe-area-inset-right)) 64px max(16px, env(safe-area-inset-left));
+  }
+  .back { display: inline-flex; align-items: center; min-height: 44px; color: var(--t2); font-size: 0.9375rem; text-decoration: none; }
+  .back:hover { color: var(--t1); }
+  h1 { margin: 8px 0 0; font-size: 2.25rem; font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; }
+  h2 { margin: 36px 0 0; font-size: 1.25rem; font-weight: 650; letter-spacing: -0.01em; }
+  p, li { color: var(--t2); font-size: 1rem; }
+  p { margin: 10px 0 0; }
+  ul { margin: 10px 0 0; padding-left: 20px; }
+  li + li { margin-top: 6px; }
+  strong { color: var(--t1); font-weight: 600; }
+  code { font-size: 0.875em; color: var(--t1); }
+  a { color: var(--accent-text); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .callout { margin-top: 24px; padding: 14px 16px; border-radius: 14px; background: var(--s2); color: var(--t1); }
+  .updated { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 0.875rem; }
+  @media (min-width: 768px) { main { padding-top: 64px; } h1 { font-size: 3rem; letter-spacing: -0.035em; } }
+/*@@THEME_CSS@@*/
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="../">‹ PlanWAT</a>
+  <h1>Prywatność i zasady</h1>
+
+  <p class="callout"><strong>PlanWAT nigdy nie poprosi Cię o hasło</strong> ani inne dane logowania (USOS, e-dziekanat, poczta WAT, konta Google). Serwis nie ma kont ani formularzy logowania. Jeśli ktoś podaje się za PlanWAT i prosi o hasło, to próba oszustwa: nie podawaj go i zgłoś to opiekunowi projektu.</p>
+
+  <h2>Kto prowadzi serwis</h2>
+  <p>PlanWAT to prywatna, nieoficjalna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Prowadzi go opiekun projektu <a href="https://github.com/kilerdevs/PlanWAT">kilerdevs/PlanWAT</a> na GitHubie. Plany zajęć pochodzą z ogólnodostępnych stron wydziałów.</p>
+
+  <h2>Jakie dane zbieramy</h2>
+  <p><strong>Żadnych danych osobowych.</strong> Nie ma kont, formularzy, plików cookie, reklam ani narzędzi analitycznych czy śledzących. Serwis nie wie, kim jesteś ani które plany oglądasz.</p>
+
+  <h2>Co zostaje w Twojej przeglądarce</h2>
+  <p>Kilka ustawień zapisuje się wyłącznie na Twoim urządzeniu (<code>localStorage</code>) i nigdy nie jest nigdzie wysyłane:</p>
+  <ul>
+    <li>ulubione i ostatnio oglądane grupy,</li>
+    <li>wybrany widok planu (tydzień, lista, miesiąc),</li>
+    <li>wersja planu z ostatniej wizyty, żeby pokazać, że plan się zmienił,</li>
+    <li>grupy wybrane do porównania.</li>
+  </ul>
+  <p>Aby plan działał bez internetu, przeglądarka przechowuje też kopię odwiedzonych stron i plików planu (Service Worker, Cache Storage). Wszystko to usuniesz, czyszcząc dane witryny w ustawieniach przeglądarki.</p>
+
+  <h2>Hosting i usługi zewnętrzne</h2>
+  <p>Jak każda strona internetowa, serwer otrzymuje Twój adres IP i podstawowe dane żądania (adres strony, czas, rodzaj przeglądarki), bo bez nich nie mógłby odesłać strony. Robią to:</p>
+  <ul>
+    <li><strong>hosting:</strong> GitHub Pages (GitHub, Inc.), który może przez ograniczony czas przechowywać logi w celach technicznych i ochrony przed nadużyciami, na zasadach swojej polityki prywatności,</li>
+    <li><strong>czcionki:</strong> Google Fonts (Google),</li>
+    <li><strong>tylko mapa kampusu:</strong> silnik mapy z unpkg.com i kafelki mapy z OpenFreeMap (dane © współtwórcy OpenStreetMap).</li>
+  </ul>
+  <p>Strony wysyłają nagłówek „no-referrer”, więc te usługi nie dostają adresu strony, z której przychodzisz. Linki do Google Calendar, Map Google czy e-dziekanatu otwierają zewnętrzne serwisy dopiero wtedy, gdy je klikniesz.</p>
+
+  <h2>Twoje prawa</h2>
+  <p>Ponieważ PlanWAT nie zbiera danych, które pozwalają Cię zidentyfikować, nie mamy czego udostępnić ani usunąć. W sprawie logów hostingu możesz zwrócić się do GitHub. Masz też prawo wnieść skargę do Prezesa Urzędu Ochrony Danych Osobowych.</p>
+
+  <h2>Zasady korzystania</h2>
+  <ul>
+    <li>Serwis jest darmowy i udostępniany „tak jak jest”, bez gwarancji poprawności i dostępności.</li>
+    <li>Wiążący jest oficjalny plan uczelni: zmiany i terminy dodatkowe zawsze sprawdzaj w e-dziekanacie.</li>
+    <li>Nie odpowiadamy za skutki opierania się wyłącznie na tym serwisie, np. spóźnienia czy nieobecności.</li>
+    <li>Kod jest otwarty; licencje użytego oprogramowania i danych opisuje plik THIRD-PARTY-NOTICES w repozytorium.</li>
+  </ul>
+
+  <h2>Kontakt i bezpieczeństwo</h2>
+  <p>Błąd w planie lub w serwisie zgłoś w <a href="https://github.com/kilerdevs/PlanWAT/issues">zgłoszeniach na GitHubie</a>. Lukę bezpieczeństwa zgłoś prywatnie przez <a href="https://github.com/kilerdevs/PlanWAT/security/advisories/new">GitHub Security Advisories</a> (szczegóły w <a href="../.well-known/security.txt">security.txt</a>).</p>
+
+  <p class="updated">Ostatnia zmiana: 14 października 2026</p>
+</main>
+</body>
+</html>

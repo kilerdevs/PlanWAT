@@ -31,6 +31,25 @@ THIS SOFTWARE.
 | Component | Source | License |
 |---|---|---|
 | Inter typeface (fallback where SF Pro is not installed) | Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) | SIL Open Font License 1.1 |
+| [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) 4.7.1, campus map only | unpkg (`unpkg.com`), SRI-pinned | BSD-3-Clause |
+| Map tiles and the `dark` style, campus map only | [OpenFreeMap](https://openfreemap.org) (`tiles.openfreemap.org`) | Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0 |
+
+## Data
+
+### Campus building coordinates
+
+The building positions and descriptions in `src/campus.js` are a derived database of
+[OpenStreetMap](https://www.openstreetmap.org/copyright) building centroids, as compiled and published by Plan WAT
+(planwat.pl, `campus-building-coordinates.json`). Map data © OpenStreetMap contributors. The database is available
+under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/); the rest of this repository stays
+under its own MIT license. It contains no timetables or user data.
+
+### Places around the campus
+
+The stops, dormitories, shops, parkings, parcel lockers and places to eat in `src/places.js` are extracted from
+[OpenStreetMap](https://www.openstreetmap.org/copyright) with `tools/places/make_places.py` (Overpass API, run by hand, never by the
+site). Map data © OpenStreetMap contributors, available under the
+[Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The Domki entry was added by hand.
 
 ## Development only
 

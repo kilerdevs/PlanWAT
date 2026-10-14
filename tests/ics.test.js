@@ -42,6 +42,22 @@ test('unfolds folded lines and unescapes text values', () => {
   assert.equal(l.room, '134 K, 133 K; 131 K');
 });
 
+test('alarms inside an event (the reminder feed) do not change the class', () => {
+  const p = plan(event([
+    'UID:a@test',
+    'DTSTART;TZID=Europe/Warsaw:20261002T080000',
+    'DTEND;TZID=Europe/Warsaw:20261002T093500',
+    'SUMMARY:Matematyka I',
+    'LOCATION:314 S',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Przypomnienie', 'TRIGGER:-PT15M', 'END:VALARM',
+  ]));
+  const [l] = allLessons(p);
+  assert.equal(allLessons(p).length, 1);
+  assert.equal(l.subject_full, 'Matematyka I');
+  assert.equal(l.room, '314 S');
+  assert.equal(l.start, '08:00');
+});
+
 test('decode unfolds raw bytes before UTF-8 decoding, even inside a multi-byte character', () => {
   // "Żywienie" with the fold placed between the two bytes of "Ż" (0xC5 0xBB), plus a UTF-8 BOM
   const head = Buffer.from('﻿BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:z@test\r\nDTSTART:20261002T080000\r\nDTEND:20261002T093500\r\nSUMMARY:', 'utf8');
@@ -238,4 +254,29 @@ test('the WCY26KY3S1 calendar matches the pinned plan snapshot', () => {
   assert.equal(p.meta.group, 'WCY26KY3S1');
   assert.equal(p.weeks.length, 22);
   assert.deepEqual(p, snapshot);
+});
+
+test('a class listed twice (same time, subject, type and room) is shown once', () => {
+  const ev = (room) => event(['UID:x' + room, 'DTSTART;TZID=Europe/Warsaw:20261015T100000', 'DTEND;TZID=Europe/Warsaw:20261015T113000',
+    'SUMMARY:Matematyka', 'CATEGORIES:Wykład', 'LOCATION:' + room]);
+  const p = plan([...ev('A1'), ...ev('A1'), ...ev('B2')]);
+  assert.equal(allLessons(p).length, 2);
+});
+
+test('subjectsOf lists every subject with its count, sorted', () => {
+  const ev = (n, s) => event(['UID:' + n, 'DTSTART:20261015T100000', 'DTEND:20261015T113000', 'SUMMARY:' + s, 'X-PLAN-COLOR:#aabbcc']);
+  const parsed = PlanICS.parse(cal([...ev(1, 'Fizyka'), ...ev(2, 'Algebra'), ...ev(3, 'Fizyka')]));
+  assert.deepEqual(PlanICS.subjectsOf(parsed).map((s) => [s.name, s.count, s.color]), [['Algebra', 1, '#aabbcc'], ['Fizyka', 2, '#aabbcc']]);
+});
+
+test('hidden subjects drop out of the plan and out of the calendar text', () => {
+  const ev = (n, s) => event(['UID:' + n, 'DTSTART:20261015T100000', 'DTEND:20261015T113000', 'SUMMARY:' + s]);
+  const raw = cal([...ev(1, 'Fizyka'), ...ev(2, 'Algebra\, liniowa'), 'X-KEEP:1']);
+  const parsed = PlanICS.parse(raw);
+  assert.deepEqual(allLessons(PlanICS.toPlan(PlanICS.withoutSubjects(parsed, ['Fizyka']))).map((l) => l.subject_full), ['Algebra, liniowa']);
+  const text = PlanICS.filterText(raw, ['Algebra, liniowa']);
+  assert.ok(text.includes('SUMMARY:Fizyka') && !text.includes('Algebra'));
+  assert.ok(text.includes('X-KEEP:1') && text.trim().endsWith('END:VCALENDAR'));
+  assert.equal(PlanICS.parse(text).events.length, 1);
+  assert.equal(PlanICS.filterText(raw, []), raw);
 });
