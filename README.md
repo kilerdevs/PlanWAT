@@ -130,7 +130,7 @@ prostu nie ma:
 | Eksport i subskrypcja kalendarza (`.ics`) | **Za darmo, dla każdego** | W części za abonamentem |
 | Reklamy, śledzenie, cookies | **Brak** | Różnie |
 | Cena | **0 zł, na zawsze** | Do ustalenia przy płatności |
-| Kod źródłowy | **Otwarty, na licencji MIT** | Jak to działa i co dzieje się z danymi, trzeba przyjąć na słowo |
+| Kod źródłowy | **Otwarty, na licencji MIT** | Jak to działa i co dzieje się z danymi, trzeba przyjąć na słowo (trust me bro) |
 
 > [!IMPORTANT]
 > **PlanWAT nigdy nie poprosi Cię o adres e-mail**: ani studencki, ani prywatny, ani żaden inny, a także o hasło czy kod.
