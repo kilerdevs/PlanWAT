@@ -15,6 +15,10 @@ All notable changes to PlanWAT are documented here. The format follows
   any calendar that does.
 
 ### Added
+- Group page: every class shows which meeting of its subject and type it is over the term, e.g. "Wykład · 3/15"
+  (one-off classes stay unnumbered).
+- Group page: tapping a class opens "Gdzie odrobić?" for that very meeting (same subject, type and number in the other
+  groups of the year), with a link to all of the subject's dates.
 - Campus map (`/mapa/`): all WAT buildings on a dark 3D map (MapLibre GL JS, OpenFreeMap tiles), coloured by faculty,
   with search, a faculty legend, 2D/3D, an overview button, walking directions and `?b=<building>` links; it falls back
   to a plain building list when the map cannot load. Rooms on the group page link to their building, and each day's

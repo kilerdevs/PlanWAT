@@ -507,3 +507,41 @@ test('the front page search takes the "/" key and a ?q= link', async ({ page }) 
   await page.keyboard.press('/');
   await expect(page.locator('#groupSearch')).toBeFocused();
 });
+
+test('each class shows which meeting of its subject and type it is', async ({ page }) => {
+  const problems = await openGroup(page);
+  const types = await page.locator('#weekBody .lesson .type').allTextContents();
+  expect(types.some((t) => /^(Wykład|Ćwiczenia|Laboratorium) · \d+\/\d+$/.test(t))).toBe(true);
+  for (const t of types) {
+    const m = t.match(/(\d+)\/(\d+)$/);
+    if (m) expect(Number(m[1])).toBeLessThanOrEqual(Number(m[2]));
+  }
+  expect(problems).toEqual([]);
+});
+
+test('tapping a class finds where to make up that very meeting', async ({ page }) => {
+  await openGroup(page);
+  const lesson = page.locator('#weekBody .lesson.is-now');
+  const type = (await lesson.locator('.type').textContent()).match(/^(.+) · (\d+)\/(\d+)$/);
+  expect(type).not.toBeNull();
+  await lesson.locator('.time').click();
+  await expect(tool(page)).toBeVisible();
+  await expect(page.locator('#toolTitle')).toHaveText('Gdzie odrobić: Matematyka II');
+  await expect(tool(page)).toContainText(`Spotkanie: ${type[1]} nr ${type[2]} z ${type[3]}`);
+  await expect(tool(page).locator('p[role="status"]')).toContainText(/Znaleziono \d+ termin|Brak tego spotkania/);
+  for (const li of await tool(page).locator('ul.rows li').all()) {
+    await expect(li.locator('.m')).toContainText(`· nr ${type[2]}`);
+  }
+  // the whole subject is one step away
+  await tool(page).getByRole('button', { name: 'Pokaż wszystkie terminy przedmiotu' }).click();
+  await expect(tool(page).locator('#cuType')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(tool(page)).toBeHidden();
+
+  // the room link inside the class keeps going to the map, and the subject is a keyboard-reachable button
+  await expect(lesson.locator('a.room')).toHaveAttribute('href', /^\.\.\/mapa\/\?b=/);
+  await lesson.locator('button.subj').focus();
+  await page.keyboard.press('Enter');
+  await expect(tool(page)).toBeVisible();
+  await noCsp(page);
+});

@@ -51,6 +51,7 @@ The interface is Polish; the code and documentation are English.
   and finished classes recede; the class in progress fills its colour capsule as it runs.
 - **Navigation:** arrows, swipe, keyboard (`←` `→` `T` `Esc`), a week picker sheet, and a "Bieżący tydzień" pill to jump
   back. Phones scroll to the current class on open.
+- **Meeting numbers:** every class shows which meeting of its subject and type it is, e.g. "Wykład · 3/15".
 - **Three views:** Tydzień, **Lista** (today onwards, past days on request) and **Miesiąc** (tap a day to open its week);
   breaks of 30 minutes or more show as "Okienko" between classes.
 - **Subject legend** that highlights one subject across the week, and **subject progress** (classes done out of the
@@ -59,6 +60,7 @@ The interface is Polish; the code and documentation are English.
   a 2D/3D switch and walking directions. Rooms in the plan link to their building, and each day's "Mapa" link shows
   that day's classes and buildings in order.
 - **Gdzie odrobić?** finds the same class in the other groups of the year, marking the ones that clash with your plan.
+  Tapping a class runs it for that very meeting (same type and number).
 - **Porównaj grupy:** up to four plans side by side, week by week, with the time all of them are free.
 - **Statystyki:** hours per week, per weekday and per class type, earliest start, latest end, longest day, breaks.
 - **Download, subscribe** (Google Calendar, Apple Calendar via webcal, a copyable feed link) and **share** the plan;

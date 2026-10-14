@@ -605,6 +605,20 @@
     letter-spacing: -0.012em;
     overflow-wrap: anywhere;
   }
+  button.subj {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .lesson[data-catchup] { cursor: pointer; }
+  @media (hover: hover) { .lesson[data-catchup]:hover .subj { text-decoration: underline; text-decoration-color: var(--t3); text-underline-offset: 3px; } }
   .type { margin-top: 2px; font-size: var(--fs-13); color: var(--t2); }
   .meta {
     display: flex;
@@ -1631,6 +1645,14 @@
     parent.appendChild(a);
   }
 
+  /* "Wykład · 3/15": the class type and which meeting of its subject and type it is (no number for a one-off) */
+  function typeLine(ev) {
+    var type = TYPE_SHORT[ev.type_full] || ev.type_full || '';
+    var o = state.ord && state.ord[PI.lessonKey(ev)];
+    if (!o || o.of < 2) return type;
+    return (type ? type + ' · ' : '') + o.n + '/' + o.of;
+  }
+
   /* one class as a row (phone list, list view) or a tile (desktop week grid) */
   function lessonRow(ev, dtIso) {
     var row = el('div', 'lesson');
@@ -1654,8 +1676,18 @@
     st.appendChild(icon('clock', 'i-sm st-clock'));
     st.appendChild(el('span', 'st-text'));
     info.appendChild(st);
-    info.appendChild(el('div', 'subj', ev.subject_full));
-    info.appendChild(el('div', 'type', TYPE_SHORT[ev.type_full] || ev.type_full));
+    /* tapping the class finds where to make up this very meeting ("Gdzie odrobić?"); the subject is the
+       keyboard-reachable button for it, and links inside the row (the room) keep their own job */
+    var subj = el('button', 'subj', ev.subject_full);
+    subj.type = 'button';
+    subj.title = 'Gdzie odrobić to spotkanie?';
+    info.appendChild(subj);
+    row.setAttribute('data-catchup', '');
+    row.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('a')) return;
+      openMeeting(ev);
+    });
+    info.appendChild(el('div', 'type', typeLine(ev)));
 
     var metaRow = el('div', 'meta');
     if (ev.room && ev.room !== '-') {
@@ -1882,7 +1914,7 @@
     $('liveRoomWrap').hidden = !hasRoom;
     $('liveRoom').textContent = hasRoom ? main.room : '';
     $('liveTime').textContent = main.start + '–' + main.end;
-    $('liveType').textContent = TYPE_SHORT[main.type_full] || main.type_full;
+    $('liveType').textContent = typeLine(main);
     var nx = $('liveNext');
     if (cur && next) {
       var nextRoom = next.room && next.room !== '-' ? ' · ' + next.room : '';
@@ -2860,17 +2892,34 @@
   }
 
   /* ---------- "Odrabianie": the same class in another group of the year ---------- */
-  function openCatchUp(subject, types) {
+  /* "Gdzie odrobić?" for one class: the same subject, type and meeting number in the other groups */
+  function openMeeting(ev) {
+    var o = state.ord && state.ord[PI.lessonKey(ev)];
+    var types = {};
+    PI.lessons(state.data).forEach(function (l) { if (l.subject_full === ev.subject_full) types[l.type_full || 'Inne'] = 1; });
+    openCatchUp(ev.subject_full, Object.keys(types), o ? { type: ev.type_full || '', n: o.n, of: o.of, date: ev.date } : null);
+  }
+
+  function openCatchUp(subject, types, meeting) {
     var me = groupCode(), year = PI.yearOf(me);
-    var opts = { type: '', free: true, limit: 40 };
+    var opts = { type: meeting ? meeting.type : '', free: true, limit: 40 };
     var draw = function (data) {
       openTool('Gdzie odrobić: ' + subject, function (body) {
-        para(body, 'Te same zajęcia, o tym samym numerze w semestrze, w innych grupach Twojego kierunku i rocznika, od dziś do końca semestru. Numer (nr) musi się zgadzać: drugie ćwiczenia odrabiasz na drugich ćwiczeniach. Udział w zajęciach innej grupy uzgodnij z prowadzącym.');
-        var kinds = [['', 'Wszystkie']].concat(types.filter(function (t) { return t !== 'Inne'; }).map(function (t) { return [t, t]; }));
-        body.appendChild(choices('Rodzaj zajęć', 'cuType', kinds, opts.type, function (v) {
-          opts.type = v; opts.limit = 40; draw(data);
-          $('cuType').querySelector('[aria-pressed="true"]').focus();
-        }));
+        if (meeting) {
+          para(body, 'Spotkanie: ' + (meeting.type || 'zajęcia') + ' nr ' + meeting.n + ' z ' + meeting.of + ' (' + shortDate(meeting.date) + '). ' +
+            'Poniżej to samo spotkanie, o tym samym numerze, w innych grupach Twojego kierunku i rocznika, od dziś do końca semestru. Udział w zajęciach innej grupy uzgodnij z prowadzącym.');
+          var all = body.appendChild(el('button', 'link', 'Pokaż wszystkie terminy przedmiotu'));
+          all.type = 'button';
+          all.id = 'cuAll';
+          all.addEventListener('click', function () { meeting = null; opts.type = ''; opts.limit = 40; draw(data); $('cuType').querySelector('[aria-pressed="true"]').focus(); });
+        } else {
+          para(body, 'Te same zajęcia, o tym samym numerze w semestrze, w innych grupach Twojego kierunku i rocznika, od dziś do końca semestru. Numer (nr) musi się zgadzać: drugie ćwiczenia odrabiasz na drugich ćwiczeniach. Udział w zajęciach innej grupy uzgodnij z prowadzącym.');
+          var kinds = [['', 'Wszystkie']].concat(types.filter(function (t) { return t !== 'Inne'; }).map(function (t) { return [t, t]; }));
+          body.appendChild(choices('Rodzaj zajęć', 'cuType', kinds, opts.type, function (v) {
+            opts.type = v; opts.limit = 40; draw(data);
+            $('cuType').querySelector('[aria-pressed="true"]').focus();
+          }));
+        }
         var chk = el('label', 'check');
         var cb = el('input');
         cb.type = 'checkbox';
@@ -2884,9 +2933,11 @@
         if (data.error) { para(body, 'Nie udało się wczytać planów rocznika. Spróbuj ponownie później.', 'muted'); return; }
         var today = todayIso(), mins = nowMinutes();
         var found = PI.catchUp(data, me, state.byDate, subject, opts.type, today).filter(function (f) {
+          if (meeting && (f.n !== meeting.n || PI.norm(f.type) !== PI.norm(meeting.type))) return false;
           return !(f.date === today && f.end <= mins) && (!opts.free || !f.clash);
         });
         var count = body.appendChild(el('p', 'muted', found.length ? 'Znaleziono ' + found.length + ' ' + PI.plural(found.length, 'termin', 'terminy', 'terminów') + '.' :
+          meeting ? 'Brak tego spotkania w innych grupach kierunku od dziś do końca semestru.' :
           'Brak takich zajęć w innych grupach kierunku do końca semestru.'));
         count.setAttribute('role', 'status');
         if (!found.length) return;
@@ -2928,6 +2979,7 @@
 
   function boot(data) {
     state.data = data;
+    state.ord = window.PlanInsights.ordinals(data);
     state.byDate = window.PlanInsights.byDate(data);
     state.days = DAY_ORDER.filter(function (k) {
       return WEEKEND.indexOf(k) < 0 || data.weeks.some(function (w) { return ((w.days && w.days[k]) || []).length > 0; });

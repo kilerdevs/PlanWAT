@@ -69,6 +69,20 @@
     return Object.keys(by).sort(function (a, b) { return a.localeCompare(b, 'pl'); }).map(function (k) { return by[k]; });
   }
 
+  /* which meeting of its subject and type each class is: lessonKey -> {n, of}, e.g. the 3rd of 15 lectures.
+     Counted over the whole term in date order, the same way catchUp numbers the classes of other groups. */
+  function ordinals(plan) {
+    var all = lessons(plan), seen = {}, totals = {}, out = {};
+    var kind = function (l) { return norm(l.subject_full) + '|' + (norm(l.type_full) || 'inne'); };
+    all.forEach(function (l) { totals[kind(l)] = (totals[kind(l)] || 0) + 1; });
+    all.forEach(function (l) {
+      var k = kind(l);
+      seen[k] = (seen[k] || 0) + 1;
+      out[lessonKey(l)] = { n: seen[k], of: totals[k] };
+    });
+    return out;
+  }
+
   /* numbers for the statistics sheet */
   function stats(plan) {
     var all = lessons(plan);
@@ -250,7 +264,7 @@
 
   var PlanInsights = {
     toMin: toMin, hhmm: hhmm, fmtDuration: fmtDuration, plural: plural, norm: norm,
-    lessons: lessons, gaps: gaps, isExam: isExam, subjectProgress: subjectProgress, stats: stats,
+    lessons: lessons, gaps: gaps, isExam: isExam, subjectProgress: subjectProgress, ordinals: ordinals, stats: stats,
     lessonKey: lessonKey, fingerprint: fingerprint, diff: diff,
     freeWindows: freeWindows, intervals: intervals, overlaps: overlaps, byDate: byDate,
     yearOf: yearOf, peersOf: peersOf, catchUp: catchUp,
