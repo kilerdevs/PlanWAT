@@ -750,3 +750,26 @@ test('the tour stays closed for automated browsers unless asked, and on the desk
   await page.waitForTimeout(2000);
   await expect(page.locator('#tourSheet')).toBeHidden();
 });
+
+test('every finished class has its tick, on earlier days as well as today, and later ones do not', async ({ page }) => {
+  await openGroup(page);
+  const past = page.locator('.day.is-past .lesson');
+  expect(await past.count()).toBeGreaterThan(0);
+  expect(await page.locator('.day.is-past .lesson:not(.is-done)').count()).toBe(0);
+  await expect(past.first().locator('.tick')).toBeVisible();
+  const future = page.locator('.day:not(.is-past):not(.is-today) .lesson');
+  if (await future.count()) await expect(future.first().locator('.tick')).toBeHidden();
+  // an earlier week is all ticked too
+  await page.keyboard.press('ArrowLeft');
+  const earlier = page.locator('.lesson');
+  await expect(earlier.first()).toBeVisible();
+  expect(await page.locator('.lesson:not(.is-done)').count()).toBe(0);
+  await expect(earlier.first().locator('.tick')).toBeVisible();
+});
+
+test('the front page has no install link; installing is offered on the group page only', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#installBtn')).toHaveCount(0);
+  await page.goto(GROUP);
+  await expect(page.locator('#installBtn')).toHaveCount(1);
+});

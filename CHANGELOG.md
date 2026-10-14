@@ -21,7 +21,7 @@ All notable changes to PlanWAT are documented here. The format follows
 ### Added
 - Light theme: follows the system by default, with an Auto / Ciemny / Jasny switch on the front and group pages (stored in the browser only; the map stays dark).
 - "Drukuj / PDF" now produces one clean A4 sheet per week: black on white, one line per class, no buttons or browser header and footer.
-- Installable app: an "Zainstaluj aplikację" button on the front page and group pages when the browser offers installation
+- Installable app: a "Zainstaluj aplikację" button on group pages (not on the front page) when the browser offers installation
   (Chrome, Edge, Android), a Safari hint on iOS, iOS web-app meta tags, and the map page links the manifest too; tests read
   Chromium's own installability check for the front page, a group and the map.
 - "Moje przedmioty" on the group page: untick the subjects you do not attend (electives, languages); they disappear from the
