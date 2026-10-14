@@ -994,6 +994,7 @@
   .gap a { color: var(--t2); text-decoration: underline; text-underline-offset: 2px; }
   .gap a:hover { color: var(--t1); }
   .gap.tight, .gap.tight .i { color: var(--warn); } /* the walk is longer than the break */
+  .gaptag { display: none; }
 
   /* ================= list view ================= */
   .agenda { padding-top: var(--sp-2); padding-bottom: var(--sp-6); }
@@ -1310,6 +1311,14 @@
     .week .lesson .meta { flex-direction: column; gap: 2px; }
     .week .lesson.is-now { background: color-mix(in srgb, var(--accent) 9%, var(--s2)); box-shadow: var(--edge), 0 0 0 1px var(--accent-line); }
     .week .gap { display: none; }
+    .week .gaptag {
+      display: flex; align-items: flex-start; gap: 6px; grid-column: 1 / -1; align-self: end;
+      margin: 2px 0 -4px; padding: 6px 0 0; border-top: 1px dashed var(--line);
+      color: var(--t2); font-size: var(--fs-13); line-height: 1.35; font-variant-numeric: tabular-nums;
+    }
+    .week .gaptag .i { flex: none; margin-top: 2px; color: var(--t3); }
+    .week .gaptag a { color: var(--t2); text-decoration: underline; text-underline-offset: 2px; }
+    .week .gaptag.tight, .week .gaptag.tight .i { color: var(--warn); }
     .week .lesson.flash { animation: flash-ring 1.4s var(--ease-out); }
     @keyframes flash-ring { 0%, 25% { box-shadow: var(--edge), 0 0 0 3px rgba(10, 132, 255, 0.6); } }
   }
@@ -1405,7 +1414,7 @@
 
     /* what a sheet of paper does not need */
     .page::before, .backlink, .semprog, .tools, .notice, .viewbar, .live, .skel, .hint, .themeswitch, .toast, .todaypill,
-    .bar .round, .weekbtn .i, .month-head .round, #progress, .legend-tip, .gap, .daymap, .count, .today-pill, .colbg,
+    .bar .round, .weekbtn .i, .month-head .round, #progress, .legend-tip, .gap, .gaptag, .daymap, .count, .today-pill, .colbg,
     .st, .dur, .tick, .room .i, .room svg, .bar::before, .legend { display: none !important; }
     .wrap { max-width: none; padding-left: 0; padding-right: 0; margin: 0; }
 
@@ -1845,6 +1854,13 @@
       text.appendChild(document.createTextNode(' · ~' + walk.minutes + ' min pieszo' + (tight ? ', przerwa ' + brk + ' min' : '')));
     }
     group.appendChild(row);
+    /* the desktop grid hides the full-width row; the same line then sits at the foot of the class it follows */
+    var card = row.previousElementSibling;
+    if (card && card.classList.contains('lesson')) {
+      var tag = row.cloneNode(true);
+      tag.className = tight ? 'gaptag tight' : 'gaptag';
+      card.appendChild(tag);
+    }
   }
 
   /* ---------- rendering ---------- */
