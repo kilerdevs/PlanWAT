@@ -201,10 +201,25 @@
     return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) > 0.179 ? '#111' : '#fff';
   }
 
+  /* walking minutes between two buildings: straight-line distance, x1.3 for paths that are not straight, 80 m/min */
+  function walkMinutes(a, b) {
+    var rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+    var h = Math.pow(Math.sin(dLat / 2), 2) + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.pow(Math.sin(dLng / 2), 2);
+    var metres = 2 * 6371000 * Math.asin(Math.sqrt(h));
+    return Math.max(1, Math.ceil(metres * 1.3 / 80));
+  }
+
+  /* the walk from one class's room to the next one's: {from, to, minutes}, or null when a building is unknown or the same */
+  function transfer(prevRoom, nextRoom) {
+    var a = findBuilding(roomBuilding(prevRoom)), b = findBuilding(roomBuilding(nextRoom));
+    if (!a || !b || a === b) return null;
+    return { from: a, to: b, minutes: walkMinutes(a, b) };
+  }
+
   var Campus = {
     FACULTIES: FACULTIES, BUILDINGS: BUILDINGS, BOUNDS: BOUNDS,
     findBuilding: findBuilding, roomBuilding: roomBuilding, search: search, dayStops: dayStops,
-    directionsUrl: directionsUrl, inkOn: inkOn
+    directionsUrl: directionsUrl, inkOn: inkOn, walkMinutes: walkMinutes, transfer: transfer
   };
   if (typeof module === 'object' && module.exports) module.exports = Campus;
   else root.Campus = Campus;

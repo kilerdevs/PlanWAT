@@ -23,6 +23,8 @@ module.exports = defineConfig({
     locale: 'pl-PL',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    // The offline service worker would answer requests the specs mock with page.route; only offline.spec.js allows it.
+    serviceWorkers: 'block',
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, ...chromium } },

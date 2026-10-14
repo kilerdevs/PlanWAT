@@ -15,6 +15,14 @@ All notable changes to PlanWAT are documented here. The format follows
   any calendar that does.
 
 ### Added
+- Group page: walking time between classes in different buildings ("Do bud. 65 · ~6 min pieszo", linked to the map),
+  flagged when the walk is longer than the break; the Live card adds it to the next class.
+- Offline and installable: a service worker (`/sw.js`, network first) keeps the pages and plans you opened, the group
+  page says when it shows the saved copy, and web app manifests and icons let each group be added to the home screen.
+- Calendar reminders: `<GROUP>/plan-przypomnienia.ics`, the same calendar with a reminder 15 minutes before each class,
+  offered by a switch in "Dodaj do kalendarza".
+- Public-site basics: `/prywatnosc/` (privacy notice and terms of use), a footer note that PlanWAT never asks for a
+  password, `robots.txt`, `/.well-known/security.txt`, and `build.py --noindex` for the dev preview.
 - Group page: a "Wszystkie grupy" link above the group name goes back to the list of groups.
 - Group page: every class shows which meeting of its subject and type it is over the term, e.g. "Wykład · 3/15"
   (one-off classes stay unnumbered).

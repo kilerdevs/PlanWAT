@@ -12,6 +12,8 @@
 <meta name="description" content="Plany zajęć grup WAT: nieoficjalny, czytelny na telefonie widok planu.">
 <title>Plany zajęć</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Crect x='13' y='16' width='38' height='35' rx='9' fill='none' stroke='%23f5f5f7' stroke-width='3.5'/%3E%3Cpath d='M13 27h38M24 11v9M40 11v9' stroke='%23f5f5f7' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='40' cy='39.5' r='4.5' fill='%230a84ff'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet">
@@ -411,6 +413,8 @@
     <p>PlanWAT to prywatna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Serwis nie jest uczelnianym systemem ani jego częścią, a plany pochodzą z ogólnodostępnych stron wydziałów.</p>
     <p>Zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie. Serwis nie używa plików cookie ani narzędzi śledzących; ulubione grupy zapisują się tylko w Twojej przeglądarce.</p>
     <p>Opiekun projektu zobowiązuje się, że PlanWAT pozostanie darmowy dla wszystkich studentów.</p>
+    <p><strong>PlanWAT nigdy nie poprosi Cię o hasło</strong> ani inne dane logowania (USOS, e-dziekanat, poczta). Jeśli ktoś o nie prosi w imieniu PlanWAT, to oszustwo.</p>
+    <p><a href="prywatnosc/">Prywatność i zasady</a> · <a href="https://github.com/kilerdevs/PlanWAT/issues">Zgłoś błąd</a></p>
   </footer>
 </main>
 <script>@@ICS_JS@@</script>
@@ -697,6 +701,7 @@
       $('liveSec').hidden = !n;
     });
   }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {});
   renderSaved();
   renderLive();
   /* keep "now" honest while the page stays open */

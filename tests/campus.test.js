@@ -87,3 +87,18 @@ test('helpers: walking directions and readable marker ink', () => {
   assert.equal(C.inkOn('#ffffff'), '#111');
   assert.equal(C.inkOn('#000000'), '#fff');
 });
+
+test('walking time between the buildings of consecutive classes', () => {
+  const main = C.findBuilding('100'), wcy = C.findBuilding('65');
+  const m = C.walkMinutes(main, wcy);
+  assert.ok(m >= 3 && m <= 10, `100 -> 65 takes ${m} min`);
+  assert.equal(C.walkMinutes(wcy, main), m);
+  assert.equal(C.walkMinutes(main, main), 1);
+  const t = C.transfer('307 S', '201 65');
+  assert.equal(t.from.code, '100');
+  assert.equal(t.to.code, '65');
+  assert.equal(t.minutes, m);
+  assert.equal(C.transfer('314 S', '1 100'), null);  // the same building
+  assert.equal(C.transfer('314 S', '1002 HILTON'), null);  // unknown building
+  assert.equal(C.transfer('', '201 65'), null);
+});
