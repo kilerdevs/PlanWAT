@@ -70,7 +70,7 @@ test('most rooms in the repository timetables resolve to a building', () => {
     for (const f of fs.readdirSync(path.join(dir, term))) {
       if (!f.endsWith('.ics')) continue;
       for (const m of fs.readFileSync(path.join(dir, term, f), 'utf8').matchAll(/^LOCATION:(.*)$/gm)) {
-        const room = m[1].trim().replace(/\;/g, ';').replace(/\\,/g, ',');
+        const room = m[1].trim().replace(/\\;/g, ';').replace(/\\,/g, ',');
         rooms.set(room, (rooms.get(room) || 0) + 1);
       }
     }
