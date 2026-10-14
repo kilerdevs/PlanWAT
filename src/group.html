@@ -2720,8 +2720,8 @@
       store.set('tour', 1);
     }
     $('tourBtn').addEventListener('click', function (e) { open(e.currentTarget); });
-    /* once per browser and only where swiping moves the week; automated browsers get it with ?tour=1 */
-    var auto = !isGrid() && !store.get('tour', 0) && (!navigator.webdriver || /[?&]tour=1(&|$)/.test(location.search));
+    /* once per browser, on every layout; automated browsers get it with ?tour=1 */
+    var auto = !store.get('tour', 0) && (!navigator.webdriver || /[?&]tour=1(&|$)/.test(location.search));
     if (auto) setTimeout(function () { if (!document.hidden && state.view === 'week') open(null); }, 1400);
   }
 
