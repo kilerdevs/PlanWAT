@@ -144,3 +144,24 @@ test('month grid starts on Monday and pads the edges', () => {
   assert.deepEqual(oct[4], ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31', null]);
   assert.equal(I.monthGrid(2027, 1).length, 4); // February 2027 starts on a Monday
 });
+
+test('ordinals number each class within its subject and type over the term', () => {
+  const plan = planOf([
+    L('2026-10-05', '08:00', '09:35', 'Matematyka dyskretna', 'Wykład'),
+    L('2026-10-05', '09:50', '11:25', 'Matematyka dyskretna', 'Ćwiczenia'),
+    L('2026-10-12', '08:00', '09:35', 'Matematyka dyskretna', 'Wykład'),
+    L('2026-10-19', '08:00', '09:35', 'matematyka  dyskretna', 'Wykład'),
+    L('2026-10-19', '11:40', '13:15', 'Fizyka', ''),
+  ]);
+  const o = I.ordinals(plan);
+  const of = (l) => o[I.lessonKey(l)];
+  const all = plan.weeks.flatMap((w) => Object.values(w.days).flat());
+  assert.deepEqual(all.map((l) => [l.date, l.type_full, of(l).n, of(l).of]), [
+    ['2026-10-05', 'Wykład', 1, 3], ['2026-10-05', 'Ćwiczenia', 1, 1],
+    ['2026-10-12', 'Wykład', 2, 3],
+    ['2026-10-19', 'Wykład', 3, 3], ['2026-10-19', '', 1, 1],
+  ]);
+  const real = I.ordinals(REAL);
+  const firstWeek = I.lessons(REAL).slice(0, 5).map((l) => real[I.lessonKey(l)]);
+  firstWeek.forEach((x) => assert.ok(x.n >= 1 && x.n <= x.of));
+});
