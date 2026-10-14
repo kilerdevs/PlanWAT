@@ -15,6 +15,8 @@ All notable changes to PlanWAT are documented here. The format follows
   any calendar that does.
 
 ### Added
+- Automatic refresh now covers WCY: group list read from the faculty's jump menu, term label and dates set by the driver, and
+  pages that still show last semester's lessons are skipped instead of being filed under the new term.
 - Group page: walking time between classes in different buildings ("Do bud. 65 · ~6 min pieszo", linked to the map),
   flagged when the walk is longer than the break; the Live card adds it to the next class.
 - Offline and installable: a service worker (`/sw.js`, network first) keeps the pages and plans you opened, the group

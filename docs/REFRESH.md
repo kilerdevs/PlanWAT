@@ -33,7 +33,7 @@ pages.yml     checks out `data` and lays its timetables over prod/ and dev/ befo
 | WLO, WEL, WIM | `plansoft` | enabled |
 | IOE | `plansoft` (pinned base: the winter plans live under the stale `lato/` dir; the grid is transposed and its cells read SUBJ/type/room/alias, converted with `wlo2ics --faculty ioe`) | enabled |
 | WML | `wml` (Plansoft pages; the live `index.xml` is resolved via the landing-page iframe, since the faculty republishes under revisioned directories) | enabled |
-| WCY | `wcy` | disabled until a dry run proves plain HTTP works (the old crawler used a browser) |
+| WCY | `wcy` | plain HTTP works (checked 2026-10-14); pages still showing last semester are skipped, so old calendars stay until the new plan is published |
 | WTC | `wtc` | enabled; `index.xml` lists one Plansoft PDF per group, converted with `pymupdf` (installed by the refresh action) |
 
 Each group has exactly one canonical owner, so no plan is published twice under two codes: WEL skips the
