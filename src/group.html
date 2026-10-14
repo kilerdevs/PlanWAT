@@ -213,6 +213,13 @@
     padding-top: calc(env(safe-area-inset-top) + 40px);
     padding-bottom: var(--sp-5);
   }
+  .backlink {
+    display: inline-flex; align-items: center; gap: 2px;
+    min-height: 32px; margin: -8px 0 var(--sp-2) -6px; padding: 0 8px 0 2px;
+    border-radius: 8px; color: var(--t2); font-size: var(--fs-15); text-decoration: none;
+  }
+  .backlink:hover { color: var(--t1); background: var(--s2); }
+  .backlink .i { width: 18px; height: 18px; }
   .title {
     font-size: var(--fs-40);
     font-weight: 700;
@@ -1363,7 +1370,7 @@
 
   @media print {
     :root { --bg: #fff; --s1: #fff; --s2: #fff; --s2-hover: #fff; --s3: #f2f2f2; --s4: #e5e5e5; --t1: #111; --t2: #444; --t3: #555; --line: #ddd; --accent-text: #0a5ec0; color-scheme: light; }
-    .page::before, .bar .round, .weekbtn .i, .todaypill, .hint, .live, .skel, .dl, .tools, .notice, .viewbar, #progress, .legend-tip, .month-head .round, .toast, .gap { display: none !important; }
+    .page::before, .backlink, .bar .round, .weekbtn .i, .todaypill, .hint, .live, .skel, .dl, .tools, .notice, .viewbar, #progress, .legend-tip, .month-head .round, .toast, .gap { display: none !important; }
     *, *::before, *::after { animation: none !important; transition: none !important; }
     .bar { position: static; }
     .bar::before { display: none; }
@@ -1401,6 +1408,7 @@
 <main class="page">
   <header class="hero wrap" id="hero">
     <div class="hero-main">
+      <a class="backlink enter" id="backLink" href="../"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chevron-left"/></svg>Wszystkie grupy</a>
       <h1 class="title enter" id="groupName">@@GROUP@@</h1>
       <p class="sub enter d1" id="termLine">@@TERM_LINE@@</p>
       <div class="semprog enter d2" id="semProg">

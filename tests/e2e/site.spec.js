@@ -151,6 +151,14 @@ test('renders the current week from plan.ics with live status and no CSP violati
   expect(problems).toEqual([]);
 });
 
+test('the group page links back to the list of groups', async ({ page }) => {
+  await openGroup(page);
+  const back = page.locator('#backLink');
+  await expect(back).toBeVisible();
+  await expect(back).toHaveAttribute('href', '../');
+  await expect(back).toHaveText('Wszystkie grupy');
+});
+
 test('arrow buttons, keys and the current-week pill move between weeks', async ({ page }) => {
   await openGroup(page);
   const pill = page.locator('#todayBtn');
