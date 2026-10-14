@@ -6,7 +6,7 @@ services:
     image: plan-wat:latest
     container_name: PLAN-WAT
     restart: always
-    # Localhost only: public traffic arrives through the cloudflared tunnel.
+    # Localhost only: publish it through a reverse proxy that terminates TLS.
     ports:
       - "127.0.0.1:8088:8080"
     read_only: true

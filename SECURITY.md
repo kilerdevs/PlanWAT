@@ -79,13 +79,13 @@ window (90 days is customary) before public disclosure.
 
 - **Wrong timetable data** (a room or time): please open a
   [timetable issue](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) instead.
-- Headers that GitHub Pages cannot send (`X-Frame-Options`, `frame-ancestors`, …): documented, with the Cloudflare
-  rules that restore them, in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#security-headers-on-pages).
-- Scripts injected by an intermediary such as Cloudflare's bot detection: the page's CSP blocks them.
+- Headers that GitHub Pages cannot send (`X-Frame-Options`, `frame-ancestors`, …): documented, with how to restore
+  them, in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#security-headers-on-pages).
+- Scripts injected by an intermediary such as a proxy's bot detection: the page's CSP blocks them.
 - Loading the Inter typeface from Google Fonts: a documented, deliberate third-party request.
 - On the campus map (`/mapa/`) only: loading MapLibre GL JS from unpkg (SRI-pinned) and map tiles from OpenFreeMap,
   both documented, deliberate third-party requests.
-- Denial of service against GitHub Pages or Cloudflare infrastructure, and automated scanner output without a
+- Denial of service against GitHub Pages infrastructure, and automated scanner output without a
   demonstrated impact.
 
 ## Safe harbor
