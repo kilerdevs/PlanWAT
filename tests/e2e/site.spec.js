@@ -102,6 +102,9 @@ test('the privacy page is linked from the footer, accessible and runs no script'
   await page.locator('footer a[href="prywatnosc/"]').click();
   await expect(page).toHaveURL(/\/prywatnosc\/$/);
   await expect(page.locator('h1')).toHaveText('Prywatność i zasady');
+  // read before the scan: axe-core fetches stylesheets itself, which this page's connect-src 'none' blocks
+  csp.push(...(await page.evaluate(() => window.__csp || [])));
+  expect(csp).toEqual([]);
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .analyze();
@@ -109,8 +112,6 @@ test('the privacy page is linked from the footer, accessible and runs no script'
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
   expect(serious).toEqual([]);
-  csp.push(...(await page.evaluate(() => window.__csp || [])));
-  expect(csp).toEqual([]);
 });
 
 test('on a weekend without classes the next week is shown', async ({ page }) => {
