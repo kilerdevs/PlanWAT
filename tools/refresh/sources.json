@@ -36,8 +36,8 @@
     "label": "WCY",
     "index": "https://planzajec.wcy.wat.edu.pl/pl/rozklad",
     "page": "https://planzajec.wcy.wat.edu.pl/pl/rozklad?grupa_id={group}",
-    "enabled": false,
-    "note": "Enable after a dry run proves plain HTTP works; the old crawler used a browser."
+    "enabled": true,
+    "note": "Enabled 2026-10-14 after a dry run from the crawling machine (plain HTTP works). The faculty shows last semester's lessons until the new plan is published; the driver skips such pages, so the calendars in the repo stay until then."
   },
   "wml": {
     "driver": "wml",
