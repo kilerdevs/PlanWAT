@@ -5,8 +5,10 @@
 @@CSP@@
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+@@THEME_HEAD@@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="PlanWAT">
@@ -38,9 +40,9 @@
     --t4: #6e6e73;
 
     /* hairlines and edge light */
-    --line: rgba(255, 255, 255, 0.08);
-    --line-2: rgba(255, 255, 255, 0.14);
-    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --line: rgba(var(--hl), 0.08);
+    --line-2: rgba(var(--hl), 0.14);
+    --edge: inset 0 1px 0 rgba(var(--hl), 0.06);
 
     /* the one accent */
     --accent: #0a84ff;
@@ -367,7 +369,7 @@
     width: 4px;
     min-height: 100%;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--hl), 0.12);
     background: color-mix(in srgb, var(--c) 26%, transparent);
     overflow: hidden;
   }
@@ -414,7 +416,7 @@
     pointer-events: none;
   }
   :root[data-vt] .bar { view-transition-name: bar; }
-  :root[data-vt] .bar.stuck::before { background: rgba(22, 22, 24, 0.95); }
+  :root[data-vt] .bar.stuck::before { background: var(--glass-solid); }
   :root[data-vt] .todaypill { view-transition-name: todaypill; }
   .bar::before {
     content: '';
@@ -516,7 +518,7 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+    background: linear-gradient(90deg, transparent, rgba(var(--hl), 0.05), transparent);
     transform: translateX(-100%);
     animation: shimmer 1.6s var(--ease-out) infinite;
   }
@@ -555,7 +557,7 @@
   .day.is-empty .dayhead { padding-bottom: 0; }
 
   /* past days and finished classes recede through the text tokens, keeping AA contrast */
-  .day.is-past, .lesson.is-done { --t1: #a1a1a6; --t2: #86868b; }
+  .day.is-past, .lesson.is-done { --t1: var(--past-1); --t2: var(--past-2); }
   .dayhead, .lesson { color: var(--t1); }
   .day.is-past .cap, .lesson.is-done .cap { opacity: 0.45; }
 
@@ -794,7 +796,7 @@
     white-space: nowrap;
     cursor: pointer;
     touch-action: manipulation;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.1), 0 16px 40px -12px rgba(0, 0, 0, 0.8);
+    box-shadow: inset 0 1px 0 rgba(var(--hl), 0.1), 0 0 0 1px rgba(var(--hl), 0.1), 0 16px 40px -12px rgba(0, 0, 0, 0.8);
     opacity: 0;
     visibility: hidden;
     transform: translate(-50%, calc(100% + 40px)) scale(0.9);
@@ -831,7 +833,7 @@
   dialog.sheet[open] { display: flex; flex-direction: column; }
   dialog.sheet.dragging { transition: none; }
   dialog.sheet::backdrop {
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--scrim);
     animation: fade-in var(--dur-base) var(--ease-out);
     transition: opacity var(--dur-base) var(--ease-out);
   }
@@ -991,7 +993,7 @@
   .gap .i { color: var(--t3); }
   .gap a { color: var(--t2); text-decoration: underline; text-underline-offset: 2px; }
   .gap a:hover { color: var(--t1); }
-  .gap.tight, .gap.tight .i { color: #ffb340; } /* the walk is longer than the break */
+  .gap.tight, .gap.tight .i { color: var(--warn); } /* the walk is longer than the break */
 
   /* ================= list view ================= */
   .agenda { padding-top: var(--sp-2); padding-bottom: var(--sp-6); }
@@ -1025,7 +1027,7 @@
     transition: background-color var(--dur-fast), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
   }
   .mday:disabled { background: transparent; box-shadow: none; color: var(--t4); cursor: default; }
-  .mday.is-past { --t1: #a1a1a6; }
+  .mday.is-past { --t1: var(--past-1); }
   .mday.is-today { box-shadow: var(--edge), 0 0 0 1px var(--accent-line); }
   .mday .mnum { font-size: var(--fs-13); font-weight: 600; }
   .mday.is-today .mnum { color: var(--accent-text); }
@@ -1095,7 +1097,7 @@
     color: var(--t1);
     font: 500 var(--fs-15) / 1.3 var(--font);
     font-variant-numeric: tabular-nums;
-    color-scheme: dark;
+    color-scheme: inherit;
   }
   .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .choices { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1195,13 +1197,13 @@
     .dl:hover { background: var(--s3); }
     .chip[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--sw) 28%, var(--s2)); }
     .chip:hover .sw { transform: scale(1.3); }
-    .lesson:hover { background-color: rgba(255, 255, 255, 0.025); }
+    .lesson:hover { background-color: rgba(var(--hl), 0.025); }
     .lesson.is-now:hover { background: color-mix(in srgb, var(--accent) 12%, var(--s2)); }
     .opt:hover { background: var(--s3); }
     .seg button:hover { color: var(--t1); }
     .action:hover, .link:hover, .choice:not([aria-pressed="true"]):hover { background: var(--s4); }
     .mday:not(:disabled):hover { background: var(--s3); }
-    .todaypill.show:hover { background: rgba(58, 58, 60, 0.78); }
+    .todaypill.show:hover { background: var(--pill-hover); }
     .legend summary:hover .i { color: var(--t1); }
   }
 
@@ -1318,7 +1320,7 @@
       inset: 0;
       z-index: -1;
       border-radius: inherit;
-      background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, 0.07), transparent 70%);
+      background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), rgba(var(--hl), 0.07), transparent 70%);
       opacity: 0;
       transition: opacity var(--dur-base) var(--ease-out);
       pointer-events: none;
@@ -1388,15 +1390,75 @@
     ::view-transition-group(*) { animation-duration: 0s; }
   }
 
+  /* ---------- print / "Zapisz jako PDF": the shown week as a plain A4 sheet ---------- */
+  @page { size: A4; margin: 0; } /* no margin box, so the browser prints no URL/date header; the body pads instead */
   @media print {
-    :root { --bg: #fff; --s1: #fff; --s2: #fff; --s2-hover: #fff; --s3: #f2f2f2; --s4: #e5e5e5; --t1: #111; --t2: #444; --t3: #555; --line: #ddd; --accent-text: #0a5ec0; color-scheme: light; }
-    .page::before, .backlink, .bar .round, .weekbtn .i, .todaypill, .hint, .live, .skel, .dl, .tools, .notice, .viewbar, #progress, .legend-tip, .month-head .round, .toast, .gap { display: none !important; }
-    *, *::before, *::after { animation: none !important; transition: none !important; }
-    .bar { position: static; }
-    .bar::before { display: none; }
-    .group, .lesson, .session-banner { box-shadow: 0 0 0 1px #ddd !important; break-inside: avoid; }
-    .hero-main, .rv { transform: none !important; opacity: 1 !important; }
+    :root:root:root {
+      --hl: 0, 0, 0; --bg: #fff; --s1: #fff; --s2: #fff; --s2-hover: #fff; --s3: #f2f2f2; --s4: #e5e5e5;
+      --t1: #111; --t2: #444; --t3: #555; --past-1: #111; --past-2: #444; --line: #ddd; --accent-text: #0a5ec0;
+      color-scheme: light;
+    }
+    html, body { background: #fff !important; }
+    body { padding: 10mm 14mm 8mm; font-size: 9.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    *, *::before, *::after { animation: none !important; transition: none !important; box-shadow: none !important; text-shadow: none !important; }
+    .rv, .enter, .hero-main { transform: none !important; opacity: 1 !important; }
+
+    /* what a sheet of paper does not need */
+    .page::before, .backlink, .semprog, .tools, .notice, .viewbar, .live, .skel, .hint, .themeswitch, .toast, .todaypill,
+    .bar .round, .weekbtn .i, .month-head .round, #progress, .legend-tip, .gap, .daymap, .count, .today-pill, .colbg,
+    .st, .dur, .tick, .room .i, .room svg, .bar::before, .legend { display: none !important; }
+    .wrap { max-width: none; padding-left: 0; padding-right: 0; margin: 0; }
+
+    /* header: group, term and facts on three quiet lines */
+    .hero { display: block; margin: 0 0 4mm; padding: 0; }
+    .title { font-size: 20pt; line-height: 1.1; letter-spacing: -0.02em; margin: 0; }
+    .sub { font-size: 10pt; color: #444; margin: 1mm 0 0; }
+    .facts { display: flex; flex-wrap: wrap; gap: 0 6mm; margin: 2mm 0 0; font-size: 8.5pt; color: #555; }
+    .facts > div { display: flex; gap: 1.5mm; }
+    .facts dt { color: #777; }
+    .facts dd { margin: 0; }
+
+    /* the shown week as the sheet's heading */
+    .bar, .bar-inner { position: static; height: auto; min-height: 0; padding: 0; margin: 0 0 1mm; background: none; }
+    .bar-inner { margin: 0; }
+    #weekBody { margin-top: 0; padding-top: 0; }
+    .bar-inner { display: block; padding: 0 0 2mm; }
+    .navcenter { display: flex; align-items: baseline; gap: 4mm; }
+    .weekbtn { display: inline-flex; gap: 1.2mm; width: auto; min-width: 0; height: auto; overflow: visible; padding: 0; background: none; border: 0; font-size: 13pt; font-weight: 700; color: #111; }
+    .navcenter::before { content: 'Tydzień'; font-size: 13pt; font-weight: 600; color: #111; margin-right: 0; }
+    .weekmeta { font-size: 9pt; color: #555; }
+
+    /* days: heading with a rule, then dense rows; a day never splits from its heading */
+    .week { display: block !important; }
+    .week { margin: 0; padding-top: 0; gap: 0; }
+    .day { display: block; margin: 0 0 2.6mm; padding: 0; break-inside: avoid; opacity: 1 !important; }
+    .dayhead { display: flex; align-items: baseline; gap: 2mm; padding: 0 0 1mm; margin: 0; border-bottom: 1.1pt solid #111; break-after: avoid; }
+    .dow { font-size: 11.5pt; font-weight: 700; letter-spacing: 0; }
+    .date { font-size: 9.5pt; color: #444; }
+    .empty-day { margin-left: auto; font-size: 8.5pt; color: #777; }
+    .day.is-empty { margin-top: 0; }
+    .group { padding: 0; margin: 0; background: none !important; border-radius: 0; }
+    .lesson, .lesson.is-now, .lesson.is-done, .lesson.flash {
+      display: grid; grid-template-columns: 21mm 1.1mm minmax(0, 1fr); column-gap: 2.5mm; align-items: stretch;
+      padding: 0.9mm 0; margin: 0; border-radius: 0; background: none !important; border-bottom: 0.5pt solid #ddd; break-inside: avoid;
+    }
+    .group > .lesson:last-child { border-bottom: 0; }
+    .time { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1mm; padding: 0; }
+    .time b { font-size: 10pt; font-weight: 700; color: #111; }
+    .time .end { font-size: 9pt; color: #555; }
+    .time .end::before { content: '\2013\00a0'; }
+    .cap, .day.is-past .cap, .lesson.is-done .cap { width: 1.1mm; min-height: 0; border-radius: 0.6mm; opacity: 1 !important; background: var(--c) !important; }
+    .cap::after { display: none; }
+    .info { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 4mm; align-items: center; padding: 0; }
+    .subj { grid-column: 1; padding: 0; margin: 0; border: 0; background: none; font: inherit; font-size: 10.5pt; font-weight: 600; text-align: left; color: #111; cursor: default; }
+    .type { grid-column: 1; font-size: 8.5pt; color: #555; }
+    .meta { grid-column: 2; grid-row: 1 / span 2; margin: 0; font-size: 9.5pt; font-weight: 600; white-space: nowrap; }
+    .room a, .room { color: #111; text-decoration: none; border: 0; }
+
+    /* a quiet colophon, so a printed sheet says where it came from */
+    .page::after { content: 'Nieoficjalny plan zajęć · PlanWAT · zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie'; display: block; margin-top: 2mm; padding-top: 1.5mm; border-top: 0.5pt solid #ccc; font-size: 7.5pt; color: #777; }
   }
+/*@@THEME_CSS@@*/
 </style>
 </head>
 <body>
@@ -1544,6 +1606,7 @@
     <span class="kb"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> zmieniają tydzień &middot; <kbd>T</kbd> bieżący tydzień &middot; <kbd>Esc</kbd> czyści wyróżnienie</span>
     <span class="touch">Przesuń palcem w bok, aby zmienić tydzień</span>
   </p>
+  <p class="hint wrap"><div class="themeswitch" role="group" aria-label="Motyw"><button type="button" data-theme-set="auto" aria-pressed="true">Auto</button><button type="button" data-theme-set="dark" aria-pressed="false">Ciemny</button><button type="button" data-theme-set="light" aria-pressed="false">Jasny</button></div></p>
   <p class="hint wrap pledge">PlanWAT jest nieoficjalnym projektem studentów. Jego opiekun zobowiązuje się, że serwis pozostanie darmowy dla wszystkich.<br>
     <strong>PlanWAT nigdy nie poprosi Cię o hasło</strong> ani inne dane logowania. <a href="../prywatnosc/">Prywatność i zasady</a></p>
 </main>
