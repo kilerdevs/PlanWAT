@@ -300,7 +300,7 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn('upgrade-insecure-requests', header)
         for page in self.pages():
             html = page.read_text(encoding='utf-8')
-            for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S):
+            for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S | re.I):
                 self.assertIn(sha(block), header, page)
         self.assertIn('https://unpkg.com', header)
         self.assertIn("worker-src 'self' blob:", header)

@@ -3644,8 +3644,10 @@
   /* another term of this group: ?t=<term> opens plan-<term>.ics, but only for a term the page itself links to */
   var planFile = (function () {
     var t = new URLSearchParams(location.search).get('t');
-    var link = t && document.querySelector('#termSwitch a[data-term="' + t.replace(/[^\w-]/g, '') + '"]');
-    return link && !link.hasAttribute('aria-current') ? 'plan-' + link.getAttribute('data-term') + '.ics' : 'plan.ics';
+    /* the file name is built from the validated query value, never from page text */
+    if (!t || !/^[\w-]{1,40}$/.test(t)) return 'plan.ics';
+    var link = Array.prototype.filter.call(document.querySelectorAll('#termSwitch a[data-term]'), function (a) { return a.getAttribute('data-term') === t; })[0];
+    return link && !link.hasAttribute('aria-current') ? 'plan-' + t + '.ics' : 'plan.ics';
   })();
   if (planFile !== 'plan.ics') {
     $('icsLink').setAttribute('href', planFile);
