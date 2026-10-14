@@ -772,3 +772,21 @@ test('the front page has no install link; installing is offered on the group pag
   await page.goto(GROUP);
   await expect(page.locator('#installBtn')).toHaveCount(1);
 });
+
+test('"Gdzie odrobić?" lists only the type of the class that was clicked', async ({ page }) => {
+  await openGroup(page);
+  const subject = 'Podstawy grafiki inżynierskiej'; // has both a lecture and exercises in this plan
+  for (const [type, other] of [['Ćwiczenia', 'Wykład'], ['Wykład', 'Ćwiczenia']]) {
+    await page.goto(GROUP);
+    const row = page.locator(`#weekBody .lesson[data-subject="${subject}"]`).filter({ hasText: type }).first();
+    await row.locator('.subj').click({ force: true });
+    await expect(page.locator('#toolSheet')).toBeVisible();
+    await expect(page.locator('#toolBody > p').first()).toContainText(`Spotkanie: ${type} nr`);
+    await expect(page.locator('#cuType')).toHaveCount(0); // no "all types" switch while a meeting is chosen
+    const rows = page.locator('#toolBody .rows li');
+    await expect(page.locator('#toolBody [role="status"]')).toBeVisible();
+    const texts = await rows.allInnerTexts();
+    for (const t of texts) { expect(t).toContain(type); expect(t).not.toContain(other); }
+    await page.keyboard.press('Escape');
+  }
+});
