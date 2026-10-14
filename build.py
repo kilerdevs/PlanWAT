@@ -5,6 +5,7 @@ Output (default: site/):
     index.html            group list (redirects straight to the group while there is only one)
     <GROUP>/index.html    the timetable page; it fetches ./plan.ics and renders it in the browser
     <GROUP>/plan.ics      the group's current term, byte-for-byte
+    mapa/index.html       campus map (MapLibre from unpkg, tiles from OpenFreeMap: the only page allowed them)
     404.html
 
 Every page carries a hash-pinned Content-Security-Policy in a <meta> tag (GitHub Pages cannot send
@@ -36,6 +37,19 @@ GROUP_RE = re.compile(r'^[A-Za-z0-9_]{2,32}$')
 TERM_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
 FONT_CSS = 'https://fonts.googleapis.com'
 FONT_FILES = 'https://fonts.gstatic.com'
+MAP_DIR = 'mapa'  # site/mapa/: the campus map
+# Extra CSP sources of the map page only: the MapLibre engine (SRI-pinned in src/mapa.html), its tiles,
+# and the blob: workers it renders with.
+MAP_LIB = 'https://unpkg.com'
+MAP_TILES = 'https://tiles.openfreemap.org'
+MAP_CSP = {
+    'script-src': [MAP_LIB],
+    'style-src': [MAP_LIB],
+    'connect-src': [MAP_TILES],
+    'img-src': ['blob:', MAP_TILES],
+    'worker-src': ['blob:'],
+    'child-src': ['blob:'],
+}
 
 # Canonical faculties offered on the front page (code -> Polish name).
 # A group belongs to the faculty matching the first three letters of its code;
@@ -356,14 +370,19 @@ def inline_hashes(page):
     return scripts, styles
 
 
-def csp(scripts, styles, connect, frame_ancestors=False):
+def csp(scripts, styles, connect, frame_ancestors=False, extra=None):
+    extra = extra or {}
+    more = lambda name: extra.get(name, [])  # noqa: E731
     parts = [
         "default-src 'none'",
-        'script-src ' + (' '.join(scripts) if scripts else "'none'"),
-        'style-src ' + ' '.join(styles + [FONT_CSS]),
+        'script-src ' + (' '.join(scripts + more('script-src')) if scripts else "'none'"),
+        'style-src ' + ' '.join(styles + [FONT_CSS] + more('style-src')),
         f'font-src {FONT_FILES}',
-        'img-src data:',
-        'connect-src ' + ("'self'" if connect else "'none'"),
+        'img-src ' + ' '.join(['data:'] + more('img-src')),
+        'connect-src ' + (' '.join(["'self'"] + more('connect-src')) if connect else "'none'"),
+    ]
+    parts += [f'{name} ' + ' '.join(more(name)) for name in ('worker-src', 'child-src') if more(name)]
+    parts += [
         "base-uri 'none'",
         "form-action 'none'",
     ]
@@ -375,12 +394,13 @@ def csp(scripts, styles, connect, frame_ancestors=False):
     return '; '.join(parts)
 
 
-def finish(page, connect):
+def finish(page, connect, extra=None):
     """Pin the page's inline code into its meta CSP and sanity-check the result."""
     if 'style="' in page:
         raise BuildError('inline style attributes would be blocked by the CSP')
     scripts, styles = inline_hashes(page)
-    page = page.replace('@@CSP@@', f'<meta http-equiv="Content-Security-Policy" content="{csp(scripts, styles, connect)}">')
+    policy = csp(scripts, styles, connect, extra=extra)
+    page = page.replace('@@CSP@@', f'<meta http-equiv="Content-Security-Policy" content="{policy}">')
     left = re.findall(r'@@[A-Z_]+@@', page)
     if left:
         raise BuildError(f'unfilled template placeholders: {sorted(set(left))}')
@@ -523,6 +543,11 @@ def render_index(template, current, ics_js=''):
     return finish(page, connect=True)
 
 
+def render_map(template, ics_js, campus_js):
+    page = template.replace('@@ICS_JS@@', ics_js).replace('@@CAMPUS_JS@@', campus_js)
+    return finish(page, connect=True, extra=MAP_CSP)
+
+
 def render_404(template, base_path):
     return finish(template.replace('@@BASE@@', html.escape(base_path.rstrip('/'), quote=True)), connect=False)
 
@@ -539,7 +564,9 @@ def _prepare_out(out):
 
 
 def update_nginx(conf_path, scripts, styles):
-    policy = csp(sorted(set(scripts)), sorted(set(styles)), connect=True, frame_ancestors=True)
+    # One header for every page: the union of their hashes and the map's sources. Each page's meta CSP
+    # still applies on top, so the pages other than the map stay as strict as before.
+    policy = csp(sorted(set(scripts)), sorted(set(styles)), connect=True, frame_ancestors=True, extra=MAP_CSP)
     conf, n = re.subn(r'add_header Content-Security-Policy "[^"]*"',
                       f'add_header Content-Security-Policy "{policy}"', conf_path.read_text())
     if n != 1:
@@ -555,15 +582,16 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     for path in files:
         group, term = load_term(path)
         by_group.setdefault(group, []).append(term)
-    clash = [g for g in by_group if g.lower() == DATA_DIR]
+    clash = [g for g in by_group if g.lower() in (DATA_DIR, MAP_DIR)]
     if clash:
-        raise BuildError(f'group code "{clash[0]}" is reserved for the site\'s data files')
+        raise BuildError(f'group code "{clash[0]}" is reserved for the site\'s own pages and data files')
     current = {group: pick_term(terms, today) for group, terms in by_group.items()}
 
     group_tpl = (SRC / 'group.html').read_text(encoding='utf-8')
     ics_js = (SRC / 'ics.js').read_text(encoding='utf-8')
     insights_js = (SRC / 'insights.js').read_text(encoding='utf-8')
-    for name, code in (('ics.js', ics_js), ('insights.js', insights_js)):
+    campus_js = (SRC / 'campus.js').read_text(encoding='utf-8')
+    for name, code in (('ics.js', ics_js), ('insights.js', insights_js), ('campus.js', campus_js)):
         if '@@' in code:
             raise BuildError(f'src/{name} must not contain "@@"')
 
@@ -582,9 +610,10 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
         all_styles.extend(styles)
 
     for group, term in sorted(current.items()):
-        write(f'{group}/index.html', render_group(group_tpl, ics_js + '\n' + insights_js, term, refreshed.get(group)))
+        write(f'{group}/index.html', render_group(group_tpl, '\n'.join((ics_js, insights_js, campus_js)), term, refreshed.get(group)))
         shutil.copyfile(term.path, out / group / 'plan.ics')
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js))
+    write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js))
     write('404.html', render_404((SRC / '404.html').read_text(encoding='utf-8'), base_path))
     for rel, data in build_data(current).items():
         target = out / DATA_DIR / rel

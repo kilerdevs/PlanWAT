@@ -82,6 +82,8 @@ window (90 days is customary) before public disclosure.
   rules that restore them, in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#security-headers-on-pages).
 - Scripts injected by an intermediary such as Cloudflare's bot detection: the page's CSP blocks them.
 - Loading the Inter typeface from Google Fonts: a documented, deliberate third-party request.
+- On the campus map (`/mapa/`) only: loading MapLibre GL JS from unpkg (SRI-pinned) and map tiles from OpenFreeMap,
+  both documented, deliberate third-party requests.
 - Denial of service against GitHub Pages or Cloudflare infrastructure, and automated scanner output without a
   demonstrated impact.
 

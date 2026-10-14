@@ -15,6 +15,11 @@ All notable changes to PlanWAT are documented here. The format follows
   any calendar that does.
 
 ### Added
+- Campus map (`/mapa/`): all WAT buildings on a dark 3D map (MapLibre GL JS, OpenFreeMap tiles), coloured by faculty,
+  with search, a faculty legend, 2D/3D, an overview button, walking directions and `?b=<building>` links; it falls back
+  to a plain building list when the map cannot load. Rooms on the group page link to their building, and each day's
+  "Mapa" link opens that day's classes and buildings (`?g=<GROUP>&d=<date>`). Only this page may load the map engine
+  and tiles; every other page's CSP is unchanged.
 - Group page: "Zaktualizowano" and "Sprawdzono" dates from the refresh, and a pledge by the maintainer that PlanWAT stays free
   (also in the front page footer).
 - Automatic refresh: a scheduled workflow re-reads the WLO, WEL and WIM timetable pages (WCY and WTC drivers are

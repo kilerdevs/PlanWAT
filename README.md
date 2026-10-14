@@ -55,6 +55,9 @@ The interface is Polish; the code and documentation are English.
   breaks of 30 minutes or more show as "Okienko" between classes.
 - **Subject legend** that highlights one subject across the week, and **subject progress** (classes done out of the
   total, the next one, the count per class type).
+- **Mapa kampusu** (`/mapa/`): every WAT building on a 3D map, coloured by faculty, with search, a faculty legend,
+  a 2D/3D switch and walking directions. Rooms in the plan link to their building, and each day's "Mapa" link shows
+  that day's classes and buildings in order.
 - **Gdzie odrobić?** finds the same class in the other groups of the year, marking the ones that clash with your plan.
 - **Porównaj grupy:** up to four plans side by side, week by week, with the time all of them are free.
 - **Statystyki:** hours per week, per weekday and per class type, earliest start, latest end, longest day, breaks.
@@ -130,6 +133,8 @@ build.py                 static site generator (standard library only)
 src/group.html           group page template: markup, styles and app script (inlined, CSP-hashed)
 src/ics.js               iCalendar reader, inlined into every group page
 src/insights.js          statistics, progress, comparison and catch-up, inlined into every group page
+src/campus.js            campus buildings, room → building, search; inlined into the group page and the map
+src/mapa.html            the campus map page (/mapa/)
 src/index.html, 404.html group list and not-found page
 timetables/              <term>/<GROUP>.ics, the data
 tests/                   ics.test.js (reader), insights.test.js, test_build.py (build), e2e/ (Playwright), fixtures/
@@ -153,7 +158,9 @@ headers Pages cannot send, are described in [docs/DEPLOYMENT.md](docs/DEPLOYMENT
 ## Security
 
 - Every page carries a **hash-pinned Content-Security-Policy**: only its own inline script and style run, it may fetch
-  only its own `plan.ics`, and the only external origin is Google Fonts.
+  only its own `plan.ics`, and the only external origin is Google Fonts. The campus map page (`/mapa/`) is the one
+  exception: it also loads MapLibre GL JS from `unpkg.com` (pinned to a version and a Subresource Integrity hash) and
+  map tiles from `tiles.openfreemap.org`, and allows the `blob:` workers MapLibre renders with.
 - Calendar text is rendered with `textContent` in the browser and HTML-escaped at build time; colours are accepted only as
   `#rrggbb`.
 - CI runs CodeQL (JavaScript, Python, workflows), a Grype scan of the Docker image, and dependency audits. Actions are
