@@ -359,6 +359,11 @@
   footer { margin-top: 40px; padding: 16px 4px 0; border-top: 1px solid var(--line); font-size: 0.8125rem; color: var(--t3); }
   footer p { margin: 0; }
   footer p + p { margin-top: 8px; }
+  footer .legal { max-width: 62ch; line-height: 1.55; }
+  .footbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .footlinks { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+  .footlinks a { padding: 8px 0; }
+  footer #installRow { margin-top: 4px; }
   footer a { color: var(--accent-text); }
   .appbtn { font: inherit; color: var(--accent-text); background: none; border: 0; padding: 12px 0; min-height: 44px; cursor: pointer; text-decoration: underline; }
   @media (hover: hover) and (pointer: fine) {
@@ -418,13 +423,15 @@
     <button class="textbtn" id="resetFilters" type="button">Wyczyść filtry</button>
   </div>
   <footer>
-    <p>PlanWAT to prywatna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Serwis nie jest uczelnianym systemem ani jego częścią, a plany pochodzą z ogólnodostępnych stron wydziałów.</p>
-    <p>Zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie. Serwis nie używa plików cookie ani narzędzi śledzących; ulubione grupy zapisują się tylko w Twojej przeglądarce.</p>
-    <p>Opiekun projektu zobowiązuje się, że PlanWAT pozostanie darmowy dla wszystkich studentów.</p>
-    <p><strong>PlanWAT nigdy nie poprosi Cię o hasło</strong> ani inne dane logowania (USOS, e-dziekanat, poczta). Jeśli ktoś o nie prosi w imieniu PlanWAT, to oszustwo.</p>
+    <p class="legal">PlanWAT to prywatna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Serwis nie jest uczelnianym systemem ani jego częścią, a plany pochodzą z ogólnodostępnych stron wydziałów.</p>
+    <p class="legal">Zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie. Serwis nie używa plików cookie ani narzędzi śledzących; ulubione grupy zapisują się tylko w Twojej przeglądarce.</p>
+    <p class="legal">Opiekun projektu zobowiązuje się, że PlanWAT pozostanie darmowy dla wszystkich studentów.</p>
+    <p class="legal"><strong>PlanWAT nigdy nie poprosi Cię o hasło</strong> ani inne dane logowania (USOS, e-dziekanat, poczta). Jeśli ktoś o nie prosi w imieniu PlanWAT, to oszustwo.</p>
+    <div class="footbar">
+      <p class="footlinks"><a href="prywatnosc/">Prywatność i zasady</a><a href="https://github.com/kilerdevs/PlanWAT/issues">Zgłoś błąd</a></p>
+      <div class="themerow"><div class="themeswitch" role="group" aria-label="Motyw"><button type="button" data-theme-set="auto" aria-pressed="true">Auto</button><button type="button" data-theme-set="dark" aria-pressed="false">Ciemny</button><button type="button" data-theme-set="light" aria-pressed="false">Jasny</button></div></div>
+    </div>
     <p id="installRow" hidden><button class="appbtn" id="installBtn" type="button" hidden>Zainstaluj PlanWAT jako aplikację</button> <span id="installHint"></span></p>
-    <p><a href="prywatnosc/">Prywatność i zasady</a> · <a href="https://github.com/kilerdevs/PlanWAT/issues">Zgłoś błąd</a></p>
-    <div class="themerow"><div class="themeswitch" role="group" aria-label="Motyw"><button type="button" data-theme-set="auto" aria-pressed="true">Auto</button><button type="button" data-theme-set="dark" aria-pressed="false">Ciemny</button><button type="button" data-theme-set="light" aria-pressed="false">Jasny</button></div></div>
   </footer>
 </main>
 <script>@@ICS_JS@@</script>
