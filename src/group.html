@@ -155,7 +155,9 @@
   ::selection { background: var(--accent-select); color: #fff; }
   h1, h2, h3 { margin: 0; text-wrap: balance; }
   p { margin: 0; }
-  button { font: inherit; color: inherit; -webkit-appearance: none; appearance: none; }
+  /* no native look and no UA border: a button that sets a background but no border showed the default raised
+     border on Android Chrome (the arcs on the pill buttons in the sheets) */
+  button { font: inherit; color: inherit; -webkit-appearance: none; appearance: none; border: 0; }
   .vh {
     position: absolute !important;
     width: 1px; height: 1px;
@@ -1122,6 +1124,8 @@
   .mysubjects .check { align-items: flex-start; padding: 6px 0; }
   .mysubjects .check input { flex: none; margin-top: 1px; }
   #toolBody > .dl { margin: 0 var(--sp-2) var(--sp-2) 0; }
+  /* the sheet is as light as a pill is, so the buttons inside it take the chips' fill */
+  #toolBody .dl { background: var(--s3); }
   .check { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; font-size: var(--fs-13); color: var(--t2); }
   .check input { width: 20px; height: 20px; accent-color: var(--accent); }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-2); }
