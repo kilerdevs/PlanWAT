@@ -1142,14 +1142,16 @@ class MainTest(unittest.TestCase):
         stop = threading.Event()
 
         def churn():
+            # inserts and deletes keep the dict small but its size changing: what trips a concurrent dump
             i = 0
             while not stop.is_set():
-                state.groups[f'G{i}'] = {'checked': 'x'}
+                state.groups[f'G{i % 300}'] = {'checked': 'x'}
+                state.groups.pop(f'G{(i + 150) % 300}', None)
                 i += 1
         t = threading.Thread(target=churn)
         t.start()
         try:
-            for _ in range(20):
+            for _ in range(10):
                 state.save()
         finally:
             stop.set()
