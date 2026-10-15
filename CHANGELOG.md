@@ -21,8 +21,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   znajduje miejsca, a karta miejsca daje trasę pieszo. Dane w `src/places.js`, odtwarzane przez `tools/places/make_places.py` z
   OpenStreetMap.
 - **Mapa:** bogatszy ciemny styl z zielonymi parkami i trawą, niebieską wodą, odcieniami zabudowy i chłodniejszą paletą brył 3D.
-- **Przewodnik** po pierwszym otwarciu (telefon i pulpit): przesuwany arkusz z siedmioma krokami (zmiana tygodnia przesunięciem,
-  skok z daty, „Gdzie odrobić?”, przycisk „Mapa” i podkreślone sale, porównywanie grup, statystyki, kalendarz, przedmioty i
+- **Przewodnik** po pierwszym otwarciu (telefon i pulpit): przesuwany arkusz z ośmioma krokami (zmiana tygodnia przesunięciem,
+  skok z daty, „Gdzie odrobić?”, przycisk „Mapa” i podkreślone sale, porównywanie grup, wolne sale, statystyki, kalendarz, przedmioty i
   aplikacja) i małymi, zapętlonymi animacjami. Pokazuje się raz w przeglądarce, a przycisk „Jak korzystać” (z ikoną `?`) w
   wierszu narzędzi wywołuje go ponownie.
 - **Okienka** (przerwy i czas przejścia) także na siatce pulpitu, u dołu zajęć, po których następują.

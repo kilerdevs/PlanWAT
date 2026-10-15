@@ -342,7 +342,7 @@
     selectPlaceRing(null);
     showBuilding(b);
     markers.forEach(function (m) { m.el.setAttribute('aria-pressed', String(m.b === b)); });
-    document.querySelectorAll('[data-stop]').forEach(function (s) { s.setAttribute('aria-pressed', String(s.getAttribute('data-code') === b.code)); });
+    document.querySelectorAll('[data-stop]').forEach(function (s) { s.setAttribute('aria-pressed', String(s.getAttribute('data-code') === C.linkCode(b))); });
     var tapped = document.querySelector('[data-stop][aria-pressed="true"]');
     /* from the day's list the tapped class stays where the thumb is; from a marker or search the card is shown at the top */
     if (dayMode && tapped && fromList) tapped.scrollIntoView({ block: 'nearest' });
@@ -522,10 +522,10 @@
     var box = $('day');
     box.replaceChildren();
     var codes = {};
-    stops.forEach(function (s) { if (s.building) codes[s.building.code] = s.building; });
+    stops.forEach(function (s) { if (s.building) codes[C.linkCode(s.building)] = s.building; });
     var buildings = Object.keys(codes).map(function (k) { return codes[k]; });
     dayCodes = codes;
-    markers.forEach(function (m) { m.el.classList.toggle('on-day', !!(m.b.code && codes[m.b.code])); });
+    markers.forEach(function (m) { var lc = C.linkCode(m.b); m.el.classList.toggle('on-day', !!(lc && codes[lc])); });
     document.documentElement.classList.toggle('day-on', buildings.length > 0);
 
     selection.replaceChildren(el('h1', null, 'Twój dzień na kampusie'));
@@ -549,7 +549,7 @@
       var li = el('li'), btn = el('button');
       btn.type = 'button';
       btn.setAttribute('data-stop', String(i));
-      btn.setAttribute('data-code', s.building ? s.building.code : '');
+      btn.setAttribute('data-code', s.building ? C.linkCode(s.building) || '' : '');
       btn.setAttribute('aria-pressed', 'false');
       btn.disabled = !s.building;
       btn.appendChild(el('span', 'idx', (i + 1) + '.'));

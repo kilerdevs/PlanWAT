@@ -439,6 +439,13 @@ test('comparing groups shows both plans and the shared free time', async ({ page
   await noCsp(page);
 });
 
+test('physical education shows SWF and every map link is real: none points at ?b=null', async ({ page }) => {
+  await openGroup(page);
+  await expect(page.locator('.lesson .room', { hasText: /^SWF$/ }).first()).toBeAttached();
+  await expect(page.locator('a[href$="mapa/?b=OSS"]').first()).toBeAttached();
+  await expect(page.locator('a[href*="?b=null"], a[href*="?b=undefined"]')).toHaveCount(0);
+});
+
 test('free rooms lists rooms with no class at the chosen time, with a day bar on each', async ({ page }) => {
   await openGroup(page);
   await page.locator('#roomsBtn').click();
@@ -743,8 +750,8 @@ test('the first-visit tour opens once, pages with Dalej and is not repeated', as
   await expect(tour).toBeVisible();
   await expect(page.locator('#tourSheet h3').first()).toHaveText('Przesuń, aby zmienić tydzień');
   await page.click('#tourNext');
-  await expect(page.locator('#tourDots button[aria-current="true"]')).toHaveAttribute('aria-label', 'Krok 2 z 7');
-  for (let i = 0; i < 5; i++) await page.click('#tourNext');
+  await expect(page.locator('#tourDots button[aria-current="true"]')).toHaveAttribute('aria-label', 'Krok 2 z 8');
+  for (let i = 0; i < 6; i++) await page.click('#tourNext');
   await expect(page.locator('#tourNext')).toHaveText('Zaczynamy');
   await expect(page.locator('#tourSkip')).toBeHidden();
   await page.click('#tourNext');

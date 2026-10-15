@@ -53,6 +53,12 @@ test('?b= opens a building straight away', async ({ page }) => {
   await expect(page.locator('#sheet')).toHaveAttribute('open', '');
 });
 
+test('?b=OSS opens the SWF, the place physical education is held at', async ({ page }) => {
+  await open(page, '/mapa/?b=OSS');
+  await expect(page.locator('#selection h1')).toContainText('Studium Wychowania Fizycznego (SWF)');
+  await expect(page.locator('#sheet')).toHaveAttribute('open', '');
+});
+
 test('the faculty legend and the 2D/3D switch work', async ({ page }) => {
   await open(page, '/mapa/');
   test.skip(await page.locator('#tools').isHidden(), 'map controls need the map engine');

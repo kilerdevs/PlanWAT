@@ -10,7 +10,7 @@
   var HEX = /^#[0-9a-fA-F]{6}$/;
   var PALETTE = ['#2563a8', '#1d8a7a', '#5b52c9', '#c8862a', '#c14953', '#3f9142', '#8a4fae',
                  '#c65a91', '#6f5ed1', '#d16b3f', '#b5651d', '#2aa7ad', '#7a8a3a', '#6b7280'];
-  var SPORTS_CENTRE = 'Ośrodek Szkoleniowo-Sportowy WAT';
+  var SPORTS_CENTRE = 'SWF';  /* Studium Wychowania Fizycznego */
   var MAX_OCCURRENCES = 2000;
   var DAY_MS = 86400000;
 

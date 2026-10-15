@@ -107,7 +107,7 @@
     [null, 'Dom Studencki nr 3', 'Dom Studencki nr 3', '', 52.250078, 20.89583],
     [null, 'Dom Asystenta', 'Dom Asystenta', '', 52.249933, 20.897583],
     [null, 'Stadion WAT', 'Stadion WAT', '', 52.25282, 20.892992],
-    [null, 'Ośrodek Szkoleniowo-Sportowy WAT', 'Studium Wychowania Fizycznego (SWF), Kartezjusza 1', '', 52.251174, 20.893344],
+    [null, 'Studium Wychowania Fizycznego (SWF)', 'Ośrodek Szkoleniowo-Sportowy WAT, Kartezjusza 1', '', 52.251174, 20.893344],
     [null, 'Przychodnia Zdrowia', 'Przychodnia Zdrowia', '', 52.250627, 20.895219],
     [null, 'Modułowy Budynek Dydaktyczny nr 2', 'Modułowy Budynek Dydaktyczny nr 2', '', 52.250748, 20.896476],
     [null, 'AW 1', 'Akademik Wojskowy nr 1', '', 52.252126, 20.897305],
@@ -129,11 +129,16 @@
 
   var CODE_RE = /^\d{1,3}[A-Z]?$/;
 
-  /* the sports centre, where physical education (WF) is held; the calendars carry no room for it */
-  var OSS_RE = /o[śs]rodek szkoleniowo/i;
+  /* Studium Wychowania Fizycznego (SWF) at the Ośrodek Szkoleniowo-Sportowy, where physical education is held; the
+     calendars carry no room for it, so the plan shows "SWF". It has no building code, hence the link code "OSS". */
+  var OSS_RE = /^swf$|studium wychowania fizycznego|o[śs]rodek szkoleniowo/i;
   function ossBuilding() {
-    for (var i = 0; i < BUILDINGS.length; i++) if (OSS_RE.test(BUILDINGS[i].name)) return BUILDINGS[i];
+    for (var i = 0; i < BUILDINGS.length; i++) if (!BUILDINGS[i].code && OSS_RE.test(BUILDINGS[i].name)) return BUILDINGS[i];
     return null;
+  }
+  /* what ?b= takes for a building: its code, "OSS" for the sports centre, null for a place with neither */
+  function linkCode(b) {
+    return b ? (b.code || (b === ossBuilding() ? 'OSS' : null)) : null;
   }
 
   /* a building by its code; "55A" falls back to "55" */
@@ -227,7 +232,7 @@
 
   var Campus = {
     FACULTIES: FACULTIES, BUILDINGS: BUILDINGS, BOUNDS: BOUNDS,
-    findBuilding: findBuilding, roomBuilding: roomBuilding, search: search, dayStops: dayStops,
+    findBuilding: findBuilding, roomBuilding: roomBuilding, linkCode: linkCode, search: search, dayStops: dayStops,
     directionsUrl: directionsUrl, inkOn: inkOn, walkMinutes: walkMinutes, transfer: transfer
   };
   if (typeof module === 'object' && module.exports) module.exports = Campus;

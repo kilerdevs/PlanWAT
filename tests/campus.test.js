@@ -103,9 +103,15 @@ test('walking time between the buildings of consecutive classes', () => {
   assert.equal(C.transfer('', '201 65'), null);
 });
 
-test('the sports centre resolves from its room name to the map point', () => {
+test('the SWF resolves from its room name to the map point, and every building has a link code for ?b=', () => {
+  assert.equal(C.roomBuilding('SWF'), 'OSS');
   assert.equal(C.roomBuilding('Ośrodek Szkoleniowo-Sportowy WAT'), 'OSS');
   const b = C.findBuilding('OSS');
-  assert.ok(b && /Ośrodek Szkoleniowo-Sportowy/.test(b.name));
+  assert.ok(b && /Studium Wychowania Fizycznego \(SWF\)/.test(b.name) && /Ośrodek Szkoleniowo-Sportowy/.test(b.desc));
+  assert.equal(C.linkCode(b), 'OSS');
+  assert.equal(C.linkCode(C.findBuilding('100')), '100');
+  assert.equal(C.linkCode(C.findBuilding('Stołówka Wojskowa 1')), null);  // other places are not buildings: no link
+  const walk = C.transfer('314 S', 'SWF');
+  assert.ok(walk && C.linkCode(walk.to) === 'OSS');
   assert.ok(Math.abs(b.lat - 52.251174) < 1e-6);
 });

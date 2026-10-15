@@ -281,7 +281,7 @@ test('hidden subjects drop out of the plan and out of the calendar text', () => 
   assert.equal(PlanICS.filterText(raw, []), raw);
 });
 
-test('physical education without a room is held at the sports centre', () => {
+test('physical education without a room is held at the SWF', () => {
   const text = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//t//t//PL', 'X-PLAN-GROUP:G',
     'BEGIN:VEVENT', 'UID:wf1@t', 'DTSTART:20261014T080000', 'DTEND:20261014T093000', 'SUMMARY:Wychowanie fizyczne', 'END:VEVENT',
@@ -289,6 +289,6 @@ test('physical education without a room is held at the sports centre', () => {
     'END:VCALENDAR', ''].join('\r\n');
   const plan = PlanICS.toPlan(PlanICS.parse(text));
   const lessons = plan.weeks.flatMap((w) => Object.values(w.days).flat());
-  assert.equal(lessons.find((l) => l.subject_full === 'Wychowanie fizyczne').room, 'Ośrodek Szkoleniowo-Sportowy WAT');
+  assert.equal(lessons.find((l) => l.subject_full === 'Wychowanie fizyczne').room, 'SWF');
   assert.equal(lessons.find((l) => l.subject_full === 'Analiza').room, '314 S');
 });
