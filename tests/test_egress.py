@@ -140,6 +140,23 @@ class PoolPick(unittest.TestCase):
         }
         self.assertEqual(self.pool.pick('example.test'), 'http://b:2')
 
+    def test_stale_aliveness_sinks_below_fresh(self):
+        import time
+        now = time.time()
+        self.pool.entries = {
+            'http://old:1': {'status': 'ok', 'latency_ms': 50, 'fails': 0,
+                             'last_checked': now - 3 * 3600, 'hosts': {}},
+            'http://new:2': {'status': 'ok', 'latency_ms': 2000, 'fails': 0,
+                             'last_checked': now, 'hosts': {}},
+        }
+        self.assertEqual(self.pool.pick('example.test'), 'http://new:2')
+
+    def test_failed_reprobe_revokes_aliveness(self):
+        self.pool.entries = {'http://a:1': {'status': 'ok', 'latency_ms': 50, 'hosts': {}}}
+        self.pool.mark_alive('http://a:1', False)
+        self.assertEqual(self.pool.entries['http://a:1']['status'], 'fail')
+        self.assertIsNone(self.pool.pick('example.test'))
+
     def test_pick_many(self):
         self.pool.entries = {
             f'http://n{i}:1': {'status': 'ok', 'latency_ms': 10 * i, 'fails': 0,

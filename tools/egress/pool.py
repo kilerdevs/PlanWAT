@@ -55,7 +55,7 @@ MAX_ENTRIES = 2000  # hard cap on pool size; oldest-checked fails are dropped fi
 LATENCY_CUTOFF_MS = 6000  # probe_alive passes only below this
 PER_SOURCE_CAP = 60  # max candidates kept per list source
 REFRESH_DEADLINE_S = 540  # cooperative refresh deadline (checked between phases)
-STALE_REPROBE_N = 20  # oldest-checked global-ok entries re-probed at thin hosts
+STALE_REPROBE_N = 60  # oldest-checked global-ok entries re-probed at thin hosts
 BREAKER_N = 10  # >=N global failures ...
 BREAKER_WINDOW_S = 60  # ... in 60 s trips the breaker ...
 BREAKER_HOLD_S = 60  # ... for 60 s (picks return empty; any mark-ok clears)
@@ -236,9 +236,13 @@ class ProxyPool:
                  if e.get('hosts', {}).get(host, {}).get('ok')),
                 key=lambda c: c['via_ms'] if c['via_ms'] is not None else 10 ** 9)
 
-    def _candidate_key(self, e, ms):
+    def _candidate_key(self, e, ms, now):
         base = ms if ms is not None else 10 ** 9
-        return base + e.get('fails', 0) * 30000
+        # Stale aliveness is worthless with free proxies (entries die or change hands hourly):
+        # an entry unchecked for 3 h sinks below a fresh slow one. Missing timestamps count
+        # as fresh (legacy entries).
+        age = max(0.0, now - e.get('last_checked', now))
+        return base + e.get('fails', 0) * 30000 + min(300000.0, age * 100.0)
 
     def _pick_ranked(self, host):
         """[(key, url)] of eligible candidates for host, sorted best-first."""
@@ -252,14 +256,13 @@ class ProxyPool:
                 if mono is not None:
                     if now_mono - mono <= FAIL_COOLDOWN:
                         continue  # host-failed, cooling down (monotonic)
-                else:
-                    if now_wall - hv.get('checked', 0) <= FAIL_COOLDOWN:
-                        continue  # fallback to wall when mono missing
+                elif now_wall - hv.get('checked', 0) <= FAIL_COOLDOWN:
+                    continue  # fallback to wall when mono missing
                 hv = None  # cooldown over: treat as untried again
             if hv is not None and hv.get('ok'):
-                key = (0, self._candidate_key(e, hv.get('ms')))
+                key = (0, self._candidate_key(e, hv.get('ms'), now_wall))
             elif e.get('status') == 'ok':
-                key = (1, self._candidate_key(e, e.get('latency_ms')))
+                key = (1, self._candidate_key(e, e.get('latency_ms'), now_wall))
             else:
                 continue
             ranked.append((key, url))
@@ -343,8 +346,9 @@ class ProxyPool:
                     e['latency_ms'] = _ewma(e.get('latency_ms'), latency_ms)
                 # No breaker touch: probes must neither trip nor clear the live path.
             else:
-                if e.get('status') != 'ok':
-                    e['status'] = 'fail'
+                # A failed re-probe revokes aliveness outright: a dead entry must never be
+                # offered optimistically to a new host (host-verified picks are unaffected).
+                e['status'] = 'fail'
             self._save_throttled(force=e.get('status') != before)
 
     # -- coverage / healing -------------------------------------------------
