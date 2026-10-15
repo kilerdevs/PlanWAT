@@ -291,6 +291,24 @@ class TitlesTest(unittest.TestCase):
         self.assertFalse(wlo2ics.looks_like_person('Etyka zawodowa'))
 
 
+class ClipTest(unittest.TestCase):
+    def cal(self, *days):
+        events = []
+        for day in days:
+            events += ['BEGIN:VEVENT', f'UID:{day}@t', f'DTSTART;TZID=Europe/Warsaw:{day}T080000', 'SUMMARY:Fizyka', 'END:VEVENT']
+        return '\r\n'.join(['BEGIN:VCALENDAR', 'VERSION:2.0'] + events + ['END:VCALENDAR', ''])
+
+    def test_a_page_with_two_semesters_keeps_only_the_one_being_filed(self):
+        ics = self.cal('20260410', '20260622', '20260921', '20261005')
+        out = core.clip_to_term(ics, '2026-27-zima')
+        self.assertEqual(out.count('BEGIN:VEVENT'), 2)
+        self.assertNotIn('20260410', out)
+        self.assertIn('20260921', out)
+        self.assertEqual(core.clip_to_term(self.cal('20260921'), '2026-27-zima'), self.cal('20260921'))
+        # the summer term takes the spring lessons, and drops the autumn ones
+        self.assertEqual(core.clip_to_term(self.cal('20270310', '20261005'), '2026-27-lato').count('BEGIN:VEVENT'), 1)
+
+
 class PublicRoomTest(unittest.TestCase):
     def test_a_person_in_the_room_text_is_dropped_and_the_room_kept(self):
         self.assertEqual(wlo2ics.public_room('dr inż. Kowalski Jan, 255 S'), '255 S')

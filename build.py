@@ -4,7 +4,7 @@
 Output (default: site/):
     index.html            group list (redirects straight to the group while there is only one)
     <GROUP>/index.html    the timetable page; it fetches ./plan.ics and renders it in the browser
-    <GROUP>/plan.ics      the group's current term, byte-for-byte
+    <GROUP>/plan.ics      the group's current term, byte-for-byte (minus lessons of another semester, see clip_to_term)
     <GROUP>/plan-przypomnienia.ics   the same calendar with a reminder 15 minutes before each class
     mapa/index.html       campus map (MapLibre from unpkg, tiles from OpenFreeMap: the only page allowed them)
     prywatnosc/index.html privacy notice and terms of use
@@ -125,8 +125,61 @@ class Term:
     end: dt.date
     meta: dict = dataclasses.field(default_factory=dict)
 
+    def data(self):
+        """The calendar as published: the file's bytes, minus lessons that belong to another semester."""
+        return clip_to_term(self.path.read_bytes(), self.term_id)
+
 
 # ---------------------------------------------------------------- calendars
+
+def term_window(term_id):
+    """(first, last) day, as YYYYMMDD, that lessons of the term `2026-27-zima` / `2026-27-lato` may fall on.
+
+    Wide on purpose (winter: 1 September to the end of February, summer: 1 February to the end of September):
+    groups of a higher year start before the official semester date, and sessions run past it."""
+    year, _, season = term_id.split('-')
+    year = int(year)
+    return (f'{year}0901', f'{year + 1}0229') if season == 'zima' else (f'{year + 1}0201', f'{year + 1}0930')
+
+
+def clip_to_term(raw, term_id):
+    """A calendar (bytes) without the VEVENTs dated outside its term's window.
+
+    The faculties' pages sometimes carry two semesters at once (last semester's lessons below this one's), and the
+    page would then show March to July under a winter term. Every byte of what stays is untouched. The input comes
+    back as it is when nothing falls outside, and also when everything does: a plan of only another semester is a
+    plan "not published yet" (the page says so), not an empty one."""
+    try:
+        first, last = term_window(term_id)
+    except ValueError:
+        return raw
+    text = raw.decode('utf-8')
+    lines = text.splitlines(keepends=True)
+    out, block, dropped, kept = [], None, 0, 0
+    for line in lines:
+        bare = line.rstrip('\r\n')
+        if block is None:
+            if bare.upper() == 'BEGIN:VEVENT':
+                block = [line]
+            else:
+                out.append(line)
+            continue
+        block.append(line)
+        if bare.upper() == 'END:VEVENT':
+            unfolded = re.sub(r'\r?\n[ \t]', '', ''.join(block))
+            m = re.search(r'^DTSTART[^:\r\n]*:(\d{8})', unfolded, re.M)
+            if m and not first <= m.group(1) <= last:
+                dropped += 1
+            else:
+                kept += 1
+                out.extend(block)
+            block = None
+    if block is not None:  # an unterminated event: leave the file alone
+        return raw
+    if not dropped or not kept:
+        return raw
+    return ''.join(out).encode('utf-8')
+
 
 def _unescape(value):
     return re.sub(r'\\([\\;,nN])', lambda m: '\n' if m.group(1) in 'nN' else m.group(1), value).strip()
@@ -213,8 +266,9 @@ def load_term(path):
     return group, Term(term_id, path, start, end, meta)
 
 
-def _unfold(path):
-    text = path.read_bytes().decode('utf-8')
+def _unfold(source):
+    """A calendar's content lines, unfolded; `source` is a path or the bytes of the calendar."""
+    text = (source if isinstance(source, bytes) else source.read_bytes()).decode('utf-8')
     return [l for l in re.sub(r'\r?\n[ \t]', '', text.lstrip('﻿')).splitlines() if l]
 
 
@@ -437,7 +491,7 @@ def build_data(current, refreshed=None):
     years = {}
     for group in groups:
         term = current[group]
-        lessons = calendar_lessons(term.path, tz, term.end)
+        lessons = calendar_lessons(term.data(), tz, term.end)
         year = year_of(group)
         if year:
             years.setdefault(year, []).append((group, lessons))
@@ -828,12 +882,12 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     for group, term in sorted(current.items()):
         write(f'{group}/index.html', render_group(group_tpl, '\n'.join((ics_js, insights_js, campus_js)), term,
                                                   refreshed.get(group), by_group[group]))
-        shutil.copyfile(term.path, out / group / 'plan.ics')
-        (out / group / REMINDER_FILE).write_bytes(with_reminders(term.path.read_bytes()))
+        (out / group / 'plan.ics').write_bytes(term.data())
+        (out / group / REMINDER_FILE).write_bytes(with_reminders(term.data()))
         for other in by_group[group]:  # the group's other terms: plan-<term>.ics, opened by the page's ?t=<term>
             if other.term_id != term.term_id:
-                shutil.copyfile(other.path, out / group / f'plan-{other.term_id}.ics')
-                (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.path.read_bytes()))
+                (out / group / f'plan-{other.term_id}.ics').write_bytes(other.data())
+                (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.data()))
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js))
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8')))

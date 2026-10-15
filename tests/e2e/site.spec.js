@@ -444,6 +444,8 @@ test('physical education shows SWF and every map link is real: none points at ?b
   await expect(page.locator('.lesson .room', { hasText: /^SWF$/ }).first()).toBeAttached();
   await expect(page.locator('a[href$="mapa/?b=OSS"]').first()).toBeAttached();
   await expect(page.locator('a[href*="?b=null"], a[href*="?b=undefined"]')).toHaveCount(0);
+  // the walk to it reads "SWF", not the full name
+  await expect(page.locator('a[href$="mapa/?b=OSS"]:not(:text-is("SWF"))')).toHaveCount(0);
 });
 
 test('free rooms lists rooms with no class at the chosen time, with a day bar on each', async ({ page }) => {
@@ -687,7 +689,7 @@ test('"Moje przedmioty" hides a subject everywhere, remembers it, and the downlo
   await page.locator('#hiddenEdit').click();
   await page.getByRole('button', { name: 'Pokaż wszystkie' }).click();
   await expect(page.locator('#hiddenNotice')).toBeHidden();
-  expect(await page.locator('#weekBody .lesson').count()).toBe(before);
+  await expect(page.locator('#weekBody .lesson')).toHaveCount(before);  // waits for the redraw
   expect(problems).toEqual([]);
 });
 

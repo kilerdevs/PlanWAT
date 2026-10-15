@@ -158,9 +158,7 @@ def upcoming_reference(today):
 
 def term_window(tid):
     """(first, last) day, as YYYYMMDD, that lessons of the term `2026-27-zima` / `2026-27-lato` may fall on."""
-    year, _, season = tid.split('-')
-    year = int(year)
-    return (f'{year}0901', f'{year + 1}0229') if season == 'zima' else (f'{year + 1}0201', f'{year + 1}0930')
+    return build.term_window(tid)
 
 
 def period_label(prefix, today):
@@ -218,6 +216,11 @@ def validate(ics, code, tid, previous=None, max_loss=0.4):
         if before >= 5 and now < before * (1 - max_loss):
             return False, f'lost too many events ({before} -> {now})'
     return True, ''
+
+
+def clip_to_term(ics, tid):
+    """The calendar text without lessons dated outside the term's window (see build.clip_to_term)."""
+    return build.clip_to_term(ics.encode('utf-8'), tid).decode('utf-8')
 
 
 def to_crlf(text):

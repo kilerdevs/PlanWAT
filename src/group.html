@@ -2125,7 +2125,8 @@
     return row;
   }
 
-  function buildingLabel(b) { return /^\d/.test(b.code) ? 'bud. ' + b.code : b.name; }
+  /* the SWF is named by its abbreviation everywhere on the plan; other places keep their name */
+  function buildingLabel(b) { return /^\d/.test(b.code) ? 'bud. ' + b.code : Campus.linkCode(b) === 'OSS' ? 'SWF' : b.name; }
 
   /* After the class at index li: a free stretch before the next one ("okienko") and/or the walk to the next
      class's building, flagged when the walk takes longer than the break. Overlapping classes (subgroups) get none. */

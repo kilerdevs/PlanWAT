@@ -359,6 +359,10 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             log(f'[{name}] {item.code}: conversion stopped ({err}), keeping the old calendar')
             failed += 1
             continue
+        clipped = core.clip_to_term(ics, tid)
+        if clipped != ics:
+            log(f'[{name}] {item.code}: dropped lessons of another semester (the page shows two)')
+            ics = clipped
         ics, bounds_patched = core.reconcile_term_bounds(ics, old, tid)
         if bounds_patched:
             log(f'[{name}] {item.code}: faculty term label left the filed term; '

@@ -175,7 +175,7 @@ class BuildRealSiteTest(unittest.TestCase):
         for group in self.groups():
             self.assertTrue((self.out / group / 'index.html').is_file(), group)
             calendar = (self.out / group / 'plan.ics').read_bytes()
-            self.assertIn(calendar, [p.read_bytes() for p in (ROOT / 'timetables').glob(f'*/{group}.ics')], group)
+            self.assertIn(calendar, [build.clip_to_term(p.read_bytes(), p.parent.name) for p in (ROOT / 'timetables').glob(f'*/{group}.ics')], group)
 
     def test_root_links_every_group_and_redirects_only_when_there_is_one(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
@@ -530,6 +530,50 @@ class BuildManyGroupsTest(unittest.TestCase):
         self.assertEqual(build.year_of('WCY26KY3S1'), 'WCY26')
         self.assertEqual(build.year_of('wlo22FO1S0'), 'WLO22')
         self.assertIsNone(build.year_of('WCY_M1'))
+
+
+class ClipToTermTest(unittest.TestCase):
+    def two_semesters(self, old='2026-04-10', new='2026-09-21', extra_new='2026-10-05'):
+        text = calendar('WCY25KY1S1', '2026-09-28', '2027-02-22', new)
+        events = []
+        for day in (old, extra_new):
+            ymd = day.replace('-', '')
+            events += ['BEGIN:VEVENT', f'UID:{ymd}@test', f'DTSTART;TZID=Europe/Warsaw:{ymd}T100000',
+                       f'DTEND;TZID=Europe/Warsaw:{ymd}T113500', 'SUMMARY:Fizyka z bardzo dlugim tytulem, ktory',
+                       ' zostaje zlozony w drugiej linii', 'END:VEVENT']
+        return text.replace('END:VCALENDAR', '\r\n'.join(events) + '\r\nEND:VCALENDAR').encode('utf-8')
+
+    def test_lessons_of_last_semester_are_dropped_and_the_rest_stays_byte_for_byte(self):
+        out = build.clip_to_term(self.two_semesters(), '2026-27-zima').decode('utf-8')
+        self.assertNotIn('20260410', out)
+        self.assertIn('20260921', out)
+        self.assertIn('20261005', out)
+        self.assertEqual(out.count('BEGIN:VEVENT'), 2)
+        self.assertIn('Fizyka z bardzo dlugim tytulem, ktory\r\n zostaje zlozony w drugiej linii', out)
+        self.assertNotIn('\n', out.replace('\r\n', ''))
+        self.assertTrue(out.startswith('BEGIN:VCALENDAR\r\nVERSION:2.0\r\n') and out.endswith('END:VCALENDAR\r\n'))
+
+    def test_a_clean_calendar_and_one_of_only_another_semester_come_back_unchanged(self):
+        clean = calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05').encode('utf-8')
+        self.assertIs(build.clip_to_term(clean, '2026-27-zima'), clean)
+        only_old = calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-04-10').encode('utf-8')
+        self.assertIs(build.clip_to_term(only_old, '2026-27-zima'), only_old)  # the page says "not published yet"
+
+    def test_the_window_per_term(self):
+        self.assertEqual(build.term_window('2026-27-zima'), ('20260901', '20270229'))
+        self.assertEqual(build.term_window('2026-27-lato'), ('20270201', '20270930'))
+
+    def test_the_site_publishes_the_clipped_plan_and_its_reminders(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        term = tmp / 'timetables' / '2026-27-zima'
+        term.mkdir(parents=True)
+        (term / 'WCY25KY1S1.ics').write_bytes(self.two_semesters())
+        build.build(tmp / 'timetables', tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+        for name in ('plan.ics', 'plan-przypomnienia.ics'):
+            published = (tmp / 'site' / 'WCY25KY1S1' / name).read_text(encoding='utf-8')
+            self.assertNotIn('20260410', published, name)
+            self.assertIn('20261005', published, name)
 
 
 class RoomsDataTest(unittest.TestCase):
