@@ -260,3 +260,20 @@ test('map helpers: row lookup, nearest dot under a tap, and the box around a pla
   assert.equal(box.x, 500);
   assert.ok(box.r >= 40);
 });
+
+test('a plan feature reads back as a real value, and is printed with its unit', () => {
+  const d = profileData();
+  d.features.forEach((f) => { f.mean = 10; f.std = 2; f.unit = 'n'; });
+  d.features[0].unit = 'h';
+  d.features[1].unit = 'min';
+  d.features[3].unit = 'pct';
+  const row = d.groups[3];  // z = 2.00, 1.50, 1.90, 1.20, 1.60
+  assert.equal(I.featureValue(d, row, 0), 14);
+  assert.equal(I.fmtFeature(d.features[0], 14), '14 h');
+  assert.equal(I.fmtFeature(d.features[0], 13.45), '13,5 h');
+  assert.equal(I.fmtFeature(d.features[1], 200), '3 h 20 min');
+  assert.equal(I.fmtFeature(d.features[3], 0.456), '46%');
+  assert.equal(I.fmtFeature(d.features[4], 3.25), '3,3');
+  assert.equal(I.fmtFeature(d.features[4], 12.4), '12');
+  assert.equal(I.fmtTypical([17.5, 4.1, 130, 390]), '17,5 h zajęć · 4,1 dni · okienka 2 h 10 min · dzień 6 h 30 min');
+});

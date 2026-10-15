@@ -367,6 +367,24 @@
     out.sort(function (a, b) { return a.dist - b.dist || (a.code < b.code ? -1 : 1); });
     return out.slice(0, n || 6);
   }
+  /* a feature's real value for a plan (from its z-score) and how the page prints it */
+  function featureValue(data, row, i) {
+    var f = data.features[i];
+    return f.mean + zOf(row, i) * f.std;
+  }
+  function fmtFeature(f, v) {
+    var n1 = function (x) { return (Math.round(x * 10) / 10).toString().replace('.', ','); };
+    if (f.unit === 'h') return n1(v) + ' h';
+    if (f.unit === 'min') return fmtDuration(Math.max(0, Math.round(v)));
+    if (f.unit === 'pct') return Math.round(Math.max(0, v) * 100) + '%';
+    return v >= 10 ? String(Math.round(v)) : n1(Math.max(0, v));
+  }
+  /* "typical week" of an archetype: [hours, days, gaps minutes, day length minutes] */
+  function fmtTypical(t) {
+    return fmtFeature({ unit: 'h' }, t[0]) + ' zajęć · ' + fmtFeature({ unit: 'n' }, t[1]) + ' ' + plural(Math.round(t[1]), 'dzień', 'dni', 'dni') +
+      ' · okienka ' + fmtFeature({ unit: 'min' }, t[2]) + ' · dzień ' + fmtFeature({ unit: 'min' }, t[3]);
+  }
+
   /* the plans nearest to one on the map, for "moje otoczenie": a box in map units that holds `count` of them */
   function neighbourhood(data, row, count) {
     var near = data.groups.slice().sort(function (a, b) {
@@ -392,7 +410,7 @@
     lessonKey: lessonKey, fingerprint: fingerprint, diff: diff,
     freeWindows: freeWindows, intervals: intervals, overlaps: overlaps, byDate: byDate,
     yearOf: yearOf, peersOf: peersOf, catchUp: catchUp,
-    profileRow: profileRow, traits: traits, similarPlans: similarPlans, neighbourhood: neighbourhood, hitDot: hitDot,
+    featureValue: featureValue, fmtFeature: fmtFeature, fmtTypical: fmtTypical, profileRow: profileRow, traits: traits, similarPlans: similarPlans, neighbourhood: neighbourhood, hitDot: hitDot,
     freeRooms: freeRooms, firstWindow: firstWindow, dataRange: dataRange, building: building,
     monthGrid: monthGrid, dayNumber: dayNumber, isoFromDayNumber: isoFromDayNumber
   };

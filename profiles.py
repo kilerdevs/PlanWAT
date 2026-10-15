@@ -25,21 +25,35 @@ LATE = 18 * 60        # a day ending after this ends late
 K = 8                 # archetypes
 SEED = 20260915
 
-# key, what a high value is called, what a low one is called, weight in the load (0: describes, does not weigh)
+# key, what a high value is called, what a low one is called, weight in the load (0: describes, does not weigh),
+# unit the page shows it in (h, min, n, pct), definition
 FEATURES = [
-    ('hours',    'dużo zajęć',               'mało zajęć',               1.0),
-    ('days',     'zajęcia prawie codziennie', 'mało dni na uczelni',     0.4),
-    ('gaps',     'dużo okienek',             'prawie bez okienek',       0.8),
-    ('longgaps', 'częste długie okienka',    'bez długich okienek',      0.7),
-    ('span',     'długie dni na uczelni',    'krótkie dni na uczelni',   1.0),
-    ('marathon', 'dni-maratony',             'bez dni-maratonów',        0.8),
-    ('early',    'wczesne starty',           'późne starty',             0.8),
-    ('late',     'zajęcia do wieczora',      'wcześnie po zajęciach',    0.6),
-    ('weekend',  'zajęcia w weekendy',       'bez weekendów',            0.6),
-    ('moves',    'częste zmiany budynków',   'jeden budynek dziennie',   0.5),
-    ('fixed',    'zajęcia w stałych salach', 'zajęcia w wielu salach',   0.0),
-    ('practice', 'dużo ćwiczeń i laboratoriów', 'głównie wykłady',       0.0),
-    ('subjects', 'wiele przedmiotów',        'mało przedmiotów',         0.3),
+    ('hours',    'dużo zajęć',               'mało zajęć',               1.0, 'h',
+     'Suma godzin zajęć w typowym tygodniu.'),
+    ('days',     'zajęcia prawie codziennie', 'mało dni na uczelni',     0.4, 'n',
+     'Ile dni w tygodniu masz zajęcia.'),
+    ('gaps',     'dużo okienek',             'prawie bez okienek',       0.8, 'min',
+     'Suma przerw między zajęciami tego samego dnia (okienek), na tydzień.'),
+    ('longgaps', 'częste długie okienka',    'bez długich okienek',      0.7, 'n',
+     'Ile razy w tygodniu przerwa między zajęciami trwa co najmniej 90 minut.'),
+    ('span',     'długie dni na uczelni',    'krótkie dni na uczelni',   1.0, 'min',
+     'Średnia długość dnia: od początku pierwszych do końca ostatnich zajęć.'),
+    ('marathon', 'dni-maratony',             'bez dni-maratonów',        0.8, 'n',
+     'Ile dni w tygodniu trwa co najmniej 8 godzin od pierwszych do ostatnich zajęć.'),
+    ('early',    'wczesne starty',           'późne starty',             0.8, 'pct',
+     'Jaka część dni z zajęciami zaczyna się przed 9:00.'),
+    ('late',     'zajęcia do wieczora',      'wcześnie po zajęciach',    0.6, 'pct',
+     'Jaka część dni z zajęciami kończy się po 18:00.'),
+    ('weekend',  'zajęcia w weekendy',       'bez weekendów',            0.6, 'pct',
+     'Jaka część dni z zajęciami przypada na sobotę lub niedzielę.'),
+    ('moves',    'częste zmiany budynków',   'jeden budynek dziennie',   0.5, 'n',
+     'Ile razy w tygodniu przechodzisz między budynkami w ciągu dnia.'),
+    ('fixed',    'zajęcia w stałych salach', 'zajęcia w wielu salach',   0.0, 'pct',
+     'Jaka część zajęć odbywa się w trzech najczęstszych salach grupy. Nie waży we współczynniku.'),
+    ('practice', 'dużo ćwiczeń i laboratoriów', 'głównie wykłady',       0.0, 'pct',
+     'Jaki udział mają ćwiczenia, laboratoria, projekty i seminaria wśród zajęć. Nie waży we współczynniku.'),
+    ('subjects', 'wiele przedmiotów',        'mało przedmiotów',         0.3, 'n',
+     'Ile różnych przedmiotów ma grupa w semestrze.'),
 ]
 KEYS = [f[0] for f in FEATURES]
 
@@ -267,19 +281,26 @@ def build(per_group, faculty_of, asof=None):
     # archetypes numbered from the lightest centre to the heaviest, so the numbering means something
     used = sorted(set(labels), key=lambda c: (load_scores([centres[c]])[0], c))
     index = {c: i for i, c in enumerate(used)}
+    raw_rows = [raw[g] for g in groups]
     names, seen = [], Counter()
     for c in used:
         name = name_archetype(centres[c])
         seen[name] += 1
         names.append(name if seen[name] == 1 else f'{name} ({seen[name]})')
-    archetypes = [{'name': names[i], 'n': sum(1 for lab in labels if lab == c)} for i, c in enumerate(used)]
+    archetypes = []
+    for i, c in enumerate(used):
+        members = [raw_rows[j] for j in range(len(groups)) if labels[j] == c]
+        typical = [round(sum(r[KEYS.index(k)] for r in members) / len(members), 1) for k in ('hours', 'days', 'gaps', 'span')]
+        archetypes.append({'name': names[i], 'n': len(members), 'typical': typical})
     rows = []
     for i, g in enumerate(groups):
         rows.append([g, faculty_of(g), round(pts[i][0] * 1000), round(pts[i][1] * 1000), pct[i], index[labels[i]],
                      round(load[i] * 100)] + [round(v * 100) for v in z[i]])
     return {
         'asof': asof,
-        'features': [{'key': k, 'high': hi, 'low': lo, 'w': w} for k, hi, lo, w in FEATURES],
+        'features': [{'key': k, 'high': hi, 'low': lo, 'w': w, 'unit': unit, 'def': text,
+                      'mean': round(means[i], 3), 'std': round(stds[i], 3)}
+                     for i, (k, hi, lo, w, unit, text) in enumerate(FEATURES)],
         'archetypes': archetypes,
         'explained': round(explained, 2),
         'groups': rows,
