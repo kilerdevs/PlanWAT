@@ -57,6 +57,15 @@
   a { color: var(--accent-text); }
   a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
   .callout { margin-top: 24px; padding: 14px 16px; border-radius: 14px; background: var(--s2); color: var(--t1); }
+  .cmp-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--s1); }
+  .cmp-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cmp { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 0.9375rem; }
+  .cmp th, .cmp td { padding: 10px 14px; text-align: left; vertical-align: top; border-top: 1px solid var(--line); color: var(--t2); }
+  .cmp thead th { border-top: 0; color: var(--t1); font-weight: 600; font-size: 0.875rem; }
+  .cmp thead th:nth-child(2), .cmp td:nth-child(2) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .cmp tbody th { color: var(--t1); font-weight: 600; width: 26%; }
+  .cmp td strong { color: var(--accent-text); }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .updated { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 0.875rem; }
   @media (min-width: 768px) { main { padding-top: 64px; } h1 { font-size: 3rem; letter-spacing: -0.035em; } }
 /*@@THEME_CSS@@*/
@@ -74,6 +83,27 @@
 
   <h2>Jakie dane zbieramy</h2>
   <p><strong>Żadnych danych osobowych.</strong> Nie ma kont, formularzy, plików cookie, reklam ani narzędzi analitycznych czy śledzących. Serwis nie wie, kim jesteś ani które plany oglądasz.</p>
+
+  <h2>Dlaczego bez logowania</h2>
+  <p>Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to oferują konto (na przykład przez kod wysyłany na adres studencki). Samo logowanie bywa opcjonalne, ale ta droga ma kilka słabych punktów, których u nas po prostu nie ma:</p>
+  <div class="cmp-wrap" tabindex="0" role="region" aria-label="Porównanie PlanWAT z serwisem z logowaniem kodem">
+    <table class="cmp">
+      <thead>
+        <tr><th scope="col"><span class="vh">Cecha</span></th><th scope="col">PlanWAT</th><th scope="col">Serwis z opcjonalnym logowaniem kodem na adres studencki</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Logowanie</th><td><strong>Nie ma i nie będzie</strong></td><td>Opcjonalne, ale po co, skoro plan jest publiczny</td></tr>
+        <tr><th scope="row">Co o Tobie wiemy</th><td><strong>Nic: ani adresu, ani konta</strong></td><td>Po zalogowaniu zweryfikowany adres e-mail powiązany z Twoją tożsamością, grupą i datami wizyt</td></tr>
+        <tr><th scope="row">Co wycieknie przy włamaniu</th><td><strong>Nie ma czego wykradać</strong></td><td>Lista adresów zalogowanych studentów z przypisanymi grupami</td></tr>
+        <tr><th scope="row">Phishing</th><td><strong>Nikt nie prosi Cię o kod, więc nie ma czego podrobić</strong></td><td>Przyzwyczaja do wpisywania kodów z poczty uczelnianej na stronie osoby trzeciej, czyli dokładnie tak, jak działają wyłudzacze</td></tr>
+        <tr><th scope="row">Obowiązki wobec RODO</th><td><strong>Żadne: nie zbieramy danych osobowych</strong></td><td>Zgody, polityka przetwarzania, obsługa próśb o wgląd i usunięcie danych</td></tr>
+        <tr><th scope="row">Eksport i subskrypcja kalendarza (<code>.ics</code>)</th><td><strong>Za darmo, dla każdego</strong></td><td>W części za abonamentem</td></tr>
+        <tr><th scope="row">Reklamy, śledzenie, cookies</th><td><strong>Brak</strong></td><td>Różnie</td></tr>
+        <tr><th scope="row">Cena</th><td><strong>0 zł, na zawsze</strong></td><td>Do ustalenia przy płatności</td></tr>
+        <tr><th scope="row">Kod źródłowy</th><td><strong>Otwarty, na licencji MIT</strong></td><td>Jak to działa i co dzieje się z danymi, trzeba przyjąć na słowo (trust me bro)</td></tr>
+      </tbody>
+    </table>
+  </div>
 
   <h2>Co zostaje w Twojej przeglądarce</h2>
   <p>Kilka ustawień zapisuje się wyłącznie na Twoim urządzeniu (<code>localStorage</code>) i nigdy nie jest nigdzie wysyłane:</p>
@@ -108,7 +138,7 @@
   <h2>Kontakt i bezpieczeństwo</h2>
   <p>Błąd w planie lub w serwisie zgłoś w <a href="https://github.com/kilerdevs/PlanWAT/issues">zgłoszeniach na GitHubie</a>. Lukę bezpieczeństwa zgłoś prywatnie przez <a href="https://github.com/kilerdevs/PlanWAT/security/advisories/new">GitHub Security Advisories</a> (szczegóły w <a href="../.well-known/security.txt">security.txt</a>).</p>
 
-  <p class="updated">Ostatnia zmiana: 14 października 2026</p>
+  <p class="updated">Ostatnia zmiana: 15 października 2026</p>
 </main>
 </body>
 </html>

@@ -10,6 +10,7 @@
   var HEX = /^#[0-9a-fA-F]{6}$/;
   var PALETTE = ['#2563a8', '#1d8a7a', '#5b52c9', '#c8862a', '#c14953', '#3f9142', '#8a4fae',
                  '#c65a91', '#6f5ed1', '#d16b3f', '#b5651d', '#2aa7ad', '#7a8a3a', '#6b7280'];
+  var SPORTS_CENTRE = 'Ośrodek Szkoleniowo-Sportowy WAT';
   var MAX_OCCURRENCES = 2000;
   var DAY_MS = 86400000;
 
@@ -217,6 +218,8 @@
       if (!subject) return;
       var type = ev.CATEGORIES ? (splitList(ev.CATEGORIES[0].value)[0] || '') : '';
       var room = text(ev, 'LOCATION');
+      /* physical education (WF) is held at the sports centre, but the faculties list no room for it */
+      if (!room && /wychowanie fizyczne/i.test(subject)) room = SPORTS_CENTRE;
       var color = text(ev, 'X-PLAN-COLOR');
       var found = occurrences(ev, limit);
       if (!found.length) return;

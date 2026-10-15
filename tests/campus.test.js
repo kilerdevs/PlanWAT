@@ -58,7 +58,7 @@ test('dayStops lists one day in time order with buildings resolved', () => {
   for (let i = 1; i < stops.length; i++) assert.ok(stops[i - 1].start <= stops[i].start);
   for (const s of stops) {
     assert.ok(s.subject && s.start && s.end);
-    if (s.building) assert.equal(s.building.code, C.roomBuilding(s.room));
+    if (s.building) assert.equal(s.building, C.findBuilding(C.roomBuilding(s.room)));
   }
   assert.deepEqual(C.dayStops(REAL, '2026-10-18'), []);
 });
@@ -101,4 +101,11 @@ test('walking time between the buildings of consecutive classes', () => {
   assert.equal(C.transfer('314 S', '1 100'), null);  // the same building
   assert.equal(C.transfer('314 S', '1002 HILTON'), null);  // unknown building
   assert.equal(C.transfer('', '201 65'), null);
+});
+
+test('the sports centre resolves from its room name to the map point', () => {
+  assert.equal(C.roomBuilding('Ośrodek Szkoleniowo-Sportowy WAT'), 'OSS');
+  const b = C.findBuilding('OSS');
+  assert.ok(b && /Ośrodek Szkoleniowo-Sportowy/.test(b.name));
+  assert.ok(Math.abs(b.lat - 52.251174) < 1e-6);
 });

@@ -87,6 +87,14 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - Podgląd `dev`: każde wdrożenie Pages publikuje szczyt `dev` pod `/dev/`, z wzajemnymi linkami do produkcji.
 - Dokumentacja: cała dokumentacja Markdown przepisana na polski, z diagramami, wykresami i plakietkami.
 
+- **Wolne sale** wróciły w nowym wydaniu: wybierasz dzień, godzinę, czas, którego potrzebujesz (od 30 min do 3 h), budynek
+  i numer sali, a każda sala dostaje pasek dnia z zajęciami (czerwone) i wolnym oknem (zielone). „Pokaż też sale wolne
+  później” dopisuje sale, które zwolnią się w ciągu dnia, a nazwa budynku prowadzi na mapę. Sale bez zajęć w pobliżu
+  danego dnia są pominięte i policzone zamiast zgadywane. Dane z `data/rooms.json` pochodzą z planów wszystkich grup.
+- **Prywatność:** tabela „PlanWAT kontra serwis z logowaniem kodem” z README także na stronie `/prywatnosc/`.
+- **Aktualizacja planów** co 2 godziny zamiast raz na dobę, a strona jest odbudowywana zaraz po zakończeniu przebiegu.
+- **Wychowanie fizyczne** ma salę: Ośrodek Szkoleniowo-Sportowy WAT, także jako punkt na mapie.
+
 ### Zmieniono
 - **Plan:** ✓ przy każdych skończonych zajęciach, nie tylko dzisiejszych.
 - **Mapa:** w widoku dnia pozostałe budynki cofają się, karta budynku jest zwarta, więc dotknięte zajęcia zostają widoczne,
@@ -98,6 +106,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - `CI`, `Egress` i `SAST` nie uruchamiają się już po pushu na `master`: pull request wydania zdążył je wykonać.
 
 ### Naprawiono
+- **Prywatność:** aliasy prowadzących (inicjał i nazwisko sklejone w polu sali, np. `AKowalski`) nie trafiają już do planów.
+  Konwerter je odrzuca, `build.py` odmawia zbudowania kalendarza z takim polem, a `tools/scrub_staff.py` czyści już opublikowane.
+- **iPhone:** przyciski nad planem są zwarte zamiast dużych owali, „Zainstaluj aplikację” pokazuje kroki dodania do
+  ekranu początkowego, a arkusz szczegółów na mapie da się przewijać do ostatnich zajęć.
+- **Crawler:** wydziały za różnymi politykami Incapsula są przeglądane równolegle, stan zapisuje się co 25 sprawdzeń także
+  przy odpowiedziach 304, a zapis stanu jest bezpieczny przy pracy wielu torów.
 - **Dane kadry w `LOCATION`:** przy części komórek WLO konwerter wpisywał do pola sali także prowadzących (np. `dr inż. …, 255 S`),
   przez co 8 kalendarzy publikowało nazwiska. Konwerter odrzuca teraz każdą część sali będącą tytułem z nazwiskiem, a build odmawia
   kalendarza, w którego `LOCATION` taka część występuje. Gałąź `data` została oczyszczona wraz z historią.

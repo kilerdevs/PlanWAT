@@ -439,6 +439,26 @@ test('comparing groups shows both plans and the shared free time', async ({ page
   await noCsp(page);
 });
 
+test('free rooms lists rooms with no class at the chosen time, with a day bar on each', async ({ page }) => {
+  await openGroup(page);
+  await page.locator('#roomsBtn').click();
+  await expect(page.locator('#frDate')).toHaveValue('2026-10-15');
+  await expect(page.locator('#frTime')).toHaveValue('10:30');
+  const status = tool(page).locator('#frResult .fr-sum');
+  await expect(status).toContainText(/wolnych sal|wolne sale|wolna sala/);
+  await expect(tool(page).locator('.fr-card').first().locator('.fr-bar')).toHaveCount(1);
+  await expect(tool(page).locator('#frAsof')).toContainText('Według opublikowanych planów');
+  // 314 S hosts a class right now, so it is not free; asking for later rooms may list it with a later start
+  await page.locator('#frQuery').fill('314 S');
+  await expect(tool(page).locator('.fr-card.fr-card:not(.later) .fr-room', { hasText: /^314 S$/ })).toHaveCount(0);
+  await page.locator('#frLater').check();
+  await expect(tool(page).locator('.fr-card.later').first()).toContainText('dopiero od');
+  await page.locator('#frDate').fill('2030-01-01');
+  await page.locator('#frDate').dispatchEvent('change');
+  await expect(tool(page).locator('#frResult')).toContainText('Brak danych dla tego dnia');
+  await noCsp(page);
+});
+
 test('favourites and recent groups appear on the front page', async ({ page }) => {
   await openGroup(page);
   await page.locator('#favBtn').click();
@@ -501,7 +521,7 @@ test('the list view and the tool sheets have no serious or critical accessibilit
   expect(await scan()).toEqual([]);
   await page.locator('#viewSeg button[data-view="month"]').click();
   expect(await scan()).toEqual([]);
-  for (const id of ['#statsBtn', '#calBtn']) {
+  for (const id of ['#statsBtn', '#roomsBtn', '#calBtn']) {
     await page.locator(id).click();
     await expect(tool(page)).toBeVisible();
     await expect(tool(page).locator('.muted', { hasText: 'Wczytywanie' })).toHaveCount(0);

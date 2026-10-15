@@ -53,6 +53,8 @@
     --accent-wash: rgba(10, 132, 255, 0.05);
     --accent-flash: rgba(10, 132, 255, 0.24);
     --accent-select: rgba(10, 132, 255, 0.45);
+    --free: #32d74b;
+    --busy: #ff6b63;
 
     --glass: rgba(22, 22, 24, 0.72);
     --glass-2: rgba(44, 44, 46, 0.72);
@@ -153,7 +155,7 @@
   ::selection { background: var(--accent-select); color: #fff; }
   h1, h2, h3 { margin: 0; text-wrap: balance; }
   p { margin: 0; }
-  button { font: inherit; color: inherit; }
+  button { font: inherit; color: inherit; -webkit-appearance: none; appearance: none; }
   .vh {
     position: absolute !important;
     width: 1px; height: 1px;
@@ -907,7 +909,7 @@
       scroll-padding-inline: var(--gl);
     }
     .tools::-webkit-scrollbar { display: none; }
-    .tools .dl { flex: none; }
+    .tools .dl { flex: none; border-radius: 12px; padding: 6px 12px 6px 10px; line-height: 1.2; }
   }
   #favBtn[aria-pressed="true"] .i { fill: currentColor; color: var(--t1); }
   .termswitch { display: inline-flex; gap: 2px; padding: 3px; margin-top: 10px; border-radius: 999px; background: var(--s3); }
@@ -1089,7 +1091,7 @@
   .action .i { color: var(--t2); }
   .action small { display: block; font-size: var(--fs-13); font-weight: 400; color: var(--t2); }
   .field { display: grid; gap: 4px; font-size: var(--fs-13); color: var(--t2); }
-  .field input {
+  .field input, .field select {
     min-height: 44px;
     padding: 8px 12px;
     border: 0;
@@ -1100,7 +1102,9 @@
     font-variant-numeric: tabular-nums;
     color-scheme: inherit;
   }
-  .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .field select { -webkit-appearance: none; appearance: none; padding-right: 34px; text-overflow: ellipsis;
+    background: var(--s3) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%238e8e93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 12px center / 12px 8px no-repeat; }
+  .field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .choices { display: flex; flex-wrap: wrap; gap: 6px; }
   .choice {
     min-height: 36px;
@@ -1144,6 +1148,32 @@
   table.data { width: 100%; margin-top: var(--sp-2); border-collapse: collapse; font-size: var(--fs-13); font-variant-numeric: tabular-nums; }
   table.data th, table.data td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
   table.data th { color: var(--t2); font-weight: 500; }
+  /* ================= free rooms ================= */
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
+  .fields select, .fields input { width: 100%; min-width: 0; }
+  .fr-now { margin: var(--sp-3) 0 0; }
+  .fr-later { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); font-size: var(--fs-15); cursor: pointer; }
+  .fr-later input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .fr-asof { margin: var(--sp-4) 0 0; padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--accent-line); background: var(--s3); border-radius: 0 var(--r-sm, 8px) var(--r-sm, 8px) 0; font-size: var(--fs-13); }
+  .fr-sum { margin: var(--sp-4) 0 0; font-size: var(--fs-15); color: var(--t2); }
+  .fr-sum strong { margin-right: 4px; font-size: 1.75rem; line-height: 1; font-weight: 700; color: var(--free); font-variant-numeric: tabular-nums; }
+  .fr-note { margin-top: var(--sp-1); }
+  .fr-list { list-style: none; margin: var(--sp-3) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--sp-2); }
+  .fr-card { padding: var(--sp-3); border-radius: var(--r-card); background: var(--s3); box-shadow: var(--edge); }
+  .fr-card.later { opacity: 0.86; }
+  .fr-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
+  .fr-room { font-size: var(--fs-17); font-weight: 650; font-variant-numeric: tabular-nums; }
+  .fr-bld { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-13); color: var(--t2); text-decoration: none; }
+  a.fr-bld { color: var(--accent-text); }
+  .fr-when { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--sp-2); margin: var(--sp-2) 0 0; }
+  .fr-time { font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--free); }
+  .fr-len { font-size: var(--fs-13); color: var(--t2); }
+  .fr-bar { position: relative; height: 8px; margin-top: var(--sp-3); border-radius: 4px; background: var(--s4); overflow: hidden; }
+  .fr-seg { position: absolute; top: 0; bottom: 0; left: calc(var(--l) * 1%); width: calc(var(--w) * 1%); }
+  .fr-seg.free { background: color-mix(in srgb, var(--free) 28%, transparent); }
+  .fr-seg.want { background: var(--free); }
+  .fr-seg.busy { background: var(--busy); }
+  .fr-more { margin: var(--sp-3) auto 0; border: 0; cursor: pointer; }
   .rows { list-style: none; margin: var(--sp-2) 0 0; padding: 0; border-radius: var(--r-card); background: var(--s3); overflow: hidden; }
   .rows li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px var(--sp-3); align-items: baseline; padding: 10px var(--sp-4); font-size: var(--fs-13); }
   .rows li + li { border-top: 1px solid var(--line); }
@@ -1163,6 +1193,7 @@
   .cmp-free { font-size: var(--fs-13); color: var(--t1); }
   .cmp-free b { color: var(--accent-text); font-weight: 600; }
   .muted { color: var(--t2); font-size: var(--fs-13); }
+  .install-steps { margin: var(--sp-3) 0; padding-left: 1.3em; display: grid; gap: var(--sp-2); }
   .row-add { display: flex; gap: var(--sp-2); align-items: end; margin-top: var(--sp-2); }
   .row-add .field { flex: 1; }
   .row-add .link { min-height: 44px; padding-inline: 16px; }
@@ -1231,8 +1262,12 @@
     .sheet-head { cursor: default; padding-top: 20px; }
   }
   @media (pointer: coarse) {
-    .chip, .dl, .link, .seg button, .choice { min-height: 44px; }
+    .chip, .link, .seg button, .choice { min-height: 44px; }
     .weekbtn { min-height: 44px; }
+    /* the tool buttons stay compact (a 44px pill of 13px text read as a big oval on phones); the touch target is
+       still 44px tall through an invisible extension */
+    .dl { min-height: 36px; position: relative; }
+    .dl::after { content: ""; position: absolute; inset: -4px 0; }
   }
 
   /* ================= first-visit tour: a swipeable sheet with small looping demos ================= */
@@ -1629,6 +1664,7 @@
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></symbol>
   <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-door" viewBox="0 0 24 24"><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h3"/><path d="M13 20h9"/><path d="M10 12v.01"/><path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z"/></symbol>
   <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
@@ -1662,6 +1698,7 @@
         <button class="dl" id="subjectsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-user"/></svg>Moje przedmioty</button>
         <button class="dl" id="statsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chart"/></svg>Statystyki</button>
         <button class="dl" id="compareBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"/></svg>Porównaj grupy</button>
+        <button class="dl" id="roomsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-door"/></svg>Wolne sale</button>
         <span id="installRow" hidden><button class="dl" id="installBtn" type="button" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Zainstaluj aplikację</button><span id="installHint" class="muted"></span></span>
         <button class="dl" id="tourBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-help"/></svg>Jak korzystać</button>
         <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
@@ -3610,8 +3647,178 @@
     b.appendChild(icon('alert'));
     b.appendChild(el('span', null, 'Nie udało się wczytać danych planu (' + err + ').'));
     $('weekBody').replaceChildren(b);
-    ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'compareBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
+    ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'compareBtn', 'roomsBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
   }
+
+  /* ---------- free rooms ---------- */
+  function openRooms() {
+    var nowTime = function () { var d = new Date(); return pad2(d.getHours()) + ':' + pad2(d.getMinutes() - d.getMinutes() % 5); };
+    var opts = { date: todayIso(), time: nowTime(), dur: 60, bld: '', q: '', later: false, shown: 36 };
+    var DURS = [[30, '30 min'], [45, '45 min'], [60, '1 h'], [90, '1,5 h'], [120, '2 h'], [180, '3 h']];
+    var STEP = 36, TL_FROM = 7 * 60, TL_TO = 21 * 60;
+    var data = null, out = null, dateIn = null, timeIn = null, bldIn = null, durRow = null;
+    var span = TL_TO - TL_FROM;
+    function pct(min) { return Math.max(0, Math.min(100, (min - TL_FROM) / span * 100)); }
+    function seg(bar, cls, s, e) {
+      var from = pct(s), to = pct(e);
+      if (to - from < 0.4) return;
+      var d = bar.appendChild(el('span', 'fr-seg ' + cls));
+      d.style.setProperty('--l', from.toFixed(2));
+      d.style.setProperty('--w', (to - from).toFixed(2));
+    }
+    function buildingLabel(code, fallback) {
+      var b = code && window.Campus ? Campus.findBuilding(code) : null;
+      return b ? b.name : (fallback ? 'Budynek ' + fallback : '');
+    }
+    function card(r, from) {
+      var li = el('li', 'fr-card' + (r.free ? '' : ' later'));
+      var head = li.appendChild(el('div', 'fr-head'));
+      head.appendChild(el('strong', 'fr-room', r.room));
+      var code = window.Campus ? Campus.roomBuilding(r.room) : null;
+      var label = buildingLabel(code, r.building);
+      if (label && code) {
+        var a = head.appendChild(el('a', 'fr-bld', label));
+        a.href = '../mapa/?b=' + encodeURIComponent(code);
+      } else if (label) head.appendChild(el('span', 'fr-bld', label));
+      var when = li.appendChild(el('p', 'fr-when'));
+      when.appendChild(el('span', 'fr-time', PI.hhmm(r.start) + '–' + (r.until == null ? 'koniec dnia' : PI.hhmm(r.until))));
+      var len = r.until == null ? null : r.until - r.start;
+      when.appendChild(el('span', 'fr-len', r.free
+        ? (len == null ? 'wolna do końca dnia' : 'wolna ' + PI.fmtDuration(len))
+        : 'dopiero od ' + PI.hhmm(r.start) + (len == null ? '' : ', na ' + PI.fmtDuration(len))));
+      var bar = li.appendChild(el('div', 'fr-bar'));
+      bar.setAttribute('role', 'img');
+      bar.setAttribute('aria-label', r.busy.length
+        ? 'Zajęcia: ' + r.busy.map(function (b) { return PI.hhmm(b[0]) + '–' + PI.hhmm(b[1]); }).join(', ')
+        : 'Bez zajęć tego dnia');
+      seg(bar, 'free', r.start, r.until == null ? TL_TO : r.until);
+      r.busy.forEach(function (b) { seg(bar, 'busy', b[0], b[1]); });
+      seg(bar, 'want', r.start, Math.min(TL_TO, r.start + opts.dur));
+      return li;
+    }
+    function fillBuildings(counts) {
+      var keep = opts.bld;
+      bldIn.replaceChildren();
+      var total = 0;
+      Object.keys(counts).forEach(function (k) { total += counts[k]; });
+      var all = el('option', null, 'Wszystkie budynki (' + total + ')');
+      all.value = '';
+      bldIn.appendChild(all);
+      Object.keys(counts).sort(function (a, b) { return a.localeCompare(b, 'pl', { numeric: true }); }).forEach(function (k) {
+        var o = el('option', null, (k === '?' ? 'Inne' : 'Budynek ' + k) + ' (' + counts[k] + ')');
+        o.value = k;
+        bldIn.appendChild(o);
+      });
+      if (keep && !counts[keep]) { opts.bld = ''; keep = ''; }
+      bldIn.value = keep;
+    }
+    function render() {
+      out.replaceChildren();
+      if (!data) { para(out, 'Wczytywanie rezerwacji sal…', 'muted'); return; }
+      if (data.error) { para(out, 'Nie udało się wczytać danych o salach. Spróbuj ponownie później.', 'muted'); return; }
+      var from = toMin(opts.time), range = PI.dataRange(data);
+      var res = PI.freeRooms(data, opts.date, from, opts.dur, opts.later);
+      if (!res) {
+        para(out, range ? 'Brak danych dla tego dnia. Dane obejmują ' + fmtFullDate(range.from) + ' – ' + fmtFullDate(range.to) + '.' : 'Brak danych o salach.', 'muted');
+        return;
+      }
+      var counts = {};
+      res.list.forEach(function (r) { var k = r.building || '?'; counts[k] = (counts[k] || 0) + 1; });
+      fillBuildings(counts);
+      var needle = PI.norm(opts.q);
+      var list = res.list.filter(function (r) {
+        if (opts.bld && (r.building || '?') !== opts.bld) return false;
+        return !needle || PI.norm(r.room).indexOf(needle) >= 0;
+      });
+      var now = list.filter(function (r) { return r.free; }).length;
+      var sum = out.appendChild(el('p', 'fr-sum'));
+      sum.setAttribute('role', 'status');
+      sum.appendChild(el('strong', null, String(list.length)));
+      sum.appendChild(document.createTextNode(' ' + PI.plural(list.length, 'wolna sala', 'wolne sale', 'wolnych sal') + ' na ' + PI.fmtDuration(opts.dur) +
+        ', ' + shortDate(opts.date) + ' od ' + PI.hhmm(from) + (opts.later && now !== list.length ? ' (od razu: ' + now + ')' : '')));
+      if (res.skipped) para(out, 'Pominięto ' + res.skipped + ' ' + PI.plural(res.skipped, 'salę', 'sale', 'sal') + ' bez żadnych zajęć w ciągu dwóch tygodni od tego dnia: nie wiadomo, czy są w użyciu.', 'muted fr-note');
+      if (!list.length) {
+        if (!opts.later) para(out, 'Nic nie jest wolne od razu. Zaznacz „Pokaż też sale wolne później”, żeby zobaczyć, co zwolni się w ciągu dnia.', 'muted');
+        return;
+      }
+      var ul = out.appendChild(el('ul', 'fr-list'));
+      list.slice(0, opts.shown).forEach(function (r) { ul.appendChild(card(r, from)); });
+      if (list.length > opts.shown) {
+        var more = out.appendChild(el('button', 'dl fr-more', 'Pokaż więcej (' + (list.length - opts.shown) + ')'));
+        more.type = 'button';
+        more.addEventListener('click', function () { opts.shown += STEP; render(); });
+      }
+    }
+    var update = function () { opts.shown = STEP; render(); };
+    openTool('Wolne sale', function (body) {
+      para(body, 'Kiedy sala nie ma zapisanych zajęć: przy ustalaniu terminu odrabiania, egzaminu, konsultacji albo projektu zespołowego. To nie jest rezerwacja: o salę i tak umawiasz się z prowadzącym lub dziekanatem.', 'muted');
+      var fields = body.appendChild(el('div', 'fields'));
+      dateIn = el('input');
+      dateIn.type = 'date';
+      dateIn.id = 'frDate';
+      dateIn.value = opts.date;
+      timeIn = el('input');
+      timeIn.type = 'time';
+      timeIn.id = 'frTime';
+      timeIn.step = 300;
+      timeIn.value = opts.time;
+      bldIn = el('select');
+      bldIn.id = 'frBuilding';
+      var q = el('input');
+      q.type = 'search';
+      q.id = 'frQuery';
+      q.placeholder = 'np. 308';
+      q.autocomplete = 'off';
+      fields.appendChild(field('Dzień', dateIn));
+      fields.appendChild(field('Od godziny', timeIn));
+      fields.appendChild(field('Budynek', bldIn));
+      fields.appendChild(field('Sala', q));
+      var nowBtn = body.appendChild(el('button', 'choice fr-now', 'Ustaw na teraz'));
+      nowBtn.type = 'button';
+      nowBtn.addEventListener('click', function () {
+        opts.date = todayIso();
+        opts.time = nowTime();
+        dateIn.value = opts.date;
+        timeIn.value = opts.time;
+        update();
+      });
+      durRow = choices('Potrzebuję', 'frDur', DURS, opts.dur, function (v) {
+        opts.dur = v;
+        Array.prototype.forEach.call(durRow.querySelectorAll('.choice'), function (b) {
+          b.setAttribute('aria-pressed', String(b.getAttribute('data-value') === String(v)));
+        });
+        update();
+      });
+      body.appendChild(durRow);
+      var laterLabel = body.appendChild(el('label', 'fr-later'));
+      var later = el('input');
+      later.type = 'checkbox';
+      later.id = 'frLater';
+      laterLabel.appendChild(later);
+      laterLabel.appendChild(el('span', null, 'Pokaż też sale wolne później tego dnia'));
+      later.addEventListener('change', function () { opts.later = later.checked; update(); });
+      dateIn.addEventListener('change', function () { opts.date = dateIn.value || opts.date; update(); });
+      timeIn.addEventListener('change', function () { opts.time = timeIn.value || opts.time; update(); });
+      bldIn.addEventListener('change', function () { opts.bld = bldIn.value; update(); });
+      q.addEventListener('input', function () { opts.q = q.value; update(); });
+      var asof = el('p', 'fr-asof muted');
+      asof.id = 'frAsof';
+      body.appendChild(asof);
+      out = body.appendChild(el('div'));
+      out.id = 'frResult';
+      render();
+    });
+    getJSON('data/rooms.json').then(function (d) {
+      data = d;
+      var range = PI.dataRange(d);
+      if (range && dateIn) { dateIn.min = range.from; dateIn.max = range.to; }
+      var asof = $('frAsof');
+      if (asof) asof.textContent = 'Według opublikowanych planów' + (d.asof ? ' · dane z ' + fmtFullDate(d.asof) : '') +
+        '. Nie obejmują wszystkich rezerwacji ani informacji o otwarciu sal, więc egzaminy, wydarzenia i plany spoza PlanWAT nie są tu widoczne.';
+      if (out) render();
+    }, function () { data = { error: true }; if (out) render(); });
+  }
+  $('roomsBtn').addEventListener('click', openRooms);
 
   /* offline: the service worker keeps the last copy of this page and its plan; say that it is a saved copy */
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(function () {});
@@ -3625,10 +3832,21 @@
     function show(on) { var row = document.getElementById('installRow'); if (row) row.hidden = !on; btn.hidden = !on; }
     if (standalone) return;
     if (ios) {
-      if (hint) hint.textContent = 'W Safari: Udostępnij → „Do ekranu początkowego”.';
-      btn.hidden = true;
-      var row = document.getElementById('installRow');
-      if (row) row.hidden = false;
+      /* iOS has no install prompt to trigger: the button opens the three taps that do it from the share menu */
+      var safari = !/crios|fxios|edgios|opios|duckduckgo|gsa\//i.test(navigator.userAgent);
+      if (hint) hint.textContent = '';
+      show(true);
+      btn.addEventListener('click', function () {
+        openTool('Zainstaluj aplikację', function (body) {
+          para(body, 'PlanWAT działa wtedy jak aplikacja: ikona na ekranie początkowym, pełny ekran i plan także bez internetu.');
+          var steps = el('ol', 'install-steps');
+          ['Dotknij przycisku Udostępnij (kwadrat ze strzałką w górę) na dolnym pasku przeglądarki.',
+           'Przewiń listę i wybierz „Do ekranu początkowego”.',
+           'Dotknij „Dodaj”. Ikona PlanWAT pojawi się na ekranie początkowym.'].forEach(function (t) { steps.appendChild(el('li', null, t)); });
+          body.appendChild(steps);
+          if (!safari) para(body, 'Nie widzisz „Do ekranu początkowego”? Otwórz tę stronę w Safari i powtórz kroki.', 'muted');
+        });
+      });
       return;
     }
     window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); offer = e; show(true); });

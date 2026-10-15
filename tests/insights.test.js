@@ -165,3 +165,44 @@ test('ordinals number each class within its subject and type over the term', () 
   const firstWeek = I.lessons(REAL).slice(0, 5).map((l) => real[I.lessonKey(l)]);
   firstWeek.forEach((x) => assert.ok(x.n >= 1 && x.n <= x.of));
 });
+
+/* ---------- free rooms ---------- */
+const roomData = (rooms, bookings) => {
+  const day = (iso) => I.dayNumber(iso) - I.dayNumber('2000-01-01');
+  const b = [];
+  bookings.forEach(([room, iso, s, e]) => b.push(room, day(iso), s, e));
+  return { epoch: '2000-01-01', rooms, b };
+};
+
+test('firstWindow finds the first gap that fits, or runs to the end of the day', () => {
+  assert.deepEqual(I.firstWindow([], 600, 60), { start: 600, until: null });
+  assert.deepEqual(I.firstWindow([[540, 600]], 570, 60), { start: 600, until: null });
+  assert.deepEqual(I.firstWindow([[660, 720]], 600, 60), { start: 600, until: 660 });
+  // gaps of 20 and 30 minutes are too short for an hour, so the window opens after the last class
+  assert.deepEqual(I.firstWindow([[630, 700], [720, 800], [830, 900]], 600, 60), { start: 900, until: null });
+  assert.equal(I.firstWindow([], 24 * 60 - 30, 60), null);
+});
+
+test('freeRooms lists rooms free for the whole span, and later ones only on request', () => {
+  const d = roomData(['1 S', '2 S', '3 5', '4 5'], [
+    [0, '2026-10-15', 480, 570], [0, '2026-10-15', 600, 690],   // 1 S: 8:00-9:30, 10:00-11:30
+    [1, '2026-10-15', 960, 1050],                              // 2 S: 16:00-17:30
+    [2, '2026-09-01', 480, 570],                               // 3 5: nothing near the date -> unknown
+    [3, '2026-10-14', 480, 570]]);                             // 4 5: a class the day before -> known, free today
+  const now = I.freeRooms(d, '2026-10-15', 570, 60, false);
+  assert.deepEqual(now.list.map((r) => r.room), ['4 5', '2 S']);  // longest stretch first (4 5 is free all day)
+  assert.equal(now.skipped, 1);
+  const later = I.freeRooms(d, '2026-10-15', 570, 60, true);
+  assert.deepEqual(later.list.map((r) => [r.room, r.free, r.start]), [['4 5', true, 570], ['2 S', true, 570], ['1 S', false, 690]]);
+  assert.equal(later.list[2].until, null);
+  assert.deepEqual(later.list[2].busy, [[480, 570], [600, 690]]);
+});
+
+test('freeRooms is null for a date outside the data and building() reads the room text', () => {
+  const d = roomData(['1 S'], [[0, '2026-10-15', 480, 570]]);
+  assert.equal(I.freeRooms(d, '2026-12-24', 480, 60, false), null);
+  assert.deepEqual(I.dataRange(d), { from: '2026-10-15', to: '2026-10-15' });
+  assert.equal(I.building('308 S'), 'S');
+  assert.equal(I.building('0.24/135'), '135');
+  assert.equal(I.building('T3.1W'), '');
+});

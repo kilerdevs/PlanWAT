@@ -262,12 +262,69 @@
     return weeks;
   }
 
+  /* ---------- "Wolne sale" ---------- */
+  var DAY_END = 24 * 60;
+  var NEAR_DAYS = 14;  /* a room counts as known on a day when it has a class within two weeks of it */
+
+  /* "308 S" -> "S", "0.24/135" -> "135", "T3.1W" -> "" : the building a room belongs to */
+  function building(room) {
+    var m = /\/\s*(\w+)\s*$/.exec(room) || /^\S+\s+([A-Za-zĄĆĘŁŃÓŚŹŻ]{1,3}|\d{1,3}[A-Z]?)$/.exec(room);
+    return m ? m[1] : '';
+  }
+  function dataRange(roomData) {
+    var epoch = dayNumber(roomData.epoch), b = roomData.b, lo = Infinity, hi = -Infinity;
+    for (var i = 1; i < b.length; i += 4) { lo = Math.min(lo, b[i]); hi = Math.max(hi, b[i]); }
+    return lo > hi ? null : { from: isoFromDayNumber(epoch + lo), to: isoFromDayNumber(epoch + hi) };
+  }
+  /* The earliest window of at least `need` minutes at or after `from`, given a room's merged busy spans
+     [[start, end], ...] sorted by start: { start, until } (until null: free for the rest of the day), or null. */
+  function firstWindow(busy, from, need) {
+    var at = from;
+    for (var i = 0; i < busy.length; i++) {
+      if (busy[i][1] <= at) continue;
+      if (busy[i][0] >= at + need) return { start: at, until: busy[i][0] };
+      at = Math.max(at, busy[i][1]);
+    }
+    return at + need <= DAY_END ? { start: at, until: null } : null;
+  }
+  /* rooms.json -> the rooms with no class for `need` minutes from `from` on the date.
+     Each is { room, building, start, until, free (free from `from` on), busy: [[s, e], ...] } ordered best-first:
+     free now before free later, then the longest stretch. With `later`, rooms whose window opens after `from`
+     are listed too. Rooms with no class within two weeks of the date are not guessed at: they are counted in
+     `skipped`. Null when the date lies outside the data. */
+  function freeRooms(roomData, iso, from, need, later) {
+    var epoch = dayNumber(roomData.epoch), day = dayNumber(iso) - epoch, b = roomData.b;
+    var byRoom = {}, known = {}, first = Infinity, last = -Infinity;
+    for (var i = 0; i + 3 < b.length; i += 4) {
+      first = Math.min(first, b[i + 1]);
+      last = Math.max(last, b[i + 1]);
+      if (Math.abs(b[i + 1] - day) <= NEAR_DAYS) known[b[i]] = true;
+      if (b[i + 1] === day) (byRoom[b[i]] = byRoom[b[i]] || []).push([b[i + 2], b[i + 3]]);
+    }
+    if (day < first || day > last) return null;
+    var list = [], skipped = 0;
+    roomData.rooms.forEach(function (name, r) {
+      if (!known[r]) { skipped++; return; }
+      var busy = (byRoom[r] || []).sort(function (x, y) { return x[0] - y[0] || x[1] - y[1]; });
+      var win = firstWindow(busy, from, need);
+      if (!win || (!later && win.start !== from)) return;
+      list.push({ room: name, building: building(name), start: win.start, until: win.until, free: win.start === from, busy: busy });
+    });
+    list.sort(function (x, y) {
+      var ux = x.until == null ? 1e9 : x.until - x.start, uy = y.until == null ? 1e9 : y.until - y.start;
+      return (y.free - x.free) || (x.free ? 0 : x.start - y.start) || (uy - ux) ||
+        x.room.localeCompare(y.room, 'pl', { numeric: true });
+    });
+    return { list: list, skipped: skipped };
+  }
+
   var PlanInsights = {
     toMin: toMin, hhmm: hhmm, fmtDuration: fmtDuration, plural: plural, norm: norm,
     lessons: lessons, gaps: gaps, isExam: isExam, subjectProgress: subjectProgress, ordinals: ordinals, stats: stats,
     lessonKey: lessonKey, fingerprint: fingerprint, diff: diff,
     freeWindows: freeWindows, intervals: intervals, overlaps: overlaps, byDate: byDate,
     yearOf: yearOf, peersOf: peersOf, catchUp: catchUp,
+    freeRooms: freeRooms, firstWindow: firstWindow, dataRange: dataRange, building: building,
     monthGrid: monthGrid, dayNumber: dayNumber, isoFromDayNumber: isoFromDayNumber
   };
   if (typeof module === 'object' && module.exports) module.exports = PlanInsights;
