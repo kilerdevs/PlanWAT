@@ -277,7 +277,7 @@ grupy i linkiem do oficjalnego planu.
 
 <img src="docs/diagrams/aktualizacja-planow.svg" alt="Codziennie w nocy runner odczytuje strony wydziałów przez proxy z listą dozwolonych hostów, konwertuje plany do kalendarzy, waliduje je i wypycha na gałąź data. Pages nakłada je na strony i publikuje." width="760">
 
-- Zaplanowany workflow co noc czyta strony wydziałów, konwertuje plany, **waliduje** je i wypycha wyłącznie zmienione
+- Zaplanowany workflow co 2 godziny czyta strony wydziałów, konwertuje plany, **waliduje** je i wypycha wyłącznie zmienione
   kalendarze na gałąź `data`. Pages nakłada je na strony przed budową, więc **żaden commit na `master` ani `dev` nie jest
   potrzebny**.
 - Crawler jest uprzejmy: jedno żądanie naraz, losowe przerwy, `robots.txt`, warunkowe pobieranie (`304`), ominięcie grup

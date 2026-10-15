@@ -419,7 +419,8 @@ class BuildManyGroupsTest(unittest.TestCase):
                     build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
     def test_a_location_that_names_a_person_is_refused(self):
-        for room in (r'dr inż. Nazwisko Imie\, 255 S', r'mgr inż. Nazwisko Imie\;mgr Inny Osoba\, 3/ 23A', 'prof. dr hab. Nazwisko Imie'):
+        for room in (r'dr inż. Nazwisko Imie\, 255 S', r'mgr inż. Nazwisko Imie\;mgr Inny Osoba\, 3/ 23A', 'prof. dr hab. Nazwisko Imie',
+                     'ANazwisko', r'ANazwisko\;314 S', '�Nazwisko', 'ANazwisko-Drugie'):
             with self.subTest(room=room):
                 self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
                 path = self.tt / '2026-27-zima' / 'WCY26KY3S1.ics'
@@ -429,7 +430,7 @@ class BuildManyGroupsTest(unittest.TestCase):
                     build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
     def test_ordinary_rooms_are_not_mistaken_for_people(self):
-        for room in ('314 S', r'1.9/ 16\;1.10/ 16', 'aula/ 135', '7a-b Bibl.', '1002 HILTON'):
+        for room in ('314 S', r'1.9/ 16\;1.10/ 16', 'aula/ 135', '7a-b Bibl.', '1002 HILTON', 'Teams', 'Wyjazd', 'WAT', 'ST.nr 1(PWC2)'):
             self.assertFalse(build._names_person(room), room)
 
     def test_a_subject_that_merely_starts_with_prowadzenie_is_fine(self):
@@ -531,6 +532,15 @@ class BuildManyGroupsTest(unittest.TestCase):
         self.assertIsNone(build.year_of('WCY_M1'))
 
 
+class RoomsDataTest(unittest.TestCase):
+    def test_split_rooms_normalises_and_drops_what_is_not_a_room(self):
+        self.assertEqual(build.split_rooms('1.16/ 16;1.17/16'), ['1.16/16', '1.17/16'])
+        self.assertEqual(build.split_rooms('314 S'), ['314 S'])
+        self.assertEqual(build.split_rooms('Teams'), [])
+        self.assertEqual(build.split_rooms('-'), [])
+        self.assertEqual(build.split_rooms('314 S;314 S'), ['314 S'])
+
+
 class ScrubStaffTest(unittest.TestCase):
     def test_drops_contact_and_instructor_segments_but_keeps_the_rest(self):
         before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
@@ -545,6 +555,19 @@ class ScrubStaffTest(unittest.TestCase):
         self.assertTrue(after.endswith('\r\n') and '\n\n' not in after.replace('\r\n', '\n'))
         ok, why = scrub_staff.verify('probe', before, after)
         self.assertTrue(ok, why)
+
+    def test_a_lecturer_alias_in_a_location_goes_but_the_real_room_stays(self):
+        def cal(location):
+            return '\r\n'.join(['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:a', 'DTSTART:20261005T080000',
+                                'SUMMARY:Matematyka', 'LOCATION:' + location, 'END:VEVENT', 'END:VCALENDAR', ''])
+        after, _ = scrub_staff.scrub_text(cal('ANazwisko\\;314 S'))
+        self.assertIn('LOCATION:314 S\r\n', after)
+        self.assertNotIn('Nazwisko', after)
+        after, _ = scrub_staff.scrub_text(cal('314 S\\, ANazwisko'))
+        self.assertIn('LOCATION:314 S\r\n', after)
+        after, _ = scrub_staff.scrub_text(cal('ANazwisko'))
+        self.assertNotIn('LOCATION', after)
+        self.assertIsNone(scrub_staff.scrub_text(cal('Teams')))
 
     def test_unfolds_before_scrubbing_so_folded_names_are_caught(self):
         before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'

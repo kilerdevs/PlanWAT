@@ -134,6 +134,25 @@ def wait_for_recovery(name, probe, model, budget, max_probes=5, sleep=time.sleep
     return False, waited, probes
 
 
+def discover_with_retry(driver, session, retries=2, backoff=2.0, sleep=time.sleep):
+    """List the groups, riding out flaky transports (a dead pool proxy, a reset).
+
+    A Blocked verdict (wall content, unexpected status) is re-raised at once, never
+    retried: only the transport may be flaky. Raises the last error when exhausted.
+    """
+    last = None
+    for attempt in range(retries + 1):
+        try:
+            return driver.discover(session)
+        except core.Blocked:
+            raise
+        except Exception as err:
+            last = err
+        if attempt < retries:
+            sleep(backoff * (2 ** attempt) + random.uniform(0, 1))
+    raise last
+
+
 def robots_allows(session, url, state=None):
     """False when the host's robots.txt disallows the URL. An unreadable robots.txt does not block.
 
@@ -228,7 +247,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         pacing[group] = min(3.0, mult * 1.5) if blocked else max(1.0, mult * 0.9)
 
     try:
-        items = driver.discover(session)
+        items = discover_with_retry(driver, session, args.retries, args.retry_backoff, sleep)
     except core.Blocked as err:
         log(f'[{name}] BLOCKED while listing groups: {err}')
         fac['blocked_at'] = core.now_utc().isoformat()
@@ -278,6 +297,8 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             return changed, False, False
         if n > 1:
             sleep(random.uniform(args.delay[0] * mult, args.delay[1] * mult))
+        if n % 25 == 0 and not args.dry_run:
+            state.save()  # checkpoint every 25 checks, however they end (a 304 or an unchanged hash included)
         entry = state.groups.setdefault(key(item.code), {})
         try:
             r = get_with_retry(session, item.url, timeout=60, headers=conditional_headers(entry),
@@ -338,6 +359,10 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             log(f'[{name}] {item.code}: conversion stopped ({err}), keeping the old calendar')
             failed += 1
             continue
+        ics, bounds_patched = core.reconcile_term_bounds(ics, old, tid)
+        if bounds_patched:
+            log(f'[{name}] {item.code}: faculty term label left the filed term; '
+                f'keeping the {tid} grid')
         ok, why = core.validate(ics, item.code, tid, old)
         if not ok:
             log(f'[{name}] {item.code}: rejected ({why}), keeping the old calendar')
@@ -352,8 +377,6 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if not args.dry_run:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(ics.encode('utf-8'))
-        if n % 25 == 0:
-            state.save()  # checkpoint every 25 checks, not only on change-writes
     # Skips (unreadable pages, failed conversions, rejected calendars) against responses
     # received: too many means the site is half-broken, not the plans half-changed.
     if checked >= 5 and failed / checked > 0.3:
@@ -385,15 +408,17 @@ def parse(argv=None):
     ap.add_argument('--profile', choices=sorted(PROFILES), default='hosted')
     ap.add_argument('--limit', type=int, default=0, help='check at most N groups per faculty')
     ap.add_argument('--max-minutes', type=float, default=0, help='stop gracefully after this long (0 = no limit)')
-    ap.add_argument('--fresh-hours', type=float, default=20, help='skip groups checked more recently than this')
+    ap.add_argument('--fresh-hours', type=float, default=1.5, help='skip groups checked more recently than this')
     ap.add_argument('--force', action='store_true', help='ignore --fresh-hours')
     ap.add_argument('--dry-run', action='store_true', help='fetch and convert, write nothing')
     ap.add_argument('--retries', type=int, default=3,
                     help='retry a flaky page fetch this many times (blocks are never retried)')
     ap.add_argument('--retry-backoff', type=float, default=2.0,
                     help='base seconds between fetch retries (exponential + jitter)')
-    ap.add_argument('--max-block-wait-minutes', type=float, default=90,
+    ap.add_argument('--max-block-wait-minutes', type=float, default=30,
                     help='total minutes a run may sleep out blocks before giving up (0 = exit on block)')
+    ap.add_argument('--lanes', type=int, default=4,
+                    help='policy groups crawled side by side (1 = strictly one faculty at a time)')
     ap.add_argument('--block-probes', type=int, default=5,
                     help='recovery probes per block (one cheap index fetch each)')
     args = ap.parse_args(argv)
@@ -413,32 +438,24 @@ def refresh_ahead(name, sources, args, state, today, session, coming, tallies, s
     return was_blocked
 
 
-def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monotonic):
-    args = parse(argv)
-    today = today or core.now_utc().date()
-    started = core.now_utc().isoformat()
-    sources = json.loads((HERE / 'sources.json').read_text(encoding='utf-8'))
-    named = [f for f in args.faculty.split(',') if f]
-    wanted = named or [f for f, c in sources.items() if c.get('enabled')]
-    unknown = [f for f in wanted if f not in sources]
-    if unknown:
-        log(f'unknown faculty: {", ".join(unknown)}')
-        return 2
-    state = core.State(Path(args.out) / core.STATE_FILE)
-    model = core.BlockModel(state.data)
+def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep, clock=time.monotonic,
+             session=None, wait_budget=None):
+    """Refresh the faculties of one policy group, one after another, on a session of their own.
+
+    Returns {'changed': [...], 'blocked': bool, 'incomplete': set(names), 'waited': seconds slept}. A blocked faculty no longer stops
+    the others: each is deferred while the rest of the lane is covered, then the lane sleeps out the shared wall
+    (one wait per lane: its members stand behind the same Incapsula policy) and every member resumes.
+    """
     session = session or new_session()
-    coming = core.upcoming_reference(today)
-    tallies = {'changed': [], 'blocked': False, 'incomplete': set()}
+    tallies = {'changed': [], 'blocked': False, 'incomplete': set(), 'waited': 0.0}
     deferred = []  # (name, main_ok): main_ok says the main pass finished cleanly
-    for name in wanted:
-        # A blocked faculty no longer stops the others: each host has its own wall (and its own
-        # egress through the proxy pool), so the run covers everything reachable and comes back.
+    for name in names:
+        # Drivers may tune the shared session (WTC sets Referer): never leak that into the next faculty.
         saved_headers = dict(session.headers) if getattr(session, 'headers', None) is not None else None
         try:
             done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today,
                                                            session, sleep=sleep, clock=clock)
         finally:
-            # Drivers may tune the shared session (WTC sets Referer): never leak that into others.
             if saved_headers is not None:
                 try:
                     session.headers.clear()
@@ -459,62 +476,100 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
                                     tallies, sleep, clock):
             model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
             deferred.append((name, True))
-    # Faculties behind one policy share one wall: one wait per group, then every member resumes.
-    grouped, order = {}, []
+    if wait_budget is None:
+        wait_budget = args.max_block_wait_minutes * 60
+    if not deferred or wait_budget <= 0:
+        return tallies
+    first = deferred[0][0]
+    group = core.group_of(first)
+    driver = drivers.load(sources[first]['driver'], first, sources[first], today)
+    probe_session = new_session()  # probe with a clean jar, like a new visitor
+
+    def probe():
+        try:
+            driver.discover(probe_session)
+            return True
+        except Exception:
+            return False
+
+    recovered, waited, probes = wait_for_recovery(group, probe, model, wait_budget,
+                                                   args.block_probes, sleep, clock)
+    tallies['waited'] = waited
     for name, main_ok in deferred:
-        group = core.group_of(name)
-        if group not in grouped:
-            grouped[group] = []
-            order.append(group)
-        grouped[group].append((name, main_ok))
-    wait_budget = args.max_block_wait_minutes * 60
-    for pos, group in enumerate(order):
-        members = grouped[group]
-        if wait_budget <= 0:
-            break
-        # Each wait is capped to its fair share of the remaining budget (but always gets a
-        # real chance: at least 15 minutes), so one slow group cannot eat the whole run.
-        budget = min(wait_budget, max(900.0, wait_budget / (len(order) - pos)))
-        first = members[0][0]
-        driver = drivers.load(sources[first]['driver'], first, sources[first], today)
-        probe_session = new_session()  # probe with a clean jar, like a new visitor
-
-        def probe(driver=driver, probe_session=probe_session):
-            try:
-                driver.discover(probe_session)
-                return True
-            except Exception:
-                return False
-
-        recovered, waited, probes = wait_for_recovery(group, probe, model, budget,
-                                                       args.block_probes, sleep, clock)
-        wait_budget -= waited
-        for name, main_ok in members:
-            fac = state.faculties.setdefault(name, {})
-            fac['wait'] = {'waited': round(waited), 'probes': probes, 'recovered': recovered}
-            if not recovered:
-                continue
-            fac['blocked_at'] = None  # the wall is down; the rerun re-decides from scratch
-            resume = new_session()  # fresh cookies/jar: the old ones may be the blocked ones
-            if main_ok and coming:
-                # The main pass already finished: only the coming semester is still missing.
-                refresh_ahead(name, sources, args, state, today, resume, coming,
-                              tallies, sleep, clock)
+        fac = state.faculties.setdefault(name, {})
+        fac['wait'] = {'waited': round(waited), 'probes': probes, 'recovered': recovered}
+        if not recovered:
+            continue
+        fac['blocked_at'] = None  # the wall is down; the rerun re-decides from scratch
+        resume = new_session()  # fresh cookies/jar: the old ones may be the blocked ones
+        if main_ok and coming:
+            # The main pass already finished: only the coming semester is still missing.
+            refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock)
+        else:
+            done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today,
+                                                          resume, sleep=sleep, clock=clock)
+            tallies['changed'] += done
+            if complete:
+                tallies['incomplete'].discard(name)
             else:
-                done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today,
-                                                              resume, sleep=sleep, clock=clock)
-                tallies['changed'] += done
-                if complete:
-                    tallies['incomplete'].discard(name)
-                else:
-                    tallies['incomplete'].add(name)
-                if was_blocked:
-                    model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
-                    tallies['blocked'] = True
-                    continue
-                if coming:
-                    refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock)
-        tallies['blocked'] = any(state.faculties.get(n, {}).get('blocked_at') for n, _ in deferred)
+                tallies['incomplete'].add(name)
+            if was_blocked:
+                model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
+                continue
+            if coming:
+                refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock)
+    tallies['blocked'] = any(state.faculties.get(n, {}).get('blocked_at') for n, _ in deferred)
+    return tallies
+
+
+def plan_lanes(wanted):
+    """Faculties grouped by Incapsula policy, in the order they were asked for: [[name, ...], ...]."""
+    lanes = {}
+    for name in wanted:
+        lanes.setdefault(core.group_of(name), []).append(name)
+    return list(lanes.values())
+
+
+def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monotonic):
+    args = parse(argv)
+    today = today or core.now_utc().date()
+    started = core.now_utc().isoformat()
+    sources = json.loads((HERE / 'sources.json').read_text(encoding='utf-8'))
+    named = [f for f in args.faculty.split(',') if f]
+    wanted = named or [f for f, c in sources.items() if c.get('enabled')]
+    unknown = [f for f in wanted if f not in sources]
+    if unknown:
+        log(f'unknown faculty: {", ".join(unknown)}')
+        return 2
+    state = core.State(Path(args.out) / core.STATE_FILE)
+    model = core.BlockModel(state.data)
+    coming = core.upcoming_reference(today)
+    lanes = plan_lanes(wanted)
+
+    def lane(names, wait_budget=None):
+        return run_lane(names, sources, args, state, model, today, coming, sleep, clock,
+                        session=session, wait_budget=wait_budget)
+
+    if args.lanes > 1 and len(lanes) > 1 and session is None:
+        # Different policy groups are different walls, so they crawl side by side: the pause between pages
+        # is per host and unchanged, only the wall-clock time of a full pass shrinks. Each lane waits out
+        # its own wall concurrently, so each may spend the whole wait budget.
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(args.lanes, len(lanes))) as pool:
+            results = list(pool.map(lane, lanes))
+    else:
+        # One after another the waits add up, so they share the budget: each wait is capped to its fair share
+        # of what is left (but always gets a real chance: at least 15 minutes).
+        results, left = [], args.max_block_wait_minutes * 60
+        for pos, names in enumerate(lanes):
+            res = lane(names, min(left, max(900.0, left / (len(lanes) - pos))) if left > 0 else 0)
+            left -= res['waited']
+            results.append(res)
+    tallies = {'changed': [], 'blocked': False, 'incomplete': set()}
+    for res in results:
+        tallies['changed'] += res['changed']
+        tallies['blocked'] |= res['blocked']
+        tallies['incomplete'] |= res['incomplete']
     blocked = tallies['blocked']
     degraded_any = any(state.faculties.get(n, {}).get('run', {}).get('degraded')
                        for n in wanted if n in sources)

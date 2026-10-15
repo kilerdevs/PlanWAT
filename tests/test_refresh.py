@@ -205,6 +205,24 @@ class Run(unittest.TestCase):
         (changed, blocked, complete), _ = self.run_once(routes)
         self.assertEqual((changed, blocked, complete), ([], True, False))
 
+    def test_a_flaky_index_is_retried_but_a_wall_is_not(self):
+        session = FakeSession(self.routes)
+        calls = []
+
+        def get(url, timeout=0, headers=None):
+            calls.append(url)
+            if url.endswith('index.xml') and len([u for u in calls if u.endswith('index.xml')]) == 1:
+                raise ConnectionError('reset by peer')
+            return FakeSession.get(session, url, timeout=timeout, headers=headers)
+
+        session.get = get
+        args = refresh.parse(['--out', str(self.tmp), '--force'])
+        state = core.State(self.tmp / core.STATE_FILE)
+        changed, blocked, complete = refresh.refresh_faculty(
+            'wlo', WLO_CFG, args, state, TODAY, session, sleep=lambda s: None)
+        self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
+        self.assertEqual(len([u for u in calls if u.endswith('index.xml')]), 2)
+
     def test_robots_txt_that_disallows_the_pages_skips_the_faculty(self):
         routes = dict(self.routes)
         routes['https://example.test/robots.txt'] = Resp(200, b'User-agent: *\nDisallow: /plan/\n')
@@ -279,6 +297,16 @@ class PublicRoomTest(unittest.TestCase):
         self.assertEqual(wlo2ics.public_room('dr inż. Kowalski Jan, dr inż. Nowak Adam, 1.17/16'), '1.17/16')
         self.assertEqual(wlo2ics.public_room('mgr inż. Kowalski Jan;mgr inż. Nowak Adam, 3/ 23A;5/ 23A'), '3/ 23A;5/ 23A')
         self.assertEqual(wlo2ics.public_room('dr hab. inż.(prof. ucz.) Kowalski Jan, aula/135'), 'aula/135')
+
+    def test_a_lecturer_alias_left_in_the_room_is_dropped(self):
+        self.assertEqual(wlo2ics.public_room('ANazwisko'), '')
+        self.assertEqual(wlo2ics.public_room('ANazwisko;314 S'), '314 S')
+        self.assertEqual(wlo2ics.public_room('�Nazwisko'), '')
+        self.assertEqual(wlo2ics.public_room('ANazwisko-Drugie'), '')
+
+    def test_words_and_codes_that_are_not_aliases_stay(self):
+        for room in ('Teams', 'Wyjazd', 'WAT', 'AWF', 'ST.nr 1(PWC2)', 'Bibl.'):
+            self.assertEqual(wlo2ics.public_room(room), room)
 
     def test_a_person_alone_leaves_no_location(self):
         self.assertEqual(wlo2ics.public_room('dr hab. Kowalski Jan'), '')
@@ -1092,6 +1120,42 @@ class MainTest(unittest.TestCase):
         self.assertEqual([name for name, _ in self.wait_calls], ['wat-edge', 'wim', 'ioe'])
         self.assertEqual([budget for _, budget in self.wait_calls], [1800.0, 1800.0, 1800.0])
 
+    def test_policy_groups_become_lanes_in_the_order_asked(self):
+        self.assertEqual(refresh.plan_lanes(['wim', 'wel', 'ioe', 'wlo', 'wml']),
+                         [['wim'], ['wel', 'wlo'], ['ioe'], ['wml']])
+
+    def test_independent_policy_groups_crawl_side_by_side_on_their_own_sessions(self):
+        code = refresh.main(['--out', str(self.tmp), '--force', '--faculty', 'wlo,wel,wim,ioe',
+                             '--lanes', '3'], today=dt.date(2026, 10, 15), sleep=lambda s: None)
+        self.assertEqual(code, 0)
+        # wat-edge (wlo+wel), wim and ioe: one session per lane, none shared across lanes
+        self.assertEqual(len(self.sessions), 3)
+        by_fac = {}
+        for fac, day, sid in StubDriver.calls:
+            by_fac.setdefault(fac, set()).add(sid)
+        self.assertEqual(by_fac['wlo'], by_fac['wel'])  # the shared wall shares a session
+        self.assertEqual(len({frozenset(v) for v in by_fac.values()}), 3)
+
+    def test_a_state_save_survives_another_lane_mutating_it(self):
+        state = core.State(self.tmp / core.STATE_FILE)
+        import threading
+        stop = threading.Event()
+
+        def churn():
+            i = 0
+            while not stop.is_set():
+                state.groups[f'G{i}'] = {'checked': 'x'}
+                i += 1
+        t = threading.Thread(target=churn)
+        t.start()
+        try:
+            for _ in range(20):
+                state.save()
+        finally:
+            stop.set()
+            t.join()
+        self.assertTrue(core.State(self.tmp / core.STATE_FILE).groups)
+
     def test_degraded_forces_incomplete_and_exports(self):
         StubDriver.counts = {'wlo': 6}
         pages = {f'https://example.test/WLO26A{i}1S1.htm': Resp(200, b'junk') for i in range(6)}
@@ -1119,6 +1183,31 @@ class PlansoftXmlFallbackTest(unittest.TestCase):
 
     def test_garbage_still_lists_nothing(self):
         self.assertEqual(plansoft.Driver('wlo', WLO_CFG, TODAY).items('not xml at all'), [])
+
+
+class ReconcileBounds(unittest.TestCase):
+    OLD = ('BEGIN:VCALENDAR\r\nX-PLAN-SEMESTER-START:20260928\r\n'
+           'X-PLAN-SEMESTER-END:20270222\r\nEND:VCALENDAR\r\n')
+    NEW_FLIPPED = ('BEGIN:VCALENDAR\r\nX-PLAN-SEMESTER-START:20260302\r\n'
+                   'X-PLAN-SEMESTER-END:20260727\r\nEND:VCALENDAR\r\n')
+
+    def test_flipped_label_restored_from_filed_term(self):
+        ics, patched = core.reconcile_term_bounds(self.NEW_FLIPPED, self.OLD, '2026-27-zima')
+        self.assertTrue(patched)
+        self.assertIn('X-PLAN-SEMESTER-START:20260928', ics)
+        self.assertIn('X-PLAN-SEMESTER-END:20270222', ics)
+
+    def test_matching_label_untouched(self):
+        ics, patched = core.reconcile_term_bounds(self.OLD, self.OLD, '2026-27-zima')
+        self.assertEqual((ics, patched), (self.OLD, False))
+
+    def test_no_old_file_keeps_new(self):
+        ics, patched = core.reconcile_term_bounds(self.NEW_FLIPPED, None, '2026-27-zima')
+        self.assertEqual((ics, patched), (self.NEW_FLIPPED, False))
+
+    def test_old_flipped_too_keeps_new(self):
+        ics, patched = core.reconcile_term_bounds(self.NEW_FLIPPED, self.NEW_FLIPPED, '2026-27-zima')
+        self.assertEqual((ics, patched), (self.NEW_FLIPPED, False))
 
 
 if __name__ == '__main__':

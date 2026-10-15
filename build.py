@@ -174,7 +174,7 @@ def read_calendar(path):
             if key == 'CONTACT' or (key == 'DESCRIPTION' and 'prowadzący:' in value.lower()):
                 raise BuildError(f'{path}: calendars must not name staff (remove the {key} line)')
             if key == 'LOCATION' and _names_person(value):
-                raise BuildError(f'{path}: a LOCATION names a person (a title such as "dr inż."): calendars must not name staff')
+                raise BuildError(f'{path}: a LOCATION names a person (a title such as "dr inż." or an alias such as "AKowalski"): calendars must not name staff')
             event.add(key)
             if key == 'DTSTART' and _ymd(value):
                 dates.append(_ymd(value))
@@ -222,9 +222,17 @@ def _unfold(path):
 _TITLES = {'dr', 'hab', 'prof', 'inż', 'inz', 'mgr', 'lic', 'płk', 'ppłk', 'mjr', 'kpt', 'por', 'ppor', 'gen', 'bryg', 'rez', 'ucz'}
 
 
+# A lecturer alias left in the room: initial(s) glued to a capitalised surname ('AKowalski'). Real rooms never have
+# two capitals followed by lowercase letters ('Teams', '314 S'); U+FFFD stands in for a letter lost to a code page.
+_ALIAS = re.compile('[A-ZĄĆĘŁŃÓŚŹŻ�]{1,2}[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż�]{3,}(?:-[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż�]+)?')
+
+
 def _names_person(location):
-    """True when any ';'/','-separated part of a LOCATION value is a title followed by a name."""
+    """True when any ';'/','-separated part of a LOCATION value is a title followed by a name, or a bare
+    lecturer alias."""
     for part in re.split(r'(?:\\[;,]|[;,])', location):
+        if _ALIAS.fullmatch(part.strip()):
+            return True
         tokens = [t for t in re.split(r'[\s.()]+', part.strip()) if t]
         i = 0
         while i < len(tokens) and tokens[i].lower() in _TITLES:
@@ -382,6 +390,9 @@ def _event_lessons(ev, tz, limit):
     return out
 
 
+# A room is a LOCATION part with a digit in it ("314 S", "0.24/ 135"); anything else ("-", "Teams", "Wyjazd")
+# cannot be told apart from a non-room and stays out of the free-rooms list.
+ROOM_RE = re.compile(r'\d')
 YEAR_RE = re.compile(r'^([A-Za-z]{3}\d{2})')
 EPOCH = dt.date(2000, 1, 1)  # day numbers in the data files count from here
 
@@ -392,6 +403,16 @@ def year_of(group):
     return m.group(1).upper() if m else None
 
 
+def split_rooms(location):
+    """The rooms of a LOCATION, normalised: "1.16/ 16;1.17/16" -> ["1.16/16", "1.17/16"]."""
+    rooms = []
+    for part in location.split(';'):
+        part = re.sub(r'\s*/\s*', '/', ' '.join(part.rsplit(',', 1)[-1].split()))
+        if ROOM_RE.search(part) and part not in rooms:
+            rooms.append(part)
+    return rooms
+
+
 def _tz():
     try:
         from zoneinfo import ZoneInfo
@@ -400,15 +421,19 @@ def _tz():
         return None
 
 
-def build_data(current):
+def build_data(current, refreshed=None):
     """The JSON files behind the group page's tools, from every group's current term.
 
     groups.json            [[group, term label, year prefix], ...]
+    rooms.json             rooms and every booking [room, day, start, end, ...], for "Wolne sale"; `asof` is the
+                           date the crawler last checked the plans (null without a refresh state; the build date would make
+                           every build's output differ)
     year/<PREFIX>.json     every class of the groups of one year, for "Odrabianie"
     Days are counted from 2000-01-01 and times are minutes after midnight, to keep the files small.
     """
     tz = _tz()
     groups = sorted(current)
+    rooms, booked = {}, set()
     years = {}
     for group in groups:
         term = current[group]
@@ -416,8 +441,20 @@ def build_data(current):
         year = year_of(group)
         if year:
             years.setdefault(year, []).append((group, lessons))
+        for day, s, e, _, _, location in lessons:
+            for room in split_rooms(location):
+                booked.add((rooms.setdefault(room, len(rooms)), (day - EPOCH).days, s, e))
+    room_names = sorted(rooms)
+    remap = {rooms[name]: i for i, name in enumerate(room_names)}
+    bookings = []
+    for r, d, s, e in sorted((remap[r], d, s, e) for r, d, s, e in booked):
+        bookings.extend((r, d, s, e))
+    checked = sorted(str(v.get('checked', ''))[:10] for v in (refreshed or {}).values() if isinstance(v, dict))
+    asof = next((c for c in reversed(checked) if re.fullmatch(r'\d{4}-\d{2}-\d{2}', c)), None)
     files = {
         'groups.json': [[g, current[g].meta['term'] or current[g].term_id, year_of(g) or ''] for g in groups],
+        'rooms.json': {'epoch': EPOCH.isoformat(), 'asof': asof, 'groups': len(groups), 'rooms': room_names,
+                       'b': bookings},
     }
     for year, members in sorted(years.items()):
         names, idx, flat = [], {}, []
@@ -804,7 +841,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     (out / '.well-known').mkdir()
     (out / '.well-known' / 'security.txt').write_text(security_txt(today), encoding='utf-8')
     write('404.html', render_404((SRC / '404.html').read_text(encoding='utf-8'), base_path))
-    for rel, data in build_data(current).items():
+    for rel, data in build_data(current, refreshed).items():
         target = out / DATA_DIR / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')

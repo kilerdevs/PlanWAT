@@ -15,6 +15,12 @@ on:
   # term goes live on its first day without anyone pushing a commit.
   schedule:
     - cron: '17 3 * * *'
+  # Publish refreshed timetables as soon as a refresh pass ends (it pushes the `data` branch with its own
+  # contents:write token and, on purpose, has no permission to start workflows itself). This trigger runs the
+  # workflow from the default branch and needs nothing from the refresh run but its end.
+  workflow_run:
+    workflows: ['Refresh timetables']
+    types: [completed]
   workflow_dispatch:
 
 permissions:

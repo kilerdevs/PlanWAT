@@ -8,6 +8,8 @@ calendars published earlier (the `data` branch) still carry them. This
 rewrites such files:
 
 - drop every CONTACT line,
+- drop every part of a LOCATION that names a person (a title and a name, or a lecturer alias such as `AKowalski`;
+  the real rooms beside it stay, and a LOCATION with nothing left goes whole),
 - drop every `Prowadzący:` segment of DESCRIPTION (other segments stay;
   a DESCRIPTION that would still name staff is dropped whole, since
   build.py refuses the file otherwise — CATEGORIES keeps the category),
@@ -54,6 +56,24 @@ def scrub_description(line):
     return line, False
 
 
+def scrub_location(line):
+    """An unfolded LOCATION line -> (line, changed) or (None, True) when no room is left.
+
+    The value is split on ';' and ',' (escaped or not) and every part naming a person is dropped together with
+    one neighbouring separator; the surviving parts keep their own bytes."""
+    head, _, value = line.partition(':')
+    pieces = re.split(r'(\\[;,]|[;,])', value)  # part, sep, part, sep, ..., part
+    parts, seps = pieces[0::2], pieces[1::2]
+    keep = [i for i, part in enumerate(parts) if not build._names_person(part)]
+    if len(keep) == len(parts):
+        return line, False
+    kept = [(parts[i], seps[i] if i < len(seps) else '') for i in keep if parts[i].strip()]
+    if not kept:
+        return None, True
+    text = ''.join(part + sep for part, sep in kept[:-1]) + kept[-1][0]
+    return head + ':' + text, True
+
+
 def scrub_text(text):
     """A whole calendar -> scrubbed calendar (CRLF), or None when the file
     is already clean and CRLF. Only touched lines change bytes."""
@@ -70,12 +90,12 @@ def scrub_text(text):
             removed += 1
             i += 1
             continue
-        if key == 'DESCRIPTION':
+        if key in ('DESCRIPTION', 'LOCATION'):
             j = i + 1
             while j < len(raw) and raw[j][:1] in (' ', '\t'):
                 j += 1
             logical = raw[i] + ''.join(l[1:] for l in raw[i + 1:j])
-            new, changed = scrub_description(logical)
+            new, changed = (scrub_description if key == 'DESCRIPTION' else scrub_location)(logical)
             removed += changed
             if changed:
                 if new is not None:

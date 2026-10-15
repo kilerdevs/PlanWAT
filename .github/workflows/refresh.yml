@@ -6,9 +6,11 @@ name: Refresh timetables
 # Runs only on the self-hosted runner (label "planwat"): the faculty sites' Incapsula wall blocks GitHub's
 # datacenter addresses on the first request, so a hosted runner can only fail.
 on:
-  # Off-hours (about 03:00 Warsaw time); the plans rarely change, so once a day is plenty.
+  # Every two hours, round the clock: a pass over every group takes well under an hour (faculties on separate
+  # Incapsula policies crawl side by side) and most pages answer 304, so a quiet pass is cheap. A group checked
+  # within the last 90 minutes is skipped, so a run that overlaps a slow predecessor never repeats its work.
   schedule:
-    - cron: '23 1 * * *'
+    - cron: '23 */2 * * *'
   workflow_dispatch:
     inputs:
       faculty:
@@ -29,7 +31,7 @@ jobs:
     # Only scheduled and manual runs reach the runner, never pull requests, so a fork cannot run code on it.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, planwat]
-    timeout-minutes: 240
+    timeout-minutes: 110
     permissions:
       # Least privilege on purpose (see docs/REFRESH.md "If GitHub is compromised"):
       # contents pushes the data branch, issues files the blocked notice. In particular there is
@@ -46,4 +48,4 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           profile: selfhosted
           faculty: ${{ inputs.faculty }}
-          max-minutes: '200'
+          max-minutes: '90'
