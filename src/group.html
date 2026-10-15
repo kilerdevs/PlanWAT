@@ -898,11 +898,14 @@
 
   /* ================= tools under the title ================= */
   .hero-main { min-width: 0; } /* a grid item: lets the tool row scroll instead of widening the header */
-  .tools { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-5); }
+  .tools { display: grid; gap: var(--sp-3); margin-top: var(--sp-5); }
+  .tools .tabs { max-width: 420px; }
+  .toolpanel { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .toolpanel[hidden] { display: none; }
   .tools .dl { margin-top: 0; border: 0; cursor: pointer; white-space: nowrap; }
   /* phones: one row that scrolls sideways, so the Live card stays on the first screen */
   @media (max-width: 767px) {
-    .tools {
+    .toolpanel {
       flex-wrap: nowrap;
       overflow-x: auto;
       margin-inline: calc(-1 * var(--gl)) calc(-1 * var(--gr));
@@ -910,7 +913,7 @@
       scrollbar-width: none;
       scroll-padding-inline: var(--gl);
     }
-    .tools::-webkit-scrollbar { display: none; }
+    .toolpanel::-webkit-scrollbar { display: none; }
     .tools .dl { flex: none; border-radius: 12px; padding: 6px 12px 6px 10px; line-height: 1.2; }
   }
   #favBtn[aria-pressed="true"] .i { fill: currentColor; color: var(--t1); }
@@ -1150,46 +1153,88 @@
   table.data { width: 100%; margin-top: var(--sp-2); border-collapse: collapse; font-size: var(--fs-13); font-variant-numeric: tabular-nums; }
   table.data th, table.data td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
   table.data th { color: var(--t2); font-weight: 500; }
+  /* ================= tabs (the tools row, the plan map) ================= */
+  .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border-radius: var(--r-ctl); background: var(--s2); box-shadow: var(--edge); }
+  .tabs button { min-height: 36px; padding: 4px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--t2); font-size: var(--fs-13); font-weight: 600; cursor: pointer; touch-action: manipulation; transition: background-color var(--dur-fast), color var(--dur-fast); }
+  .tabs button[aria-selected="true"] { background: var(--s4); color: var(--t1); }
+  @media (pointer: coarse) { .tabs button { min-height: 44px; } }
+
   /* ================= plan map ================= */
-  .pm-hero { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
-  .pm-big { flex: none; display: flex; align-items: baseline; color: var(--c, var(--t1)); font-variant-numeric: tabular-nums; }
-  .pm-big b { font-size: 3.5rem; line-height: 1; font-weight: 700; letter-spacing: -0.03em; }
-  .pm-big span { margin-left: 2px; font-size: 1.25rem; font-weight: 600; }
-  .pm-herotext { min-width: 0; }
-  .pm-herotext strong { font-size: var(--fs-15); }
-  .pm-herotext p { margin: 2px 0 0; font-size: var(--fs-13); color: var(--t2); }
-  .pm-pill { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0 0; padding: 10px var(--sp-3); border-radius: var(--r-card); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); font-size: var(--fs-15); font-weight: 600; color: var(--t1); }
-  .pm-pill::before { content: attr(data-n); flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; }
-  .pm-traits { display: grid; gap: 2px; }
-  .pm-trait { display: grid; grid-template-columns: minmax(0, 1fr) 64px auto; gap: var(--sp-2); align-items: center; padding: 6px 0; font-size: var(--fs-13); }
-  .pm-tb { height: 6px; border-radius: 3px; background: var(--s4); overflow: hidden; }
+  .pm-tabwrap { position: sticky; top: 0; z-index: 3; margin: 0 calc(-1 * var(--sp-5)) var(--sp-3); padding: var(--sp-2) var(--sp-5); background: var(--s2); }
+  .pm-tabs { background: var(--s3); box-shadow: none; }
+  .pm-tabs button[aria-selected="true"] { background: var(--s4); }
+  .pm-panel h3 { margin: var(--sp-5) 0 var(--sp-2); }
+  .pm-panel > h3:first-child { margin-top: var(--sp-2); }
+  .pm-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-1) var(--sp-4); align-items: center; padding: var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
+  .pm-big { display: flex; align-items: baseline; color: var(--c, var(--t1)); font-variant-numeric: tabular-nums; }
+  .pm-big b { font-size: 3.75rem; line-height: 1; font-weight: 700; letter-spacing: -0.04em; }
+  .pm-herotext strong { display: block; font-size: var(--fs-17); line-height: 1.2; }
+  .pm-herotext p { margin: 4px 0 0; font-size: var(--fs-13); color: var(--t2); }
+  .pm-gauge { position: relative; grid-column: 1 / -1; height: 8px; margin-top: var(--sp-3); border-radius: 4px; background: linear-gradient(90deg, #0a84ff, #8e8e93, #ff453a); }
+  .pm-mark { position: absolute; top: -4px; left: calc(var(--p) * 1%); width: 6px; height: 16px; margin-left: -3px; border-radius: 3px; background: var(--t1); box-shadow: 0 0 0 2px var(--s3); }
+  .pm-gaugeends { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 12px; color: var(--t3); }
+  .pm-src { margin: var(--sp-2) 0 0; font-size: 12px; }
+  .pm-what { margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-card); background: var(--s3); font-size: var(--fs-13); }
+  .pm-what summary { cursor: pointer; font-weight: 600; color: var(--t1); }
+  .pm-what p { margin: var(--sp-2) 0 0; color: var(--t2); }
+  .pm-arch { margin-top: var(--sp-4); padding: var(--sp-4); border-radius: var(--r-card); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
+  .pm-archhead { display: flex; align-items: center; gap: var(--sp-3); }
+  .pm-archhead strong { display: block; font-size: var(--fs-17); line-height: 1.25; }
+  .pm-eyebrow { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent-text); }
+  .pm-archrow { margin: var(--sp-2) 0 0; font-size: var(--fs-13); color: var(--t1); }
+  .pm-archrow.muted { color: var(--t2); }
+  .pm-seemap { margin-top: var(--sp-3); }
+  .pm-badge { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pm-badge.sm { width: 20px; height: 20px; font-size: 11px; vertical-align: middle; }
+  .pm-traits, .pm-feats, .pm-sim, .pm-legend { list-style: none; margin: 0; padding: 0; }
+  .pm-trait, .pm-feats li { padding: var(--sp-3) 0; border-top: 1px solid var(--line); }
+  .pm-trait:first-child, .pm-feats li:first-child { border-top: 0; }
+  .pm-trow { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+  .pm-trow strong { font-size: var(--fs-15); }
+  .pm-ts { flex: none; font-size: 12px; color: var(--t2); white-space: nowrap; }
+  .pm-tphrase { margin: 2px 0 var(--sp-2); font-size: var(--fs-13); color: var(--t2); }
+  .pm-tb { display: block; height: 6px; border-radius: 3px; background: var(--s4); overflow: hidden; }
   .pm-tb i { display: block; height: 100%; width: calc(var(--w) * 1%); border-radius: 3px; background: var(--t3); }
   .pm-trait.heavier .pm-tb i { background: var(--busy); }
   .pm-trait.lighter .pm-tb i { background: var(--accent); }
-  .pm-ts { color: var(--t2); text-align: right; font-size: 12px; white-space: nowrap; }
-  .pm-map { display: block; width: 100%; height: 300px; margin-top: var(--sp-2); border-radius: var(--r-card); background: var(--s1); box-shadow: var(--edge); touch-action: none; cursor: grab; }
+  .pm-tvals { margin: var(--sp-2) 0 0; font-size: 12px; color: var(--t3); font-variant-numeric: tabular-nums; }
+  .pm-def { margin: 2px 0 0; font-size: var(--fs-13); color: var(--t2); }
+  .pm-weight { display: inline-flex; align-items: center; gap: 3px; }
+  .pm-weight i { width: 8px; height: 8px; border-radius: 50%; background: var(--busy); }
+  .pm-weight em { font-style: normal; font-size: 12px; color: var(--t3); }
+  .pm-map { display: block; width: 100%; height: 320px; margin-top: var(--sp-2); border-radius: var(--r-card); background: var(--s1); box-shadow: var(--edge); touch-action: none; cursor: grab; }
   .pm-map:active { cursor: grabbing; }
-  .pm-hint { margin-top: var(--sp-3); }
   .pm-ctl { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--sp-2); }
-  .pm-scale { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); font-size: 12px; color: var(--t2); }
+  .pm-scale { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); font-size: 12px; color: var(--t2); }
   .pm-scale i { flex: 1; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #0a84ff, #8e8e93, #ff453a); }
-  .pm-card { margin-top: var(--sp-3); }
+  .pm-card { margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
   .pm-cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
   .pm-cardhead strong { font-size: var(--fs-17); font-variant-numeric: tabular-nums; }
-  .pm-coef { font-weight: 700; color: var(--t2); }
-  .pm-cardmeta { margin: 2px 0 0; font-size: var(--fs-13); color: var(--t2); }
+  .pm-coef { font-size: var(--fs-13); font-weight: 600; color: var(--t2); white-space: nowrap; }
+  .pm-cardmeta { margin: var(--sp-1) 0 0; font-size: var(--fs-13); color: var(--t2); }
   .pm-open { margin: var(--sp-2) 0 0; border: 0; }
-  .pm-sim li { grid-template-columns: auto minmax(0, 1fr); }
-  .pm-sim { margin-bottom: var(--sp-3); }
-  .pm-sim a.t { color: var(--accent-text); }
-  .pm-tabbox { margin-top: var(--sp-3); }
-  .pm-tog { margin: 0; border: 0; cursor: pointer; }
+  .pm-legend { display: grid; gap: var(--sp-2); }
+  .pm-legrow { display: flex; align-items: flex-start; gap: var(--sp-3); width: 100%; padding: var(--sp-3); border: 0; border-radius: var(--r-ctl); background: var(--s3); color: var(--t1); text-align: left; cursor: pointer; }
+  .pm-legrow[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+  .pm-legrow.mine .pm-badge { background: var(--free); }
+  .pm-legtext { display: grid; gap: 2px; min-width: 0; }
+  .pm-legtext strong { font-size: var(--fs-15); line-height: 1.25; }
+  .pm-legtext span { font-size: 12px; color: var(--t2); }
+  .pm-sim { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+  .pm-sim li { padding: var(--sp-3) var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
+  .pm-simhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+  .pm-simhead a { font-size: var(--fs-17); font-weight: 650; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+  .pm-simmeta { margin: 2px 0 0; font-size: var(--fs-13); color: var(--t2); }
+  .pm-simdiff { margin: var(--sp-1) 0 0; font-size: var(--fs-13); color: var(--t1); }
   .pm-tab { width: 100%; margin-top: var(--sp-2); border-collapse: collapse; font-size: var(--fs-13); }
-  .pm-tab th, .pm-tab td { padding: 8px 6px; text-align: left; border-top: 1px solid var(--line); color: var(--t2); }
+  .pm-tab th, .pm-tab td { padding: 8px 6px; text-align: left; vertical-align: top; border-top: 1px solid var(--line); color: var(--t2); }
   .pm-tab th { border-top: 0; color: var(--t3); font-weight: 600; }
+  .pm-tab strong { display: block; color: var(--t1); font-size: var(--fs-13); }
+  .pm-typ { display: block; font-size: 12px; color: var(--t3); }
   .pm-tab .n { text-align: right; font-variant-numeric: tabular-nums; }
-  .pm-tab tr.mine td { color: var(--free); font-weight: 650; }
-  @media (max-width: 420px) { .pm-trait { grid-template-columns: minmax(0, 1fr) 48px auto; } .pm-big b { font-size: 3rem; } }
+  .pm-tab tr.mine td { background: var(--accent-wash); }
+  .pm-tab tr.mine strong { color: var(--free); }
+  @media (max-width: 420px) { .pm-big b { font-size: 3.25rem; } }
 
   /* ================= free rooms ================= */
   .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
@@ -1753,18 +1798,29 @@
         <div id="factChecked"@@HIDE_CHECKED@@><dt>Sprawdzono</dt><dd>@@CHECKED@@</dd></div>
       </dl>
       <div class="tools enter d3" id="tools">
+      <div class="tabs" id="toolTabs" role="tablist" aria-label="Narzędzia planu">
+        <button type="button" role="tab" id="tt-plan" data-tab="plan" aria-controls="tp-plan" aria-selected="true">Plan</button>
+        <button type="button" role="tab" id="tt-export" data-tab="export" aria-controls="tp-export" aria-selected="false" tabindex="-1">Eksport</button>
+        <button type="button" role="tab" id="tt-analysis" data-tab="analysis" aria-controls="tp-analysis" aria-selected="false" tabindex="-1">Analiza</button>
+      </div>
+      <div class="toolpanel" id="tp-plan" role="tabpanel" aria-labelledby="tt-plan">
         <button class="dl" id="favBtn" type="button" aria-pressed="false"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-star"/></svg><span id="favText">Dodaj do ulubionych</span></button>
+        <button class="dl" id="subjectsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-user"/></svg>Moje przedmioty</button>
+        <button class="dl" id="tourBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-help"/></svg>Jak korzystać</button>
+        <span id="installRow" hidden><button class="dl" id="installBtn" type="button" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Zainstaluj aplikację</button><span id="installHint" class="muted"></span></span>
+      </div>
+      <div class="toolpanel" id="tp-export" role="tabpanel" aria-labelledby="tt-export" hidden>
         <a class="dl" id="icsLink" href="plan.ics" download="plan-@@GROUP@@.ics"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Pobierz plan (.ics)</a>
         <button class="dl" id="calBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-calendar-plus"/></svg>Dodaj do kalendarza</button>
         <button class="dl" id="shareBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-share"/></svg>Udostępnij</button>
-        <button class="dl" id="subjectsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-user"/></svg>Moje przedmioty</button>
+        <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
+      </div>
+      <div class="toolpanel" id="tp-analysis" role="tabpanel" aria-labelledby="tt-analysis" hidden>
         <button class="dl" id="statsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chart"/></svg>Statystyki</button>
         <button class="dl" id="compareBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"/></svg>Porównaj grupy</button>
         <button class="dl" id="roomsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-door"/></svg>Wolne sale</button>
         <button class="dl" id="profileBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-scatter"/></svg>Mapa planów</button>
-        <span id="installRow" hidden><button class="dl" id="installBtn" type="button" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Zainstaluj aplikację</button><span id="installHint" class="muted"></span></span>
-        <button class="dl" id="tourBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-help"/></svg>Jak korzystać</button>
-        <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
+      </div>
       </div>
       <div class="notice" id="offlineNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
@@ -3919,12 +3975,43 @@
   }
   $('roomsBtn').addEventListener('click', openRooms);
 
+  /* ---------- tabs ---------- */
+  /* Wires a tab bar that already exists: each [role=tab] names its panel in aria-controls and its key in data-tab.
+     Click, arrows, Home and End move between tabs. Returns show(key). */
+  function wireTabs(list, onShow) {
+    var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    function show(tab, focus) {
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        var panel = document.getElementById(t.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !on;
+      });
+      if (focus) tab.focus();
+      if (onShow) onShow(tab.getAttribute('data-tab'));
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { show(t); });
+      t.addEventListener('keydown', function (e) {
+        var j = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
+        if (j < 0) return;
+        e.preventDefault();
+        show(tabs[(j + tabs.length) % tabs.length], true);
+      });
+    });
+    return function (key) {
+      var hit = tabs.filter(function (t) { return t.getAttribute('data-tab') === key; })[0];
+      if (hit) show(hit);
+    };
+  }
+
   /* ---------- plan map ---------- */
   var COEF_NAME = 'Współczynnik przejebania™';  /* what the load score is called on the page */
   function openProfile() {
     var code = groupCode();
-    var data = null, me = null, view = null, picked = null, mode = 'near';
-    var canvas = null, cardBox = null, listBox = null, tabBox = null, heroBox = null, traitBox = null, modeRow = null;
+    var data = null, me = null, view = null, picked = null, mode = 'near', focusArch = -1, ix = {};
+    var canvas = null, cardBox = null, listBox = null, panels = {}, legendBox = null, modeRow = null, showTab = null;
     var VIEW_ALL = { x: 500, y: 500, r: 560 };
     function hue(pct) {  /* light (blue) through grey to heavy (red) */
       var a = [10, 132, 255], m = [142, 142, 147], b = [255, 69, 58];
@@ -3932,8 +4019,13 @@
       return 'rgb(' + [0, 1, 2].map(function (i) { return Math.round(from[i] + (to[i] - from[i]) * k); }).join(',') + ')';
     }
     function scaleOf(w, h) { return Math.min(w, h) / (2 * view.r); }
+    function val(row, key) { return PI.featureValue(data, row, ix[key]); }
+    function show(f, v) { return PI.fmtFeature(f, v); }
+    function typicalOf(row) { return PI.fmtTypical([val(row, 'hours'), val(row, 'days'), val(row, 'gaps'), val(row, 'span')]); }
+    function badge(n, cls) { return el('span', 'pm-badge' + (cls ? ' ' + cls : ''), String(n)); }
+
     function draw() {
-      if (!canvas || !data) return;
+      if (!canvas || !data || !view || canvas.offsetParent === null) return;
       var box = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
       var w = Math.max(200, Math.round(box.width)), h = Math.max(200, Math.round(box.height));
       if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
@@ -3949,7 +4041,7 @@
         g.beginPath();
         g.arc(px(r[2]), py(r[3]), dot, 0, 6.2832);
         g.fillStyle = hue(r[4]);
-        g.globalAlpha = me && r[5] === me[5] ? 0.95 : 0.55;
+        g.globalAlpha = focusArch >= 0 ? (r[5] === focusArch ? 0.95 : 0.14) : (me && r[5] === me[5] ? 0.95 : 0.55);
         g.fill();
       });
       g.globalAlpha = 1;
@@ -3960,18 +4052,19 @@
         var xs = 0, ys = 0, n = 0;
         data.groups.forEach(function (r) { if (r[5] === i) { xs += r[2]; ys += r[3]; n++; } });
         if (!n) return;
-        var x = px(xs / n), y = py(ys / n);
+        var x = px(xs / n), y = py(ys / n), strong = i === focusArch || (focusArch < 0 && me && me[5] === i);
         g.beginPath();
-        g.arc(x, y, 9, 0, 6.2832);
+        g.arc(x, y, 10, 0, 6.2832);
         g.fillStyle = back;
-        g.globalAlpha = 0.86;
+        g.globalAlpha = focusArch >= 0 && !strong ? 0.4 : 0.9;
         g.fill();
-        g.globalAlpha = 1;
-        g.lineWidth = me && me[5] === i ? 2 : 1;
-        g.strokeStyle = me && me[5] === i ? ink : soft;
+        g.lineWidth = strong ? 2 : 1;
+        g.strokeStyle = strong ? ink : soft;
         g.stroke();
+        g.globalAlpha = focusArch >= 0 && !strong ? 0.5 : 1;
         g.fillStyle = ink;
         g.fillText(String(i + 1), x, y + 0.5);
+        g.globalAlpha = 1;
       });
       [me, picked].forEach(function (r, i) {
         if (!r) return;
@@ -3989,87 +4082,164 @@
     }
     function drawLater() { window.requestAnimationFrame(draw); }
     function setView(v) { view = { x: v.x, y: v.y, r: v.r }; drawLater(); }
+
     function showCard() {
       cardBox.replaceChildren();
       var r = picked || me;
       if (!r) return;
       var head = cardBox.appendChild(el('div', 'pm-cardhead'));
-      head.appendChild(el('strong', null, r[0]));
+      head.appendChild(el('strong', null, r[0] + (r === me ? ' (Twój plan)' : '')));
       head.appendChild(el('span', 'pm-coef', 'współczynnik ' + r[4]));
-      cardBox.appendChild(el('p', 'pm-cardmeta', r[1] + ' · ' + data.archetypes[r[5]].name));
-      if (r !== me || picked) {
+      var line = cardBox.appendChild(el('p', 'pm-cardmeta'));
+      line.appendChild(badge(r[5] + 1, 'sm'));
+      line.appendChild(document.createTextNode(' ' + r[1] + ' · ' + data.archetypes[r[5]].name));
+      cardBox.appendChild(el('p', 'pm-cardmeta', typicalOf(r)));
+      if (r !== me) {
         var open = cardBox.appendChild(el('a', 'dl pm-open', 'Otwórz plan ' + r[0]));
         open.href = '../' + encodeURIComponent(r[0]) + '/';
       }
     }
-    function renderTraits() {
-      traitBox.replaceChildren();
-      var list = PI.traits(data, me, 5);
-      if (!list.length) { traitBox.appendChild(el('p', 'muted', 'Ten plan niczym się nie wyróżnia: jest bliski przeciętnemu.')); return; }
-      list.forEach(function (t) {
-        var row = traitBox.appendChild(el('div', 'pm-trait ' + t.tone));
-        row.appendChild(el('span', 'pm-tl', t.label));
-        var bar = row.appendChild(el('span', 'pm-tb'));
+
+    function renderYou() {
+      var p = panels.you;
+      p.replaceChildren();
+      var faculties = {};
+      data.groups.forEach(function (r) { faculties[r[1]] = true; });
+      var nf = Object.keys(faculties).length;
+      var hero = p.appendChild(el('div', 'pm-hero'));
+      var big = hero.appendChild(el('div', 'pm-big'));
+      big.appendChild(el('b', null, String(me[4])));
+      big.style.setProperty('--c', hue(me[4]));
+      var txt = hero.appendChild(el('div', 'pm-herotext'));
+      txt.appendChild(el('strong', null, COEF_NAME));
+      txt.appendChild(el('p', null, me[4] + '% porównanych planów jest lżejszych niż ' + code));
+      var gauge = hero.appendChild(el('div', 'pm-gauge'));
+      gauge.setAttribute('role', 'img');
+      gauge.setAttribute('aria-label', 'Współczynnik ' + me[4] + ' na 100');
+      gauge.style.setProperty('--p', String(me[4]));
+      gauge.appendChild(el('i', 'pm-mark'));
+      var ends = hero.appendChild(el('div', 'pm-gaugeends'));
+      ends.appendChild(el('span', null, '0 · najlżejszy'));
+      ends.appendChild(el('span', null, 'najcięższy · 100'));
+      p.appendChild(el('p', 'muted pm-src', data.groups.length + ' ' + PI.plural(data.groups.length, 'plan', 'plany', 'planów') + ' z ' + nf + ' ' +
+        PI.plural(nf, 'wydziału', 'wydziałów', 'wydziałów') + (data.asof ? ' · dane z ' + fmtFullDate(data.asof) : '')));
+      var what = p.appendChild(el('details', 'pm-what'));
+      what.appendChild(el('summary', null, 'Co znaczy ten współczynnik?'));
+      var weighed = data.features.filter(function (f) { return f.w > 0; }).map(function (f) { return f.name.toLowerCase(); });
+      what.appendChild(el('p', null, 'To liczba od 0 do 100: jaka część porównanych planów jest lżejsza od Twojego, więc 0 to najlżejszy plan, a 100 najcięższy. ' +
+        'Waży ją ' + weighed.length + ' cech tygodnia: ' + weighed.join(', ') + ' (wagi i definicje w zakładce „Metoda”). ' +
+        'To porównanie planów między sobą, a nie miara trudności studiów.'));
+
+      var arch = p.appendChild(el('div', 'pm-arch'));
+      var ah = arch.appendChild(el('div', 'pm-archhead'));
+      ah.appendChild(badge(me[5] + 1));
+      var at = ah.appendChild(el('div'));
+      at.appendChild(el('span', 'pm-eyebrow', 'Archetyp planu'));
+      at.appendChild(el('strong', null, data.archetypes[me[5]].name));
+      arch.appendChild(el('p', 'pm-archrow', 'Twój tydzień: ' + typicalOf(me)));
+      arch.appendChild(el('p', 'pm-archrow muted', 'Typowy w tym archetypie (' + data.archetypes[me[5]].n + ' ' +
+        PI.plural(data.archetypes[me[5]].n, 'grupa', 'grupy', 'grup') + '): ' + PI.fmtTypical(data.archetypes[me[5]].typical)));
+      var seeMap = arch.appendChild(el('button', 'choice pm-seemap', 'Pokaż na mapie'));
+      seeMap.type = 'button';
+      seeMap.addEventListener('click', function () { focusArch = me[5]; showTab('map'); renderLegend(); setView(VIEW_ALL); });
+
+      el('h3');
+      p.appendChild(el('h3', null, 'Co wyróżnia ten plan'));
+      var traits = PI.traits(data, me, 5);
+      if (!traits.length) p.appendChild(el('p', 'muted', 'Ten plan niczym się nie wyróżnia: jest bliski przeciętnemu.'));
+      var list = p.appendChild(el('ul', 'pm-traits'));
+      traits.forEach(function (t) {
+        var i = ix[t.key], f = data.features[i];
+        var li = list.appendChild(el('li', 'pm-trait ' + t.tone));
+        var top = li.appendChild(el('div', 'pm-trow'));
+        top.appendChild(el('strong', null, f.name));
+        top.appendChild(el('span', 'pm-ts', t.strength));
+        li.appendChild(el('p', 'pm-tphrase', t.label));
+        var bar = li.appendChild(el('span', 'pm-tb'));
         bar.appendChild(el('i')).style.setProperty('--w', String(Math.round(Math.min(3, Math.abs(t.z)) / 3 * 100)));
-        row.appendChild(el('span', 'pm-ts', t.strength));
+        li.appendChild(el('p', 'pm-tvals', 'Ty: ' + show(f, val(me, t.key)) + ' · średnia: ' + show(f, f.mean)));
       });
     }
+
+    function renderLegend() {
+      legendBox.replaceChildren();
+      data.archetypes.forEach(function (a, i) {
+        var li = legendBox.appendChild(el('li'));
+        var b = li.appendChild(el('button', 'pm-legrow' + (me && me[5] === i ? ' mine' : '')));
+        b.type = 'button';
+        b.setAttribute('aria-pressed', String(focusArch === i));
+        b.appendChild(badge(i + 1));
+        var t = b.appendChild(el('span', 'pm-legtext'));
+        t.appendChild(el('strong', null, a.name + (me && me[5] === i ? ' · Twój' : '')));
+        t.appendChild(el('span', null, a.n + ' ' + PI.plural(a.n, 'grupa', 'grupy', 'grup') + ' · ' + PI.fmtTypical(a.typical)));
+        b.addEventListener('click', function () {
+          focusArch = focusArch === i ? -1 : i;
+          renderLegend();
+          drawLater();
+        });
+      });
+    }
+
     function renderList() {
       listBox.replaceChildren();
       var found = PI.similarPlans(data, me, mode, 6);
       if (!found.length) { listBox.appendChild(el('p', 'muted', 'Żaden plan nie pasuje do tego kryterium.')); return; }
-      var ul = listBox.appendChild(el('ul', 'rows pm-sim'));
+      var ul = listBox.appendChild(el('ul', 'pm-sim'));
       found.forEach(function (f) {
+        var other = PI.profileRow(data, f.code);
         var li = ul.appendChild(el('li'));
-        var a = li.appendChild(el('a', 't', f.code));
+        var head = li.appendChild(el('div', 'pm-simhead'));
+        var a = head.appendChild(el('a', null, f.code));
         a.href = '../' + encodeURIComponent(f.code) + '/';
-        li.appendChild(el('span', 'm', f.faculty + ', współczynnik ' + f.pct + ', odległość profilu ' + f.dist.toFixed(2) + ' (im mniej, tym bliżej)'));
+        head.appendChild(el('span', 'pm-coef', 'współczynnik ' + f.pct));
+        li.appendChild(el('p', 'pm-simmeta', f.faculty + ' · ' + PI.likeness(f.dist) + ' · archetyp ' + (f.arch + 1)));
+        var diff = PI.differences(data, me, other, 3);
+        li.appendChild(el('p', 'pm-simdiff', diff.length ? 'W porównaniu z Twoim: ' + diff.join(', ') : 'Prawie taki sam rozkład tygodnia'));
       });
     }
-    function renderTable(open) {
-      tabBox.replaceChildren();
-      var toggle = tabBox.appendChild(el('button', 'dl pm-tog', open ? 'Ukryj dane liczbowe' : 'Pokaż dane liczbowe'));
-      toggle.type = 'button';
-      toggle.setAttribute('aria-expanded', String(!!open));
-      toggle.addEventListener('click', function () { renderTable(!open); $('pmTogFocus') && $('pmTogFocus').focus(); });
-      toggle.id = 'pmTogFocus';
-      if (!open) return;
+
+    function renderHow() {
+      var p = panels.how;
+      p.replaceChildren();
+      p.appendChild(el('p', null, 'Każdy plan to trzynaście liczb opisujących typowy tydzień z zajęciami: godziny, okienka, długość dnia, początki i końce zajęć, weekendy, zmiany budynków i sale. ' +
+        'Współczynnik to ważona suma tych liczb w porównaniu z innymi planami, więc im wyżej, tym więcej planów jest lżejszych.'));
+      p.appendChild(el('h3', null, 'Cechy planu'));
+      var dl = p.appendChild(el('ul', 'pm-feats'));
+      data.features.forEach(function (f, i) {
+        var li = dl.appendChild(el('li'));
+        var top = li.appendChild(el('div', 'pm-trow'));
+        top.appendChild(el('strong', null, f.name));
+        var w = top.appendChild(el('span', 'pm-weight'));
+        var dots = f.w > 0 ? Math.max(1, Math.round(f.w * 5)) : 0;
+        w.setAttribute('role', 'img');
+        w.setAttribute('aria-label', f.w > 0 ? 'Waga we współczynniku: ' + dots + ' z 5' : 'Nie waży we współczynniku');
+        if (!dots) w.appendChild(el('em', null, 'tylko opis'));
+        for (var k = 0; k < dots; k++) w.appendChild(el('i'));
+        li.appendChild(el('p', 'pm-def', f.def));
+        li.appendChild(el('p', 'pm-tvals', 'Ty: ' + show(f, val(me, f.key)) + ' · średnia: ' + show(f, f.mean)));
+      });
+      p.appendChild(el('h3', null, 'Archetypy'));
+      p.appendChild(el('p', null, 'Plany o podobnym tygodniu grupujemy w ' + data.archetypes.length + ' archetypów (metoda k-średnich). Nazwa archetypu to dwie cechy, którymi jego środek najbardziej odbiega od przeciętnej. Numery na mapie to numery z tej tabeli, od najlżejszego do najcięższego.'));
       var total = data.groups.length;
-      var t = tabBox.appendChild(el('table', 'pm-tab'));
+      var t = p.appendChild(el('table', 'pm-tab'));
       var head = t.appendChild(el('thead')).appendChild(el('tr'));
-      ['', 'Archetyp', 'Grup', 'Udział'].forEach(function (h) { head.appendChild(el('th', null, h)).scope = 'col'; });
+      ['Nr', 'Archetyp', 'Grup', 'Udział'].forEach(function (h) { head.appendChild(el('th', null, h)).scope = 'col'; });
       var body = t.appendChild(el('tbody'));
       data.archetypes.forEach(function (a, i) {
         var tr = body.appendChild(el('tr', me && me[5] === i ? 'mine' : null));
         tr.appendChild(el('td', null, String(i + 1)));
-        tr.appendChild(el('td', null, a.name));
+        var name = tr.appendChild(el('td'));
+        name.appendChild(el('strong', null, a.name));
+        name.appendChild(el('span', 'pm-typ', PI.fmtTypical(a.typical)));
         tr.appendChild(el('td', 'n', String(a.n)));
         tr.appendChild(el('td', 'n', Math.round(a.n / total * 100) + '%'));
       });
+      p.appendChild(el('h3', null, 'Mapa'));
+      p.appendChild(el('p', null, 'Mapa to rzut główny (PCA) tych samych trzynastu liczb na dwa wymiary: grupy o podobnym tygodniu leżą blisko siebie, a lekkie plany po lewej, ciężkie po prawej. ' +
+        data.explained * 100 + '% zróżnicowania planów mieści się w tych dwóch wymiarach, więc odległości na mapie są przybliżone.'));
+      p.appendChild(el('p', 'muted', 'Wszystko liczy się przy każdej budowie strony z planów opublikowanych przez wydziały. Nic nie jest trenowane na zewnętrznych danych. To żart oparty na danych, nie ocena grupy ani uczelni.'));
     }
-    function renderAll() {
-      heroBox.replaceChildren();
-      var faculties = {};
-      data.groups.forEach(function (r) { faculties[r[1]] = true; });
-      var big = heroBox.appendChild(el('div', 'pm-big'));
-      big.appendChild(el('b', null, String(me[4])));
-      big.appendChild(el('span', null, '%'));
-      big.style.setProperty('--c', hue(me[4]));
-      var txt = heroBox.appendChild(el('div', 'pm-herotext'));
-      txt.appendChild(el('strong', null, COEF_NAME));
-      txt.appendChild(el('p', null, me[4] + '% porównanych planów ma niższy współczynnik niż ' + code));
-      txt.appendChild(el('p', 'muted', data.groups.length + ' ' + PI.plural(data.groups.length, 'plan', 'plany', 'planów') + ' · ' +
-        Object.keys(faculties).length + ' ' + PI.plural(Object.keys(faculties).length, 'wydział', 'wydziały', 'wydziałów') +
-        (data.asof ? ' · dane z ' + fmtFullDate(data.asof) : '')));
-      var pill = $('pmArch');
-      pill.textContent = data.archetypes[me[5]].name;
-      pill.setAttribute('data-n', String(me[5] + 1));
-      renderTraits();
-      renderList();
-      renderTable(false);
-      showCard();
-      setView(VIEW_ALL);
-    }
+
     function attachMap() {
       var drag = null;
       canvas.addEventListener('pointerdown', function (e) {
@@ -4093,20 +4263,14 @@
         drawLater();
       });
     }
-    openTool('Mapa planów', function (body) {
-      para(body, 'Każda kropka to jedna grupa, a bliskie siebie leżą grupy o podobnym rozkładzie tygodnia. Kolor pokazuje współczynnik: niebieski to lekki plan, czerwony ciężki.', 'muted');
-      heroBox = body.appendChild(el('div', 'pm-hero'));
-      heroBox.appendChild(el('p', 'muted', 'Wczytywanie planów…'));
-      var pill = body.appendChild(el('p', 'pm-pill'));
-      pill.id = 'pmArch';
-      h3(body, 'Co wyróżnia ten plan');
-      traitBox = body.appendChild(el('div', 'pm-traits'));
-      h3(body, 'Plany na mapie');
-      canvas = body.appendChild(el('canvas', 'pm-map'));
+
+    function buildMapPanel(p) {
+      p.appendChild(el('p', 'muted', 'Każda kropka to grupa, a bliskie siebie leżą grupy o podobnym tygodniu. Kolor to współczynnik, numery to archetypy z listy pod mapą.'));
+      canvas = p.appendChild(el('canvas', 'pm-map'));
       canvas.id = 'pmMap';
       canvas.setAttribute('role', 'img');
       canvas.setAttribute('aria-label', 'Mapa planów: każda kropka to grupa, bliskie kropki to podobne plany');
-      var ctl = body.appendChild(el('div', 'pm-ctl'));
+      var ctl = p.appendChild(el('div', 'pm-ctl'));
       [['Moje otoczenie', function () { setView({ x: me[2], y: me[3], r: PI.neighbourhood(data, me, 40).r * 1.25 }); }],
        ['Wszystkie plany', function () { setView(VIEW_ALL); }],
        ['+', function () { setView({ x: view.x, y: view.y, r: Math.max(25, view.r / 1.5) }); }],
@@ -4116,40 +4280,83 @@
         if (i > 1) btn.setAttribute('aria-label', i === 2 ? 'Przybliż mapę' : 'Oddal mapę');
         btn.addEventListener('click', function () { if (data && me) b[1](); });
       });
-      var scale = body.appendChild(el('div', 'pm-scale'));
+      var scale = p.appendChild(el('div', 'pm-scale'));
       scale.appendChild(el('span', null, 'lżejszy'));
       scale.appendChild(el('i'));
       scale.appendChild(el('span', null, 'cięższy'));
-      para(body, 'Dotknij kropki, żeby zobaczyć grupę i otworzyć jej plan. Mapę przesuwasz palcem, przyciski zmieniają przybliżenie. Numery to archetypy z tabeli niżej.', 'muted pm-hint');
-      cardBox = body.appendChild(el('div', 'pm-card'));
-      h3(body, 'Znajdź plan pod swój rytm');
+      cardBox = p.appendChild(el('div', 'pm-card'));
+      p.appendChild(el('h3', null, 'Archetypy na mapie'));
+      p.appendChild(el('p', 'muted', 'Dotknij archetypu, żeby zostawić na mapie tylko jego plany.'));
+      legendBox = p.appendChild(el('ul', 'pm-legend'));
+    }
+
+    openTool('Mapa planów', function (body) {
+      var wrap = body.appendChild(el('div', 'pm-tabwrap'));
+      var bar = wrap.appendChild(el('div', 'tabs pm-tabs'));
+      bar.setAttribute('role', 'tablist');
+      bar.setAttribute('aria-label', 'Sekcje mapy planów');
+      [['you', 'Twój plan'], ['map', 'Mapa'], ['like', 'Podobne'], ['how', 'Metoda']].forEach(function (t, i) {
+        var b = bar.appendChild(el('button', null, t[1]));
+        b.type = 'button';
+        b.id = 'pmt-' + t[0];
+        b.setAttribute('role', 'tab');
+        b.setAttribute('data-tab', t[0]);
+        b.setAttribute('aria-controls', 'pmp-' + t[0]);
+        b.setAttribute('aria-selected', String(i === 0));
+        b.tabIndex = i === 0 ? 0 : -1;
+        var p = body.appendChild(el('div', 'pm-panel'));
+        p.id = 'pmp-' + t[0];
+        p.setAttribute('role', 'tabpanel');
+        p.setAttribute('aria-labelledby', b.id);
+        p.hidden = i !== 0;
+        panels[t[0]] = p;
+      });
+      showTab = wireTabs(bar, function (key) {
+        $('toolBody').scrollTop = 0;
+        if (key === 'map') drawLater();
+      });
+      panels.you.appendChild(el('p', 'muted', 'Wczytywanie planów…'));
+      buildMapPanel(panels.map);
+      panels.like.appendChild(el('h3', null, 'Znajdź plan pod swój rytm'));
       modeRow = choices('Szukam planu', 'pmMode', [['near', 'Najbardziej podobnego'], ['lighter', 'Lżejszego'], ['gaps', 'Z mniejszą liczbą okienek'],
         ['short', 'Z krótszymi dniami'], ['late', 'Z późniejszymi startami']], mode, function (v) {
           mode = v;
           Array.prototype.forEach.call(modeRow.querySelectorAll('.choice'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-value') === v)); });
           if (data && me) renderList();
         });
-      body.appendChild(modeRow);
-      listBox = body.appendChild(el('div'));
-      para(body, 'To porównanie rozkładu zajęć, a nie zgodności programu studiów. Zmianę grupy trzeba uzgodnić na uczelni.', 'muted');
-      tabBox = body.appendChild(el('div', 'pm-tabbox'));
-      para(body, 'Liczone przy każdej budowie strony z planów opublikowanych przez wydziały: godziny, okienka, długość dni, wczesne starty, weekendy, zmiany budynków, sale. Archetypy to grupowanie metodą k-średnich, a mapa to rzut główny (PCA) tych samych cech. To żart oparty na danych, nie ocena grupy ani uczelni.', 'muted');
+      panels.like.appendChild(modeRow);
+      listBox = panels.like.appendChild(el('div'));
+      panels.like.appendChild(el('p', 'muted', 'To porównanie rozkładu zajęć, a nie zgodności programu studiów. Zmianę grupy trzeba uzgodnić na uczelni.'));
     });
+    window.addEventListener('resize', drawLater);
+
     getJSON('data/profiles.json').then(function (d) {
       data = d;
+      d.features.forEach(function (f, i) { ix[f.key] = i; });
       me = PI.profileRow(d, code);
       if (!me) {
-        heroBox.replaceChildren(el('p', 'muted', 'Za mało zajęć w planie ' + code + ', żeby go porównać z innymi.'));
+        panels.you.replaceChildren(el('p', 'muted', 'Za mało zajęć w planie ' + code + ', żeby go porównać z innymi.'));
         return;
       }
       attachMap();
-      renderAll();
+      renderYou();
+      renderLegend();
+      renderList();
+      renderHow();
+      showCard();
+      setView(VIEW_ALL);
     }, function () {
-      heroBox.replaceChildren(el('p', 'muted', 'Nie udało się wczytać planów do porównania. Spróbuj ponownie później.'));
+      panels.you.replaceChildren(el('p', 'muted', 'Nie udało się wczytać planów do porównania. Spróbuj ponownie później.'));
     });
   }
   $('profileBtn').addEventListener('click', openProfile);
 
+  /* the tools row: three tabs, the last one used is remembered on this device */
+  (function () {
+    var KEY = 'planwat.toolTab', list = $('toolTabs');
+    var showTool = wireTabs(list, function (key) { try { localStorage.setItem(KEY, key); } catch (e) { /* private mode */ } });
+    try { var saved = localStorage.getItem(KEY); if (saved && saved !== 'plan') showTool(saved); } catch (e) { /* private mode */ }
+  })();
   /* offline: the service worker keeps the last copy of this page and its plan; say that it is a saved copy */
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(function () {});
   /* installing the site as an app: Chrome/Edge/Android offer a prompt we can trigger; iOS Safari has only the share menu */

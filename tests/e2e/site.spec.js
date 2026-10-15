@@ -25,6 +25,18 @@ async function openGroup(page, { at = THURSDAY_1030, path = GROUP } = {}) {
   return problems;
 }
 
+/* The tools row has three tabs (Plan, Eksport, Analiza): open the one that holds a button, then press it. */
+async function showTool(page, selector) {
+  const button = page.locator(selector);
+  if (await button.isVisible()) return;
+  const tab = await button.evaluate((n) => n.closest('.toolpanel').id.replace('tp-', 'tt-'));
+  await page.locator('#' + tab).click();
+}
+async function pressTool(page, selector) {
+  await showTool(page, selector);
+  await page.locator(selector).click();
+}
+
 const weekLabel = (page) => page.locator('#weekLabel');
 const ON_GROUP = /\/WCY26KY3S1\/$/;
 
@@ -247,6 +259,7 @@ test('the download button saves the group calendar', async ({ page, request }) =
   expect(res.headers()['content-type']).toContain('text/calendar');
   expect((await res.text()).startsWith('BEGIN:VCALENDAR')).toBe(true);
 
+  await showTool(page, '#icsLink');
   const [download] = await Promise.all([page.waitForEvent('download'), link.click()]);
   expect(download.suggestedFilename()).toBe('plan-WCY26KY3S1.ics');
 });
@@ -387,7 +400,7 @@ test('subject progress counts classes and finds where to catch up in other group
 
 test('statistics sum up the semester', async ({ page }) => {
   await openGroup(page);
-  await page.locator('#statsBtn').click();
+  await pressTool(page, '#statsBtn');
   await expect(page.locator('#toolTitle')).toHaveText('Statystyki planu');
   await expect(tool(page).locator('.tile b').first()).toHaveText('216');
   await expect(tool(page).locator('.cols span')).toHaveCount(22);
@@ -398,7 +411,7 @@ test('statistics sum up the semester', async ({ page }) => {
 
 test('the calendar sheet offers subscription links and the file', async ({ page }) => {
   await openGroup(page);
-  await page.locator('#calBtn').click();
+  await pressTool(page, '#calBtn');
   await expect(page.locator('#calApple')).toHaveAttribute('href', /^webcal:\/\/127\.0\.0\.1:\d+\/WCY26KY3S1\/plan\.ics$/);
   await expect(page.locator('#calGoogle')).toHaveAttribute('href', /^https:\/\/calendar\.google\.com\/calendar\/render\?cid=webcal%3A%2F%2F/);
   await expect(tool(page).locator('a[download="plan-WCY26KY3S1.ics"]')).toHaveAttribute('href', 'plan.ics');
@@ -418,13 +431,13 @@ test('share hands the page link to the system share sheet', async ({ page }) => 
     Object.defineProperty(navigator, 'share', { configurable: true, value: (d) => { window.__shared = d; return Promise.resolve(); } });
   });
   await openGroup(page);
-  await page.locator('#shareBtn').click();
+  await pressTool(page, '#shareBtn');
   await expect.poll(() => page.evaluate(() => window.__shared && window.__shared.url)).toMatch(/\/WCY26KY3S1\/$/);
 });
 
 test('comparing groups shows both plans and the shared free time', async ({ page }) => {
   await openGroup(page);
-  await page.locator('#compareBtn').click();
+  await pressTool(page, '#compareBtn');
   const input = page.locator('#cmpInput');
   await input.fill('wcy26ky1s1');
   await input.press('Enter');
@@ -448,32 +461,75 @@ test('physical education shows SWF and every map link is real: none points at ?b
   await expect(page.locator('a[href$="mapa/?b=OSS"]:not(:text-is("SWF"))')).toHaveCount(0);
 });
 
-test('the plan map shows the coefficient, the archetype, what sets the plan apart and similar plans', async ({ page }) => {
+test('the plan map explains the coefficient and every number, tab by tab', async ({ page }) => {
   await openGroup(page);
-  await page.locator('#profileBtn').click();
-  const hero = tool(page).locator('.pm-hero');
+  await pressTool(page, '#profileBtn');
+  const sheet = tool(page);
+  // Twój plan
+  const hero = sheet.locator('.pm-hero');
   await expect(hero.locator('.pm-herotext strong')).toHaveText('Współczynnik przejebania™');
   await expect(hero.locator('.pm-big b')).toHaveText(/^\d{1,3}$/);
-  await expect(hero).toContainText('porównanych planów ma niższy współczynnik niż WCY26KY3S1');
-  await expect(tool(page).locator('#pmArch')).not.toBeEmpty();
-  await expect(tool(page).locator('.pm-trait').first()).toBeVisible();
-  await expect(tool(page).locator('canvas#pmMap')).toBeVisible();
-  // the map is drawn: a tap on the plan's own dot opens its card
-  await expect(tool(page).locator('.pm-card strong')).toHaveText('WCY26KY3S1');
-  // similar plans, then only the lighter ones
-  const first = tool(page).locator('.pm-sim a').first();
-  await expect(first).toHaveAttribute('href', /^\.\.\/[A-Z0-9_]+\/$/);
-  await tool(page).getByRole('button', { name: 'Lżejszego' }).click();
-  await expect(tool(page).locator('#pmMode [aria-pressed="true"]')).toHaveText('Lżejszego');
-  await expect(tool(page).locator('.pm-sim li').first()).toContainText('współczynnik');
-  await tool(page).getByRole('button', { name: 'Pokaż dane liczbowe' }).click();
-  await expect(tool(page).locator('.pm-tab tbody tr.mine')).toHaveCount(1);
+  await expect(hero).toContainText('porównanych planów jest lżejszych niż WCY26KY3S1');
+  await expect(sheet.locator('.pm-gauge')).toHaveAttribute('aria-label', /^Współczynnik \d+ na 100$/);
+  await sheet.locator('.pm-what summary').click();
+  await expect(sheet.locator('.pm-what p')).toContainText('jaka część porównanych planów jest lżejsza');
+  await expect(sheet.locator('.pm-arch strong')).not.toBeEmpty();
+  await expect(sheet.locator('.pm-arch .pm-badge')).toHaveText(/^[1-8]$/);
+  await expect(sheet.locator('.pm-trait').first()).toContainText('Ty:');
+  await expect(sheet.locator('.pm-trait').first()).toContainText('średnia:');
+  // Mapa: the canvas, the numbered legend that defines the badges, and the plan's own card
+  await sheet.locator('#pmt-map').click();
+  await expect(sheet.locator('canvas#pmMap')).toBeVisible();
+  await expect(sheet.locator('.pm-card strong')).toHaveText('WCY26KY3S1 (Twój plan)');
+  const legend = sheet.locator('.pm-legrow');
+  await expect(legend).toHaveCount(8);
+  await expect(legend.first().locator('.pm-badge')).toHaveText('1');
+  await expect(legend.first()).toContainText('grup');
+  await expect(sheet.locator('.pm-legrow.mine')).toContainText('Twój');
+  await legend.first().click();
+  await expect(legend.first()).toHaveAttribute('aria-pressed', 'true');
+  await legend.first().click();
+  await expect(legend.first()).toHaveAttribute('aria-pressed', 'false');
+  // Podobne: other plans, each with how it differs
+  await sheet.locator('#pmt-like').click();
+  await expect(sheet.locator('.pm-sim a').first()).toHaveAttribute('href', /^\.\.\/[A-Z0-9_]+\/$/);
+  await expect(sheet.locator('.pm-sim li').first()).toContainText(/podobny|trochę inny/);
+  await sheet.getByRole('button', { name: 'Lżejszego' }).click();
+  await expect(sheet.locator('#pmMode [aria-pressed="true"]')).toHaveText('Lżejszego');
+  await expect(sheet.locator('.pm-sim li').first()).toContainText('współczynnik');
+  // Metoda: a definition for every feature and a row for every archetype
+  await sheet.locator('#pmt-how').click();
+  await expect(sheet.locator('.pm-feats li')).toHaveCount(13);
+  await expect(sheet.locator('.pm-feats li').first().locator('.pm-def')).not.toBeEmpty();
+  await expect(sheet.locator('.pm-tab tbody tr')).toHaveCount(8);
+  await expect(sheet.locator('.pm-tab tbody tr.mine')).toHaveCount(1);
   await noCsp(page);
+});
+
+test('the tools row has three tabs, moves with the arrow keys and remembers the one used last', async ({ page }) => {
+  await openGroup(page);
+  const tabs = page.locator('#toolTabs [role="tab"]');
+  await expect(tabs).toHaveText(['Plan', 'Eksport', 'Analiza']);
+  await expect(page.locator('#tp-plan')).toBeVisible();
+  await expect(page.locator('#tp-export')).toBeHidden();
+  await expect(page.locator('#favBtn')).toBeVisible();
+  await expect(page.locator('#statsBtn')).toBeHidden();
+  await tabs.first().focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#tt-export')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#icsLink')).toBeVisible();
+  await page.keyboard.press('End');
+  await expect(page.locator('#tt-analysis')).toBeFocused();
+  await expect(page.locator('#profileBtn')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#tt-analysis')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#profileBtn')).toBeVisible();
+  await expect(page.locator('#favBtn')).toBeHidden();
 });
 
 test('free rooms lists rooms with no class at the chosen time, with a day bar on each', async ({ page }) => {
   await openGroup(page);
-  await page.locator('#roomsBtn').click();
+  await pressTool(page, '#roomsBtn');
   await expect(page.locator('#frDate')).toHaveValue('2026-10-15');
   await expect(page.locator('#frTime')).toHaveValue('10:30');
   const status = tool(page).locator('#frResult .fr-sum');
@@ -493,14 +549,14 @@ test('free rooms lists rooms with no class at the chosen time, with a day bar on
 
 test('favourites and recent groups appear on the front page', async ({ page }) => {
   await openGroup(page);
-  await page.locator('#favBtn').click();
+  await pressTool(page, '#favBtn');
   await expect(page.locator('#favBtn')).toHaveAttribute('aria-pressed', 'true');
   await page.goto('/');
   await expect(page.locator('#favList a.pick')).toHaveText(['WCY26KY3S1']);
   await expect(page.locator('#recentWrap')).toBeHidden(); // the only recent group is already a favourite
   await page.locator('#favList a.pick').click();
   await expect(page).toHaveURL(ON_GROUP);
-  await page.locator('#favBtn').click();
+  await pressTool(page, '#favBtn');
   await expect(page.locator('#favBtn')).toHaveAttribute('aria-pressed', 'false');
   await page.goto('/');
   await expect(page.locator('#recentList a.pick')).toHaveText(['WCY26KY3S1']);
@@ -554,7 +610,7 @@ test('the list view and the tool sheets have no serious or critical accessibilit
   await page.locator('#viewSeg button[data-view="month"]').click();
   expect(await scan()).toEqual([]);
   for (const id of ['#statsBtn', '#roomsBtn', '#profileBtn', '#calBtn']) {
-    await page.locator(id).click();
+    await pressTool(page, id);
     await expect(tool(page)).toBeVisible();
     await expect(tool(page).locator('.muted', { hasText: 'Wczytywanie' })).toHaveCount(0);
     expect(await scan(), id).toEqual([]);
@@ -712,7 +768,7 @@ test('"Moje przedmioty" hides a subject everywhere, remembers it, and the downlo
   const problems = await openGroup(page);
   const before = await page.locator('#weekBody .lesson').count();
   const firstSubject = (await page.locator('#weekBody .lesson .subj').first().textContent()).trim();
-  await page.locator('#subjectsBtn').click();
+  await pressTool(page, '#subjectsBtn');
   const boxes = page.locator('#toolBody .mysubjects input');
   expect(await boxes.count()).toBeGreaterThan(1);
   await page.locator('#toolBody .mysubjects label').filter({ has: page.getByText(firstSubject, { exact: true }) }).locator('input').uncheck();
@@ -723,6 +779,7 @@ test('"Moje przedmioty" hides a subject everywhere, remembers it, and the downlo
   expect(shown).not.toContain(firstSubject);
   const href = await page.locator('#icsLink').getAttribute('href');
   expect(href.startsWith('blob:')).toBe(true);
+  await showTool(page, '#icsLink');
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#icsLink').click()]);
   const text = fs.readFileSync(await download.path(), 'utf-8');
   expect(text.split(/\r?\n/)).not.toContain('SUMMARY:' + firstSubject);

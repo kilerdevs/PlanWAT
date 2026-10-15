@@ -56,6 +56,12 @@ FEATURES = [
      'Ile różnych przedmiotów ma grupa w semestrze.'),
 ]
 KEYS = [f[0] for f in FEATURES]
+NAMES = {  # the noun each feature is listed under on the page
+    'hours': 'Godziny zajęć', 'days': 'Dni na uczelni', 'gaps': 'Okienka', 'longgaps': 'Długie okienka',
+    'span': 'Długość dnia', 'marathon': 'Dni-maratony', 'early': 'Wczesne starty', 'late': 'Zajęcia wieczorem',
+    'weekend': 'Weekendy', 'moves': 'Zmiany budynków', 'fixed': 'Stałe sale', 'practice': 'Ćwiczenia i laboratoria',
+    'subjects': 'Przedmioty',
+}
 
 _PRACTICE = re.compile(r'ćwicz|laborat|projekt|seminar|lektorat', re.I)
 
@@ -298,7 +304,7 @@ def build(per_group, faculty_of, asof=None):
                      round(load[i] * 100)] + [round(v * 100) for v in z[i]])
     return {
         'asof': asof,
-        'features': [{'key': k, 'high': hi, 'low': lo, 'w': w, 'unit': unit, 'def': text,
+        'features': [{'key': k, 'name': NAMES[k], 'high': hi, 'low': lo, 'w': w, 'unit': unit, 'def': text,
                       'mean': round(means[i], 3), 'std': round(stds[i], 3)}
                      for i, (k, hi, lo, w, unit, text) in enumerate(FEATURES)],
         'archetypes': archetypes,

@@ -277,3 +277,14 @@ test('a plan feature reads back as a real value, and is printed with its unit', 
   assert.equal(I.fmtFeature(d.features[4], 12.4), '12');
   assert.equal(I.fmtTypical([17.5, 4.1, 130, 390]), '17,5 h zajęć · 4,1 dni · okienka 2 h 10 min · dzień 6 h 30 min');
 });
+
+test('differences names how another plan is unlike this one, and likeness grades the distance', () => {
+  const d = profileData();
+  const a = d.groups[0], c = d.groups[2], dd = d.groups[3];
+  assert.deepEqual(I.differences(d, a, c, 2), ['późne starty', 'prawie bez okienek']);  // C: early -0.9 and gaps -0.9 tie, so by feature key
+  assert.deepEqual(I.differences(d, a, a, 2), []);
+  assert.equal(I.differences(d, a, dd, 1).length, 1);
+  assert.equal(I.likeness(0.5), 'bardzo podobny');
+  assert.equal(I.likeness(1.5), 'podobny');
+  assert.equal(I.likeness(3), 'trochę inny');
+});

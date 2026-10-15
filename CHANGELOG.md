@@ -91,12 +91,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   i numer sali, a każda sala dostaje pasek dnia z zajęciami (czerwone) i wolnym oknem (zielone). „Pokaż też sale wolne
   później” dopisuje sale, które zwolnią się w ciągu dnia, a nazwa budynku prowadzi na mapę. Sale bez zajęć w pobliżu
   danego dnia są pominięte i policzone zamiast zgadywane. Dane z `data/rooms.json` pochodzą z planów wszystkich grup.
-- **Mapa planów** (przycisk w narzędziach): „Współczynnik przejebania™” od 0 do 100, czyli ile procent porównanych planów jest
-  lżejszych od Twojego (godziny, okienka, długość dni, wczesne starty, weekendy, zmiany budynków), archetyp planu, to, co go
-  wyróżnia, mapa wszystkich planów (kropki leżą blisko, gdy tygodnie są podobne, kolor to współczynnik), wyszukiwanie planu
-  podobnego, lżejszego, z mniejszą liczbą okienek, krótszymi dniami albo późniejszymi startami oraz tabela archetypów. Liczone
-  przy każdej budowie z planów opublikowanych przez wydziały (`profiles.py`: PCA i k-średnie, bez uczenia modeli), zapisane w
-  `data/profiles.json`.
+- **Narzędzia w trzech zakładkach** zamiast jednego rzędu dwunastu przycisków: Plan (ulubione, moje przedmioty, jak korzystać,
+  instalacja), Eksport (pobranie, kalendarz, udostępnianie, drukowanie) i Analiza (statystyki, porównanie grup, wolne sale,
+  mapa planów). Strzałki, Home i End przechodzą między zakładkami, a ostatnia użyta zakładka jest zapamiętana na urządzeniu.
+- **Mapa planów** (przycisk w narzędziach, zakładka Analiza) ma cztery zakładki: Twój plan (współczynnik z podziałką, archetyp,
+  Twój tydzień na tle typowego, to, co wyróżnia plan, z Twoją wartością i średnią), Mapa (kropki, numerowana lista archetypów
+  z definicją i typowym tygodniem, dotknięcie archetypu zostawia na mapie tylko jego plany), Podobne (czym inny plan różni się
+  od Twojego) i Metoda (definicja każdej z 13 cech z wagą, tabela archetypów, opis mapy). „Współczynnik przejebania™” to liczba od 0 do 100: jaka część porównanych planów jest lżejsza od Twojego (godziny, okienka, długość dni, wczesne starty, weekendy, zmiany budynków). Liczone przy każdej budowie z planów opublikowanych przez wydziały (`profiles.py`: PCA i k-średnie, bez uczenia modeli) i zapisane w `data/profiles.json`.
 - **Prywatność:** tabela „PlanWAT kontra serwis z logowaniem kodem” z README także na stronie `/prywatnosc/`.
 - **Aktualizacja planów** co 2 godziny zamiast raz na dobę, a strona jest odbudowywana zaraz po zakończeniu przebiegu.
 - **Wychowanie fizyczne** ma salę: Ośrodek Szkoleniowo-Sportowy WAT, także jako punkt na mapie.

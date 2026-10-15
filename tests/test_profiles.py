@@ -131,6 +131,24 @@ class Build(unittest.TestCase):
             self.assertTrue(0 <= r[5] < len(data['archetypes']))
         self.assertEqual(sum(a['n'] for a in data['archetypes']), 40)
 
+    def test_every_number_comes_with_its_definition_unit_and_average(self):
+        data = profiles.build(self.per_group(), lambda g: 'WCY', None)
+        self.assertEqual(len(data['features']), len(profiles.KEYS))
+        for f in data['features']:
+            self.assertTrue(f['name'] and f['def'].endswith('.'), f['key'])
+            self.assertIn(f['unit'], ('h', 'min', 'n', 'pct'))
+            self.assertIsInstance(f['mean'], float)
+            self.assertGreaterEqual(f['std'], 0)
+        self.assertEqual([f['w'] > 0 for f in data['features']].count(True), 11)  # fixed rooms and practice share only describe
+        for a in data['archetypes']:
+            self.assertEqual(len(a['typical']), 4)
+            self.assertTrue(all(isinstance(x, float) for x in a['typical']))
+        # a plan's real value is mean + z * std: the hours of a known plan come back
+        raw = profiles.week_features(self.per_group()['WCY26A011S1'])
+        row = next(r for r in data['groups'] if r[0] == 'WCY26A011S1')
+        hours = data['features'][0]
+        self.assertAlmostEqual(hours['mean'] + row[7] / 100 * hours['std'], raw[0], delta=0.2)
+
     def test_heavier_weeks_get_a_higher_coefficient_and_sit_to_the_right(self):
         data = profiles.build(self.per_group(), lambda g: 'WCY', None)
         rows = {r[0]: r for r in data['groups']}

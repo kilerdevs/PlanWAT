@@ -385,6 +385,21 @@
       ' · okienka ' + fmtFeature({ unit: 'min' }, t[2]) + ' · dzień ' + fmtFeature({ unit: 'min' }, t[3]);
   }
 
+  /* how another plan differs from this one in words: the features where they are far apart, biggest gap first
+     ("krótsze dni na uczelni", "bez weekendów", ...), at most n */
+  function differences(data, row, other, n) {
+    var out = [];
+    data.features.forEach(function (f, i) {
+      var d = zOf(other, i) - zOf(row, i);
+      if (Math.abs(d) >= 0.6) out.push({ d: d, key: f.key, text: d > 0 ? f.high : f.low });
+    });
+    out.sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d) || (a.key < b.key ? -1 : 1); });
+    return out.slice(0, n || 2).map(function (x) { return x.text; });
+  }
+  /* how alike two plans are, in words, from the distance between their weeks */
+  function likeness(dist) {
+    return dist < 1 ? 'bardzo podobny' : dist < 2 ? 'podobny' : 'trochę inny';
+  }
   /* the plans nearest to one on the map, for "moje otoczenie": a box in map units that holds `count` of them */
   function neighbourhood(data, row, count) {
     var near = data.groups.slice().sort(function (a, b) {
@@ -410,7 +425,7 @@
     lessonKey: lessonKey, fingerprint: fingerprint, diff: diff,
     freeWindows: freeWindows, intervals: intervals, overlaps: overlaps, byDate: byDate,
     yearOf: yearOf, peersOf: peersOf, catchUp: catchUp,
-    featureValue: featureValue, fmtFeature: fmtFeature, fmtTypical: fmtTypical, profileRow: profileRow, traits: traits, similarPlans: similarPlans, neighbourhood: neighbourhood, hitDot: hitDot,
+    differences: differences, likeness: likeness, featureValue: featureValue, fmtFeature: fmtFeature, fmtTypical: fmtTypical, profileRow: profileRow, traits: traits, similarPlans: similarPlans, neighbourhood: neighbourhood, hitDot: hitDot,
     freeRooms: freeRooms, firstWindow: firstWindow, dataRange: dataRange, building: building,
     monthGrid: monthGrid, dayNumber: dayNumber, isoFromDayNumber: isoFromDayNumber
   };
