@@ -664,6 +664,24 @@ test('a plan whose lessons all predate the semester says the faculty has not pub
   expect(problems).toEqual([]);
 });
 
+test('a term the faculty has not published has no lessons at all, and says so', async ({ page }) => {
+  await page.route('**/plan.ics', async (route) => {
+    const res = await route.fetch();
+    const body = (await res.text()).replace(/BEGIN:VEVENT[\s\S]*?END:VEVENT\r?\n/g, '');
+    await route.fulfill({ response: res, body });
+  });
+  const problems = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
+  await page.clock.setFixedTime(THURSDAY_1030);
+  await page.goto(GROUP);
+  await expect(page.locator('#staleNotice')).toBeVisible();
+  await expect(page.locator('.session-banner').first()).toContainText('nie jest jeszcze opublikowany');
+  await expect(page.locator('.session-banner').first()).not.toContainText('sesja egzaminacyjna');
+  await expect(page.locator('.lesson')).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
 test('a current plan does not show the unpublished notice', async ({ page }) => {
   await openGroup(page);
   await expect(page.locator('#staleNotice')).toBeHidden();

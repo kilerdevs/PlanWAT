@@ -553,11 +553,17 @@ class ClipToTermTest(unittest.TestCase):
         self.assertNotIn('\n', out.replace('\r\n', ''))
         self.assertTrue(out.startswith('BEGIN:VCALENDAR\r\nVERSION:2.0\r\n') and out.endswith('END:VCALENDAR\r\n'))
 
-    def test_a_clean_calendar_and_one_of_only_another_semester_come_back_unchanged(self):
+    def test_a_clean_calendar_comes_back_unchanged(self):
         clean = calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05').encode('utf-8')
         self.assertIs(build.clip_to_term(clean, '2026-27-zima'), clean)
+
+    def test_a_calendar_of_only_another_semester_goes_out_with_no_lessons(self):
         only_old = calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-04-10').encode('utf-8')
-        self.assertIs(build.clip_to_term(only_old, '2026-27-zima'), only_old)  # the page says "not published yet"
+        out = build.clip_to_term(only_old, '2026-27-zima').decode('utf-8')
+        self.assertNotIn('BEGIN:VEVENT', out)
+        self.assertIn('X-PLAN-GROUP:WCY26KY3S1', out)
+        self.assertIn('X-PLAN-SEMESTER-START:20260928', out)
+        self.assertTrue(out.startswith('BEGIN:VCALENDAR\r\n') and out.endswith('END:VCALENDAR\r\n'))
 
     def test_the_window_per_term(self):
         self.assertEqual(build.term_window('2026-27-zima'), ('20260901', '20270229'))

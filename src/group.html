@@ -1777,7 +1777,7 @@
       </div>
       <div class="notice" id="staleNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
-        <span class="notice-text">Wydział nie opublikował jeszcze planu na ten semestr. Widzisz ostatni dostępny plan; zajrzyj później, odświeżamy go codziennie.</span>
+        <span class="notice-text">Wydział nie opublikował jeszcze planu na ten semestr. Zajrzyj później: sprawdzamy go co 2 godziny, a gdy się pojawi, zobaczysz go tutaj.</span>
       </div>
       <div class="notice" id="changeNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
@@ -2240,9 +2240,14 @@
       var banner = el('div', 'session-banner');
       banner.appendChild(icon('calendar-x'));
       var txt = el('span');
-      txt.appendChild(document.createTextNode('Brak zajęć stałych w tym tygodniu — '));
-      txt.appendChild(el('b', null, 'sesja egzaminacyjna'));
-      txt.appendChild(document.createTextNode(' lub przerwa. Sprawdź terminy dodatkowe w e-dziekanacie.'));
+      if (state.unpublished) {
+        txt.appendChild(el('b', null, 'Plan na ten semestr nie jest jeszcze opublikowany.'));
+        txt.appendChild(document.createTextNode(' Aktualne zajęcia sprawdzisz w e-dziekanacie.'));
+      } else {
+        txt.appendChild(document.createTextNode('Brak zajęć stałych w tym tygodniu — '));
+        txt.appendChild(el('b', null, 'sesja egzaminacyjna'));
+        txt.appendChild(document.createTextNode(' lub przerwa. Sprawdź terminy dodatkowe w e-dziekanacie.'));
+      }
       banner.appendChild(txt);
       body.appendChild(banner);
       off = 1;
@@ -3716,6 +3721,7 @@
       });
     });
     $('staleNotice').hidden = !stale;
+    state.unpublished = stale && !weeks.some(function (w) { return Object.keys(w.days).length; });
     $('termLine').textContent = m.term ? 'Plan zajęć · ' + m.term : 'Plan zajęć';
     fact('factFaculty', m.faculty);
     fact('factSemester', fmtFullDate(m.semesterStart || weeks[0].monday) + ' – ' +

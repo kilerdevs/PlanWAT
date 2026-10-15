@@ -148,9 +148,10 @@ def clip_to_term(raw, term_id):
     """A calendar (bytes) without the VEVENTs dated outside its term's window.
 
     The faculties' pages sometimes carry two semesters at once (last semester's lessons below this one's), and the
-    page would then show March to July under a winter term. Every byte of what stays is untouched. The input comes
-    back as it is when nothing falls outside, and also when everything does: a plan of only another semester is a
-    plan "not published yet" (the page says so), not an empty one."""
+    page would then show March to July under a winter term. Every byte of what stays is untouched, and the input
+    comes back as it is when nothing falls outside. When everything does, the faculty has not published this term
+    yet and is still showing the last one: the term goes out with no lessons at all, and the page says so, instead
+    of presenting last semester's plan as this one."""
     try:
         first, last = term_window(term_id)
     except ValueError:
@@ -178,7 +179,7 @@ def clip_to_term(raw, term_id):
             block = None
     if block is not None:  # an unterminated event: leave the file alone
         return raw
-    if not dropped or not kept:
+    if not dropped:
         return raw
     return ''.join(out).encode('utf-8')
 
