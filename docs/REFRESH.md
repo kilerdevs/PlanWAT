@@ -1,137 +1,157 @@
-# Automatic timetable refresh
+<div align="center">
 
-The plans are re-read from the faculty sites by a scheduled GitHub Actions workflow and published without a commit to
-`master` or `dev`.
+<img src="../src/icons/icon.svg" alt="PlanWAT" width="56" height="56">
+
+# Automatyczna aktualizacja planów
+
+**Plany są ponownie czytane ze stron wydziałów i publikowane bez commita na `master` ani `dev`.**
+
+[![Refresh](https://github.com/kilerdevs/PlanWAT/actions/workflows/refresh.yml/badge.svg)](https://github.com/kilerdevs/PlanWAT/actions/workflows/refresh.yml)
+![Runner](https://img.shields.io/badge/runner-self--hosted%20(jedyny)-blue?style=flat)
+![Harmonogram](https://img.shields.io/badge/harmonogram-codziennie%20~03%3A00-informational?style=flat)
+![Grupy](https://img.shields.io/badge/grupy-781-brightgreen?style=flat)
+![Dane kadry](https://img.shields.io/badge/dane%20kadry-brak-critical?style=flat)
+
+</div>
+
+Zaplanowany workflow GitHub Actions czyta strony wydziałów, konwertuje plany, sprawdza je i wypycha na gałąź `data`.
+Workflow Pages nakłada te kalendarze na strony przy każdej budowie.
+
+<img src="diagrams/aktualizacja-planow.svg" alt="Codziennie w nocy runner odczytuje strony wydziałów przez proxy, konwertuje plany, waliduje je i wypycha na gałąź data. Pages nakłada je na strony i publikuje." width="760">
 
 ```
-refresh.yml   daily, off-hours, on the self-hosted runner: crawl → convert → validate → push to `data`
-data branch   timetables/<term>/<GROUP>.ics and refresh-state.json
-pages.yml     checks out `data` and lays its timetables over prod/ and dev/ before build.py
+refresh.yml   codziennie, poza godzinami szczytu, na własnym runnerze: crawl → konwersja → walidacja → push na `data`
+gałąź data    timetables/<semestr>/<GRUPA>.ics oraz refresh-state.json
+pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomieniem build.py
 ```
 
-## How a run behaves
+<img src="diagrams/przebieg-odswiezania.svg" alt="Los jednej grupy: kolejka, pobieranie, konwersja, walidacja i publikacja. Brak zmian, blokada z odczekaniem oraz błąd walidacji kończą się bez nowego commita." width="760">
 
-- One session, one request at a time, a random pause between pages (2.5–6 s on the self-hosted runner, 4–9 s with `--profile hosted`), `robots.txt`
-  honoured, conditional revalidation (`If-Modified-Since`/`ETag` remembered per group, so unchanged pages answer
-  `304` without a body), groups checked less than 20 hours ago skipped.
-- **A block defers the faculty, it no longer ends the run.** Any status other than 200 (304 and 404 excluded), or an Incapsula incident page,
-  parks that faculty while the others are covered then sleeps the block out and resumes where it stopped. How long to sleep is learned per
-  policy group from past recoveries (median, 20 min – 12 h, 2 h with no history yet; wall episodes weigh more than flaky ones), recovery is probed with cheap index fetches on a sparse-then-dense
-  schedule (`--block-probes`, default 5, always inside the remaining budget), and the whole wait is capped (`--max-block-wait-minutes`, default 90, split fairly: each wait gets its share but at least 15 min). A block verdict is never retried and
-  nothing half-converted is published. The last good calendars stay, a GitHub issue is opened only if the run ends still blocked, and the
-  self-hosted job tries later from the same state. (`_Incapsula_Resource` script tags on good pages are not blocks.)
-  Only transient fetches (transport errors, 408/425/429/500/502/503/504, an empty 200) are retried with backoff first (`--retries/--retry-backoff`); everything else is a verdict. Exhaustion tells a wall (`cause: wall`) from a wobble (`cause: flaky`), and the queue runs stalest-first so a cut-short
-  run always covers the longest-unseen groups.
-  WLO and WEL share one Incapsula policy (`wat-edge`): one wait covers both, then each resumes on its own fresh session. The learned cooldown replaces the old fixed
-  24–48 h rule (the state keeps the last good calendars meanwhile).
-- **A degraded run says so loudly.** Five-plus checks with over 30% skipped, or a group listing under half its previous size (from 10 up), flags the faculty `degraded`: the run exits incomplete and exports `degraded=true`.
-- **Cadence and pacing adapt.** `--fresh-hours` (per-faculty overridable, never below 1 h) halves in August/January/February while the faculties publish the coming semester. The pause between pages scales per policy group (AIMD: ×1.5 on a block up to 3×, ×0.9 on a clean faculty down to 1×).
-- A page is only published when the calendar passes the site's own validation (`build.load_term`), carries its file's
-  group code and has not lost more than 40% of its events. Otherwise the old calendar is kept and the group is logged.
-- A calendar is rewritten only when the plan changed (the generation date is ignored), so `data` history shows real
-  plan changes.
+## Jak zachowuje się przebieg
 
-## Faculties
+- Jedna sesja, jedno żądanie naraz, losowa przerwa między stronami (2,5–6 s na własnym runnerze, 4–9 s z `--profile hosted`),
+  honorowany `robots.txt`, warunkowa rewalidacja (`If-Modified-Since` / `ETag` zapamiętane dla każdej grupy, więc niezmienione
+  strony odpowiadają `304` bez treści) i pomijanie grup sprawdzonych mniej niż 20 godzin temu.
+- **Blokada odkłada wydział, nie kończy przebiegu.** Każdy status inny niż 200 (z wyjątkiem 304 i 404) albo strona incydentu
+  Incapsula zawiesza dany wydział, podczas gdy pozostałe są obsługiwane, a potem odczekuje blokadę i wznawia od miejsca
+  przerwania. Długość snu jest wyuczona dla każdej grupy polityki z poprzednich odbudowań (mediana, 20 min – 12 h, 2 h bez historii;
+  epizody „ściany” ważą więcej niż niestabilne), odblokowanie jest sprawdzane tanimi pobraniami indeksu w rzadko-potem-gęsto
+  rozłożonym harmonogramie (`--block-probes`, domyślnie 5, zawsze w ramach pozostałego budżetu), a całe oczekiwanie jest
+  ograniczone (`--max-block-wait-minutes`, domyślnie 90, dzielone sprawiedliwie: każde czekanie dostaje swój udział, ale co
+  najmniej 15 min). Wyrok blokady nie jest ponawiany i nic niedokończonego nie jest publikowane. Ostatnie poprawne kalendarze
+  zostają, zgłoszenie GitHub otwiera się tylko wtedy, gdy przebieg kończy się wciąż zablokowany, a zadanie na własnym runnerze
+  próbuje później ze stanu, który zapisał. (Znaczniki `_Incapsula_Resource` na dobrych stronach nie są blokadą.)
+  Tylko przejściowe pobrania (błędy transportu, 408/425/429/500/502/503/504, pusty 200) są najpierw ponawiane z odczekaniem
+  (`--retries/--retry-backoff`), wszystko inne jest wyrokiem. Wyczerpanie odróżnia ścianę (`cause: wall`) od chwiejności
+  (`cause: flaky`), a kolejka idzie od najdawniej sprawdzonych, więc przerwany przebieg zawsze obejmuje najdłużej niewidziane
+  grupy. WLO i WEL dzielą jedną politykę Incapsula (`wat-edge`): jedno oczekiwanie obejmuje oba, potem każdy wznawia na własnej
+  świeżej sesji. Wyuczony czas ochłodzenia zastąpił dawną stałą regułę 24–48 h (stan zachowuje przez ten czas ostatnie
+  poprawne kalendarze).
+- **Pogorszony przebieg mówi o tym głośno.** Pięć i więcej sprawdzeń z ponad 30% pominiętych albo grupa z listą mniejszą niż
+  połowa poprzedniej (od 10 pozycji) oznacza wydział jako `degraded`: przebieg kończy się jako niepełny i eksportuje
+  `degraded=true`.
+- **Tempo i częstotliwość dostosowują się.** `--fresh-hours` (nadpisywalne dla wydziału, nigdy poniżej 1 h) zmniejsza się o
+  połowę w sierpniu, styczniu i lutym, gdy wydziały publikują nadchodzący semestr. Przerwa między stronami skaluje się dla
+  każdej grupy polityki (AIMD: ×1,5 przy blokadzie do 3×, ×0,9 przy czystym wydziale do 1×).
+- Strona jest publikowana tylko wtedy, gdy kalendarz przechodzi własną walidację serwisu (`build.load_term`), nosi kod grupy
+  swojego pliku i nie stracił więcej niż 40% zdarzeń. W przeciwnym razie stary kalendarz zostaje, a grupa trafia do logu.
+- Kalendarz jest nadpisywany tylko wtedy, gdy plan się zmienił (data wygenerowania jest ignorowana), więc historia `data`
+  pokazuje prawdziwe zmiany planu.
 
-`tools/refresh/sources.json` lists them. Each points at a driver in `tools/refresh/drivers/`:
+## Wydziały
 
-| Faculty | Driver | State |
+Wydziały wymienia `tools/refresh/sources.json`. Każdy wskazuje sterownik w `tools/refresh/drivers/`:
+
+| Wydział | Sterownik | Stan |
 |---|---|---|
-| WLO, WEL, WIM | `plansoft` | enabled |
-| IOE | `plansoft` (pinned base: the winter plans live under the stale `lato/` dir; the grid is transposed and its cells read SUBJ/type/room/alias, converted with `wlo2ics --faculty ioe`) | enabled |
-| WML | `wml` (Plansoft pages; the live `index.xml` is resolved via the landing-page iframe, since the faculty republishes under revisioned directories) | enabled |
-| WCY | `wcy` | plain HTTP works (checked 2026-10-14); pages still showing last semester are skipped, so old calendars stay until the new plan is published |
-| WTC | `wtc` | enabled; `index.xml` lists one Plansoft PDF per group, converted with `pymupdf` (installed by the refresh action) |
+| WLO, WEL, WIM | `plansoft` | włączone |
+| IOE | `plansoft` (przypięta baza: zimowe plany leżą pod nieaktualnym katalogiem `lato/`, siatka jest transponowana, a jej komórki odczytywane jako PRZEDMIOT/rodzaj/sala/alias, konwertowane przez `wlo2ics --faculty ioe`) | włączone |
+| WML | `wml` (strony Plansoft, żywy `index.xml` rozpoznawany przez ramkę strony głównej, bo wydział publikuje ponownie w katalogach z rewizją) | włączone |
+| WCY | `wcy` | włączone: zwykłe HTTP działa (sprawdzono 14.10.2026), strony wciąż pokazujące poprzedni semestr są pomijane, więc stare kalendarze zostają do opublikowania nowego planu |
+| WTC | `wtc` | włączone: `index.xml` wymienia po jednym PDF-ie Plansoft na grupę, konwertowanym przez `pymupdf` (instalowany przez akcję odświeżania) |
 
-Each group has exactly one canonical owner, so no plan is published twice under two codes: WEL skips the
-`IOE*`/`WME*` pages its index also lists (they belong to IOE/WIM), and IOE skips its listed `WME*` page.
+Każda grupa ma dokładnie jednego kanonicznego właściciela, więc żaden plan nie jest publikowany dwa razy pod dwoma kodami: WEL
+pomija strony `IOE*` i `WME*`, które jego indeks też wymienia (należą do IOE i WIM), a IOE pomija wymienioną stronę `WME*`.
 
-Pages named like `1PL26KP` get the faculty prefix (`WEL1PL26KP`) so the file name, `X-PLAN-GROUP` and the front-page
-section agree. Pages that are not group codes (courses such as `Kurs_-_…`) are skipped. WML groups keep the
-faculty's own `WMT` codes (only `^WMT` pages are crawled) and are listed under the WML section. WIM groups keep
-their `WME` codes and are listed under the WIM section.
+Strony nazwane jak `1PL26KP` dostają prefiks wydziału (`WEL1PL26KP`), żeby nazwa pliku, `X-PLAN-GROUP` i sekcja na stronie
+głównej były spójne. Strony niebędące kodami grup (kursy, np. `Kurs_-_…`) są pomijane. Grupy WML zachowują własne kody `WMT`
+wydziału (crawl obejmuje tylko strony `^WMT`) i są wyświetlane w sekcji WML. Grupy WIM zachowują swoje kody `WME` i są
+wyświetlane w sekcji WIM.
 
-WTC notes: the site sits behind Incapsula, so the PDFs are fetched with the
-index page as Referer on the shared cookie-keeping session, one at a time;
-the converter needs `pip install pymupdf` on any machine running the crawl
-(the daily action installs it into a throwaway venv on `$RUNNER_TEMP`,
-because the self-hosted runner's baked `/opt/venv` is read-only at job
-time). Converted calendars carry no staff names
-(see the privacy rule below).
+Uwagi o WTC: serwis stoi za Incapsulą, więc PDF-y są pobierane z indeksem jako Referer na wspólnej sesji z ciasteczkami, po
+jednym naraz. Konwerter wymaga `pip install pymupdf` na każdej maszynie uruchamiającej crawl (codzienna akcja instaluje go do
+jednorazowego venv w `$RUNNER_TEMP`, bo wbudowany w runner `/opt/venv` jest w trakcie zadania tylko do odczytu). Skonwertowane
+kalendarze nie zawierają nazwisk kadry (zob. zasadę prywatności niżej).
 
-Pages named like `1PL26KP` get the faculty prefix (`WEL1PL26KP`) so the file name, `X-PLAN-GROUP` and the front-page
-section agree. Pages that are not group codes (courses such as `Kurs_-_…`) are skipped.
+## Bez nazwisk kadry w kalendarzach
 
-## No staff names in calendars
+Opublikowane kalendarze nie zawierają danych osobowych kadry: konwertery nigdy nie zapisują linii `CONTACT` ani linii z
+prowadzącym (`Prowadzący:`). Nazwiska nauczycieli ze stron wydziałów są wyłącznie wynikiem pośrednim parsowania (sterują
+podziałem na salę i nauczyciela) i są odrzucane, zanim kalendarz zostanie zapisany. `build.py` odrzuca każdy kalendarz, który
+wymienia kadrę, więc regresja psuje budowę zamiast publikować nazwiska.
 
-The published calendars hold no personal data of staff: converters never
-write `CONTACT` lines or instructor (`Prowadzący:`) lines — teacher names
-from the faculty pages are parse intermediates only (they steer the
-room/teacher split) and are dropped before the calendar is written.
-`build.py` refuses any calendar that names staff, so a regression fails the
-build instead of publishing names.
+## Jednorazowa konfiguracja
 
-## One-time setup
-
-1. Create the `data` branch from the current valid timetables:
+1. Utwórz gałąź `data` z aktualnych poprawnych planów:
    `git switch --orphan data && git checkout dev -- timetables && git commit -m "Seed timetables" && git push -u origin data`
-   (leave only calendars that pass `python build.py`).
-2. Settings → Actions → General: allow GitHub Actions to create issues and run workflows (workflow permissions
-   "Read and write"), and set "Fork pull request workflows" to require approval.
-3. Try it: Actions → *Refresh timetables* → Run workflow, faculty `wim`.
+   (zostaw tylko kalendarze, które przechodzą `python build.py`).
+2. Settings → Actions → General: zezwól GitHub Actions na tworzenie zgłoszeń i uruchamianie workflowów (uprawnienia workflowów
+   „Read and write”) oraz ustaw „Fork pull request workflows” na wymaganie zatwierdzenia.
+3. Wypróbuj: Actions → *Refresh timetables* → Run workflow, wydział `wim`.
 
-## Self-hosted runner (the only runner)
+## Własny runner (jedyny)
 
-The faculty sites' Incapsula wall blocks GitHub's datacenter addresses on the first request (seen on the first hosted
-run: `index.xml` answered 403), so the crawl runs only on the self-hosted runner, whose home address works.
+Ściana Incapsula na stronach wydziałów blokuje adresy centrów danych GitHub już przy pierwszym żądaniu (widziane przy pierwszym
+przebiegu na hostowanym runnerze: `index.xml` odpowiedział 403), więc crawl działa wyłącznie na własnym runnerze, któremu
+adres domowy pozwala przejść.
 
-The runner makes only outbound connections to GitHub; the machine needs **no open inbound port**. Anyone able to
-trigger a workflow on the repository can run code on it, so:
+Runner nawiązuje tylko połączenia wychodzące do GitHub, a maszyna **nie potrzebuje żadnego otwartego portu przychodzącego**.
+Każdy, kto może uruchomić workflow w repozytorium, może uruchomić kod na runnerze, więc:
 
-- the workflow runs it only for `schedule` and `workflow_dispatch` (never pull requests), and only people with write
-  access can dispatch;
-- run it in a container as an unprivileged user, with no host mounts, no Docker socket and no secrets other than its
-  own registration; register it at repository level with the label `planwat`;
-- block all inbound traffic on the host and allow outbound only to GitHub and the faculty hosts.
+- workflow uruchamia go tylko dla `schedule` i `workflow_dispatch` (nigdy dla pull requestów), a uruchamiać mogą tylko osoby z
+  prawem zapisu;
+- uruchamiaj go w kontenerze jako użytkownik bez uprawnień, bez montowań hosta, bez gniazda Dockera i bez żadnych sekretów poza
+  własną rejestracją; zarejestruj go na poziomie repozytorium z etykietą `planwat`;
+- zablokuj cały ruch przychodzący do hosta i zezwól na wychodzący wyłącznie do GitHub i hostów wydziałów.
 
-## If GitHub itself is compromised
+## Gdyby sam GitHub został przejęty
 
-The design assumes the repository (code, Actions, the `data` branch, `GITHUB_TOKEN`) may fall into hostile hands
-while the runner host must stay clean and the published site must stay safe:
+Projekt zakłada, że repozytorium (kod, Actions, gałąź `data`, `GITHUB_TOKEN`) może wpaść w niepowołane ręce, podczas gdy host
+runnera musi pozostać czysty, a opublikowana strona bezpieczna:
 
-- The runner lives on an internal Docker network with no route out; its only egress is a proxy that allows
-  `CONNECT ...:443` solely to GitHub, PyPI and the faculty hosts (anything else, including bare IPs, gets `403
-  Filtered`). Stealing the per-job token still cannot reach an attacker's server directly; exfiltration is limited
-  to pushing to GitHub, which is auditable in the repo history.
-- The job token carries only `contents:write` (push the `data` branch) and `issues:write` (file the blocked notice).
-  There is deliberately no `actions:write`: refreshed calendars are picked up by the daily `pages.yml` rebuild, so a
-  stolen token cannot trigger or approve other workflows.
-- `master` is protected (signed commits, required CI) and `pages.yml` builds production only from `master`, overlaying
-  `data` calendars that must each pass `build.load_term` validation and are HTML-escaped into hash-pinned CSP pages.
-  A poisoned `data` branch therefore cannot inject script or promote content to the site root — at worst it shows
-  wrong lesson times until reverted. Also protect the `data` branch (Settings → Branches → Add rule for `data`:
-  require pull requests for humans, allow only the Actions bot to bypass) so a compromised web session cannot push
-  to it silently.
-- The runner keeps no long-lived secrets besides its own registration, and its work directory should be treated as
-  disposable: anyone who ran code on it may have left files behind. Prefer ephemeral (one-job) runners; with a
-  persistent runner, wipe `/home/runner/_work` after jobs and re-register from a fresh token when in doubt.
-- Watch for the tell-tale sign of runner abuse: unexpected workflow files targeting `runs-on: [self-hosted, planwat]`
-  or edits to `refresh.yml` / `.github/actions/refresh`. Alert on those paths with a CODEOWNERS rule or a
-  branch-protection required review.
+- Runner żyje w wewnętrznej sieci Docker bez trasy na zewnątrz, a jego jedyne wyjście to proxy, które zezwala na
+  `CONNECT ...:443` wyłącznie do GitHub, PyPI i hostów wydziałów (cokolwiek innego, w tym gołe adresy IP, dostaje `403 Filtered`).
+  Ukradziony token zadania nadal nie sięgnie bezpośrednio do serwera atakującego, a eksfiltracja ogranicza się do wypchnięcia do
+  GitHub, co da się audytować w historii repozytorium.
+- Token zadania ma tylko `contents:write` (push gałęzi `data`) i `issues:write` (zgłoszenie o blokadzie). Celowo nie ma
+  `actions:write`: odświeżone kalendarze podbiera codzienna przebudowa `pages.yml`, więc skradziony token nie może uruchamiać ani
+  zatwierdzać innych workflowów.
+- `master` jest chroniony (podpisane commity, wymagane CI), a `pages.yml` buduje produkcję wyłącznie z `master`, nakładając
+  kalendarze z `data`, z których każdy musi przejść walidację `build.load_term` i jest escapowany do stron z CSP przypiętym
+  hashami. Zatruta gałąź `data` nie może więc wstrzyknąć skryptu ani wypromować treści do katalogu głównego: w najgorszym razie
+  pokaże błędne godziny zajęć do czasu cofnięcia. Chroń też gałąź `data` (Settings → Branches → Add rule dla `data`: wymagaj
+  pull requestów dla ludzi, pozwól obejść tylko botowi Actions), żeby przejęta sesja w przeglądarce nie mogła cicho wypchnąć na nią zmian.
+- Runner nie przechowuje długo żyjących sekretów poza własną rejestracją, a jego katalog roboczy należy traktować jak
+  jednorazowy: każdy, kto uruchomił na nim kod, mógł zostawić pliki. Preferuj runnery efemeryczne (jedno zadanie), a przy
+  stałym czyść `/home/runner/_work` po zadaniach i w razie wątpliwości rejestruj ponownie ze świeżego tokenu.
+- Obserwuj oznakę nadużycia runnera: niespodziewane pliki workflowów z `runs-on: [self-hosted, planwat]` albo zmiany
+  `refresh.yml` / `.github/actions/refresh`. Alarmuj dla tych ścieżek regułą CODEOWNERS lub wymaganym przeglądem w ochronie gałęzi.
 
-## What the site shows
+## Co pokazuje strona
 
-Every group page shows **Zaktualizowano** (when the plan last changed) and **Sprawdzono** (when the crawler last verified
-it), taken from `refresh-state.json` at build time; groups never refreshed show the calendar's own generation date.
+Każda strona grupy pokazuje **Zaktualizowano** (kiedy plan ostatnio się zmienił) i **Sprawdzono** (kiedy crawler ostatnio go
+zweryfikował), pobrane w czasie budowy z `refresh-state.json`. Grupy nigdy nieodświeżone pokazują własną datę wygenerowania z
+kalendarza.
 
-## Two semesters at once
+## Dwa semestry naraz
 
-Faculties publish the coming semester's plans before it starts. In August (winter semester) and January–February
-(summer semester) each run therefore refreshes the running semester first and then the coming one, into its own
-`timetables/<term>/` folder (`core.upcoming_reference`). The coming semester is tracked in `refresh-state.json` under
-`<GROUP>@<term>`, so the running semester's "checked" and "changed" dates stay intact; whatever is not published yet is
-simply not there and never makes a run incomplete. A calendar is accepted only when most of its lessons fall into the
-term's window (`core.term_window`), so a faculty that still shows last year's plan is not filed under the new term.
+Wydziały publikują plany nadchodzącego semestru przed jego startem. W sierpniu (semestr zimowy) oraz od stycznia do lutego
+(semestr letni) każdy przebieg odświeża więc najpierw trwający semestr, a potem nadchodzący, do jego własnego katalogu
+`timetables/<semestr>/` (`core.upcoming_reference`). Nadchodzący semestr jest śledzony w `refresh-state.json` pod kluczem
+`<GRUPA>@<semestr>`, więc daty „sprawdzono” i „zmieniono” trwającego semestru pozostają nietknięte. To, czego jeszcze nie
+opublikowano, po prostu nie istnieje i nigdy nie sprawia, że przebieg jest niepełny. Kalendarz jest przyjmowany tylko wtedy,
+gdy większość jego zajęć mieści się w oknie semestru (`core.term_window`), więc wydział, który wciąż pokazuje plan sprzed roku,
+nie zostanie zapisany pod nowym semestrem.
 
-The site builds every term it finds: a group's page shows the running (or next) semester and, when the group has
-another one, a Zima/Lato switch (`?t=<term>`, calendar at `plan-<term>.ics`).
+Budowa publikuje każdy znaleziony semestr: strona grupy pokazuje trwający (lub następny) semestr, a gdy grupa ma jeszcze
+jeden, przełącznik Zima / Lato (`?t=<semestr>`, kalendarz `plan-<semestr>.ics`).

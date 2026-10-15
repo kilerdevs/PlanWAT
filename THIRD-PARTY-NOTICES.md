@@ -1,14 +1,26 @@
-# Third-party notices
+<div align="center">
 
-PlanWAT ships no third-party code at runtime except the icons below. The typeface is loaded from Google Fonts, not
-redistributed. Development tools are listed for completeness; they are never part of the built site.
+<img src="src/icons/icon.svg" alt="PlanWAT" width="64" height="64">
 
-## Shipped
+# Oprogramowanie i dane firm trzecich
 
-### Lucide icons
+[![Zależności w runtime](https://img.shields.io/badge/zale%C5%BCno%C5%9Bci%20w%20runtime-zero-brightgreen?style=flat)](#dostarczane-z-serwisem)
+[![Ikony: Lucide](https://img.shields.io/badge/ikony-Lucide%20(ISC)-f56565?style=flat)](#ikony-lucide)
+[![Mapa: OpenStreetMap](https://img.shields.io/badge/dane%20mapy-OpenStreetMap%20(ODbL)-7ebc6f?style=flat&logo=openstreetmap&logoColor=white)](#dane)
+[![MapLibre](https://img.shields.io/badge/MapLibre%20GL%20JS-4.7.1-396cb2?style=flat)](#ładowane-w-trakcie-działania)
 
-The line icons in `src/group.html` (chevrons, map pin, user, clock, close, rotate, calendar, alert, download) are paths
-from [Lucide](https://lucide.dev), used under the ISC License:
+</div>
+
+PlanWAT nie dostarcza w czasie działania żadnego kodu firm trzecich poza opisanymi niżej ikonami. Krój pisma jest ładowany z
+Google Fonts i nie jest redystrybuowany. Narzędzia deweloperskie podano dla kompletności: nigdy nie trafiają do zbudowanej
+strony.
+
+## Dostarczane z serwisem
+
+### Ikony Lucide
+
+Liniowe ikony w `src/group.html` (szewrony, pinezka, użytkownik, zegar, zamknięcie, obrót, kalendarz, ostrzeżenie, pobieranie,
+pytajnik i inne) to ścieżki z [Lucide](https://lucide.dev), używane na licencji ISC. Tekst licencji pozostawiamy w oryginale:
 
 ```
 ISC License
@@ -26,35 +38,38 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CO
 THIS SOFTWARE.
 ```
 
-## Loaded at runtime
+Piktogramy ikon miejsc na mapie (sklep, dom, autobus, tramwaj, paczka, sztućce i inne) są rysowane na podstawie tych samych
+ścieżek Lucide.
 
-| Component | Source | License |
+## Ładowane w trakcie działania
+
+| Składnik | Źródło | Licencja |
 |---|---|---|
-| Inter typeface (fallback where SF Pro is not installed) | Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) | SIL Open Font License 1.1 |
-| [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) 4.7.1, campus map only | unpkg (`unpkg.com`), SRI-pinned | BSD-3-Clause |
-| Map tiles and the `dark` style, campus map only | [OpenFreeMap](https://openfreemap.org) (`tiles.openfreemap.org`) | Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL 1.0 |
+| Krój Inter (zapasowy tam, gdzie nie ma SF Pro) | Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) | SIL Open Font License 1.1 |
+| [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) 4.7.1, tylko mapa kampusu | unpkg (`unpkg.com`), przypięty SRI | BSD-3-Clause |
+| Kafelki mapy i styl `dark`, tylko mapa kampusu | [OpenFreeMap](https://openfreemap.org) (`tiles.openfreemap.org`) | Dane mapy © [współtwórcy OpenStreetMap](https://www.openstreetmap.org/copyright), ODbL 1.0 |
 
-## Data
+## Dane
 
-### Campus building coordinates
+### Współrzędne budynków kampusu
 
-The building positions and descriptions in `src/campus.js` are a derived database of
-[OpenStreetMap](https://www.openstreetmap.org/copyright) building centroids, as compiled and published by Plan WAT
-(planwat.pl, `campus-building-coordinates.json`). Map data © OpenStreetMap contributors. The database is available
-under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/); the rest of this repository stays
-under its own MIT license. It contains no timetables or user data.
+Położenie i opisy budynków w `src/campus.js` to wtórna baza centroidów budynków
+[OpenStreetMap](https://www.openstreetmap.org/copyright), opracowana i opublikowana przez Plan WAT (planwat.pl,
+`campus-building-coordinates.json`). Dane mapy © współtwórcy OpenStreetMap. Baza jest dostępna na
+[Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/), a reszta tego repozytorium pozostaje na własnej
+licencji MIT. Nie zawiera planów ani danych użytkowników.
 
-### Places around the campus
+### Miejsca wokół kampusu
 
-The stops, dormitories, shops, parkings, parcel lockers and places to eat in `src/places.js` are extracted from
-[OpenStreetMap](https://www.openstreetmap.org/copyright) with `tools/places/make_places.py` (Overpass API, run by hand, never by the
-site). Map data © OpenStreetMap contributors, available under the
-[Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The Domki entry was added by hand.
+Przystanki, akademiki, sklepy, parkingi, paczkomaty i miejsca z jedzeniem w `src/places.js` zostały wyodrębnione z
+[OpenStreetMap](https://www.openstreetmap.org/copyright) skryptem `tools/places/make_places.py` (Overpass API, uruchamianym
+ręcznie, nigdy przez serwis). Dane mapy © współtwórcy OpenStreetMap, dostępne na
+[Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Wpis „Domki Radiowa” został dodany ręcznie.
 
-## Development only
+## Tylko do rozwoju
 
-| Tool | Used for | License |
+| Narzędzie | Do czego | Licencja |
 |---|---|---|
-| [@playwright/test](https://playwright.dev) | Browser tests | Apache-2.0 |
-| [@axe-core/playwright](https://github.com/dequelabs/axe-core-npm), [axe-core](https://github.com/dequelabs/axe-core) | Accessibility checks | MPL-2.0 |
-| `python:3.13-alpine`, `nginxinc/nginx-unprivileged` | Docker build and runtime images | See each image |
+| [@playwright/test](https://playwright.dev) | Testy przeglądarkowe | Apache-2.0 |
+| [@axe-core/playwright](https://github.com/dequelabs/axe-core-npm), [axe-core](https://github.com/dequelabs/axe-core) | Kontrole dostępności | MPL-2.0 |
+| `python:3.13-alpine`, `nginxinc/nginx-unprivileged` | Obrazy Docker do budowy i uruchomienia | Zob. każdy obraz |

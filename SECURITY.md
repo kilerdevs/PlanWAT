@@ -1,95 +1,103 @@
 <div align="center">
 
-# Security Policy
+<img src="src/icons/icon.svg" alt="PlanWAT" width="64" height="64">
 
-[![Report a vulnerability](https://img.shields.io/badge/report-privately%20via%20GitHub-critical?style=flat&logo=github)](https://github.com/kilerdevs/PlanWAT/security/advisories/new)
-[![Acknowledgement](https://img.shields.io/badge/acknowledgement-48%20h-blue?style=flat)](#what-to-expect)
-[![Fix target](https://img.shields.io/badge/fix%20target-30%20days-blue?style=flat)](#what-to-expect)
+# Polityka bezpieczeństwa
+
+[![Zgłoś podatność](https://img.shields.io/badge/zg%C5%82o%C5%9B-prywatnie%20przez%20GitHub-critical?style=flat&logo=github)](https://github.com/kilerdevs/PlanWAT/security/advisories/new)
+[![Potwierdzenie](https://img.shields.io/badge/potwierdzenie-48%20h-blue?style=flat)](#czego-się-spodziewać)
+[![Cel naprawy](https://img.shields.io/badge/cel%20naprawy-30%20dni-blue?style=flat)](#czego-się-spodziewać)
 [![SAST](https://github.com/kilerdevs/PlanWAT/actions/workflows/sast.yml/badge.svg)](https://github.com/kilerdevs/PlanWAT/actions/workflows/sast.yml)
+[![CodeQL](https://img.shields.io/badge/CodeQL-JS%20%C2%B7%20Python%20%C2%B7%20Actions-success?style=flat&logo=github&logoColor=white)](https://github.com/kilerdevs/PlanWAT/security/code-scanning)
 
 </div>
 
-PlanWAT is a public static site with no accounts and no stored personal data. Its security goals are that nothing but
-its own code runs in a visitor's browser, that a calendar file cannot inject markup or script, and that the self-hosted
-image exposes only the built files.
+PlanWAT to publiczna strona statyczna bez kont i bez przechowywanych danych osobowych. Cele bezpieczeństwa są trzy: w
+przeglądarce odwiedzającego ma działać wyłącznie jej własny kod, plik kalendarza nie może wstrzyknąć znaczników ani
+skryptu, a samodzielnie hostowany obraz ma udostępniać tylko zbudowane pliki.
 
-## Contents
+> [!NOTE]
+> Najlepszy sposób ochrony danych to ich nie zbierać. PlanWAT nie ma formularza logowania, nie prosi o adres e-mail ani o
+> żadne inne dane osobowe i nie ma gdzie ich zapisać. Gdyby ktoś w imieniu PlanWAT o nie prosił, to szemrane zachowanie, o którym
+> warto nas zawiadomić.
 
-- [Supported versions](#supported-versions)
-- [Reporting a vulnerability](#reporting-a-vulnerability)
-- [What to expect](#what-to-expect)
-- [Scope](#scope)
-- [Safe harbor](#safe-harbor)
+## Spis treści
+
+- [Wspierane wersje](#wspierane-wersje)
+- [Zgłaszanie podatności](#zgłaszanie-podatności)
+- [Czego się spodziewać](#czego-się-spodziewać)
+- [Zakres](#zakres)
+- [Bezpieczna przystań](#bezpieczna-przystań)
 
 ---
 
-## Supported versions
+## Wspierane wersje
 
-| Version | Supported |
+| Wersja | Wspierana |
 |---|---|
-| The current head of `master` (what is deployed) | ✅ |
-| Anything older | ❌ |
+| Aktualny `master` (to, co jest wdrożone) | ✅ |
+| Cokolwiek starszego | ❌ |
 
-Fixes are developed on `dev` and land on `master` with the next release.
+Poprawki powstają na `dev` i trafiają na `master` z najbliższym wydaniem.
 
-## Reporting a vulnerability
+## Zgłaszanie podatności
 
 > [!IMPORTANT]
-> **Please do not open a public GitHub issue for security problems.**
+> **Nie otwieraj publicznego zgłoszenia GitHub w sprawie problemów bezpieczeństwa.**
 
-Preferred channel: GitHub Private Vulnerability Reporting.
+Preferowany kanał: prywatne zgłaszanie podatności GitHub (Private Vulnerability Reporting).
 
 > <https://github.com/kilerdevs/PlanWAT/security/advisories/new>
 
-If you cannot use it, open a regular issue titled only `[security] please contact you privately`, with no technical
-detail, and wait for the maintainer to reach out.
+Jeśli nie możesz z niego skorzystać, otwórz zwykłe zgłoszenie zatytułowane wyłącznie `[security] please contact you privately`,
+bez żadnych szczegółów technicznych, i poczekaj, aż opiekun się z Tobą skontaktuje.
 
-### What to include
+### Co dołączyć
 
-- The affected file, page or URL, and the code path involved
-- Step-by-step reproduction or a proof of concept (for example a crafted `.ics` file)
-- The impact: what an attacker gains, and under what preconditions
-- Browser and OS, or the deployment (GitHub Pages, Docker image)
+- Dotknięty plik, stronę lub adres URL oraz ścieżkę w kodzie
+- Kroki odtworzenia lub dowód koncepcji (np. spreparowany plik `.ics`)
+- Skutki: co zyskuje atakujący i przy jakich warunkach
+- Przeglądarkę i system albo środowisko (GitHub Pages, obraz Docker)
 
-## What to expect
+## Czego się spodziewać
 
-| When | What happens |
+| Kiedy | Co się dzieje |
 |---|---|
-| **48 hours** | Acknowledgement of your report |
-| **7 days** | Initial assessment: confirmed / not a vulnerability / needs more info |
-| **30 days** | Fix deployed or a documented mitigation, for confirmed issues |
+| **48 godzin** | Potwierdzenie przyjęcia zgłoszenia |
+| **7 dni** | Wstępna ocena: potwierdzone / to nie podatność / potrzebne dodatkowe informacje |
+| **30 dni** | Poprawka wdrożona lub udokumentowane obejście, dla potwierdzonych problemów |
 
-You will be credited in the changelog and the advisory unless you prefer to remain anonymous. Please allow a reasonable
-window (90 days is customary) before public disclosure.
+Zostaniesz wymieniony w dzienniku zmian i w poradniku bezpieczeństwa, chyba że wolisz pozostać anonimowy. Prosimy o rozsądne
+okno przed publicznym ujawnieniem (zwyczajowo 90 dni).
 
-## Scope
+## Zakres
 
-### In scope
+### W zakresie
 
-| Area | Examples |
+| Obszar | Przykłady |
 |---|---|
-| `src/ics.js` | A calendar that makes the reader execute code, hang, or render attacker-controlled markup |
-| `src/group.html`, `src/index.html`, `src/404.html`, `src/mapa.html`, `src/prywatnosc.html` | XSS, DOM clobbering, CSP bypasses, unsafe use of calendar data |
-| `src/sw.js` | The offline worker caching or serving something it should not (another origin, a non-GET request, the other deployment's pages) |
-| `build.py` | Metadata that escapes HTML escaping, path traversal through group or term names, a page shipped without its CSP |
-| `deploy/nginx.conf`, `Dockerfile`, `docker-compose.yml` | A file served that should not be, missing headers, privilege or write access inside the container |
-| `.github/workflows/` | Workflow injection, excessive token permissions, unpinned third-party code |
+| `src/ics.js` | Kalendarz, który sprawia, że czytnik wykonuje kod, zawiesza się albo renderuje kontrolowane przez atakującego znaczniki |
+| `src/group.html`, `src/index.html`, `src/404.html`, `src/mapa.html`, `src/prywatnosc.html` | XSS, DOM clobbering, obejścia CSP, niebezpieczne użycie danych z kalendarza |
+| `src/sw.js` | Service Worker buforujący lub serwujący to, czego nie powinien (inny origin, żądanie inne niż GET, strony drugiego wdrożenia) |
+| `build.py` | Metadane uciekające z escapowania HTML, path traversal przez nazwy grup lub semestrów, strona wysłana bez CSP |
+| `deploy/nginx.conf`, `Dockerfile`, `docker-compose.yml` | Serwowany plik, który nie powinien, brakujące nagłówki, uprawnienia lub zapis w kontenerze |
+| `.github/workflows/` | Wstrzyknięcie do workflowu, nadmierne uprawnienia tokenu, nieprzypięty kod firm trzecich |
+| `tools/refresh/`, `tools/egress/` | Ucieczka z izolacji runnera, wyciek tokenu, żądania poza listą dozwolonych hostów |
 
-### Out of scope
+### Poza zakresem
 
-- **Wrong timetable data** (a room or time): please open a
-  [timetable issue](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) instead.
-- Headers that GitHub Pages cannot send (`X-Frame-Options`, `frame-ancestors`, …): documented, with how to restore
-  them, in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#security-headers-on-pages).
-- Scripts injected by an intermediary such as a proxy's bot detection: the page's CSP blocks them.
-- Loading the Inter typeface from Google Fonts: a documented, deliberate third-party request.
-- On the campus map (`/mapa/`) only: loading MapLibre GL JS from unpkg (SRI-pinned) and map tiles from OpenFreeMap,
-  both documented, deliberate third-party requests.
-- Denial of service against GitHub Pages infrastructure, and automated scanner output without a
-  demonstrated impact.
+- **Błędne dane planu** (sala lub godzina): otwórz zamiast tego
+  [zgłoszenie planu](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml).
+- Nagłówki, których GitHub Pages nie potrafi wysłać (`X-Frame-Options`, `frame-ancestors`, …): udokumentowane wraz ze
+  sposobem ich odtworzenia w [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#nagłówki-bezpieczeństwa-na-pages).
+- Skrypty wstrzykiwane przez pośrednika, np. wykrywanie botów w proxy: CSP strony je blokuje.
+- Ładowanie kroju Inter z Google Fonts: udokumentowane, świadome żądanie do strony trzeciej.
+- Wyłącznie na mapie kampusu (`/mapa/`): ładowanie MapLibre GL JS z unpkg (z SRI) i kafelków z OpenFreeMap, oba udokumentowane
+  i świadome.
+- Ataki typu odmowa usługi na infrastrukturę GitHub Pages oraz wyniki automatycznych skanerów bez wykazanego skutku.
 
-## Safe harbor
+## Bezpieczna przystań
 
-Research carried out in good faith under this policy is welcome: no legal action will be pursued for it. Please stay
-within the scope above, do not degrade the service for other users, and do not access data that is not yours. Testing
-against your own local build (`python3 build.py` and `node tests/e2e/serve.js`, or the Docker image) is always preferred.
+Badania prowadzone w dobrej wierze zgodnie z tą polityką są mile widziane: nie podejmiemy z ich powodu kroków prawnych.
+Pozostań w opisanym zakresie, nie pogarszaj działania usługi innym użytkownikom i nie sięgaj po dane, które nie są Twoje.
+Zawsze lepsze są testy na własnej, lokalnej budowie (`python3 build.py` i `node tests/e2e/serve.js` albo obraz Docker).

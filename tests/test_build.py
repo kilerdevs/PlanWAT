@@ -142,11 +142,11 @@ class BuildRealSiteTest(unittest.TestCase):
         expires = dt.datetime.strptime(re.search(r'^Expires: (\S+)$', sec, re.M).group(1), '%Y-%m-%dT%H:%M:%SZ')
         self.assertTrue(dt.datetime(2026, 10, 15) < expires < dt.datetime(2027, 10, 15))
         privacy = (self.out / 'prywatnosc' / 'index.html').read_text(encoding='utf-8')
-        self.assertIn('nigdy nie poprosi Cię o hasło', privacy)
+        self.assertIn('nigdy nie poprosi Cię o adres e-mail', privacy)
         self.assertIn("script-src 'none'", self.meta_csp('prywatnosc/index.html'))
         for rel in ('index.html', 'WCY26KY3S1/index.html'):
             html = (self.out / rel).read_text(encoding='utf-8')
-            self.assertIn('nigdy nie poprosi Cię o hasło', html, rel)
+            self.assertIn('nigdy nie poprosi Cię o adres e-mail', html, rel)
             self.assertRegex(html, r'href="(\.\./)?prywatnosc/"', rel)
         self.assertNotIn('nofollow', privacy)  # only the dev preview asks not to be indexed
 
@@ -418,6 +418,20 @@ class BuildManyGroupsTest(unittest.TestCase):
                 with self.assertRaisesRegex(build.BuildError, 'must not name staff'):
                     build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
+    def test_a_location_that_names_a_person_is_refused(self):
+        for room in (r'dr inż. Nazwisko Imie\, 255 S', r'mgr inż. Nazwisko Imie\;mgr Inny Osoba\, 3/ 23A', 'prof. dr hab. Nazwisko Imie'):
+            with self.subTest(room=room):
+                self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+                path = self.tt / '2026-27-zima' / 'WCY26KY3S1.ics'
+                path.write_text(path.read_text(encoding='utf-8').replace('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nLOCATION:' + room),
+                                encoding='utf-8', newline='')
+                with self.assertRaisesRegex(build.BuildError, 'LOCATION names a person'):
+                    build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
+    def test_ordinary_rooms_are_not_mistaken_for_people(self):
+        for room in ('314 S', r'1.9/ 16\;1.10/ 16', 'aula/ 135', '7a-b Bibl.', '1002 HILTON'):
+            self.assertFalse(build._names_person(room), room)
+
     def test_a_subject_that_merely_starts_with_prowadzenie_is_fine(self):
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05',
                                                           'DESCRIPTION:Wykład'))
@@ -468,7 +482,7 @@ class BuildManyGroupsTest(unittest.TestCase):
             build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
     def test_writes_the_group_list_and_year_files(self):
-        one = 'LOCATION:dr X\\, 1.16/ 16\\;1.17/16'
+        one = 'LOCATION:1.16/ 16\\;1.17/16'
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05', one))
         self.add('2026-27-zima', 'WCY26KY1S1', calendar('WCY26KY1S1', '2026-09-28', '2027-02-22', '2026-10-05', 'LOCATION:1.16/16'))
         self.add('2026-27-zima', 'Inne', calendar('Inne', '2026-09-28', '2027-02-22', '2026-10-06', 'LOCATION:-'))

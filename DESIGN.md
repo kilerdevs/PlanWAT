@@ -1,6 +1,6 @@
 ---
 name: Plan zajęć WCY26KY3S1
-description: Phone-first dark timetable for WAT study groups, in an iOS dark-mode idiom.
+description: Ciemny, telefonowy plan zajęć dla grup WAT w idiomie ciemnego trybu iOS.
 colors:
   accent: "#0a84ff"
   accent-text: "#4da3ff"
@@ -109,127 +109,217 @@ components:
     rounded: "{rounded.sheet}"
 ---
 
-# Design System: Plan zajęć WCY26KY3S1
+<div align="center">
 
-## Overview
+<img src="src/icons/icon.svg" alt="PlanWAT" width="64" height="64">
 
-**Creative North Star: "The Pocket Live Activity"**
+# System wizualny: PlanWAT
 
-The timetable behaves like something iOS would ship: a black ground, greys that rise in lightness as surfaces come forward, one blue that means "now / today / you are here", and system type set tight and confident. The page is read in a hurry, on a phone, between buildings, so every surface answers *what, when, where* before it says anything about itself.
+**„Apple, ale ciemny”: spokojny, precyzyjny, z jednym akcentem.**
 
-Density is calm rather than sparse. On phones each day is an inset grouped list (one rounded container, rows separated by inset hairlines); on desktop the same rows become tiles placed in a true day × block grid, so the whole week sits in one viewport. The memorable move is the subject capsule: a 4px colour bar that names the subject and, for the class in progress, fills top to bottom as the class elapses, in the rows and in the Live card at the top.
+[![Ciemny motyw](https://img.shields.io/badge/motyw-ciemny%20referencyjny-000?style=flat)](#kolory)
+[![Jasny motyw](https://img.shields.io/badge/motyw-jasny%20wspierany-f2f2f7?style=flat&labelColor=555)](#motyw-jasny-i-druk)
+[![Akcent](https://img.shields.io/badge/akcent-%230a84ff-0a84ff?style=flat)](#kolory)
+[![Dotyk](https://img.shields.io/badge/cele%20dotyku-44%20px-blue?style=flat)](#układ)
+[![Ruch](https://img.shields.io/badge/ruch-transform%20%2B%20opacity-blue?style=flat)](#cienie-i-głębia)
 
-Motion is physical and short: expo-out arrivals, springs on press and on the floating pill, View Transitions that slide the week sideways in the direction you moved, a bottom sheet that rides the iOS sheet curve. Movement is reserved for state changes; nothing loops except the live dot of the class that is on now.
+</div>
 
-**Key Characteristics:**
-- Pure black ground; depth from surface lightness and a 6% top edge-light, not drop shadows.
-- One accent, used for now, today, focus and selection only.
-- System SF / Inter, sentence case, tabular numerals; no monospace, no all-caps labels.
-- Subject colour lives only in the capsule and legend dots.
-- Frosted glass only where something floats over content: the stuck week bar and the "Bieżący tydzień" pill.
+---
 
-## Colors
+## Przegląd
 
-A near-monochrome dark ramp with a single systemBlue accent; subject colours come from the timetable data and are confined to small marks.
+**Przewodnia idea: „Kieszonkowa aktywność na żywo” (The Pocket Live Activity)**
 
-### Primary
-- **System Blue** (`accent`): the "now / today" signal. Live dot, "Teraz" state ring, today's column outline, focus rings, selected week check, semester progress fill.
-- **Link Blue** (`accent-text`): the same hue lifted for text on dark surfaces ("Teraz · do 11:25", "Dziś", "Bieżący tydzień"), keeping ≥4.5:1.
+Plan zajęć zachowuje się jak coś, co mogłoby wyjść spod ręki iOS: czarne tło, szarości jaśniejsze w miarę zbliżania się
+powierzchni, jeden niebieski, który znaczy „teraz / dziś / tu jesteś”, i systemowa typografia, ciasna i pewna. Stronę
+czyta się w pośpiechu, na telefonie, między budynkami, więc każda powierzchnia odpowiada na *co, kiedy, gdzie*, zanim
+cokolwiek powie o sobie.
 
-### Neutral
-- **Black Ground** (`ground`): the page.
-- **Raised Grey 1–4** (`surface-1` … `surface-4`): skeletons and fallbacks (1), cards, groups, sheet (2), pressed and secondary controls (3), handles and hover on small controls (4). `surface-2-hover` is the hover lift for tiles and the Live card.
-- **Label ramp** (`label`, `label-secondary`, `label-tertiary`): primary text, supporting text (dates, types, meta), quiet text (counts, hints). `label-quaternary` is reserved for disabled or decorative use; it fails AA for small text.
-- **Hairline** (`rgba(255,255,255,0.08)`, strong `0.14`): separators and outlines. **Edge-light** (`inset 0 1px 0 rgba(255,255,255,0.06)`): the top highlight on every raised surface.
-- **Accent tints**: `rgba(10,132,255,0.14)` soft fill (today pill), `0.5` ring (now row and Live card outline), `0.35` ring and `0.05` wash (today column on desktop), `0.24` flash (jump-to-class highlight), `0.45` text selection.
+Gęstość jest spokojna, nie rzadka. Na telefonach każdy dzień to wcięta, zgrupowana lista (jeden zaokrąglony pojemnik,
+wiersze oddzielone wciętymi liniami), a na pulpicie te same wiersze stają się kafelkami w prawdziwej siatce dzień × blok, więc
+cały tydzień mieści się na jednym ekranie. Zapamiętywalny motyw to **kapsuła przedmiotu**: czteropikselowy pasek koloru, który
+nazywa przedmiot, a dla trwających zajęć wypełnia się od góry do dołu wraz z upływem czasu, w wierszach i na karcie „Teraz”.
 
-### Named Rules
-**The One Blue Rule.** Blue means "now, today, or focused" and nothing else. Never use it for decoration, headings or inactive states.
+Ruch jest fizyczny i krótki: wejścia z łagodnym wyhamowaniem (expo-out), sprężyny przy dotyku i na pływającej pastylce,
+View Transitions przesuwające tydzień w bok zgodnie z kierunkiem ruchu oraz dolny arkusz jadący po krzywej arkusza iOS. Ruch
+jest zarezerwowany dla zmian stanu, a w pętli kręci się tylko kropka zajęć trwających teraz.
 
-**The Capsule Rule.** Subject colour appears only as the 4px capsule and the 10px legend dot. Never tint text, card backgrounds or borders with a subject colour.
+**Najważniejsze cechy:**
+- Czarne tło. Głębia pochodzi z jasności powierzchni i sześcioprocentowej krawędzi światła u góry, a nie z cieni.
+- Jeden akcent, używany wyłącznie dla „teraz”, „dziś”, fokusu i zaznaczenia.
+- Systemowy SF / Inter, zdania zaczynane wielką literą, cyfry tabelaryczne; bez kroju o stałej szerokości, bez etykiet kapitalikami.
+- Kolor przedmiotu żyje tylko w kapsule i kropkach legendy.
+- Matowe szkło tylko tam, gdzie coś unosi się nad treścią: przyklejony pasek tygodnia i pastylka „Bieżący tydzień”.
 
-**The Receding Past Rule.** Past days and finished classes step down one text token (label → secondary, secondary → tertiary) and dim their capsule to 45%. They never drop below `label-tertiary`, so they stay AA-legible.
+## Kolory
 
-## Typography
+Prawie monochromatyczna, ciemna rampa z jednym akcentem systemBlue. Kolory przedmiotów pochodzą z danych planu i są
+ograniczone do małych oznaczeń.
 
-**Display Font:** SF Pro Display (with Inter, then system-ui)
-**Body Font:** SF Pro Text (with Inter, then system-ui)
+### Główne
+- **System Blue** (`accent`): sygnał „teraz / dziś”. Kropka na żywo, obwódka stanu „Teraz”, obrys dzisiejszej kolumny,
+  pierścienie fokusu, ✓ wybranego tygodnia, wypełnienie postępu semestru.
+- **Link Blue** (`accent-text`): ten sam odcień rozjaśniony do tekstu na ciemnych powierzchniach („Teraz · do 11:25”, „Dziś”,
+  „Bieżący tydzień”), z kontrastem ≥ 4,5:1.
 
-**Character:** One family doing every job, Apple-style: heavy, tightly tracked large titles over small, comfortable text. Weight contrast (400/500/600/700) carries hierarchy, not extra faces.
+### Neutralne
+- **Czarne tło** (`ground`): strona.
+- **Podniesione szarości 1–4** (`surface-1` … `surface-4`): szkielety i rezerwy (1), karty, grupy i arkusz (2), wciśnięte i
+  drugorzędne kontrolki (3), uchwyty i najechanie na małe kontrolki (4). `surface-2-hover` to podniesienie kafelków i karty
+  „Teraz” po najechaniu.
+- **Rampa etykiet** (`label`, `label-secondary`, `label-tertiary`): tekst główny, pomocniczy (daty, rodzaje, meta) i cichy
+  (liczniki, podpowiedzi). `label-quaternary` jest tylko do elementów wyłączonych lub dekoracyjnych, bo nie spełnia AA dla
+  małego tekstu.
+- **Cienka linia** (`rgba(255,255,255,0.08)`, mocniejsza `0.14`): separatory i obrysy. **Krawędź światła**
+  (`inset 0 1px 0 rgba(255,255,255,0.06)`): górny połysk każdej podniesionej powierzchni.
+- **Odcienie akcentu**: `rgba(10,132,255,0.14)` miękkie wypełnienie (pastylka „dziś”), `0.5` pierścień (wiersz „teraz” i obrys
+  karty), `0.35` pierścień i `0.05` poświata (dzisiejsza kolumna na pulpicie), `0.24` błysk (podświetlenie po skoku do zajęć),
+  `0.45` zaznaczenie tekstu.
 
-### Hierarchy
-- **Display** (700, 4rem desktop / 2.5rem phone, 1.04, −0.04em / −0.035em): the group code only.
-- **Headline** (600, 1.25rem, −0.02em): day names in the phone list, the Live card subject, the week label on tablet and up, the sheet title.
-- **Title** (600, 1.0625rem, −0.012em): subject names in rows, week label on phones, legend summary, sheet week labels. Tiles step down to 0.9375rem.
-- **Body** (400, 0.9375rem, 1.45): dates, Live card details, empty-week message.
-- **Label** (500/600, 0.8125rem, tabular): times, rooms, counts, status lines, chips, meta. 0.75rem only for durations and key caps.
+### Nazwane reguły
+**Reguła jednego niebieskiego.** Niebieski znaczy „teraz, dziś albo fokus” i nic więcej. Nigdy do dekoracji, nagłówków ani
+stanów nieaktywnych.
 
-### Named Rules
-**The Tabular Time Rule.** Every time, date, count and room is set with tabular numerals so columns of times align.
+**Reguła kapsuły.** Kolor przedmiotu pojawia się wyłącznie jako czteropikselowa kapsuła i dziesięciopikselowa kropka legendy.
+Nigdy nie barwimy nim tekstu, tła kart ani obramowań.
 
-**The Sentence Case Rule.** No uppercase labels or eyebrows anywhere; status lines read as sentences ("Następne · za 25 min").
+**Reguła przygasającej przeszłości.** Minione dni i skończone zajęcia schodzą o jeden poziom w tokenach tekstu (label → secondary,
+secondary → tertiary), a ich kapsuła przygasa do 45%. Nigdy nie schodzą poniżej `label-tertiary`, więc pozostają czytelne zgodnie z AA.
 
-## Layout
+## Typografia
 
-Mobile first on an 8px grid (4px half-steps). Content sits in a centred column of `max-width: 720px` with gutters of `max(16px, safe-area)` on phones and `max(32px, safe-area)` from 768px; at 1080px the column widens to 1240px and the week becomes a grid of equal day columns (Saturday, in both layouts, only if some Saturday in the semester has classes), one row per distinct start time, so blocks line up across days and empty slots stay empty. The header is one column on phones and splits title / Live card from 1080px. Breakpoints: 370px (compact rows), 768px (tablet: larger title, week label left with arrows right, centred sheet), 1080px (timetable grid). Touch targets are 44px minimum on coarse pointers; the floating pill and the hint footer respect the bottom safe area.
+**Krój nagłówkowy:** SF Pro Display (potem Inter, potem system-ui)
+**Krój tekstu:** SF Pro Text (potem Inter, potem system-ui)
 
-## Elevation & Depth
+**Charakter:** jedna rodzina robiąca całą robotę, po apple'owsku: ciężkie, ciasno wyrównane duże tytuły nad małym,
+wygodnym tekstem. Hierarchię niesie kontrast grubości (400/500/600/700), a nie dodatkowe kroje.
 
-Depth is tonal. Surfaces rise through `surface-1 → surface-4` with a 6% top edge-light; outlines are hairlines. The only shadows are a soft black under the floating pill (`0 16px 40px -12px rgba(0,0,0,0.8)`) and under the sheet, because those genuinely float. Glass (`rgba(22,22,24,0.72)` + `saturate(180%) blur(20px)`) appears only on the stuck week bar and the floating pill, and turns opaque when transparency is reduced or unsupported.
+### Hierarchia
+- **Display** (700, 4 rem pulpit / 2,5 rem telefon, 1,04, −0,04 em / −0,035 em): wyłącznie kod grupy.
+- **Nagłówek** (600, 1,25 rem, −0,02 em): nazwy dni na liście telefonu, przedmiot na karcie „Teraz”, etykieta tygodnia od
+  tabletu w górę, tytuł arkusza.
+- **Tytuł** (600, 1,0625 rem, −0,012 em): nazwy przedmiotów w wierszach, etykieta tygodnia na telefonie, podsumowanie legendy,
+  etykiety tygodni w arkuszu. Kafelki schodzą do 0,9375 rem.
+- **Tekst** (400, 0,9375 rem, 1,45): daty, szczegóły karty „Teraz”, komunikat pustego tygodnia.
+- **Etykieta** (500/600, 0,8125 rem, tabelaryczna): godziny, sale, liczniki, wiersze stanu, chipy, meta. 0,75 rem tylko dla
+  czasu trwania i klawiszy.
 
-### Named Rules
-**The No-Glow Rule.** No coloured or zero-offset halo shadows. State is shown with a 1px accent ring and a tinted fill, never a glow.
+### Nazwane reguły
+**Reguła cyfr tabelarycznych.** Każda godzina, data, licznik i sala jest składana cyframi tabelarycznymi, żeby kolumny godzin
+się wyrównywały.
 
-**The Glass-Only-When-Floating Rule.** Backdrop blur is allowed only on elements that sit over scrolling content. It is off while the bar rests in place.
+**Reguła zdań.** Żadnych etykiet kapitalikami ani nadtytułów. Wiersze stanu czyta się jak zdania („Następne · za 25 min”).
 
-## Shapes
+## Układ
 
-Continuous, iOS-like rounding scaled to the object: 12px controls, 16px tiles, 20px groups and the Live card, 24px sheet, full pills for chips, today markers and the floating pill, circles for icon buttons. The capsule is a 4px bar with 2px radius. Icons are lucide line icons at 1.5 stroke (2 at 14–16px), drawn as inline SVG.
+Najpierw telefon, siatka 8 px (półkroki 4 px). Treść w wyśrodkowanej kolumnie `max-width: 720px` z marginesami
+`max(16px, safe-area)` na telefonie i `max(32px, safe-area)` od 768 px. Przy 1080 px kolumna rozszerza się do 1240 px, a tydzień
+zamienia się w siatkę równych kolumn dni (sobota, w obu układach, tylko jeśli w którymś tygodniu semestru są zajęcia), z jednym
+wierszem na każdą odrębną godzinę rozpoczęcia, więc bloki układają się w jednej linii między dniami, a puste miejsca zostają
+puste. Nagłówek to jedna kolumna na telefonie i rozdziela tytuł od karty „Teraz” od 1080 px. Punkty przełamania: 370 px
+(zwarte wiersze), 768 px (tablet: większy tytuł, etykieta tygodnia z lewej, strzałki z prawej, wyśrodkowany arkusz), 1080 px
+(siatka planu). Cele dotyku mają co najmniej 44 px na wskaźnikach dotykowych, a pływająca pastylka i stopka podpowiedzi
+szanują dolny obszar bezpieczny.
 
-## Components
+## Cienie i głębia
 
-### Buttons
-- **Shape:** 44px circles for previous / next (`rounded.pill`), 32px circle with a 44px hit area for sheet close.
-- **Default:** `surface-2` with edge-light; icon in `label`.
-- **Hover / Active / Disabled:** `surface-3` on hover (precise pointers only); press scales to 0.94 on a spring; disabled drops to 32% opacity.
-- **Focus:** a 2px accent outline that settles from 6px to 2px offset.
-- **Secondary pill (download link):** `surface-2` pill with edge-light, 13px semibold label in `label`, 18px icon in `label-secondary`; 36px tall (44px on touch), `surface-3` on hover, 0.97 press. Neutral on purpose: the accent stays reserved for now / today / focus.
+Głębia jest tonalna. Powierzchnie wznoszą się przez `surface-1 → surface-4` z sześcioprocentową krawędzią światła u góry, a
+obrysy to cienkie linie. Jedyne cienie to miękka czerń pod pływającą pastylką (`0 16px 40px -12px rgba(0,0,0,0.8)`) i pod
+arkuszem, bo te elementy naprawdę się unoszą. Szkło (`rgba(22,22,24,0.72)` + `saturate(180%) blur(20px)`) pojawia się
+wyłącznie na przyklejonym pasku tygodnia i pływającej pastylce, a gdy przezroczystość jest ograniczona lub nieobsługiwana,
+staje się nieprzezroczyste.
 
-### Chips
-- **Style:** `surface-2` pill, label text in `label-secondary`, 10px subject dot.
-- **State:** pressed fills with 22% of the subject colour plus an inset subject ring; the dot scales to 1.3.
+### Nazwane reguły
+**Reguła braku poświaty.** Żadnych kolorowych ani zerowo przesuniętych cieni-aureoli. Stan pokazuje jednopikselowy pierścień
+akcentu i barwione wypełnienie, nigdy poświata.
 
-### Cards / Containers
-- **Corner Style:** 20px groups, 16px tiles.
-- **Background:** `surface-2`; today's group gets a 1px accent ring; the row on now gets a 9% accent tint.
-- **Internal Padding:** 14px × 16px rows; inset hairline separators start where the text starts.
+**Reguła szkła tylko w locie.** Rozmycie tła jest dozwolone wyłącznie na elementach unoszących się nad przewijaną treścią.
+Gdy pasek spoczywa na miejscu, rozmycie jest wyłączone.
 
-### Navigation
-- **Week bar:** sticky, transparent at rest, frosted with a hairline once it sticks. Phone: arrows flank a centred week label (with chevron) and its meta line. Tablet and up: label and meta left, arrows grouped right.
-- **Week sheet:** bottom sheet on phones (drag handle, swipe down, Esc or backdrop to dismiss), centred dialog from 768px. A listbox of all weeks; the selected one shows a drawn check, the current one a blue dot with "Bieżący tydzień".
-- **Floating pill:** "Bieżący tydzień" capsule that springs up from the bottom only when you are away from the current week.
+## Kształty
 
-### Live card (signature)
-A button card at the top of the page, shown only when today has a class on now or still to come. It holds the status line (live dot + "Teraz · do HH:MM", or a clock + "Następne · za …"), the subject in Headline, then room, time and type, and the next class under a hairline. Its capsule fills with class progress, first animating from empty on load. Tapping jumps to that class in the week and flashes it.
+Ciągłe, iOS-owe zaokrąglenia skalowane do obiektu: 12 px kontrolki, 16 px kafelki, 20 px grupy i karta „Teraz”, 24 px arkusz,
+pełne pastylki dla chipów, znaczników „dziś” i pływającej pastylki, koła dla przycisków-ikon. Kapsuła to pasek 4 px z
+promieniem 2 px. Ikony to liniowe ikony Lucide o grubości 1,5 (2 przy 14–16 px), rysowane jako inline SVG.
 
-## Do's and Don'ts
+## Komponenty
 
-### Do:
-- **Do** keep the ground pure `#000` and lift surfaces only through the `surface-*` ramp plus edge-light.
-- **Do** use the accent only for now, today, focus and selection (The One Blue Rule).
-- **Do** animate transform and opacity: 150ms feedback, 300ms state, 420–520ms transitions and sheets, expo-out (`cubic-bezier(0.22,1,0.36,1)`) for arrivals, `cubic-bezier(0.32,0.72,0,1)` for the sheet, springs for press and the floating pill.
-- **Do** give every motion a reduced-motion path that keeps fades and drops travel.
-- **Do** keep all styling in hashed `<style>` blocks and set dynamic values with CSSOM custom properties; the CSP blocks inline style attributes.
+### Przyciski
+- **Kształt:** koła 44 px dla poprzedni / następny (`rounded.pill`), koło 32 px z polem trafienia 44 px dla zamknięcia arkusza.
+- **Domyślnie:** `surface-2` z krawędzią światła, ikona w `label`.
+- **Najechanie / wciśnięcie / wyłączony:** `surface-3` przy najechaniu (tylko precyzyjne wskaźniki), wciśnięcie skaluje do 0,94
+  na sprężynie, wyłączony spada do 32% krycia.
+- **Fokus:** dwupikselowy obrys akcentu osiadający z odsunięcia 6 px do 2 px.
+- **Drugorzędna pastylka (link pobierania):** pastylka `surface-2` z krawędzią światła, etykieta 13 px półgruba w `label`,
+  ikona 18 px w `label-secondary`, wysokość 36 px (44 px na dotyku), `surface-3` przy najechaniu, wciśnięcie 0,97. Celowo
+  neutralna: akcent zostaje zarezerwowany dla „teraz / dziś / fokus”.
 
-### Don't:
-- **Don't** add coloured glows, gradient text, side stripes on card edges, or emoji or glyph icons.
-- **Don't** use uppercase eyebrows or labels above headings, or a monospace face for data.
-- **Don't** put backdrop blur on anything that does not float over content, or loop an animation on anything that is not live.
-- **Don't** tint text or surfaces with subject colours (The Capsule Rule).
-- **Don't** add WAT logos, crests or official-looking wording; the site is an unofficial student view.
+### Chipy
+- **Styl:** pastylka `surface-2`, tekst w `label-secondary`, kropka przedmiotu 10 px.
+- **Stan:** wciśnięty wypełnia się 22% koloru przedmiotu plus wewnętrznym pierścieniem w tym kolorze, a kropka rośnie do 1,3.
 
-## Light theme and print
+### Karty i pojemniki
+- **Zaokrąglenie:** 20 px grupy, 16 px kafelki.
+- **Tło:** `surface-2`. Dzisiejsza grupa dostaje jednopikselowy pierścień akcentu, a wiersz trwających zajęć 9% odcienia akcentu.
+- **Wypełnienie wewnętrzne:** wiersze 14 × 16 px, wcięte separatory zaczynają się tam, gdzie tekst.
 
-The dark ramp above is the reference. `src/theme-light.css` restates the same tokens for light (grouped-list grey ground `#f2f2f7`, white surfaces, hairlines `rgba(0,0,0,0.12)`, link blue `#0060df`); `build.py` injects it with the switch's styles and a small early script, so a stored choice applies before first paint. Auto follows `prefers-color-scheme`. Literal white/black tints are tokens (`--hl`, `--past-1/2`, `--warn`, `--scrim`), never hard-coded. The map page stays dark.
+### Nawigacja
+- **Pasek tygodnia:** przyklejony, przezroczysty w spoczynku, po przyklejeniu matowy z cienką linią. Telefon: strzałki po
+  bokach wyśrodkowanej etykiety tygodnia (z szewronem) i jej wiersza meta. Tablet i wyżej: etykieta i meta z lewej, strzałki
+  zgrupowane z prawej.
+- **Arkusz tygodni:** dolny arkusz na telefonach (uchwyt, przeciągnięcie w dół, Esc lub tło zamykają), wyśrodkowane okno od
+  768 px. Lista wyboru wszystkich tygodni: wybrany ma rysowane ✓, bieżący niebieską kropkę i podpis „Bieżący tydzień”.
+- **Pływająca pastylka:** kapsuła „Bieżący tydzień”, która wyskakuje z dołu na sprężynie tylko wtedy, gdy oddalisz się od
+  bieżącego tygodnia.
 
-Print ("Drukuj / PDF") is its own layout in `src/group.html`: the shown week on one A4 sheet, black on white, a rule under each day, one line per class (time, subject and type, room), the subject colour as a thin bar. `@page { margin: 0 }` with body padding keeps the browser from adding its URL/date header and footer.
+### Karta „Teraz” (znak rozpoznawczy)
+Karta-przycisk na górze strony, widoczna tylko wtedy, gdy dziś są zajęcia trwające lub jeszcze przed nami. Zawiera wiersz
+stanu (kropka na żywo + „Teraz · do GG:MM” albo zegar + „Następne · za …”), przedmiot nagłówkiem, potem salę, godziny i rodzaj,
+a pod cienką linią następne zajęcia. Jej kapsuła wypełnia się wraz z postępem zajęć, na starcie animując od pustej.
+Dotknięcie przechodzi do tych zajęć w tygodniu i je podświetla.
+
+### Mapa kampusu
+Mapa jest zawsze ciemna. Zieleń parków i trawy, granat wody i stonowane odcienie zabudowy (kampus niebieskawy, handel
+bursztynowy, przemysł fioletowy, szpitale różowe) nadają jej charakter, a bryły 3D mają chłodną paletę, jaśniejszą wraz z
+wysokością. Ikony miejsc to okrągłe plakietki w kolorach kategorii z białym piktogramem i ciemną obwódką:
+
+| Kategoria | Kolor | Kategoria | Kolor |
+|---|---|---|---|
+| Tramwaje | `#ff453a` | Stołówki | `#ff6b81` |
+| Autobusy | `#32ade6` | Bufety | `#e0a458` |
+| Akademiki | `#bf5af2` | Restauracje | `#ff7a45` |
+| Domki | `#2dd4bf` | Bary | `#7d6bff` |
+| Sklepy | `#ff9f0a` | Paczkomaty | `#ffd60a` |
+| Parkingi | `#5e86e8` | | |
+
+## Zasady i przeciwwskazania
+
+### Rób:
+- **Rób** czarne tło `#000` i unoś powierzchnie tylko przez rampę `surface-*` oraz krawędź światła.
+- **Używaj** akcentu wyłącznie dla „teraz”, „dziś”, fokusu i zaznaczenia (reguła jednego niebieskiego).
+- **Animuj** transform i opacity: 150 ms dla odpowiedzi na dotyk, 300 ms dla zmian stanu, 420–520 ms dla przejść i arkuszy,
+  expo-out (`cubic-bezier(0.22,1,0.36,1)`) dla wejść, `cubic-bezier(0.32,0.72,0,1)` dla arkusza, sprężyny dla wciśnięcia i
+  pływającej pastylki.
+- **Dawaj** każdemu ruchowi ścieżkę dla ograniczonego ruchu, która zachowuje zanikanie i skraca przesunięcia.
+- **Trzymaj** całą stylizację w hashowanych blokach `<style>`, a wartości dynamiczne ustawiaj przez zmienne CSSOM. CSP blokuje
+  atrybuty `style`.
+
+### Nie rób:
+- **Nie dodawaj** kolorowych poświat, tekstu z gradientem, pasków po bokach kart ani ikon-emoji i glifów.
+- **Nie używaj** nadtytułów i etykiet kapitalikami ani kroju o stałej szerokości dla danych.
+- **Nie rozmywaj** tła niczego, co nie unosi się nad treścią, i nie zapętlaj animacji elementów, które nie są „na żywo”.
+- **Nie barw** tekstu ani powierzchni kolorami przedmiotów (reguła kapsuły).
+- **Nie dodawaj** logo, herbu ani oficjalnie brzmiących sformułowań WAT: strona jest nieoficjalnym widokiem studentów.
+
+## Motyw jasny i druk
+
+Rampa ciemna powyżej jest referencyjna. `src/theme-light.css` powtarza te same tokeny dla jasnego motywu (szare tło grupowanych
+list `#f2f2f7`, białe powierzchnie, cienkie linie `rgba(0,0,0,0.12)`, niebieski linków `#0060df`). `build.py` wstrzykuje go
+razem ze stylami przełącznika i niewielkim wczesnym skryptem, dzięki czemu zapamiętany wybór działa przed pierwszym
+malowaniem. Tryb Auto podąża za `prefers-color-scheme`. Dosłowne odcienie bieli i czerni są tokenami (`--hl`,
+`--past-1/2`, `--warn`, `--scrim`), nigdy wartościami wpisanymi na stałe. Mapa pozostaje ciemna.
+
+Druk („Drukuj / PDF”) to osobny układ w `src/group.html`: pokazywany tydzień na jednym arkuszu A4, czarno na białym, linia pod
+każdym dniem, jedna linia na zajęcia (godzina, przedmiot z rodzajem, sala), kolor przedmiotu jako cienki pasek. `@page { margin: 0 }`
+z wypełnieniem body powstrzymuje przeglądarkę przed dodaniem własnego nagłówka i stopki z adresem i datą.

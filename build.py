@@ -173,6 +173,8 @@ def read_calendar(path):
             # PlanWAT keeps no personal data of staff: a calendar that names who teaches is refused.
             if key == 'CONTACT' or (key == 'DESCRIPTION' and 'prowadzący:' in value.lower()):
                 raise BuildError(f'{path}: calendars must not name staff (remove the {key} line)')
+            if key == 'LOCATION' and _names_person(value):
+                raise BuildError(f'{path}: a LOCATION names a person (a title such as "dr inż."): calendars must not name staff')
             event.add(key)
             if key == 'DTSTART' and _ymd(value):
                 dates.append(_ymd(value))
@@ -214,6 +216,22 @@ def load_term(path):
 def _unfold(path):
     text = path.read_bytes().decode('utf-8')
     return [l for l in re.sub(r'\r?\n[ \t]', '', text.lstrip('﻿')).splitlines() if l]
+
+
+# Academic and military titles. A room part that is such a title followed by a capitalised name is a person.
+_TITLES = {'dr', 'hab', 'prof', 'inż', 'inz', 'mgr', 'lic', 'płk', 'ppłk', 'mjr', 'kpt', 'por', 'ppor', 'gen', 'bryg', 'rez', 'ucz'}
+
+
+def _names_person(location):
+    """True when any ';'/','-separated part of a LOCATION value is a title followed by a name."""
+    for part in re.split(r'(?:\\[;,]|[;,])', location):
+        tokens = [t for t in re.split(r'[\s.()]+', part.strip()) if t]
+        i = 0
+        while i < len(tokens) and tokens[i].lower() in _TITLES:
+            i += 1
+        if 0 < i < len(tokens) and tokens[i][0].isalpha() and tokens[i][0].isupper():
+            return True
+    return False
 
 
 def _fold(line):

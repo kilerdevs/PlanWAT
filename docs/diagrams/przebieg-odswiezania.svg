@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" role="img" aria-labelledby="t d" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif">
+  <title id="t">Los jednej grupy w przebiegu odświeżania</title>
+  <desc id="d">Grupa wchodzi do kolejki, jeśli była sprawdzona ponad 20 godzin temu. Pobranie kończy się brakiem zmian, blokadą z odczekaniem i wznowieniem albo konwersją. Poprawny i zmieniony kalendarz jest publikowany, a błędny lub ubogi pozostawia stary.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#0a84ff"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#ff9f0a"/></marker>
+  </defs>
+  <rect width="900" height="400" rx="18" fill="#0b0f17"/>
+  <text x="450" y="36" text-anchor="middle" fill="#f5f5f7" font-size="18" font-weight="700">Przebieg jednej grupy</text>
+
+  <g fill="#1c1c1e" stroke="#2c2c2e" stroke-width="1.5">
+    <rect x="20"  y="70" width="144" height="70" rx="14"/>
+    <rect x="199" y="70" width="144" height="70" rx="14"/>
+    <rect x="378" y="70" width="144" height="70" rx="14"/>
+    <rect x="557" y="70" width="144" height="70" rx="14"/>
+    <rect x="736" y="70" width="144" height="70" rx="14" stroke="#30d158"/>
+    <rect x="90"  y="240" width="150" height="66" rx="14"/>
+    <rect x="272" y="240" width="216" height="66" rx="14" stroke="#ff9f0a"/>
+    <rect x="544" y="240" width="170" height="66" rx="14" stroke="#ff453a"/>
+  </g>
+  <g fill="#f5f5f7" font-size="14" font-weight="600" text-anchor="middle">
+    <text x="92"  y="98">Kolejka</text>
+    <text x="271" y="98">Pobieranie</text>
+    <text x="450" y="98">Konwersja</text>
+    <text x="629" y="98">Walidacja</text>
+    <text x="808" y="98">Opublikowana</text>
+    <text x="165" y="268">Bez zmian</text>
+    <text x="380" y="268">Odłożony</text>
+    <text x="629" y="268">Stary zostaje</text>
+  </g>
+  <g fill="#a1a1a6" font-size="11.5" text-anchor="middle">
+    <text x="92"  y="116">sprawdzona &gt; 20 h temu,</text>
+    <text x="92"  y="130">najdawniej najpierw</text>
+    <text x="271" y="116">po jednym żądaniu,</text>
+    <text x="271" y="130">losowe przerwy</text>
+    <text x="450" y="116">na kalendarz,</text>
+    <text x="450" y="130">bez danych kadry</text>
+    <text x="629" y="116">build.load_term, kod grupy,</text>
+    <text x="629" y="130">utrata zajęć ≤ 40%</text>
+    <text x="808" y="116">nowy commit</text>
+    <text x="808" y="130">na gałęzi data</text>
+    <text x="165" y="286">304 albo ten sam plan,</text>
+    <text x="165" y="300">bez śladu w historii</text>
+    <text x="380" y="286">blokada: sen wyuczony z historii,</text>
+    <text x="380" y="300">sonda indeksu, potem wznowienie</text>
+    <text x="629" y="286">błąd walidacji lub utrata</text>
+    <text x="629" y="300">ponad 40% zajęć</text>
+  </g>
+
+  <g stroke="#0a84ff" stroke-width="2" fill="none" marker-end="url(#a)">
+    <path d="M164 105H193"/>
+    <path d="M343 105H372"/>
+    <path d="M522 105H551"/>
+    <path d="M701 105H730"/>
+    <path d="M235 140L190 234"/>
+    <path d="M290 140L330 234"/>
+    <path d="M629 140V234"/>
+  </g>
+  <path d="M410 234L300 143" stroke="#ff9f0a" stroke-width="2" fill="none" marker-end="url(#r)"/>
+  <g fill="#86868b" font-size="11.5">
+    <text x="204" y="198" text-anchor="end">304</text>
+    <text x="298" y="198" text-anchor="end">blokada</text>
+    <text x="372" y="200">wznowienie</text>
+    <text x="641" y="192">błąd</text>
+  </g>
+  <text x="450" y="364" text-anchor="middle" fill="#86868b" font-size="12.5">Wyrok blokady nie jest ponawiany. Ostatnie poprawne kalendarze zostają, a nic niedokończonego nie jest publikowane.</text>
+</svg>

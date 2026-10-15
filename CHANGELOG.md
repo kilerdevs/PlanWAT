@@ -1,112 +1,131 @@
-# Changelog
+<div align="center">
 
-[![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?style=flat)](https://keepachangelog.com/en/1.1.0/)
-[![SemVer](https://img.shields.io/badge/versioning-SemVer-3F4551?style=flat)](https://semver.org/spec/v2.0.0.html)
-[![Latest tag](https://img.shields.io/github/v/tag/kilerdevs/PlanWAT?style=flat&label=latest)](https://github.com/kilerdevs/PlanWAT/tags)
+<img src="src/icons/icon.svg" alt="PlanWAT" width="64" height="64">
 
-All notable changes to PlanWAT are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/); versioning is semver.
+# Dziennik zmian
+
+[![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?style=flat)](https://keepachangelog.com/pl/1.1.0/)
+[![SemVer](https://img.shields.io/badge/wersjonowanie-SemVer-3F4551?style=flat)](https://semver.org/lang/pl/)
+[![Ostatni tag](https://img.shields.io/github/v/tag/kilerdevs/PlanWAT?style=flat&label=ostatni)](https://github.com/kilerdevs/PlanWAT/tags)
+
+</div>
+
+Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
+[Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), a wersjonowanie na SemVer.
 
 ## [Unreleased]
 
-### Changed
-- Plan: a tick on every finished class, not only on today's.
-- Map: in a day view the other buildings step back, the building card is compact so the tapped class stays in view, collapsing the sheet re-frames the map, a tap on the map closes the legend, and the search hint is no longer cut mid-letter.
+### Dodano
+- **Mapa:** miejsca wokół kampusu jako opisane plakietki: przystanki tramwajowe i autobusowe, akademiki, Domki Radiowa,
+  stołówki, bufety, restauracje, bary, sklepy, paczkomaty i parkingi. Panel „Miejsca” przełącza kategorie, wyszukiwarka
+  znajduje miejsca, a karta miejsca daje trasę pieszo. Dane w `src/places.js`, odtwarzane przez `tools/places/make_places.py` z
+  OpenStreetMap.
+- **Mapa:** bogatszy ciemny styl z zielonymi parkami i trawą, niebieską wodą, odcieniami zabudowy i chłodniejszą paletą brył 3D.
+- **Przewodnik** po pierwszym otwarciu (telefon i pulpit): przesuwany arkusz z siedmioma krokami (zmiana tygodnia przesunięciem,
+  skok z daty, „Gdzie odrobić?”, przycisk „Mapa” i podkreślone sale, porównywanie grup, statystyki, kalendarz, przedmioty i
+  aplikacja) i małymi, zapętlonymi animacjami. Pokazuje się raz w przeglądarce, a przycisk „Jak korzystać” (z ikoną `?`) w
+  wierszu narzędzi wywołuje go ponownie.
+- **Okienka** (przerwy i czas przejścia) także na siatce pulpitu, u dołu zajęć, po których następują.
+- **Motyw jasny:** domyślnie według systemu, z przełącznikiem Auto / Ciemny / Jasny na stronie głównej i grupy (zapis tylko
+  w przeglądarce; mapa pozostaje ciemna).
+- **„Drukuj / PDF”** daje teraz jeden czysty arkusz A4 na tydzień: czarno na białym, jedna linia na zajęcia, bez przycisków ani
+  nagłówka i stopki przeglądarki.
+- **Aplikacja instalowana:** przycisk „Zainstaluj aplikację” na stronach grup (nie na stronie głównej), gdy przeglądarka
+  oferuje instalację (Chrome, Edge, Android), podpowiedź dla Safari na iOS, znaczniki iOS, manifest także na mapie. Testy
+  czytają własną kontrolę instalowalności Chromium dla strony głównej, grupy i mapy.
+- **„Moje przedmioty”** na stronie grupy: odznacz przedmioty, na które nie chodzisz (przedmioty do wyboru, języki). Znikną z
+  widoków, statystyk i pobranego `.ics`. Zapis tylko w przeglądarce, a plik subskrypcji pozostaje pełnym planem.
+- **Dwa semestry na grupę:** strona grupy dostaje przełącznik Zima / Lato (`?t=<semestr>`), gdy istnieje drugi semestr, a
+  kalendarze drugiego semestru są publikowane jako `plan-<semestr>.ics` (i `plan-<semestr>-przypomnienia.ics`).
+- **Odświeżanie:** gdy publikowany jest nadchodzący semestr (sierpień, styczeń–luty), jest odświeżany obok trwającego, z własnym
+  stanem, a kalendarze, których zajęcia w większości wypadają poza semestrem, są odrzucane.
+- **Odświeżanie obejmuje WCY:** lista grup z menu skoku wydziału, etykieta i daty semestru ustawiane przez sterownik, a strony
+  wciąż pokazujące zajęcia poprzedniego semestru są pomijane zamiast trafiać do nowego.
+- Strona grupy: gdy wszystkie zajęcia planu poprzedzają semestr (wydział nie opublikował jeszcze nowego planu), widać
+  stosowną informację.
+- Strona grupy: czas przejścia między zajęciami w różnych budynkach („Do bud. 65 · ~6 min pieszo”, z linkiem do mapy), z
+  ostrzeżeniem, gdy jest dłuższy niż przerwa. Karta „Teraz” dolicza go do następnych zajęć.
+- **Offline i instalacja:** Service Worker (`/sw.js`, najpierw sieć) zachowuje otwarte strony i plany, strona grupy mówi, kiedy
+  pokazuje zapisaną kopię, a manifesty i ikony pozwalają dodać każdą grupę do ekranu głównego.
+- **Przypomnienia w kalendarzu:** `<GRUPA>/plan-przypomnienia.ics`, ten sam kalendarz z przypomnieniem 15 minut przed zajęciami,
+  włączany przełącznikiem w „Dodaj do kalendarza”.
+- **Podstawy publicznej strony:** `/prywatnosc/` (informacja o prywatności i zasady), notka w stopce, że PlanWAT nigdy nie prosi o
+  adres e-mail, `robots.txt`, `/.well-known/security.txt` i `build.py --noindex` dla podglądu `dev`.
+- Strona grupy: link „Wszystkie grupy” nad nazwą grupy wraca do listy grup.
+- Strona grupy: każde zajęcia pokazują, które to spotkanie z przedmiotu i rodzaju w semestrze, np. „Wykład · 3/15” (jednorazowe
+  zajęcia bez numeru).
+- Strona grupy: dotknięcie zajęć otwiera „Gdzie odrobić?” dla tego konkretnego spotkania (ten sam przedmiot, rodzaj i numer w
+  innych grupach rocznika), z linkiem do wszystkich terminów przedmiotu.
+- **Mapa kampusu** (`/mapa/`): wszystkie budynki WAT na ciemnej mapie 3D (MapLibre GL JS, kafelki OpenFreeMap), pokolorowane
+  według wydziałów, z wyszukiwarką, legendą wydziałów, przełącznikiem 2D/3D, przyciskiem całego kampusu, trasą pieszo i linkami
+  `?b=<budynek>`. Wraca do zwykłej listy budynków, gdy mapa nie może się załadować. Sale na stronie grupy prowadzą do budynku, a
+  „Mapa” przy dniu otwiera zajęcia i budynki tego dnia (`?g=<GRUPA>&d=<data>`). Tylko ta strona może ładować silnik mapy i
+  kafelki, a CSP pozostałych stron się nie zmienia.
+- Strona grupy: daty „Zaktualizowano” i „Sprawdzono” z odświeżania oraz zobowiązanie opiekuna, że PlanWAT pozostanie darmowy
+  (także w stopce strony głównej).
+- **Automatyczne odświeżanie:** zaplanowany workflow ponownie czyta strony planów WLO, WEL i WIM (sterowniki WCY i WTC
+  przygotowane, wyłączone), waliduje kalendarze i publikuje je przez gałąź `data`, którą nakłada budowa Pages. Działa wyłącznie
+  na własnym runnerze, bo strony wydziałów blokują adresy centrów danych GitHub. Zob. docs/REFRESH.md.
+- Strona główna: karty „Teraz w Twoich grupach” (co jest teraz lub zaraz w ulubionych grupach), chipy filtra wydziałów,
+  nagłówki roczników, gwiazdki przy każdej grupie, rozwiń/zwiń wszystko, `/` do wyszukiwania, linki `?q=`, przyciski czyszczenia
+  i przepisana stopka (nieoficjalny projekt, brak cookies).
+- Plany 23 grup WTC (np. `WTC26NX1S1`, `WTC22CO1S0`) skonwertowane z planów Plansoft WTC (`WTC zima 2026/2027`, semestr zimowy 2026/27).
+- Strona grupy: widoki listy i miesiąca, przerwy między zajęciami, postęp przedmiotów, statystyki, porównywanie grup (ze
+  wspólnym wolnym czasem), „Gdzie odrobić?” (te same zajęcia w innych grupach rocznika), subskrypcja kalendarza (Google, Apple,
+  link), udostępnianie, druk / PDF i informacja, że plan zmienił się od ostatniej wizyty. Wszystko za darmo i zapisywane tylko w
+  przeglądarce.
+- Strona główna: ulubione i ostatnio oglądane grupy. Enter otwiera jedyną pasującą grupę.
+- Budowa: `site/data/` (lista grup, rezerwacje sal, zajęcia roczników) dla powyższych narzędzi.
+- Plany grup WCY26KY1S1, WCY26KY2S1, WCY26KY4S1, WCY26KY5S1, WCY26KY6S1 i WCY26KYAS1 (semestr zimowy 2026/27). Przy wielu
+  grupach strona główna wyświetla listę zamiast przekierowywać.
+- Plany 16 kolejnych grup (np. `WCY26_M1`, `WCY26_Fiz1a`, `WCY26IB1bS6`): kody grup mogą zawierać małe litery i podkreślenia, a
+  `X-PLAN-GROUP` każdego pliku zgadza się z jego nazwą.
+- Strona główna: wyszukiwanie grupy, listy wydziałów domyślnie zwinięte i otwierane przy pasującym wyszukiwaniu.
+- Strona grupy: w sobotę i niedzielę bez zaplanowanych zajęć od razu otwiera się następny tydzień.
+- Testy przeglądarkowe dla wyboru wydziału, wyszukiwania grup, przejścia przez weekend i skanu dostępności strony głównej,
+  a plan WCY26KY3S1 jest przypięty w `tests/fixtures/wcy26ky3s1.plan.json` zamiast w pierwszym eksporcie.
+- Podgląd `dev`: każde wdrożenie Pages publikuje szczyt `dev` pod `/dev/`, z wzajemnymi linkami do produkcji.
+- Dokumentacja: cała dokumentacja Markdown przepisana na polski, z diagramami, wykresami i plakietkami.
 
-### Added
-- Map: places around the campus as labelled badges (tram and bus stops, akademiki, Domki Radiowa, stołówki, bufety, restaurants, bars, shops, paczkomaty, parkings) with a "Miejsca" panel to switch categories, search, and a card with walking directions. Data in `src/places.js`, rebuilt with `tools/places/make_places.py` from OpenStreetMap.
-- Map: a richer dark style with green parks and grass, blue water, tinted land use and a cooler 3D building palette.
-- First-visit tour: a swipeable seven-step sheet (swipe weeks, jump from the date, "Gdzie odrobić?", the Mapa button and room links, comparing groups, statistics, calendar/subject/app tools) with small looping demos. Shown once per browser, reopened with "Jak korzystać" in the tools row.
-- Okienka (free gaps and walking time) also show on the desktop week grid, at the foot of the class they follow.
+### Zmieniono
+- **Plan:** ✓ przy każdych skończonych zajęciach, nie tylko dzisiejszych.
+- **Mapa:** w widoku dnia pozostałe budynki cofają się, karta budynku jest zwarta, więc dotknięte zajęcia zostają widoczne,
+  zwinięcie arkusza ponownie ustawia mapę, dotknięcie mapy zamyka legendę, a podpowiedź wyszukiwarki nie jest już ucięta w
+  połowie litery.
+- Testy podążają za grupami w `timetables/` zamiast zakładać jedną: każda grupa musi dostać stronę i kalendarz bajt w bajt, a
+  każda strona grupy musi renderować się w przeglądarce bez błędów i naruszeń CSP. Przekierowanie dla pojedynczej grupy pokrywa
+  syntetyczny test budowy.
+- `CI`, `Egress` i `SAST` nie uruchamiają się już po pushu na `master`: pull request wydania zdążył je wykonać.
 
-### Removed
-- All personal data of staff: names, surnames and academic titles are gone from the calendars, the page, the converters,
-  the tests and the whole Git history. Calendars no longer carry `CONTACT` or instructor lines, and the build refuses
-  any calendar that does.
+### Naprawiono
+- **Dane kadry w `LOCATION`:** przy części komórek WLO konwerter wpisywał do pola sali także prowadzących (np. `dr inż. …, 255 S`),
+  przez co 8 kalendarzy publikowało nazwiska. Konwerter odrzuca teraz każdą część sali będącą tytułem z nazwiskiem, a build odmawia
+  kalendarza, w którego `LOCATION` taka część występuje. Gałąź `data` została oczyszczona wraz z historią.
+- Niewidoczny przycisk instalacji pojawiał się na iOS, mimo że miał być ukryty (reguła CSS nadpisywała atrybut `hidden`).
+- Alerty CodeQL: nazwa pliku semestru powstaje z zweryfikowanej wartości zapytania, a nie z tekstu strony. Wyrażenie regularne w
+  teście przestało pomijać znaczniki pisane wielkimi literami. Zamiana średnika w teście nie jest już tożsamościowa.
 
-### Added
-- Light theme: follows the system by default, with an Auto / Ciemny / Jasny switch on the front and group pages (stored in the browser only; the map stays dark).
-- "Drukuj / PDF" now produces one clean A4 sheet per week: black on white, one line per class, no buttons or browser header and footer.
-- Installable app: a "Zainstaluj aplikację" button on group pages (not on the front page) when the browser offers installation
-  (Chrome, Edge, Android), a Safari hint on iOS, iOS web-app meta tags, and the map page links the manifest too; tests read
-  Chromium's own installability check for the front page, a group and the map.
-- "Moje przedmioty" on the group page: untick the subjects you do not attend (electives, languages); they disappear from the
-  views, statistics and the downloaded .ics. Stored in the browser only; the subscription feed stays the full plan.
-- A class that a faculty lists twice (same time, subject, type and room) is shown once.
-- Two semesters per group: the group page gets a Zima/Lato switch (`?t=<term>`) when a second term exists, and the other
-  term's calendars are published as `plan-<term>.ics` (and `plan-<term>-przypomnienia.ics`).
-- Refresh backend: while the coming semester is being published (August, January–February) it is refreshed next to the
-  running one, with its own state, and calendars whose lessons mostly fall outside the term are rejected.
-- Group page: when every class of a plan predates the semester (the faculty has not published the new plan yet), a notice says so.
-- Automatic refresh now covers WCY: group list read from the faculty's jump menu, term label and dates set by the driver, and
-  pages that still show last semester's lessons are skipped instead of being filed under the new term.
-- Group page: walking time between classes in different buildings ("Do bud. 65 · ~6 min pieszo", linked to the map),
-  flagged when the walk is longer than the break; the Live card adds it to the next class.
-- Offline and installable: a service worker (`/sw.js`, network first) keeps the pages and plans you opened, the group
-  page says when it shows the saved copy, and web app manifests and icons let each group be added to the home screen.
-- Calendar reminders: `<GROUP>/plan-przypomnienia.ics`, the same calendar with a reminder 15 minutes before each class,
-  offered by a switch in "Dodaj do kalendarza".
-- Public-site basics: `/prywatnosc/` (privacy notice and terms of use), a footer note that PlanWAT never asks for a
-  password, `robots.txt`, `/.well-known/security.txt`, and `build.py --noindex` for the dev preview.
-- Group page: a "Wszystkie grupy" link above the group name goes back to the list of groups.
-- Group page: every class shows which meeting of its subject and type it is over the term, e.g. "Wykład · 3/15"
-  (one-off classes stay unnumbered).
-- Group page: tapping a class opens "Gdzie odrobić?" for that very meeting (same subject, type and number in the other
-  groups of the year), with a link to all of the subject's dates.
-- Campus map (`/mapa/`): all WAT buildings on a dark 3D map (MapLibre GL JS, OpenFreeMap tiles), coloured by faculty,
-  with search, a faculty legend, 2D/3D, an overview button, walking directions and `?b=<building>` links; it falls back
-  to a plain building list when the map cannot load. Rooms on the group page link to their building, and each day's
-  "Mapa" link opens that day's classes and buildings (`?g=<GROUP>&d=<date>`). Only this page may load the map engine
-  and tiles; every other page's CSP is unchanged.
-- Group page: "Zaktualizowano" and "Sprawdzono" dates from the refresh, and a pledge by the maintainer that PlanWAT stays free
-  (also in the front page footer).
-- Automatic refresh: a scheduled workflow re-reads the WLO, WEL and WIM timetable pages (WCY and WTC drivers are
-  prepared, disabled), validates the calendars and publishes them through a `data` branch that the Pages build overlays.
-  It runs on a self-hosted runner only, because the faculty sites block GitHub's datacenter addresses. See docs/REFRESH.md.
-- Front page: "Teraz w Twoich grupach" cards (what is on now or next in the favourite groups), faculty filter chips,
-  intake-year headings, star buttons on every group row, expand/collapse all, `/` to search, `?q=` links, clear buttons,
-  a rewritten footer (unofficial project, no cookies).
-- Timetables for 23 WTC groups (e.g. `WTC26NX1S1`, `WTC22CO1S0`), converted from the
-  WTC Plansoft timetables (`WTC zima 2026/2027`, semestr zimowy 2026/27).
-- Group page: list and month views, breaks between classes, subject progress, statistics, comparing groups
-  (with shared free time), "Gdzie odrobić?" (the same class in other groups of the year), calendar
-  subscription (Google, Apple, link), sharing, print / PDF, and a notice when the plan changed since the last visit.
-  Everything is free and stored only in the browser.
-- Front page: favourite and recently viewed groups; Enter opens the only matching group.
-- Build: site/data/ (group list, room bookings, each year's classes) for the tools above.
-- Timetables for groups WCY26KY1S1, WCY26KY2S1, WCY26KY4S1, WCY26KY5S1, WCY26KY6S1 and WCY26KYAS1 (semestr zimowy
-  2026/27).
-  With several groups, the root page now lists them instead of redirecting.
-- Timetables for 16 more groups (e.g. `WCY26_M1`, `WCY26_Fiz1a`, `WCY26IB1bS6`): group codes may now contain
-  lowercase letters and underscores, and each file's `X-PLAN-GROUP` matches its file name.
-- Front page: search the group; faculty lists are collapsed by default and open on matching search.
-- Group page: on Saturday/Sunday with no weekend lessons planned, the next week opens straight away.
-- Browser tests for the faculty picker, group search, weekend rollover and the front-page accessibility scan;
-  the WCY26KY3S1 timetable is pinned in `tests/fixtures/wcy26ky3s1.plan.json` instead of the first export.
-- Dev preview: every Pages deploy publishes the tip of `dev` under `/dev/`, cross-linked with production.
-
-### Changed
-- Tests follow the groups in `timetables/` instead of assuming one: every group must get a page and a byte-identical
-  calendar, and every group page must render in the browser without errors or CSP violations. The single-group
-  redirect is covered by a synthetic build test.
+### Usunięto
+- **Wszystkie dane osobowe kadry:** nazwiska, imiona i tytuły naukowe zniknęły z kalendarzy, strony, konwerterów, testów i całej
+  historii Gita. Kalendarze nie zawierają już linii `CONTACT` ani prowadzącego, a build odrzuca każdy kalendarz, który je ma.
 
 ## [1.0.0] - 2026-10-11
 
-First public release.
+Pierwsze publiczne wydanie.
 
-### Added
-- Group timetable page: Live card for the class on now or next (room, time, progress), grouped day lists on
-  phones and a day × time-slot grid on wide screens, week picker sheet, arrows / swipe / keyboard navigation,
-  "Bieżący tydzień" pill, subject legend, phones scroll to the current class, `.ics` download.
-- Timetables as iCalendar files in `timetables/<term>/<GROUP>.ics`, read in the browser by `src/ics.js` (folded lines,
-  escaping, local and UTC times, weekly and daily repeats, excluded dates, cancelled and all-day events skipped).
-- `build.py`: one page per group at `/<GROUP>/` with its current term (picked by date), a group list at the root that
-  redirects while there is only one group, a 404 page, and a hash-pinned Content-Security-Policy in every page.
-- GitHub Pages deployment on every push to `master` and daily, so a new term goes live on its first day.
-- Self-hosted Docker image: two-stage build, read-only unprivileged nginx, security headers, header CSP generated from
-  the built pages.
-- CI: calendar-reader tests with coverage floors, build tests, Playwright browser tests (Chromium, Firefox, WebKit;
-  desktop and phone) with an axe WCAG scan, Docker image scan (Grype) and smoke test, CodeQL, Dependabot.
+### Dodano
+- Strona planu grupy: karta „Teraz” dla trwających lub następnych zajęć (sala, godziny, postęp), pogrupowane listy dni na
+  telefonach i siatka dzień × godzina na szerokich ekranach, arkusz wyboru tygodnia, nawigacja strzałkami, przesunięciem i
+  klawiaturą, pastylka „Bieżący tydzień”, legenda przedmiotów, przewijanie telefonu do bieżących zajęć i pobieranie `.ics`.
+- Plany jako pliki iCalendar w `timetables/<semestr>/<GRUPA>.ics`, czytane w przeglądarce przez `src/ics.js` (składane linie,
+  escapowanie, czas lokalny i UTC, powtarzanie tygodniowe i dzienne, wykluczone daty, pominięte zdarzenia odwołane i całodniowe).
+- `build.py`: jedna strona na grupę pod `/<GRUPA>/` z bieżącym semestrem (wybieranym po dacie), lista grup w katalogu głównym,
+  przekierowująca przy jednej grupie, strona 404 i Content-Security-Policy z hashami na każdej stronie.
+- Wdrożenie GitHub Pages po każdym pushu na `master` i codziennie, więc nowy semestr startuje pierwszego dnia.
+- Samodzielnie hostowany obraz Docker: dwuetapowa budowa, nginx bez uprawnień i tylko do odczytu, nagłówki bezpieczeństwa i CSP
+  w nagłówku generowane ze zbudowanych stron.
+- CI: testy czytnika kalendarza z progami pokrycia, testy budowy, testy przeglądarkowe Playwright (Chromium, Firefox, WebKit;
+  pulpit i telefon) ze skanem WCAG axe, skan obrazu Docker (Grype) i test dymny, CodeQL oraz Dependabot.
 
 [Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/kilerdevs/PlanWAT/releases/tag/v1.0.0

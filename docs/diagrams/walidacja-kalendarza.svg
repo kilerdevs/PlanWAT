@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 320" role="img" aria-labelledby="t d" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif">
+  <title id="t">Walidacja kalendarza w budowie</title>
+  <desc id="d">Plik .ics trafia do walidacji build.load_term. Poprawny kalendarz jest publikowany bajt w bajt jako plan.ics oraz w wersji z alarmem 15 minut jako plan-przypomnienia.ics. Błędny plik jest odrzucany, a build mówi dlaczego.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#0a84ff"/></marker>
+    <marker id="e" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#ff453a"/></marker>
+  </defs>
+  <rect width="800" height="320" rx="18" fill="#0b0f17"/>
+  <text x="400" y="34" text-anchor="middle" fill="#f5f5f7" font-size="18" font-weight="700">Zły kalendarz nie dotrze na stronę</text>
+
+  <g fill="#1c1c1e" stroke="#2c2c2e" stroke-width="1.5">
+    <rect x="24"  y="118" width="200" height="84" rx="14"/>
+    <rect x="290" y="112" width="190" height="96" rx="14" stroke="#0a84ff"/>
+    <rect x="620" y="58"  width="156" height="66" rx="14" stroke="#30d158"/>
+    <rect x="620" y="140" width="156" height="66" rx="14" stroke="#30d158"/>
+    <rect x="620" y="226" width="156" height="66" rx="14" stroke="#ff453a"/>
+  </g>
+  <g fill="#f5f5f7" font-size="13" font-weight="600" text-anchor="middle">
+    <text x="124" y="148">timetables/&lt;semestr&gt;</text>
+    <text x="385" y="142">build.load_term</text>
+    <text x="698" y="86">plan.ics</text>
+    <text x="698" y="168">plan-przypomnienia.ics</text>
+    <text x="698" y="254">Build odrzuca plik</text>
+  </g>
+  <g fill="#a1a1a6" font-size="11.5" text-anchor="middle">
+    <text x="124" y="166">&lt;GRUPA&gt;.ics</text>
+    <text x="124" y="182">UTF-8, CRLF</text>
+    <text x="385" y="162">kod grupy, daty, struktura,</text>
+    <text x="385" y="178">brak danych kadry</text>
+    <text x="385" y="194">i kolorów spoza #rrggbb</text>
+    <text x="698" y="104">bajt w bajt ze źródła</text>
+    <text x="698" y="186">alarm 15 min przed zajęciami</text>
+    <text x="698" y="272">i mówi dokładnie dlaczego</text>
+  </g>
+
+  <!-- elbow connectors: a trunk at x=550 with a branch to every target -->
+  <g stroke="#0a84ff" stroke-width="2" fill="none">
+    <path d="M224 160H284" marker-end="url(#a)"/>
+    <path d="M480 160H550"/>
+    <path d="M550 91V173"/>
+    <path d="M550 91H614" marker-end="url(#a)"/>
+    <path d="M550 173H614" marker-end="url(#a)"/>
+  </g>
+  <g stroke="#ff453a" stroke-width="2" fill="none">
+    <path d="M550 160V259"/>
+    <path d="M550 259H614" marker-end="url(#e)"/>
+  </g>
+  <g font-size="11.5">
+    <text x="558" y="84" fill="#a1a1a6">poprawny</text>
+    <text x="558" y="252" fill="#ff6b61">błąd</text>
+  </g>
+</svg>

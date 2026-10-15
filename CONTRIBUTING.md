@@ -1,91 +1,96 @@
 <div align="center">
 
-# Contributing to PlanWAT
+<img src="src/icons/icon.svg" alt="PlanWAT" width="64" height="64">
 
-**Thanks for helping.** Timetable additions and corrections, bug fixes, accessibility and documentation improvements are
-all welcome.
+# Współtworzenie PlanWAT
 
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat)](#pull-requests)
+**Dziękujemy za pomoc.** Mile widziane są nowe i poprawione plany, poprawki błędów, dostępność i dokumentacja.
+
+[![PR-y mile widziane](https://img.shields.io/badge/PR--y-mile%20widziane-brightgreen?style=flat)](#pull-requesty)
 [![CI](https://github.com/kilerdevs/PlanWAT/actions/workflows/ci.yml/badge.svg)](https://github.com/kilerdevs/PlanWAT/actions/workflows/ci.yml)
-[![Code of Conduct](https://img.shields.io/badge/code%20of%20conduct-Contributor%20Covenant%202.1-blueviolet?style=flat)](CODE_OF_CONDUCT.md)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
+[![Kodeks postępowania](https://img.shields.io/badge/kodeks%20post%C4%99powania-Contributor%20Covenant%202.1-blueviolet?style=flat)](CODE_OF_CONDUCT.md)
+[![Licencja: MIT](https://img.shields.io/badge/licencja-MIT-green?style=flat)](LICENSE)
+[![Podpisane commity](https://img.shields.io/badge/commity-podpisane-blue?style=flat&logo=git&logoColor=white)](#podpisane-commity)
 
 </div>
 
 ---
 
-## Contents
+## Spis treści
 
-- [Ways to contribute](#ways-to-contribute)
-- [Reporting a security vulnerability](#reporting-a-security-vulnerability)
-- [Development setup](#development-setup)
-- [Checks before you open a PR](#checks-before-you-open-a-pr)
-- [Conventions](#conventions)
-- [Signed commits](#signed-commits)
-- [Pull requests](#pull-requests)
-- [Code of conduct](#code-of-conduct)
+- [Jak możesz pomóc](#jak-możesz-pomóc)
+- [Zgłaszanie podatności](#zgłaszanie-podatności)
+- [Środowisko deweloperskie](#środowisko-deweloperskie)
+- [Sprawdzenia przed pull requestem](#sprawdzenia-przed-pull-requestem)
+- [Konwencje](#konwencje)
+- [Podpisane commity](#podpisane-commity)
+- [Pull requesty](#pull-requesty)
+- [Kodeks postępowania](#kodeks-postępowania)
 
 ---
 
-## Ways to contribute
+## Jak możesz pomóc
 
-| You want to… | Do this |
+| Chcesz… | Zrób to |
 |---|---|
-| **Add a group or a new term** | Add `timetables/<term>/<GROUP>.ics` following [docs/ICS-FORMAT.md](docs/ICS-FORMAT.md) and open a PR, or open a [timetable issue](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) with a link to the official plan |
-| **Fix a wrong class** (room, time) | Edit the event in the group's `.ics`, keep its `UID`, and open a PR, or open a timetable issue |
-| **Fix a bug** | Open a [bug report](https://github.com/kilerdevs/PlanWAT/issues/new?template=bug_report.yml), or go straight to a PR for small fixes |
-| **Propose a feature** | Open a [feature request](https://github.com/kilerdevs/PlanWAT/issues/new?template=feature_request.yml) first for anything non-trivial |
-| **Improve the docs** | README, `docs/`, this file, or a comment where a non-obvious decision deserves one |
+| **Dodać grupę lub nowy semestr** | Dodaj `timetables/<semestr>/<GRUPA>.ics` zgodnie z [docs/ICS-FORMAT.md](docs/ICS-FORMAT.md) i otwórz PR albo [zgłoszenie planu](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) z linkiem do oficjalnego planu |
+| **Poprawić błędne zajęcia** (sala, godzina) | Zmień zdarzenie w `.ics` grupy, zachowaj jego `UID` i otwórz PR albo zgłoszenie planu |
+| **Naprawić błąd** | Otwórz [zgłoszenie błędu](https://github.com/kilerdevs/PlanWAT/issues/new?template=bug_report.yml) albo od razu PR przy małych poprawkach |
+| **Zaproponować funkcję** | Przy czymkolwiek nietrywialnym najpierw otwórz [propozycję funkcji](https://github.com/kilerdevs/PlanWAT/issues/new?template=feature_request.yml) |
+| **Poprawić dokumentację** | README, `docs/`, ten plik albo komentarz tam, gdzie warto uzasadnić niejasną decyzję |
 
-The project is [MIT licensed](LICENSE). By submitting a pull request you agree that your contribution is provided under
-the same license.
+Projekt ma [licencję MIT](LICENSE). Przesyłając pull request, zgadzasz się, że Twój wkład jest udostępniany na tej samej
+licencji.
 
-## Reporting a security vulnerability
+> [!NOTE]
+> Plany nie zawierają danych kadry: bez nazwisk, tytułów, kontaktów ani linii z prowadzącym. Build odrzuci kalendarz, który je ma.
+
+## Zgłaszanie podatności
 
 > [!CAUTION]
-> **Please do not open a public issue for a vulnerability.** Use private reporting; the policy, scope and response times
-> are in [SECURITY.md](SECURITY.md).
+> **Nie otwieraj publicznego zgłoszenia z podatnością.** Użyj prywatnego zgłaszania. Zasady, zakres i terminy odpowiedzi
+> opisuje [SECURITY.md](SECURITY.md).
 
-## Development setup
+## Środowisko deweloperskie
 
-You need Python 3.12+ and Node.js 22+.
+Potrzebujesz Pythona 3.12+ i Node.js 22+.
 
 ```bash
 git clone https://github.com/kilerdevs/PlanWAT.git && cd PlanWAT
 git switch dev
 npm ci
-npx playwright install chromium        # add firefox webkit to run the whole browser matrix
-python3 build.py && node tests/e2e/serve.js    # preview on http://127.0.0.1:4173
+npx playwright install chromium               # dodaj firefox webkit, by uruchomić całą macierz przeglądarek
+python3 build.py && node tests/e2e/serve.js   # podgląd na http://127.0.0.1:4173
 ```
 
-## Checks before you open a PR
+## Sprawdzenia przed pull requestem
 
 ```bash
-npm test        # calendar reader + build tests, then the browser tests against a fresh build
+npm test        # testy czytnika i budowy, potem testy przeglądarkowe na świeżej budowie
 ```
 
-CI runs the same checks plus Firefox and WebKit, the Docker image scan and smoke test, and CodeQL. For UI changes, also
-look at the result on a real phone, and with reduced motion turned on.
+CI uruchamia te same sprawdzenia oraz Firefoksa i WebKit, skan i test dymny obrazu Docker oraz CodeQL. Przy zmianach
+interfejsu obejrzyj wynik także na prawdziwym telefonie i z włączonym ograniczeniem ruchu.
 
-## Conventions
+## Konwencje
 
-- **Write the test first.** Reader changes get a case in `tests/ics.test.js`, plan-insight changes one in
-  `tests/insights.test.js`, build changes one in `tests/test_build.py`,
-  behaviour in the browser one in `tests/e2e/site.spec.js`. Watch it fail, then make it pass.
-- **No runtime dependencies and no third-party scripts.** The site is plain HTML, CSS and JavaScript. npm packages are
-  test tooling only.
-- **The CSP stays strict.** All script and style live in the templates' `<script>` / `<style>` blocks, which the build
-  hashes. No inline `style="…"` attributes or `on…=` handlers; set dynamic values with `element.style.setProperty`.
-  Render calendar data with `textContent`, never `innerHTML`.
-- **Design:** follow [DESIGN.md](DESIGN.md) (tokens, one accent colour, motion rules, 44 px touch targets) and keep it
-  smooth on ordinary phones: animate `transform` and `opacity`, respect `prefers-reduced-motion`.
-- **Copy:** the interface is Polish; code, comments and docs are English.
-- **Calendars** keep CRLF line endings and stable `UID`s.
-- Style: 2-space indentation in HTML/CSS/JS, 4 spaces in Python; see [.editorconfig](.editorconfig).
+- **Najpierw test.** Zmiany czytnika dostają przypadek w `tests/ics.test.js`, logiki planu w `tests/insights.test.js`,
+  budowy w `tests/test_build.py`, a zachowanie w przeglądarce w `tests/e2e/site.spec.js`. Obejrzyj, jak pada, potem napraw.
+- **Bez zależności w runtime i bez skryptów firm trzecich.** Strona to zwykłe HTML, CSS i JavaScript. Pakiety npm służą tylko
+  testom.
+- **CSP pozostaje rygorystyczne.** Cały skrypt i styl mieszkają w blokach `<script>` / `<style>` szablonów, które build
+  haszuje. Bez atrybutów `style="…"` ani obsługi `on…=`: wartości dynamiczne ustawiaj przez `element.style.setProperty`.
+  Dane z kalendarza renderuj przez `textContent`, nigdy `innerHTML`.
+- **Wygląd:** stosuj [DESIGN.md](DESIGN.md) (tokeny, jeden akcent, zasady ruchu, cele dotyku 44 px) i dbaj o płynność na
+  zwykłych telefonach: animuj `transform` i `opacity`, szanuj `prefers-reduced-motion`.
+- **Teksty:** interfejs jest po polsku. Kod i komentarze są po angielsku, dokumentacja w repozytorium po polsku.
+- **Kalendarze** zachowują zakończenia linii CRLF i stabilne `UID`.
+- **Bez danych osobowych kadry**, w żadnej formie, także w testach i logach.
+- Styl: wcięcie 2 spacje w HTML/CSS/JS, 4 w Pythonie. Zob. [.editorconfig](.editorconfig).
 
-## Signed commits
+## Podpisane commity
 
-`master` accepts only signed commits. An SSH key is the simplest way:
+`master` przyjmuje wyłącznie podpisane commity. Najprościej użyć klucza SSH:
 
 ```bash
 git config gpg.format ssh
@@ -94,19 +99,19 @@ git config commit.gpgsign true
 git config tag.gpgsign true
 ```
 
-Then add the same public key on GitHub under **Settings → SSH and GPG keys → New SSH key**, with key type **Signing Key**,
-and commit with an email address verified on your account. GPG keys work too.
+Potem dodaj ten sam klucz publiczny na GitHubie w **Settings → SSH and GPG keys → New SSH key** z typem klucza
+**Signing Key** i commituj z adresem e-mail zweryfikowanym na koncie. Klucze GPG również działają.
 
-## Pull requests
+## Pull requesty
 
-- Branch from `dev` and open the PR against **`dev`**. Releases are PRs from `dev` into `master`, which deploys.
-- Keep one topic per PR, and fill in the template.
-- Add a line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md) for anything a user would notice.
-- Commit messages: a short imperative summary, optionally prefixed with the area (`Reader: …`, `Build: …`, `CI: …`,
-  `Timetable: …`).
+- Rozgałęziaj od `dev` i otwieraj PR do **`dev`**. Wydania to PR-y z `dev` do `master`, który wdraża.
+- Jeden temat na PR i wypełniony szablon.
+- Dodaj wiersz w **Unreleased** w [CHANGELOG.md](CHANGELOG.md) dla wszystkiego, co użytkownik zauważy.
+- Komunikaty commitów: krótkie podsumowanie w trybie rozkazującym, opcjonalnie z prefiksem obszaru (`Reader: …`, `Build: …`,
+  `CI: …`, `Timetable: …`).
 
-## Code of conduct
+## Kodeks postępowania
 
-This project follows the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md). Report conduct concerns privately through
-[security advisories](https://github.com/kilerdevs/PlanWAT/security/advisories/new) with a title starting
-"Conduct report".
+Projekt stosuje [Contributor Covenant 2.1](CODE_OF_CONDUCT.md). Problemy z zachowaniem zgłaszaj prywatnie przez
+[security advisories](https://github.com/kilerdevs/PlanWAT/security/advisories/new) z tytułem zaczynającym się od
+„Conduct report”.
