@@ -318,12 +318,81 @@
     return { list: list, skipped: skipped };
   }
 
+  /* ---------- "Mapa planów" ---------- */
+  /* data/profiles.json rows: [group, faculty, x, y, percentile, archetype, load, z1 ... z13], x and y in 0..1000,
+     z-scores in hundredths. The first PROFILE_Z columns are everything before the z-scores. */
+  var PROFILE_Z = 7;
+  function profileRow(data, code) {
+    var rows = (data && data.groups) || [];
+    for (var i = 0; i < rows.length; i++) if (rows[i][0] === code) return rows[i];
+    return null;
+  }
+  function zOf(row, i) { return row[PROFILE_Z + i] / 100; }
+  function strengthLabel(z) {
+    var a = Math.abs(z);
+    return a >= 1.5 ? 'duża różnica' : a >= 0.8 ? 'różnica' : 'drobna różnica';
+  }
+  /* what sets one plan apart: the features furthest from the average, strongest first
+     ({ key, label, z, strength, tone: 'heavier' | 'lighter' | 'plain' }) */
+  function traits(data, row, n) {
+    var out = [];
+    data.features.forEach(function (f, i) {
+      var z = zOf(row, i);
+      if (Math.abs(z) < 0.4) return;
+      out.push({ key: f.key, label: z > 0 ? f.high : f.low, z: z, strength: strengthLabel(z),
+        tone: !f.w ? 'plain' : (z > 0) === (f.w > 0) ? 'heavier' : 'lighter' });
+    });
+    out.sort(function (a, b) { return Math.abs(b.z) - Math.abs(a.z) || (a.key < b.key ? -1 : 1); });
+    return out.slice(0, n || 5);
+  }
+  var PLAN_MODES = {
+    near: null,
+    lighter: function (row, other) { return other[6] < row[6]; },
+    gaps: function (row, other, at) { return zOf(other, at.gaps) <= zOf(row, at.gaps) - 0.5; },
+    short: function (row, other, at) { return zOf(other, at.span) <= zOf(row, at.span) - 0.5; },
+    late: function (row, other, at) { return zOf(other, at.early) <= zOf(row, at.early) - 0.5; }
+  };
+  /* other plans like this one, nearest first: by the distance between their weeks (all features alike), or only among
+     those that also are lighter / have fewer gaps / shorter days / later starts than this one */
+  function similarPlans(data, row, mode, n) {
+    var at = {};
+    data.features.forEach(function (f, i) { at[f.key] = i; });
+    var keep = PLAN_MODES[mode] || null, out = [];
+    data.groups.forEach(function (other) {
+      if (other[0] === row[0] || (keep && !keep(row, other, at))) return;
+      var d = 0;
+      for (var i = 0; i < data.features.length; i++) { var diff = zOf(row, i) - zOf(other, i); d += diff * diff; }
+      out.push({ code: other[0], faculty: other[1], pct: other[4], arch: other[5], dist: Math.sqrt(d) });
+    });
+    out.sort(function (a, b) { return a.dist - b.dist || (a.code < b.code ? -1 : 1); });
+    return out.slice(0, n || 6);
+  }
+  /* the plans nearest to one on the map, for "moje otoczenie": a box in map units that holds `count` of them */
+  function neighbourhood(data, row, count) {
+    var near = data.groups.slice().sort(function (a, b) {
+      return Math.hypot(a[2] - row[2], a[3] - row[3]) - Math.hypot(b[2] - row[2], b[3] - row[3]);
+    }).slice(0, count || 40);
+    var r = 0;
+    near.forEach(function (o) { r = Math.max(r, Math.hypot(o[2] - row[2], o[3] - row[3])); });
+    return { x: row[2], y: row[3], r: Math.max(r, 40) };
+  }
+  /* the dot under a point, within `reach` map units, or null */
+  function hitDot(data, x, y, reach) {
+    var best = null, bd = reach;
+    data.groups.forEach(function (g) {
+      var d = Math.hypot(g[2] - x, g[3] - y);
+      if (d <= bd) { bd = d; best = g; }
+    });
+    return best;
+  }
+
   var PlanInsights = {
     toMin: toMin, hhmm: hhmm, fmtDuration: fmtDuration, plural: plural, norm: norm,
     lessons: lessons, gaps: gaps, isExam: isExam, subjectProgress: subjectProgress, ordinals: ordinals, stats: stats,
     lessonKey: lessonKey, fingerprint: fingerprint, diff: diff,
     freeWindows: freeWindows, intervals: intervals, overlaps: overlaps, byDate: byDate,
     yearOf: yearOf, peersOf: peersOf, catchUp: catchUp,
+    profileRow: profileRow, traits: traits, similarPlans: similarPlans, neighbourhood: neighbourhood, hitDot: hitDot,
     freeRooms: freeRooms, firstWindow: firstWindow, dataRange: dataRange, building: building,
     monthGrid: monthGrid, dayNumber: dayNumber, isoFromDayNumber: isoFromDayNumber
   };

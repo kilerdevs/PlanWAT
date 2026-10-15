@@ -61,7 +61,7 @@ produktu: gdyby któraś musiała zniknąć, znikałby sens projektu.
   - Okienka i czas przejścia między budynkami, z ostrzeżeniem, gdy przerwa jest krótsza.
   - Widoki: Tydzień, Lista, Miesiąc. Dwa semestry z przełącznikiem Zima / Lato.
   - „Moje przedmioty”: ukrywanie przedmiotów, których nie masz (zapis tylko w przeglądarce).
-  - „Gdzie odrobić?”, „Porównaj grupy”, „Wolne sale”, „Statystyki”, „Drukuj / PDF”.
+  - „Gdzie odrobić?”, „Porównaj grupy”, „Wolne sale”, „Mapa planów”, „Statystyki”, „Drukuj / PDF”.
   - Offline: Service Worker zachowuje otwarte strony i plany, a każdą grupę można zainstalować jak aplikację.
   - Subskrypcja kalendarza, w tym wariant z przypomnieniem 15 minut przed zajęciami (`plan-przypomnienia.ics`).
   - Mapa kampusu `/mapa/`: budynki według wydziałów, wyszukiwarka, trasa pieszo, miejsca wokół kampusu (przystanki, akademiki,

@@ -191,6 +191,9 @@ node tests/e2e/serve.js           # podgląd: http://127.0.0.1:4173 (tak jak Git
 - **Porównaj grupy**: plany do czterech grup obok siebie i godziny, w których wszyscy mają wolne.
 - **Wolne sale**: dzień, godzina, czas od 30 min do 3 h, budynek i numer sali; przy każdej sali pasek dnia z zajęciami i wolnym
   oknem, a „pokaż też sale wolne później” dopisuje te, które zwolnią się w ciągu dnia. To nie jest rezerwacja.
+- **Mapa planów**: „Współczynnik przejebania™” (0–100, jaka część porównanych planów jest lżejsza od Twojego), archetyp planu, to,
+  co go wyróżnia, mapa wszystkich planów i wyszukiwanie planu podobnego, lżejszego albo z mniejszą liczbą okienek. Liczone w
+  `profiles.py` z opublikowanych planów (PCA i k-średnie), bez uczenia modeli. To żart oparty na danych, nie ocena grupy.
 - **Statystyki**: godziny w tygodniu, według dni i rodzajów zajęć, najwcześniejszy początek, najdłuższy dzień, okienka.
 - **Kalendarz**: pobranie `.ics`, subskrypcja (Google, Apple przez `webcal`, link), wariant z przypomnieniem 15 minut
   przed zajęciami (`plan-przypomnienia.ics`), udostępnianie.

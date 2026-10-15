@@ -33,6 +33,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import profiles  # plan profiles for data/profiles.json; sits next to this file
+
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / 'src'
 MARKER = '.planwat-site'
@@ -479,6 +481,7 @@ def build_data(current, refreshed=None):
     """The JSON files behind the group page's tools, from every group's current term.
 
     groups.json            [[group, term label, year prefix], ...]
+    profiles.json          every plan's week as numbers, its place on the map and its archetype, for "Mapa planów"
     rooms.json             rooms and every booking [room, day, start, end, ...], for "Wolne sale"; `asof` is the
                            date the crawler last checked the plans (null without a refresh state; the build date would make
                            every build's output differ)
@@ -488,10 +491,11 @@ def build_data(current, refreshed=None):
     tz = _tz()
     groups = sorted(current)
     rooms, booked = {}, set()
-    years = {}
+    years, by_group = {}, {}
     for group in groups:
         term = current[group]
         lessons = calendar_lessons(term.data(), tz, term.end)
+        by_group[group] = lessons
         year = year_of(group)
         if year:
             years.setdefault(year, []).append((group, lessons))
@@ -510,6 +514,9 @@ def build_data(current, refreshed=None):
         'rooms.json': {'epoch': EPOCH.isoformat(), 'asof': asof, 'groups': len(groups), 'rooms': room_names,
                        'b': bookings},
     }
+    profile = profiles.build(by_group, faculty_of, asof)
+    if profile:
+        files['profiles.json'] = profile
     for year, members in sorted(years.items()):
         names, idx, flat = [], {}, []
         def ix(v):  # noqa: E306

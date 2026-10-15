@@ -448,6 +448,29 @@ test('physical education shows SWF and every map link is real: none points at ?b
   await expect(page.locator('a[href$="mapa/?b=OSS"]:not(:text-is("SWF"))')).toHaveCount(0);
 });
 
+test('the plan map shows the coefficient, the archetype, what sets the plan apart and similar plans', async ({ page }) => {
+  await openGroup(page);
+  await page.locator('#profileBtn').click();
+  const hero = tool(page).locator('.pm-hero');
+  await expect(hero.locator('.pm-herotext strong')).toHaveText('Współczynnik przejebania™');
+  await expect(hero.locator('.pm-big b')).toHaveText(/^\d{1,3}$/);
+  await expect(hero).toContainText('porównanych planów ma niższy współczynnik niż WCY26KY3S1');
+  await expect(tool(page).locator('#pmArch')).not.toBeEmpty();
+  await expect(tool(page).locator('.pm-trait').first()).toBeVisible();
+  await expect(tool(page).locator('canvas#pmMap')).toBeVisible();
+  // the map is drawn: a tap on the plan's own dot opens its card
+  await expect(tool(page).locator('.pm-card strong')).toHaveText('WCY26KY3S1');
+  // similar plans, then only the lighter ones
+  const first = tool(page).locator('.pm-sim a').first();
+  await expect(first).toHaveAttribute('href', /^\.\.\/[A-Z0-9_]+\/$/);
+  await tool(page).getByRole('button', { name: 'Lżejszego' }).click();
+  await expect(tool(page).locator('#pmMode [aria-pressed="true"]')).toHaveText('Lżejszego');
+  await expect(tool(page).locator('.pm-sim li').first()).toContainText('współczynnik');
+  await tool(page).getByRole('button', { name: 'Pokaż dane liczbowe' }).click();
+  await expect(tool(page).locator('.pm-tab tbody tr.mine')).toHaveCount(1);
+  await noCsp(page);
+});
+
 test('free rooms lists rooms with no class at the chosen time, with a day bar on each', async ({ page }) => {
   await openGroup(page);
   await page.locator('#roomsBtn').click();
@@ -530,7 +553,7 @@ test('the list view and the tool sheets have no serious or critical accessibilit
   expect(await scan()).toEqual([]);
   await page.locator('#viewSeg button[data-view="month"]').click();
   expect(await scan()).toEqual([]);
-  for (const id of ['#statsBtn', '#roomsBtn', '#calBtn']) {
+  for (const id of ['#statsBtn', '#roomsBtn', '#profileBtn', '#calBtn']) {
     await page.locator(id).click();
     await expect(tool(page)).toBeVisible();
     await expect(tool(page).locator('.muted', { hasText: 'Wczytywanie' })).toHaveCount(0);

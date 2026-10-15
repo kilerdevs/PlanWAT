@@ -206,3 +206,56 @@ test('freeRooms is null for a date outside the data and building() reads the roo
   assert.equal(I.building('0.24/135'), '135');
   assert.equal(I.building('T3.1W'), '');
 });
+
+/* ---------- plan map ---------- */
+const profileData = () => {
+  const features = [
+    { key: 'hours', high: 'dużo zajęć', low: 'mało zajęć', w: 1 },
+    { key: 'gaps', high: 'dużo okienek', low: 'prawie bez okienek', w: 0.8 },
+    { key: 'span', high: 'długie dni', low: 'krótkie dni', w: 1 },
+    { key: 'early', high: 'wczesne starty', low: 'późne starty', w: 0.8 },
+    { key: 'fixed', high: 'stałe sale', low: 'wiele sal', w: 0 },
+  ];
+  // [group, faculty, x, y, percentile, archetype, load, z...] with z in hundredths
+  const row = (g, x, y, pct, load, z) => [g, 'WCY', x, y, pct, 0, load, ...z];
+  return { features, archetypes: [{ name: 'a', n: 4 }], groups: [
+    row('A', 500, 500, 50, 0, [0, 0, 0, 0, 0]),
+    row('B', 520, 510, 70, 40, [60, 90, 40, 30, 0]),
+    row('C', 480, 480, 20, -40, [-60, -90, -40, -90, 0]),
+    row('D', 900, 900, 95, 90, [200, 150, 190, 120, 160]),
+  ] };
+};
+
+test('traits lists what sets a plan apart, strongest first, and tells heavier from lighter', () => {
+  const d = profileData();
+  const t = I.traits(d, d.groups[3], 3);
+  assert.deepEqual(t.map((x) => x.key), ['hours', 'span', 'fixed']);
+  assert.equal(t[0].strength, 'duża różnica');
+  assert.equal(t[0].tone, 'heavier');
+  assert.equal(t[2].tone, 'plain');  // a feature that does not weigh in the load
+  const light = I.traits(d, d.groups[2], 5);
+  assert.equal(light.find((x) => x.key === 'early').label, 'późne starty');
+  assert.equal(light.find((x) => x.key === 'early').tone, 'lighter');
+  assert.deepEqual(I.traits(d, d.groups[0], 5), []);  // an average plan has nothing to say
+});
+
+test('similarPlans orders by distance and the modes keep only the plans that are lighter in that respect', () => {
+  const d = profileData();
+  const a = d.groups[0];
+  assert.deepEqual(I.similarPlans(d, a, 'near', 5).map((x) => x.code), ['B', 'C', 'D']);
+  assert.deepEqual(I.similarPlans(d, a, 'lighter', 5).map((x) => x.code), ['C']);
+  assert.deepEqual(I.similarPlans(d, a, 'gaps', 5).map((x) => x.code), ['C']);
+  assert.deepEqual(I.similarPlans(d, a, 'late', 5).map((x) => x.code), ['C']);
+  assert.deepEqual(I.similarPlans(d, d.groups[3], 'lighter', 2).map((x) => x.code), ['B', 'A']);
+});
+
+test('map helpers: row lookup, nearest dot under a tap, and the box around a plan', () => {
+  const d = profileData();
+  assert.equal(I.profileRow(d, 'C')[0], 'C');
+  assert.equal(I.profileRow(d, 'Z'), null);
+  assert.equal(I.hitDot(d, 905, 897, 20)[0], 'D');
+  assert.equal(I.hitDot(d, 700, 700, 20), null);
+  const box = I.neighbourhood(d, d.groups[0], 2);
+  assert.equal(box.x, 500);
+  assert.ok(box.r >= 40);
+});

@@ -91,6 +91,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   i numer sali, a każda sala dostaje pasek dnia z zajęciami (czerwone) i wolnym oknem (zielone). „Pokaż też sale wolne
   później” dopisuje sale, które zwolnią się w ciągu dnia, a nazwa budynku prowadzi na mapę. Sale bez zajęć w pobliżu
   danego dnia są pominięte i policzone zamiast zgadywane. Dane z `data/rooms.json` pochodzą z planów wszystkich grup.
+- **Mapa planów** (przycisk w narzędziach): „Współczynnik przejebania™” od 0 do 100, czyli ile procent porównanych planów jest
+  lżejszych od Twojego (godziny, okienka, długość dni, wczesne starty, weekendy, zmiany budynków), archetyp planu, to, co go
+  wyróżnia, mapa wszystkich planów (kropki leżą blisko, gdy tygodnie są podobne, kolor to współczynnik), wyszukiwanie planu
+  podobnego, lżejszego, z mniejszą liczbą okienek, krótszymi dniami albo późniejszymi startami oraz tabela archetypów. Liczone
+  przy każdej budowie z planów opublikowanych przez wydziały (`profiles.py`: PCA i k-średnie, bez uczenia modeli), zapisane w
+  `data/profiles.json`.
 - **Prywatność:** tabela „PlanWAT kontra serwis z logowaniem kodem” z README także na stronie `/prywatnosc/`.
 - **Aktualizacja planów** co 2 godziny zamiast raz na dobę, a strona jest odbudowywana zaraz po zakończeniu przebiegu.
 - **Wychowanie fizyczne** ma salę: Ośrodek Szkoleniowo-Sportowy WAT, także jako punkt na mapie.
