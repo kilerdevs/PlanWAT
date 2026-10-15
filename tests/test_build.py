@@ -175,7 +175,7 @@ class BuildRealSiteTest(unittest.TestCase):
         for group in self.groups():
             self.assertTrue((self.out / group / 'index.html').is_file(), group)
             calendar = (self.out / group / 'plan.ics').read_bytes()
-            self.assertIn(calendar, [p.read_bytes() for p in (ROOT / 'timetables').glob(f'*/{group}.ics')], group)
+            self.assertIn(calendar, [build.clip_to_term(p.read_bytes(), p.parent.name) for p in (ROOT / 'timetables').glob(f'*/{group}.ics')], group)
 
     def test_root_links_every_group_and_redirects_only_when_there_is_one(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
@@ -419,7 +419,8 @@ class BuildManyGroupsTest(unittest.TestCase):
                     build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
     def test_a_location_that_names_a_person_is_refused(self):
-        for room in (r'dr inż. Nazwisko Imie\, 255 S', r'mgr inż. Nazwisko Imie\;mgr Inny Osoba\, 3/ 23A', 'prof. dr hab. Nazwisko Imie'):
+        for room in (r'dr inż. Nazwisko Imie\, 255 S', r'mgr inż. Nazwisko Imie\;mgr Inny Osoba\, 3/ 23A', 'prof. dr hab. Nazwisko Imie',
+                     'ANazwisko', r'ANazwisko\;314 S', '�Nazwisko', 'ANazwisko-Drugie'):
             with self.subTest(room=room):
                 self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
                 path = self.tt / '2026-27-zima' / 'WCY26KY3S1.ics'
@@ -429,7 +430,7 @@ class BuildManyGroupsTest(unittest.TestCase):
                     build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
     def test_ordinary_rooms_are_not_mistaken_for_people(self):
-        for room in ('314 S', r'1.9/ 16\;1.10/ 16', 'aula/ 135', '7a-b Bibl.', '1002 HILTON'):
+        for room in ('314 S', r'1.9/ 16\;1.10/ 16', 'aula/ 135', '7a-b Bibl.', '1002 HILTON', 'Teams', 'Wyjazd', 'WAT', 'ST.nr 1(PWC2)'):
             self.assertFalse(build._names_person(room), room)
 
     def test_a_subject_that_merely_starts_with_prowadzenie_is_fine(self):
@@ -531,6 +532,65 @@ class BuildManyGroupsTest(unittest.TestCase):
         self.assertIsNone(build.year_of('WCY_M1'))
 
 
+class ClipToTermTest(unittest.TestCase):
+    def two_semesters(self, old='2026-04-10', new='2026-09-21', extra_new='2026-10-05'):
+        text = calendar('WCY25KY1S1', '2026-09-28', '2027-02-22', new)
+        events = []
+        for day in (old, extra_new):
+            ymd = day.replace('-', '')
+            events += ['BEGIN:VEVENT', f'UID:{ymd}@test', f'DTSTART;TZID=Europe/Warsaw:{ymd}T100000',
+                       f'DTEND;TZID=Europe/Warsaw:{ymd}T113500', 'SUMMARY:Fizyka z bardzo dlugim tytulem, ktory',
+                       ' zostaje zlozony w drugiej linii', 'END:VEVENT']
+        return text.replace('END:VCALENDAR', '\r\n'.join(events) + '\r\nEND:VCALENDAR').encode('utf-8')
+
+    def test_lessons_of_last_semester_are_dropped_and_the_rest_stays_byte_for_byte(self):
+        out = build.clip_to_term(self.two_semesters(), '2026-27-zima').decode('utf-8')
+        self.assertNotIn('20260410', out)
+        self.assertIn('20260921', out)
+        self.assertIn('20261005', out)
+        self.assertEqual(out.count('BEGIN:VEVENT'), 2)
+        self.assertIn('Fizyka z bardzo dlugim tytulem, ktory\r\n zostaje zlozony w drugiej linii', out)
+        self.assertNotIn('\n', out.replace('\r\n', ''))
+        self.assertTrue(out.startswith('BEGIN:VCALENDAR\r\nVERSION:2.0\r\n') and out.endswith('END:VCALENDAR\r\n'))
+
+    def test_a_clean_calendar_comes_back_unchanged(self):
+        clean = calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05').encode('utf-8')
+        self.assertIs(build.clip_to_term(clean, '2026-27-zima'), clean)
+
+    def test_a_calendar_of_only_another_semester_goes_out_with_no_lessons(self):
+        only_old = calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-04-10').encode('utf-8')
+        out = build.clip_to_term(only_old, '2026-27-zima').decode('utf-8')
+        self.assertNotIn('BEGIN:VEVENT', out)
+        self.assertIn('X-PLAN-GROUP:WCY26KY3S1', out)
+        self.assertIn('X-PLAN-SEMESTER-START:20260928', out)
+        self.assertTrue(out.startswith('BEGIN:VCALENDAR\r\n') and out.endswith('END:VCALENDAR\r\n'))
+
+    def test_the_window_per_term(self):
+        self.assertEqual(build.term_window('2026-27-zima'), ('20260901', '20270229'))
+        self.assertEqual(build.term_window('2026-27-lato'), ('20270201', '20270930'))
+
+    def test_the_site_publishes_the_clipped_plan_and_its_reminders(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        term = tmp / 'timetables' / '2026-27-zima'
+        term.mkdir(parents=True)
+        (term / 'WCY25KY1S1.ics').write_bytes(self.two_semesters())
+        build.build(tmp / 'timetables', tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+        for name in ('plan.ics', 'plan-przypomnienia.ics'):
+            published = (tmp / 'site' / 'WCY25KY1S1' / name).read_text(encoding='utf-8')
+            self.assertNotIn('20260410', published, name)
+            self.assertIn('20261005', published, name)
+
+
+class RoomsDataTest(unittest.TestCase):
+    def test_split_rooms_normalises_and_drops_what_is_not_a_room(self):
+        self.assertEqual(build.split_rooms('1.16/ 16;1.17/16'), ['1.16/16', '1.17/16'])
+        self.assertEqual(build.split_rooms('314 S'), ['314 S'])
+        self.assertEqual(build.split_rooms('Teams'), [])
+        self.assertEqual(build.split_rooms('-'), [])
+        self.assertEqual(build.split_rooms('314 S;314 S'), ['314 S'])
+
+
 class ScrubStaffTest(unittest.TestCase):
     def test_drops_contact_and_instructor_segments_but_keeps_the_rest(self):
         before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
@@ -545,6 +605,19 @@ class ScrubStaffTest(unittest.TestCase):
         self.assertTrue(after.endswith('\r\n') and '\n\n' not in after.replace('\r\n', '\n'))
         ok, why = scrub_staff.verify('probe', before, after)
         self.assertTrue(ok, why)
+
+    def test_a_lecturer_alias_in_a_location_goes_but_the_real_room_stays(self):
+        def cal(location):
+            return '\r\n'.join(['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:a', 'DTSTART:20261005T080000',
+                                'SUMMARY:Matematyka', 'LOCATION:' + location, 'END:VEVENT', 'END:VCALENDAR', ''])
+        after, _ = scrub_staff.scrub_text(cal('ANazwisko\\;314 S'))
+        self.assertIn('LOCATION:314 S\r\n', after)
+        self.assertNotIn('Nazwisko', after)
+        after, _ = scrub_staff.scrub_text(cal('314 S\\, ANazwisko'))
+        self.assertIn('LOCATION:314 S\r\n', after)
+        after, _ = scrub_staff.scrub_text(cal('ANazwisko'))
+        self.assertNotIn('LOCATION', after)
+        self.assertIsNone(scrub_staff.scrub_text(cal('Teams')))
 
     def test_unfolds_before_scrubbing_so_folded_names_are_caught(self):
         before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'

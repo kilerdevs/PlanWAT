@@ -128,7 +128,10 @@
   /* the sheet: bottom on phones, a side panel on wide screens */
   .sheet {
     position: fixed; z-index: 4; left: 0; right: 0; bottom: 0;
-    max-height: 46vh; display: flex; flex-direction: column;
+    max-height: 46vh; max-height: 56dvh;
+    /* the sheet itself scrolls: Safari does not lay a <details> out as a flex column, so a scrolling inner body
+       never got a height to scroll within and the lower lessons were out of reach */
+    overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;
     background: var(--s1); border-top: 1px solid var(--line-2); border-radius: 20px 20px 0 0;
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
     padding-bottom: env(safe-area-inset-bottom);
@@ -136,12 +139,13 @@
   .sheet > summary {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     padding: 14px max(16px, env(safe-area-inset-left)) 12px; cursor: pointer; list-style: none; font-weight: 600;
+    position: sticky; top: 0; z-index: 1; background: var(--s1); border-radius: 20px 20px 0 0;
   }
   .sheet > summary::-webkit-details-marker { display: none; }
   .sheet > summary .hint { color: var(--t3); font-weight: 400; font-size: 0.8125rem; display: inline-flex; align-items: center; gap: 4px; }
   .sheet > summary .hint .i { transition: transform 200ms; }
   .sheet[open] > summary .hint .i { transform: rotate(180deg); }
-  .sheet-body { overflow-y: auto; padding: 0 max(16px, env(safe-area-inset-left)) 16px; }
+  .sheet-body { padding: 0 max(16px, env(safe-area-inset-left)) 16px; }
   .sheet h1 { margin: 0 0 4px; font-size: 1.25rem; line-height: 1.25; }
   .sheet h1 strong { color: var(--accent-text); }
   .sheet h2 { margin: 0; font-size: 1.0625rem; }
@@ -338,7 +342,7 @@
     selectPlaceRing(null);
     showBuilding(b);
     markers.forEach(function (m) { m.el.setAttribute('aria-pressed', String(m.b === b)); });
-    document.querySelectorAll('[data-stop]').forEach(function (s) { s.setAttribute('aria-pressed', String(s.getAttribute('data-code') === b.code)); });
+    document.querySelectorAll('[data-stop]').forEach(function (s) { s.setAttribute('aria-pressed', String(s.getAttribute('data-code') === C.linkCode(b))); });
     var tapped = document.querySelector('[data-stop][aria-pressed="true"]');
     /* from the day's list the tapped class stays where the thumb is; from a marker or search the card is shown at the top */
     if (dayMode && tapped && fromList) tapped.scrollIntoView({ block: 'nearest' });
@@ -518,10 +522,10 @@
     var box = $('day');
     box.replaceChildren();
     var codes = {};
-    stops.forEach(function (s) { if (s.building) codes[s.building.code] = s.building; });
+    stops.forEach(function (s) { if (s.building) codes[C.linkCode(s.building)] = s.building; });
     var buildings = Object.keys(codes).map(function (k) { return codes[k]; });
     dayCodes = codes;
-    markers.forEach(function (m) { m.el.classList.toggle('on-day', !!(m.b.code && codes[m.b.code])); });
+    markers.forEach(function (m) { var lc = C.linkCode(m.b); m.el.classList.toggle('on-day', !!(lc && codes[lc])); });
     document.documentElement.classList.toggle('day-on', buildings.length > 0);
 
     selection.replaceChildren(el('h1', null, 'Twój dzień na kampusie'));
@@ -545,7 +549,7 @@
       var li = el('li'), btn = el('button');
       btn.type = 'button';
       btn.setAttribute('data-stop', String(i));
-      btn.setAttribute('data-code', s.building ? s.building.code : '');
+      btn.setAttribute('data-code', s.building ? C.linkCode(s.building) || '' : '');
       btn.setAttribute('aria-pressed', 'false');
       btn.disabled = !s.building;
       btn.appendChild(el('span', 'idx', (i + 1) + '.'));

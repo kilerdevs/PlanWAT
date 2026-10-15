@@ -4,7 +4,7 @@
 Output (default: site/):
     index.html            group list (redirects straight to the group while there is only one)
     <GROUP>/index.html    the timetable page; it fetches ./plan.ics and renders it in the browser
-    <GROUP>/plan.ics      the group's current term, byte-for-byte
+    <GROUP>/plan.ics      the group's current term, byte-for-byte (minus lessons of another semester, see clip_to_term)
     <GROUP>/plan-przypomnienia.ics   the same calendar with a reminder 15 minutes before each class
     mapa/index.html       campus map (MapLibre from unpkg, tiles from OpenFreeMap: the only page allowed them)
     prywatnosc/index.html privacy notice and terms of use
@@ -32,6 +32,8 @@ import re
 import shutil
 import sys
 from pathlib import Path
+
+import profiles  # plan profiles for data/profiles.json; sits next to this file
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / 'src'
@@ -125,8 +127,62 @@ class Term:
     end: dt.date
     meta: dict = dataclasses.field(default_factory=dict)
 
+    def data(self):
+        """The calendar as published: the file's bytes, minus lessons that belong to another semester."""
+        return clip_to_term(self.path.read_bytes(), self.term_id)
+
 
 # ---------------------------------------------------------------- calendars
+
+def term_window(term_id):
+    """(first, last) day, as YYYYMMDD, that lessons of the term `2026-27-zima` / `2026-27-lato` may fall on.
+
+    Wide on purpose (winter: 1 September to the end of February, summer: 1 February to the end of September):
+    groups of a higher year start before the official semester date, and sessions run past it."""
+    year, _, season = term_id.split('-')
+    year = int(year)
+    return (f'{year}0901', f'{year + 1}0229') if season == 'zima' else (f'{year + 1}0201', f'{year + 1}0930')
+
+
+def clip_to_term(raw, term_id):
+    """A calendar (bytes) without the VEVENTs dated outside its term's window.
+
+    The faculties' pages sometimes carry two semesters at once (last semester's lessons below this one's), and the
+    page would then show March to July under a winter term. Every byte of what stays is untouched, and the input
+    comes back as it is when nothing falls outside. When everything does, the faculty has not published this term
+    yet and is still showing the last one: the term goes out with no lessons at all, and the page says so, instead
+    of presenting last semester's plan as this one."""
+    try:
+        first, last = term_window(term_id)
+    except ValueError:
+        return raw
+    text = raw.decode('utf-8')
+    lines = text.splitlines(keepends=True)
+    out, block, dropped, kept = [], None, 0, 0
+    for line in lines:
+        bare = line.rstrip('\r\n')
+        if block is None:
+            if bare.upper() == 'BEGIN:VEVENT':
+                block = [line]
+            else:
+                out.append(line)
+            continue
+        block.append(line)
+        if bare.upper() == 'END:VEVENT':
+            unfolded = re.sub(r'\r?\n[ \t]', '', ''.join(block))
+            m = re.search(r'^DTSTART[^:\r\n]*:(\d{8})', unfolded, re.M)
+            if m and not first <= m.group(1) <= last:
+                dropped += 1
+            else:
+                kept += 1
+                out.extend(block)
+            block = None
+    if block is not None:  # an unterminated event: leave the file alone
+        return raw
+    if not dropped:
+        return raw
+    return ''.join(out).encode('utf-8')
+
 
 def _unescape(value):
     return re.sub(r'\\([\\;,nN])', lambda m: '\n' if m.group(1) in 'nN' else m.group(1), value).strip()
@@ -174,7 +230,7 @@ def read_calendar(path):
             if key == 'CONTACT' or (key == 'DESCRIPTION' and 'prowadzący:' in value.lower()):
                 raise BuildError(f'{path}: calendars must not name staff (remove the {key} line)')
             if key == 'LOCATION' and _names_person(value):
-                raise BuildError(f'{path}: a LOCATION names a person (a title such as "dr inż."): calendars must not name staff')
+                raise BuildError(f'{path}: a LOCATION names a person (a title such as "dr inż." or an alias such as "AKowalski"): calendars must not name staff')
             event.add(key)
             if key == 'DTSTART' and _ymd(value):
                 dates.append(_ymd(value))
@@ -213,8 +269,9 @@ def load_term(path):
     return group, Term(term_id, path, start, end, meta)
 
 
-def _unfold(path):
-    text = path.read_bytes().decode('utf-8')
+def _unfold(source):
+    """A calendar's content lines, unfolded; `source` is a path or the bytes of the calendar."""
+    text = (source if isinstance(source, bytes) else source.read_bytes()).decode('utf-8')
     return [l for l in re.sub(r'\r?\n[ \t]', '', text.lstrip('﻿')).splitlines() if l]
 
 
@@ -222,9 +279,17 @@ def _unfold(path):
 _TITLES = {'dr', 'hab', 'prof', 'inż', 'inz', 'mgr', 'lic', 'płk', 'ppłk', 'mjr', 'kpt', 'por', 'ppor', 'gen', 'bryg', 'rez', 'ucz'}
 
 
+# A lecturer alias left in the room: initial(s) glued to a capitalised surname ('AKowalski'). Real rooms never have
+# two capitals followed by lowercase letters ('Teams', '314 S'); U+FFFD stands in for a letter lost to a code page.
+_ALIAS = re.compile('[A-ZĄĆĘŁŃÓŚŹŻ�]{1,2}[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż�]{3,}(?:-[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż�]+)?')
+
+
 def _names_person(location):
-    """True when any ';'/','-separated part of a LOCATION value is a title followed by a name."""
+    """True when any ';'/','-separated part of a LOCATION value is a title followed by a name, or a bare
+    lecturer alias."""
     for part in re.split(r'(?:\\[;,]|[;,])', location):
+        if _ALIAS.fullmatch(part.strip()):
+            return True
         tokens = [t for t in re.split(r'[\s.()]+', part.strip()) if t]
         i = 0
         while i < len(tokens) and tokens[i].lower() in _TITLES:
@@ -382,6 +447,9 @@ def _event_lessons(ev, tz, limit):
     return out
 
 
+# A room is a LOCATION part with a digit in it ("314 S", "0.24/ 135"); anything else ("-", "Teams", "Wyjazd")
+# cannot be told apart from a non-room and stays out of the free-rooms list.
+ROOM_RE = re.compile(r'\d')
 YEAR_RE = re.compile(r'^([A-Za-z]{3}\d{2})')
 EPOCH = dt.date(2000, 1, 1)  # day numbers in the data files count from here
 
@@ -392,6 +460,16 @@ def year_of(group):
     return m.group(1).upper() if m else None
 
 
+def split_rooms(location):
+    """The rooms of a LOCATION, normalised: "1.16/ 16;1.17/16" -> ["1.16/16", "1.17/16"]."""
+    rooms = []
+    for part in location.split(';'):
+        part = re.sub(r'\s*/\s*', '/', ' '.join(part.rsplit(',', 1)[-1].split()))
+        if ROOM_RE.search(part) and part not in rooms:
+            rooms.append(part)
+    return rooms
+
+
 def _tz():
     try:
         from zoneinfo import ZoneInfo
@@ -400,25 +478,46 @@ def _tz():
         return None
 
 
-def build_data(current):
+def build_data(current, refreshed=None):
     """The JSON files behind the group page's tools, from every group's current term.
 
     groups.json            [[group, term label, year prefix], ...]
+    profiles.json          every plan's week as numbers, its place on the map and its archetype, for "Mapa planów"
+    rooms.json             rooms and every booking [room, day, start, end, ...], for "Wolne sale"; `asof` is the
+                           date the crawler last checked the plans (null without a refresh state; the build date would make
+                           every build's output differ)
     year/<PREFIX>.json     every class of the groups of one year, for "Odrabianie"
     Days are counted from 2000-01-01 and times are minutes after midnight, to keep the files small.
     """
     tz = _tz()
     groups = sorted(current)
-    years = {}
+    rooms, booked = {}, set()
+    years, by_group = {}, {}
     for group in groups:
         term = current[group]
-        lessons = calendar_lessons(term.path, tz, term.end)
+        lessons = calendar_lessons(term.data(), tz, term.end)
+        by_group[group] = lessons
         year = year_of(group)
         if year:
             years.setdefault(year, []).append((group, lessons))
+        for day, s, e, _, _, location in lessons:
+            for room in split_rooms(location):
+                booked.add((rooms.setdefault(room, len(rooms)), (day - EPOCH).days, s, e))
+    room_names = sorted(rooms)
+    remap = {rooms[name]: i for i, name in enumerate(room_names)}
+    bookings = []
+    for r, d, s, e in sorted((remap[r], d, s, e) for r, d, s, e in booked):
+        bookings.extend((r, d, s, e))
+    checked = sorted(str(v.get('checked', ''))[:10] for v in (refreshed or {}).values() if isinstance(v, dict))
+    asof = next((c for c in reversed(checked) if re.fullmatch(r'\d{4}-\d{2}-\d{2}', c)), None)
     files = {
         'groups.json': [[g, current[g].meta['term'] or current[g].term_id, year_of(g) or ''] for g in groups],
+        'rooms.json': {'epoch': EPOCH.isoformat(), 'asof': asof, 'groups': len(groups), 'rooms': room_names,
+                       'b': bookings},
     }
+    profile = profiles.build(by_group, faculty_of, asof)
+    if profile:
+        files['profiles.json'] = profile
     for year, members in sorted(years.items()):
         names, idx, flat = [], {}, []
         def ix(v):  # noqa: E306
@@ -791,12 +890,12 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     for group, term in sorted(current.items()):
         write(f'{group}/index.html', render_group(group_tpl, '\n'.join((ics_js, insights_js, campus_js)), term,
                                                   refreshed.get(group), by_group[group]))
-        shutil.copyfile(term.path, out / group / 'plan.ics')
-        (out / group / REMINDER_FILE).write_bytes(with_reminders(term.path.read_bytes()))
+        (out / group / 'plan.ics').write_bytes(term.data())
+        (out / group / REMINDER_FILE).write_bytes(with_reminders(term.data()))
         for other in by_group[group]:  # the group's other terms: plan-<term>.ics, opened by the page's ?t=<term>
             if other.term_id != term.term_id:
-                shutil.copyfile(other.path, out / group / f'plan-{other.term_id}.ics')
-                (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.path.read_bytes()))
+                (out / group / f'plan-{other.term_id}.ics').write_bytes(other.data())
+                (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.data()))
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js))
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8')))
@@ -804,7 +903,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     (out / '.well-known').mkdir()
     (out / '.well-known' / 'security.txt').write_text(security_txt(today), encoding='utf-8')
     write('404.html', render_404((SRC / '404.html').read_text(encoding='utf-8'), base_path))
-    for rel, data in build_data(current).items():
+    for rel, data in build_data(current, refreshed).items():
         target = out / DATA_DIR / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')

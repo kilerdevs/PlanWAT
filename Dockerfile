@@ -4,7 +4,7 @@
 # Stage 1: build the static site from the timetables and pin its CSP hashes into nginx.conf.
 FROM python:3.14-alpine@sha256:f6a589d43c42b9e7f7dc67a12d37132491f362859a5d750607710cc56da3bc72 AS build
 WORKDIR /src
-COPY build.py ./
+COPY build.py profiles.py ./
 COPY src/ src/
 COPY timetables/ timetables/
 COPY deploy/nginx.conf deploy/nginx.conf

@@ -8,6 +8,7 @@ import json
 import re
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -157,9 +158,7 @@ def upcoming_reference(today):
 
 def term_window(tid):
     """(first, last) day, as YYYYMMDD, that lessons of the term `2026-27-zima` / `2026-27-lato` may fall on."""
-    year, _, season = tid.split('-')
-    year = int(year)
-    return (f'{year}0901', f'{year + 1}0229') if season == 'zima' else (f'{year + 1}0201', f'{year + 1}0930')
+    return build.term_window(tid)
 
 
 def period_label(prefix, today):
@@ -219,8 +218,44 @@ def validate(ics, code, tid, previous=None, max_loss=0.4):
     return True, ''
 
 
+def clip_to_term(ics, tid):
+    """The calendar text without lessons dated outside the term's window (see build.clip_to_term)."""
+    return build.clip_to_term(ics.encode('utf-8'), tid).decode('utf-8')
+
+
 def to_crlf(text):
     return text.replace('\r\n', '\n').replace('\n', '\r\n')
+
+
+def term_season_of_ymd(ymd):
+    """'zima' for Sep-Feb dates, 'lato' otherwise (matches season_of())."""
+    month = int(ymd[4:6])
+    return 'zima' if month >= 9 or month <= 2 else 'lato'
+
+
+def reconcile_term_bounds(new_ics, old_ics, tid):
+    """(ics, patched). Keep the filed term's grid when the faculty flips its term label.
+
+    Converters take the semester bounds from the page's term link. When the faculty moves
+    that link to another semester while the lessons still belong to the filed term (e.g.
+    WCY pages pointing at lato 2027 with zima lessons on them), publishing the flipped
+    bounds would shift the site's week grid away from the lessons and render an empty page.
+    In that case the old file's bounds are restored; the lessons (which decide everything
+    else) are untouched. No old file, or an old file flipped too, means nothing to restore.
+    """
+    season = tid.split('-')[-1]
+    new_start = re.search(r'X-PLAN-SEMESTER-START:(\d{8})', new_ics or '')
+    if not new_start or term_season_of_ymd(new_start.group(1)) == season:
+        return new_ics, False
+    old_start = re.search(r'X-PLAN-SEMESTER-START:(\d{8})', old_ics or '')
+    old_end = re.search(r'X-PLAN-SEMESTER-END:(\d{8})', old_ics or '')
+    if not old_start or term_season_of_ymd(old_start.group(1)) != season or not old_end:
+        return new_ics, False
+    patched = re.sub(r'X-PLAN-SEMESTER-START:\d{8}',
+                     f'X-PLAN-SEMESTER-START:{old_start.group(1)}', new_ics)
+    patched = re.sub(r'X-PLAN-SEMESTER-END:\d{8}',
+                     f'X-PLAN-SEMESTER-END:{old_end.group(1)}', patched)
+    return patched, True
 
 
 class State:
@@ -228,6 +263,7 @@ class State:
 
     def __init__(self, path):
         self.path = Path(path)
+        self._lock = threading.Lock()
         self.data = {'version': 1, 'groups': {}, 'faculties': {}}
         if self.path.is_file():
             try:
@@ -275,10 +311,20 @@ class State:
         return now - checked < dt.timedelta(hours=hours)
 
     def save(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix('.tmp')
-        tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1, sort_keys=True) + '\n', encoding='utf-8')
-        tmp.replace(self.path)
+        """Atomic write. Safe while other lanes keep mutating the data: serialised under a lock, and a
+        dump that races an insert ("dictionary changed size") is simply retried."""
+        with self._lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            for attempt in range(5):
+                try:
+                    text = json.dumps(self.data, ensure_ascii=False, indent=1, sort_keys=True) + '\n'
+                    break
+                except RuntimeError:
+                    if attempt == 4:
+                        raise
+            tmp = self.path.with_suffix('.tmp')
+            tmp.write_text(text, encoding='utf-8')
+            tmp.replace(self.path)
 
 
 def now_utc():

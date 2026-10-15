@@ -8,7 +8,7 @@
 
 [![Refresh](https://github.com/kilerdevs/PlanWAT/actions/workflows/refresh.yml/badge.svg)](https://github.com/kilerdevs/PlanWAT/actions/workflows/refresh.yml)
 ![Runner](https://img.shields.io/badge/runner-self--hosted%20(jedyny)-blue?style=flat)
-![Harmonogram](https://img.shields.io/badge/harmonogram-codziennie%20~03%3A00-informational?style=flat)
+![Harmonogram](https://img.shields.io/badge/harmonogram-co%202%20godziny-informational?style=flat)
 ![Grupy](https://img.shields.io/badge/grupy-781-brightgreen?style=flat)
 ![Dane kadry](https://img.shields.io/badge/dane%20kadry-brak-critical?style=flat)
 
@@ -20,7 +20,7 @@ Workflow Pages nakłada te kalendarze na strony przy każdej budowie.
 <img src="diagrams/aktualizacja-planow.svg" alt="Codziennie w nocy runner odczytuje strony wydziałów przez proxy, konwertuje plany, waliduje je i wypycha na gałąź data. Pages nakłada je na strony i publikuje." width="760">
 
 ```
-refresh.yml   codziennie, poza godzinami szczytu, na własnym runnerze: crawl → konwersja → walidacja → push na `data`
+refresh.yml   co 2 godziny (`23 */2 * * *`), na własnym runnerze: crawl → konwersja → walidacja → push na `data`
 gałąź data    timetables/<semestr>/<GRUPA>.ics oraz refresh-state.json
 pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomieniem build.py
 ```
@@ -31,13 +31,13 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
 
 - Jedna sesja, jedno żądanie naraz, losowa przerwa między stronami (2,5–6 s na własnym runnerze, 4–9 s z `--profile hosted`),
   honorowany `robots.txt`, warunkowa rewalidacja (`If-Modified-Since` / `ETag` zapamiętane dla każdej grupy, więc niezmienione
-  strony odpowiadają `304` bez treści) i pomijanie grup sprawdzonych mniej niż 20 godzin temu.
+  strony odpowiadają `304` bez treści) i pomijanie grup sprawdzonych mniej niż 90 minut temu (`--fresh-hours`). Wydziały za różnymi politykami Incapsula (`--lanes`, domyślnie 4) są przeglądane równolegle, każdy host we własnym tempie, więc pełny przebieg trwa krócej niż godzinę, a po zakończeniu przebiegu `pages.yml` od razu odbudowuje stronę (`workflow_run`).
 - **Blokada odkłada wydział, nie kończy przebiegu.** Każdy status inny niż 200 (z wyjątkiem 304 i 404) albo strona incydentu
   Incapsula zawiesza dany wydział, podczas gdy pozostałe są obsługiwane, a potem odczekuje blokadę i wznawia od miejsca
   przerwania. Długość snu jest wyuczona dla każdej grupy polityki z poprzednich odbudowań (mediana, 20 min – 12 h, 2 h bez historii;
   epizody „ściany” ważą więcej niż niestabilne), odblokowanie jest sprawdzane tanimi pobraniami indeksu w rzadko-potem-gęsto
   rozłożonym harmonogramie (`--block-probes`, domyślnie 5, zawsze w ramach pozostałego budżetu), a całe oczekiwanie jest
-  ograniczone (`--max-block-wait-minutes`, domyślnie 90, dzielone sprawiedliwie: każde czekanie dostaje swój udział, ale co
+  ograniczone (`--max-block-wait-minutes`, domyślnie 30, przy równoległych wydziałach każdy czeka osobno, a przy kolejnych dzielone sprawiedliwie: każde czekanie dostaje swój udział, ale co
   najmniej 15 min). Wyrok blokady nie jest ponawiany i nic niedokończonego nie jest publikowane. Ostatnie poprawne kalendarze
   zostają, zgłoszenie GitHub otwiera się tylko wtedy, gdy przebieg kończy się wciąż zablokowany, a zadanie na własnym runnerze
   próbuje później ze stanu, który zapisał. (Znaczniki `_Incapsula_Resource` na dobrych stronach nie są blokadą.)

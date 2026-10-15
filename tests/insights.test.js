@@ -165,3 +165,126 @@ test('ordinals number each class within its subject and type over the term', () 
   const firstWeek = I.lessons(REAL).slice(0, 5).map((l) => real[I.lessonKey(l)]);
   firstWeek.forEach((x) => assert.ok(x.n >= 1 && x.n <= x.of));
 });
+
+/* ---------- free rooms ---------- */
+const roomData = (rooms, bookings) => {
+  const day = (iso) => I.dayNumber(iso) - I.dayNumber('2000-01-01');
+  const b = [];
+  bookings.forEach(([room, iso, s, e]) => b.push(room, day(iso), s, e));
+  return { epoch: '2000-01-01', rooms, b };
+};
+
+test('firstWindow finds the first gap that fits, or runs to the end of the day', () => {
+  assert.deepEqual(I.firstWindow([], 600, 60), { start: 600, until: null });
+  assert.deepEqual(I.firstWindow([[540, 600]], 570, 60), { start: 600, until: null });
+  assert.deepEqual(I.firstWindow([[660, 720]], 600, 60), { start: 600, until: 660 });
+  // gaps of 20 and 30 minutes are too short for an hour, so the window opens after the last class
+  assert.deepEqual(I.firstWindow([[630, 700], [720, 800], [830, 900]], 600, 60), { start: 900, until: null });
+  assert.equal(I.firstWindow([], 24 * 60 - 30, 60), null);
+});
+
+test('freeRooms lists rooms free for the whole span, and later ones only on request', () => {
+  const d = roomData(['1 S', '2 S', '3 5', '4 5'], [
+    [0, '2026-10-15', 480, 570], [0, '2026-10-15', 600, 690],   // 1 S: 8:00-9:30, 10:00-11:30
+    [1, '2026-10-15', 960, 1050],                              // 2 S: 16:00-17:30
+    [2, '2026-09-01', 480, 570],                               // 3 5: nothing near the date -> unknown
+    [3, '2026-10-14', 480, 570]]);                             // 4 5: a class the day before -> known, free today
+  const now = I.freeRooms(d, '2026-10-15', 570, 60, false);
+  assert.deepEqual(now.list.map((r) => r.room), ['4 5', '2 S']);  // longest stretch first (4 5 is free all day)
+  assert.equal(now.skipped, 1);
+  const later = I.freeRooms(d, '2026-10-15', 570, 60, true);
+  assert.deepEqual(later.list.map((r) => [r.room, r.free, r.start]), [['4 5', true, 570], ['2 S', true, 570], ['1 S', false, 690]]);
+  assert.equal(later.list[2].until, null);
+  assert.deepEqual(later.list[2].busy, [[480, 570], [600, 690]]);
+});
+
+test('freeRooms is null for a date outside the data and building() reads the room text', () => {
+  const d = roomData(['1 S'], [[0, '2026-10-15', 480, 570]]);
+  assert.equal(I.freeRooms(d, '2026-12-24', 480, 60, false), null);
+  assert.deepEqual(I.dataRange(d), { from: '2026-10-15', to: '2026-10-15' });
+  assert.equal(I.building('308 S'), 'S');
+  assert.equal(I.building('0.24/135'), '135');
+  assert.equal(I.building('T3.1W'), '');
+});
+
+/* ---------- plan map ---------- */
+const profileData = () => {
+  const features = [
+    { key: 'hours', high: 'dużo zajęć', low: 'mało zajęć', w: 1 },
+    { key: 'gaps', high: 'dużo okienek', low: 'prawie bez okienek', w: 0.8 },
+    { key: 'span', high: 'długie dni', low: 'krótkie dni', w: 1 },
+    { key: 'early', high: 'wczesne starty', low: 'późne starty', w: 0.8 },
+    { key: 'fixed', high: 'stałe sale', low: 'wiele sal', w: 0 },
+  ];
+  // [group, faculty, x, y, percentile, archetype, load, z...] with z in hundredths
+  const row = (g, x, y, pct, load, z) => [g, 'WCY', x, y, pct, 0, load, ...z];
+  return { features, archetypes: [{ name: 'a', n: 4 }], groups: [
+    row('A', 500, 500, 50, 0, [0, 0, 0, 0, 0]),
+    row('B', 520, 510, 70, 40, [60, 90, 40, 30, 0]),
+    row('C', 480, 480, 20, -40, [-60, -90, -80, -90, 0]),
+    row('D', 900, 900, 95, 90, [200, 150, 190, 120, 160]),
+  ] };
+};
+
+test('traits lists what sets a plan apart, strongest first, and tells heavier from lighter', () => {
+  const d = profileData();
+  const t = I.traits(d, d.groups[3], 3);
+  assert.deepEqual(t.map((x) => x.key), ['hours', 'span', 'fixed']);
+  assert.equal(t[0].strength, 'duża różnica');
+  assert.equal(t[0].tone, 'heavier');
+  assert.equal(t[2].tone, 'plain');  // a feature that does not weigh in the load
+  const light = I.traits(d, d.groups[2], 5);
+  assert.equal(light.find((x) => x.key === 'early').label, 'późne starty');
+  assert.equal(light.find((x) => x.key === 'early').tone, 'lighter');
+  assert.deepEqual(I.traits(d, d.groups[0], 5), []);  // an average plan has nothing to say
+});
+
+test('similarPlans orders by distance and the modes keep only the plans that are lighter in that respect', () => {
+  const d = profileData();
+  const a = d.groups[0];
+  assert.deepEqual(I.similarPlans(d, a, 'near', 5).map((x) => x.code), ['B', 'C', 'D']);
+  assert.deepEqual(I.similarPlans(d, a, 'lighter', 5).map((x) => x.code), ['C']);
+  assert.deepEqual(I.similarPlans(d, a, 'gaps', 5).map((x) => x.code), ['C']);
+  assert.deepEqual(I.similarPlans(d, a, 'short', 5).map((x) => x.code), ['C']);
+  assert.deepEqual(I.similarPlans(d, a, 'late', 5).map((x) => x.code), ['C']);
+  assert.deepEqual(I.similarPlans(d, d.groups[3], 'lighter', 2).map((x) => x.code), ['B', 'A']);
+});
+
+test('map helpers: row lookup, nearest dot under a tap, and the box around a plan', () => {
+  const d = profileData();
+  assert.equal(I.profileRow(d, 'C')[0], 'C');
+  assert.equal(I.profileRow(d, 'Z'), null);
+  assert.equal(I.hitDot(d, 905, 897, 20)[0], 'D');
+  assert.equal(I.hitDot(d, 700, 700, 20), null);
+  const box = I.neighbourhood(d, d.groups[0], 2);
+  assert.equal(box.x, 500);
+  assert.ok(box.r >= 40);
+});
+
+test('a plan feature reads back as a real value, and is printed with its unit', () => {
+  const d = profileData();
+  d.features.forEach((f) => { f.mean = 10; f.std = 2; f.unit = 'n'; });
+  d.features[0].unit = 'h';
+  d.features[1].unit = 'min';
+  d.features[3].unit = 'pct';
+  const row = d.groups[3];  // z = 2.00, 1.50, 1.90, 1.20, 1.60
+  assert.equal(I.featureValue(d, row, 0), 14);
+  assert.equal(I.fmtFeature(d.features[0], 14), '14 h');
+  assert.equal(I.fmtFeature(d.features[0], 13.45), '13,5 h');
+  assert.equal(I.fmtFeature(d.features[1], 200), '3 h 20 min');
+  assert.equal(I.fmtFeature(d.features[3], 0.456), '46%');
+  assert.equal(I.fmtFeature(d.features[4], 3.25), '3,3');
+  assert.equal(I.fmtFeature(d.features[4], 12.4), '12');
+  assert.equal(I.fmtTypical([17.5, 4.1, 130, 390]), '17,5 h zajęć · 4,1 dni · okienka 2 h 10 min · dzień 6 h 30 min');
+});
+
+test('differences names how another plan is unlike this one, and likeness grades the distance', () => {
+  const d = profileData();
+  const a = d.groups[0], c = d.groups[2], dd = d.groups[3];
+  assert.deepEqual(I.differences(d, a, c, 2), ['późne starty', 'prawie bez okienek']);  // C: early -0.9 and gaps -0.9 tie, so by feature key
+  assert.deepEqual(I.differences(d, a, a, 2), []);
+  assert.equal(I.differences(d, a, dd, 1).length, 1);
+  assert.equal(I.likeness(0.5), 'bardzo podobny');
+  assert.equal(I.likeness(1.5), 'podobny');
+  assert.equal(I.likeness(3), 'trochę inny');
+});

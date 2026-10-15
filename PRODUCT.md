@@ -48,7 +48,7 @@ produktu: gdyby któraś musiała zniknąć, znikałby sens projektu.
 - Ten sam adres jest udostępniany całej grupie i otwierany przez każdego, kto go ma. Serwis jest publiczny i nie ma logowania.
 - Źródłem wiążącym w sprawie zmian i dodatkowych terminów pozostaje oficjalny plan i e-dziekanat. Strona odsyła do nich, gdy
   tydzień nie ma regularnych zajęć (sesja egzaminacyjna lub przerwa).
-- Semestr zimowy 2026/27 trwa od 28.09.2026 do 22.02.2027, czyli 22 tygodnie. Plany są odświeżane automatycznie co noc.
+- Semestr zimowy 2026/27 trwa od 28.09.2026 do 22.02.2027, czyli 22 tygodnie. Plany są odświeżane automatycznie co 2 godziny.
 
 ## Możliwości i ograniczenia
 
@@ -61,7 +61,7 @@ produktu: gdyby któraś musiała zniknąć, znikałby sens projektu.
   - Okienka i czas przejścia między budynkami, z ostrzeżeniem, gdy przerwa jest krótsza.
   - Widoki: Tydzień, Lista, Miesiąc. Dwa semestry z przełącznikiem Zima / Lato.
   - „Moje przedmioty”: ukrywanie przedmiotów, których nie masz (zapis tylko w przeglądarce).
-  - „Gdzie odrobić?”, „Porównaj grupy”, „Statystyki”, „Drukuj / PDF”.
+  - „Gdzie odrobić?”, „Porównaj grupy”, „Wolne sale”, „Mapa planów”, „Statystyki”, „Drukuj / PDF”.
   - Offline: Service Worker zachowuje otwarte strony i plany, a każdą grupę można zainstalować jak aplikację.
   - Subskrypcja kalendarza, w tym wariant z przypomnieniem 15 minut przed zajęciami (`plan-przypomnienia.ics`).
   - Mapa kampusu `/mapa/`: budynki według wydziałów, wyszukiwarka, trasa pieszo, miejsca wokół kampusu (przystanki, akademiki,
@@ -80,7 +80,7 @@ produktu: gdyby któraś musiała zniknąć, znikałby sens projektu.
   - Grupa, wydział, semestr, zakres i data wygenerowania pochodzą z właściwości `X-PLAN-*`. Zajęcia używają `SUMMARY`
     (przedmiot), `CATEGORIES` (rodzaj), `LOCATION` (sala) i `X-PLAN-COLOR` (kolor przedmiotu).
   - `/<GRUPA>/plan.ics` jest publiczny, więc ten sam link działa jako subskrypcja kalendarza.
-  - Plany odświeża codziennie crawler na własnym runnerze i publikuje przez gałąź `data` (patrz `docs/REFRESH.md`).
+  - Plany odświeża co 2 godziny crawler na własnym runnerze i publikuje przez gałąź `data` (patrz `docs/REFRESH.md`).
   - Docelowo GitHub Pages (repozytorium kilerdevs/PlanWAT). Można też użyć wzmocnionego kontenera nginx (`PLAN-WAT`,
     localhost:8088) za reverse proxy.
 - **Bezpieczeństwo** (wyraźny wymóg właściciela: „możliwie najbezpieczniej, serwis publiczny”):

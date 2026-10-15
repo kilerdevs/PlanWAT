@@ -15,6 +15,12 @@ on:
   # term goes live on its first day without anyone pushing a commit.
   schedule:
     - cron: '17 3 * * *'
+  # Publish refreshed timetables as soon as a refresh pass ends (it pushes the `data` branch with its own
+  # contents:write token and, on purpose, has no permission to start workflows itself). This trigger runs the
+  # workflow from the default branch and needs nothing from the refresh run but its end.
+  workflow_run:
+    workflows: ['Refresh timetables']
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -46,6 +52,12 @@ jobs:
         with:
           ref: data
           path: data
+      # Calendars on `data` from before the converter dropped lecturer aliases from LOCATION would make build.py
+      # refuse the build (and be published if it did not). Scrub this checkout before it is laid over the trees; the
+      # branch itself is untouched, and a calendar the tool cannot verify fails the job instead of being published.
+      - name: Scrub staff names from the refreshed timetables
+        if: steps.data.outcome == 'success'
+        run: python3 devsrc/tools/scrub_staff.py --apply data
       - name: Overlay the refreshed timetables
         if: steps.data.outcome == 'success'
         run: |

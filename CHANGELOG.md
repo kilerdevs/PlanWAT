@@ -21,8 +21,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   znajduje miejsca, a karta miejsca daje trasę pieszo. Dane w `src/places.js`, odtwarzane przez `tools/places/make_places.py` z
   OpenStreetMap.
 - **Mapa:** bogatszy ciemny styl z zielonymi parkami i trawą, niebieską wodą, odcieniami zabudowy i chłodniejszą paletą brył 3D.
-- **Przewodnik** po pierwszym otwarciu (telefon i pulpit): przesuwany arkusz z siedmioma krokami (zmiana tygodnia przesunięciem,
-  skok z daty, „Gdzie odrobić?”, przycisk „Mapa” i podkreślone sale, porównywanie grup, statystyki, kalendarz, przedmioty i
+- **Przewodnik** po pierwszym otwarciu (telefon i pulpit): przesuwany arkusz z ośmioma krokami (zmiana tygodnia przesunięciem,
+  skok z daty, „Gdzie odrobić?”, przycisk „Mapa” i podkreślone sale, porównywanie grup, wolne sale, statystyki, kalendarz, przedmioty i
   aplikacja) i małymi, zapętlonymi animacjami. Pokazuje się raz w przeglądarce, a przycisk „Jak korzystać” (z ikoną `?`) w
   wierszu narzędzi wywołuje go ponownie.
 - **Okienka** (przerwy i czas przejścia) także na siatce pulpitu, u dołu zajęć, po których następują.
@@ -87,6 +87,21 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - Podgląd `dev`: każde wdrożenie Pages publikuje szczyt `dev` pod `/dev/`, z wzajemnymi linkami do produkcji.
 - Dokumentacja: cała dokumentacja Markdown przepisana na polski, z diagramami, wykresami i plakietkami.
 
+- **Wolne sale** wróciły w nowym wydaniu: wybierasz dzień, godzinę, czas, którego potrzebujesz (od 30 min do 3 h), budynek
+  i numer sali, a każda sala dostaje pasek dnia z zajęciami (czerwone) i wolnym oknem (zielone). „Pokaż też sale wolne
+  później” dopisuje sale, które zwolnią się w ciągu dnia, a nazwa budynku prowadzi na mapę. Sale bez zajęć w pobliżu
+  danego dnia są pominięte i policzone zamiast zgadywane. Dane z `data/rooms.json` pochodzą z planów wszystkich grup.
+- **Narzędzia w trzech zakładkach** zamiast jednego rzędu dwunastu przycisków: Plan (ulubione, moje przedmioty, jak korzystać,
+  instalacja), Eksport (pobranie, kalendarz, udostępnianie, drukowanie) i Analiza (statystyki, porównanie grup, wolne sale,
+  mapa planów). Strzałki, Home i End przechodzą między zakładkami, a ostatnia użyta zakładka jest zapamiętana na urządzeniu.
+- **Mapa planów** (przycisk w narzędziach, zakładka Analiza) ma cztery zakładki: Twój plan (współczynnik z podziałką, archetyp,
+  Twój tydzień na tle typowego, to, co wyróżnia plan, z Twoją wartością i średnią), Mapa (kropki, numerowana lista archetypów
+  z definicją i typowym tygodniem, dotknięcie archetypu zostawia na mapie tylko jego plany), Podobne (czym inny plan różni się
+  od Twojego) i Metoda (definicja każdej z 13 cech z wagą, tabela archetypów, opis mapy). „Współczynnik przejebania™” to liczba od 0 do 100: jaka część porównanych planów jest lżejsza od Twojego (godziny, okienka, długość dni, wczesne starty, weekendy, zmiany budynków). Liczone przy każdej budowie z planów opublikowanych przez wydziały (`profiles.py`: PCA i k-średnie, bez uczenia modeli) i zapisane w `data/profiles.json`.
+- **Prywatność:** tabela „PlanWAT kontra serwis z logowaniem kodem” z README także na stronie `/prywatnosc/`.
+- **Aktualizacja planów** co 2 godziny zamiast raz na dobę, a strona jest odbudowywana zaraz po zakończeniu przebiegu.
+- **Wychowanie fizyczne** ma salę: Ośrodek Szkoleniowo-Sportowy WAT, także jako punkt na mapie.
+
 ### Zmieniono
 - **Plan:** ✓ przy każdych skończonych zajęciach, nie tylko dzisiejszych.
 - **Mapa:** w widoku dnia pozostałe budynki cofają się, karta budynku jest zwarta, więc dotknięte zajęcia zostają widoczne,
@@ -98,6 +113,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - `CI`, `Egress` i `SAST` nie uruchamiają się już po pushu na `master`: pull request wydania zdążył je wykonać.
 
 ### Naprawiono
+- **Prywatność:** aliasy prowadzących (inicjał i nazwisko sklejone w polu sali, np. `AKowalski`) nie trafiają już do planów.
+  Konwerter je odrzuca, `build.py` odmawia zbudowania kalendarza z takim polem, a `tools/scrub_staff.py` czyści już opublikowane.
+- **iPhone:** przyciski nad planem są zwarte zamiast dużych owali, „Zainstaluj aplikację” pokazuje kroki dodania do
+  ekranu początkowego, a arkusz szczegółów na mapie da się przewijać do ostatnich zajęć.
+- **Crawler:** wydziały za różnymi politykami Incapsula są przeglądane równolegle, stan zapisuje się co 25 sprawdzeń także
+  przy odpowiedziach 304, a zapis stanu jest bezpieczny przy pracy wielu torów.
 - **Dane kadry w `LOCATION`:** przy części komórek WLO konwerter wpisywał do pola sali także prowadzących (np. `dr inż. …, 255 S`),
   przez co 8 kalendarzy publikowało nazwiska. Konwerter odrzuca teraz każdą część sali będącą tytułem z nazwiskiem, a build odmawia
   kalendarza, w którego `LOCATION` taka część występuje. Gałąź `data` została oczyszczona wraz z historią.

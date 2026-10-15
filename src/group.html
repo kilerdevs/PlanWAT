@@ -53,6 +53,8 @@
     --accent-wash: rgba(10, 132, 255, 0.05);
     --accent-flash: rgba(10, 132, 255, 0.24);
     --accent-select: rgba(10, 132, 255, 0.45);
+    --free: #32d74b;
+    --busy: #ff6b63;
 
     --glass: rgba(22, 22, 24, 0.72);
     --glass-2: rgba(44, 44, 46, 0.72);
@@ -153,7 +155,9 @@
   ::selection { background: var(--accent-select); color: #fff; }
   h1, h2, h3 { margin: 0; text-wrap: balance; }
   p { margin: 0; }
-  button { font: inherit; color: inherit; }
+  /* no native look and no UA border: a button that sets a background but no border showed the default raised
+     border on Android Chrome (the arcs on the pill buttons in the sheets) */
+  button { font: inherit; color: inherit; -webkit-appearance: none; appearance: none; border: 0; }
   .vh {
     position: absolute !important;
     width: 1px; height: 1px;
@@ -894,11 +898,14 @@
 
   /* ================= tools under the title ================= */
   .hero-main { min-width: 0; } /* a grid item: lets the tool row scroll instead of widening the header */
-  .tools { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-5); }
+  .tools { display: grid; gap: var(--sp-3); margin-top: var(--sp-5); }
+  .tools .tabs { max-width: 420px; }
+  .toolpanel { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .toolpanel[hidden] { display: none; }
   .tools .dl { margin-top: 0; border: 0; cursor: pointer; white-space: nowrap; }
   /* phones: one row that scrolls sideways, so the Live card stays on the first screen */
   @media (max-width: 767px) {
-    .tools {
+    .toolpanel {
       flex-wrap: nowrap;
       overflow-x: auto;
       margin-inline: calc(-1 * var(--gl)) calc(-1 * var(--gr));
@@ -906,8 +913,8 @@
       scrollbar-width: none;
       scroll-padding-inline: var(--gl);
     }
-    .tools::-webkit-scrollbar { display: none; }
-    .tools .dl { flex: none; }
+    .toolpanel::-webkit-scrollbar { display: none; }
+    .tools .dl { flex: none; border-radius: 12px; padding: 6px 12px 6px 10px; line-height: 1.2; }
   }
   #favBtn[aria-pressed="true"] .i { fill: currentColor; color: var(--t1); }
   .termswitch { display: inline-flex; gap: 2px; padding: 3px; margin-top: 10px; border-radius: 999px; background: var(--s3); }
@@ -1120,6 +1127,8 @@
   .mysubjects .check { align-items: flex-start; padding: 6px 0; }
   .mysubjects .check input { flex: none; margin-top: 1px; }
   #toolBody > .dl { margin: 0 var(--sp-2) var(--sp-2) 0; }
+  /* the sheet is as light as a pill is, so the buttons inside it take the chips' fill */
+  #toolBody .dl { background: var(--s3); }
   .check { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; font-size: var(--fs-13); color: var(--t2); }
   .check input { width: 20px; height: 20px; accent-color: var(--accent); }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-2); }
@@ -1144,6 +1153,119 @@
   table.data { width: 100%; margin-top: var(--sp-2); border-collapse: collapse; font-size: var(--fs-13); font-variant-numeric: tabular-nums; }
   table.data th, table.data td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
   table.data th { color: var(--t2); font-weight: 500; }
+  /* ================= tabs (the tools row, the plan map) ================= */
+  .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border-radius: var(--r-ctl); background: var(--s2); box-shadow: var(--edge); }
+  .tabs button { min-height: 36px; padding: 4px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--t2); font-size: var(--fs-13); font-weight: 600; cursor: pointer; touch-action: manipulation; transition: background-color var(--dur-fast), color var(--dur-fast); }
+  .tabs button[aria-selected="true"] { background: var(--s4); color: var(--t1); }
+  @media (pointer: coarse) { .tabs button { min-height: 44px; } }
+
+  /* ================= plan map ================= */
+  .pm-tabwrap { position: sticky; top: 0; z-index: 3; margin: 0 calc(-1 * var(--sp-5)) var(--sp-3); padding: var(--sp-2) var(--sp-5); background: var(--s2); }
+  .pm-tabs { background: var(--s3); box-shadow: none; }
+  .pm-tabs button[aria-selected="true"] { background: var(--s4); }
+  .pm-panel h3 { margin: var(--sp-5) 0 var(--sp-2); }
+  .pm-panel > h3:first-child { margin-top: var(--sp-2); }
+  .pm-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-1) var(--sp-4); align-items: center; padding: var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
+  .pm-big { display: flex; align-items: baseline; color: var(--c, var(--t1)); font-variant-numeric: tabular-nums; }
+  .pm-big b { font-size: 3.75rem; line-height: 1; font-weight: 700; letter-spacing: -0.04em; }
+  .pm-herotext strong { display: block; font-size: var(--fs-17); line-height: 1.2; }
+  .pm-herotext p { margin: 4px 0 0; font-size: var(--fs-13); color: var(--t2); }
+  .pm-gauge { position: relative; grid-column: 1 / -1; height: 8px; margin-top: var(--sp-3); border-radius: 4px; background: linear-gradient(90deg, #0a84ff, #8e8e93, #ff453a); }
+  .pm-mark { position: absolute; top: -4px; left: calc(var(--p) * 1%); width: 6px; height: 16px; margin-left: -3px; border-radius: 3px; background: var(--t1); box-shadow: 0 0 0 2px var(--s3); }
+  .pm-gaugeends { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 12px; color: var(--t3); }
+  .pm-src { margin: var(--sp-2) 0 0; font-size: 12px; }
+  .pm-what { margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-card); background: var(--s3); font-size: var(--fs-13); }
+  .pm-what summary { cursor: pointer; font-weight: 600; color: var(--t1); }
+  .pm-what p { margin: var(--sp-2) 0 0; color: var(--t2); }
+  .pm-arch { margin-top: var(--sp-4); padding: var(--sp-4); border-radius: var(--r-card); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
+  .pm-archhead { display: flex; align-items: center; gap: var(--sp-3); }
+  .pm-archhead strong { display: block; font-size: var(--fs-17); line-height: 1.25; }
+  .pm-eyebrow { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent-text); }
+  .pm-archrow { margin: var(--sp-2) 0 0; font-size: var(--fs-13); color: var(--t1); }
+  .pm-archrow.muted { color: var(--t2); }
+  .pm-seemap { margin-top: var(--sp-3); }
+  .pm-badge { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pm-badge.sm { width: 20px; height: 20px; font-size: 11px; vertical-align: middle; }
+  .pm-traits, .pm-feats, .pm-sim, .pm-legend { list-style: none; margin: 0; padding: 0; }
+  .pm-trait, .pm-feats li { padding: var(--sp-3) 0; border-top: 1px solid var(--line); }
+  .pm-trait:first-child, .pm-feats li:first-child { border-top: 0; }
+  .pm-trow { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+  .pm-trow strong { font-size: var(--fs-15); }
+  .pm-ts { flex: none; font-size: 12px; color: var(--t2); white-space: nowrap; }
+  .pm-tphrase { margin: 2px 0 var(--sp-2); font-size: var(--fs-13); color: var(--t2); }
+  .pm-tb { display: block; height: 6px; border-radius: 3px; background: var(--s4); overflow: hidden; }
+  .pm-tb i { display: block; height: 100%; width: calc(var(--w) * 1%); border-radius: 3px; background: var(--t3); }
+  .pm-trait.heavier .pm-tb i { background: var(--busy); }
+  .pm-trait.lighter .pm-tb i { background: var(--accent); }
+  .pm-tvals { margin: var(--sp-2) 0 0; font-size: 12px; color: var(--t3); font-variant-numeric: tabular-nums; }
+  .pm-def { margin: 2px 0 0; font-size: var(--fs-13); color: var(--t2); }
+  .pm-weight { display: inline-flex; align-items: center; gap: 3px; }
+  .pm-weight i { width: 8px; height: 8px; border-radius: 50%; background: var(--busy); }
+  .pm-weight em { font-style: normal; font-size: 12px; color: var(--t3); }
+  .pm-map { display: block; width: 100%; height: 320px; margin-top: var(--sp-2); border-radius: var(--r-card); background: var(--s1); box-shadow: var(--edge); touch-action: none; cursor: grab; }
+  .pm-map:active { cursor: grabbing; }
+  .pm-ctl { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--sp-2); }
+  .pm-scale { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); font-size: 12px; color: var(--t2); }
+  .pm-scale i { flex: 1; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #0a84ff, #8e8e93, #ff453a); }
+  .pm-card { margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
+  .pm-cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+  .pm-cardhead strong { font-size: var(--fs-17); font-variant-numeric: tabular-nums; }
+  .pm-coef { font-size: var(--fs-13); font-weight: 600; color: var(--t2); white-space: nowrap; }
+  .pm-cardmeta { margin: var(--sp-1) 0 0; font-size: var(--fs-13); color: var(--t2); }
+  .pm-open { margin: var(--sp-2) 0 0; border: 0; }
+  .pm-legend { display: grid; gap: var(--sp-2); }
+  .pm-legrow { display: flex; align-items: flex-start; gap: var(--sp-3); width: 100%; padding: var(--sp-3); border: 0; border-radius: var(--r-ctl); background: var(--s3); color: var(--t1); text-align: left; cursor: pointer; }
+  .pm-legrow[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+  .pm-legrow.mine .pm-badge { background: var(--free); }
+  .pm-legtext { display: grid; gap: 2px; min-width: 0; }
+  .pm-legtext strong { font-size: var(--fs-15); line-height: 1.25; }
+  .pm-legtext span { font-size: 12px; color: var(--t2); }
+  .pm-sim { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+  .pm-sim li { padding: var(--sp-3) var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
+  .pm-simhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+  .pm-simhead a { font-size: var(--fs-17); font-weight: 650; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+  .pm-simmeta { margin: 2px 0 0; font-size: var(--fs-13); color: var(--t2); }
+  .pm-simdiff { margin: var(--sp-1) 0 0; font-size: var(--fs-13); color: var(--t1); }
+  .pm-tab { width: 100%; margin-top: var(--sp-2); border-collapse: collapse; font-size: var(--fs-13); }
+  .pm-tab th, .pm-tab td { padding: 8px 6px; text-align: left; vertical-align: top; border-top: 1px solid var(--line); color: var(--t2); }
+  .pm-tab th { border-top: 0; color: var(--t3); font-weight: 600; }
+  .pm-tab strong { display: block; color: var(--t1); font-size: var(--fs-13); }
+  .pm-typ { display: block; font-size: 12px; color: var(--t3); }
+  .pm-tab .n { text-align: right; font-variant-numeric: tabular-nums; }
+  .pm-tab tr.mine td { background: var(--accent-wash); }
+  .pm-tab tr.mine strong { color: var(--free); }
+  @media (max-width: 420px) { .pm-big b { font-size: 3.25rem; } }
+
+  /* ================= free rooms ================= */
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
+  .fields input { width: 100%; min-width: 0; }
+  .fr-bf { margin-top: var(--sp-3); }
+  .fr-blds { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .fr-blds::-webkit-scrollbar { display: none; }
+  .fr-blds .choice { flex: none; }
+  .fr-now { margin: var(--sp-3) 0 0; }
+  .fr-later { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); font-size: var(--fs-15); cursor: pointer; }
+  .fr-later input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .fr-asof { margin: var(--sp-4) 0 0; padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--accent-line); background: var(--s3); border-radius: 0 var(--r-sm, 8px) var(--r-sm, 8px) 0; font-size: var(--fs-13); }
+  .fr-sum { margin: var(--sp-4) 0 0; font-size: var(--fs-15); color: var(--t2); }
+  .fr-sum strong { margin-right: 4px; font-size: 1.75rem; line-height: 1; font-weight: 700; color: var(--free); font-variant-numeric: tabular-nums; }
+  .fr-note { margin-top: var(--sp-1); }
+  .fr-list { list-style: none; margin: var(--sp-3) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--sp-2); }
+  .fr-card { padding: var(--sp-3); border-radius: var(--r-card); background: var(--s3); box-shadow: var(--edge); }
+  .fr-card.later { opacity: 0.86; }
+  .fr-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
+  .fr-room { font-size: var(--fs-17); font-weight: 650; font-variant-numeric: tabular-nums; }
+  .fr-bld { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-13); color: var(--t2); text-decoration: none; }
+  a.fr-bld { color: var(--accent-text); }
+  .fr-when { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--sp-2); margin: var(--sp-2) 0 0; }
+  .fr-time { font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--free); }
+  .fr-len { font-size: var(--fs-13); color: var(--t2); }
+  .fr-bar { position: relative; height: 8px; margin-top: var(--sp-3); border-radius: 4px; background: var(--s4); overflow: hidden; }
+  .fr-seg { position: absolute; top: 0; bottom: 0; left: calc(var(--l) * 1%); width: calc(var(--w) * 1%); }
+  .fr-seg.free { background: color-mix(in srgb, var(--free) 28%, transparent); }
+  .fr-seg.want { background: var(--free); }
+  .fr-seg.busy { background: var(--busy); }
+  .fr-more { margin: var(--sp-3) auto 0; border: 0; cursor: pointer; }
   .rows { list-style: none; margin: var(--sp-2) 0 0; padding: 0; border-radius: var(--r-card); background: var(--s3); overflow: hidden; }
   .rows li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px var(--sp-3); align-items: baseline; padding: 10px var(--sp-4); font-size: var(--fs-13); }
   .rows li + li { border-top: 1px solid var(--line); }
@@ -1163,6 +1285,7 @@
   .cmp-free { font-size: var(--fs-13); color: var(--t1); }
   .cmp-free b { color: var(--accent-text); font-weight: 600; }
   .muted { color: var(--t2); font-size: var(--fs-13); }
+  .install-steps { margin: var(--sp-3) 0; padding-left: 1.3em; display: grid; gap: var(--sp-2); }
   .row-add { display: flex; gap: var(--sp-2); align-items: end; margin-top: var(--sp-2); }
   .row-add .field { flex: 1; }
   .row-add .link { min-height: 44px; padding-inline: 16px; }
@@ -1231,8 +1354,12 @@
     .sheet-head { cursor: default; padding-top: 20px; }
   }
   @media (pointer: coarse) {
-    .chip, .dl, .link, .seg button, .choice { min-height: 44px; }
+    .chip, .link, .seg button, .choice { min-height: 44px; }
     .weekbtn { min-height: 44px; }
+    /* the tool buttons stay compact (a 44px pill of 13px text read as a big oval on phones); the touch target is
+       still 44px tall through an invisible extension */
+    .dl { min-height: 36px; position: relative; }
+    .dl::after { content: ""; position: absolute; inset: -4px 0; }
   }
 
   /* ================= first-visit tour: a swipeable sheet with small looping demos ================= */
@@ -1348,6 +1475,20 @@
   .tm-free b { margin-bottom: 4px; font-size: 0.6875rem; font-weight: 700; color: #30d158; letter-spacing: 0.02em; }
   @keyframes tm-free { 0%, 24% { opacity: 0; transform: scaleY(0.6); } 42%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: scaleY(0.6); } }
 
+  /* demo 5b: free rooms */
+  .tm-frs { position: absolute; left: 18px; right: 18px; top: 16px; bottom: 16px; display: flex; flex-direction: column; justify-content: space-between; }
+  .tm-frchips { display: flex; gap: 6px; }
+  .tm-frchips span { padding: 3px 10px; border-radius: 999px; background: var(--s2); box-shadow: var(--edge); font-size: 0.6875rem; font-weight: 600; color: var(--t2); }
+  .tm-frchips .on { background: var(--t1); color: var(--bg); animation: tm-press 4.2s var(--ease-out) infinite; }
+  .tm-fr { display: flex; align-items: center; gap: 10px; height: 24px; }
+  .tm-fr em { flex: none; width: 62px; font-style: normal; font-size: 0.75rem; font-weight: 650; color: var(--t1); font-variant-numeric: tabular-nums; }
+  .tm-frbar { flex: 1; height: 10px; display: flex; gap: 3px; border-radius: 5px; background: var(--s3); overflow: hidden; }
+  .tm-frbar i { height: 100%; }
+  .tm-frbar .b { flex: 2; background: var(--busy); }
+  .tm-frbar .f { flex: 3; background: var(--free); transform-origin: left; animation: tm-frfree 4.2s var(--ease-out) infinite; }
+  .tm-fr:nth-of-type(3) .f { animation-delay: 0.15s; } .tm-fr:nth-of-type(4) .f { animation-delay: 0.3s; }
+  @keyframes tm-frfree { 0%, 20% { transform: scaleX(0); opacity: 0.4; } 42%, 86% { transform: none; opacity: 1; } 100% { transform: scaleX(0); opacity: 0.4; } }
+
   /* demo 6: statistics */
   .tm-bars { position: absolute; left: 24px; right: 24px; top: 20px; height: 86px; display: flex; align-items: flex-end; gap: 10px; }
   .tm-bars i { flex: 1; border-radius: 7px 7px 3px 3px; background: var(--accent); transform-origin: bottom; animation: tm-grow 4.2s var(--ease-out) infinite; }
@@ -1368,7 +1509,7 @@
   @keyframes tm-pop { from { opacity: 0; transform: translateY(10px) scale(0.9); } to { opacity: 1; transform: none; } }
 
   @media (prefers-reduced-motion: reduce) {
-    .tm-rail, .tm-finger, .tm-pill, .tm-list, .tm-tap, .tm-pick, .tm-found, .tm-tool, .tm-mapbtn, .tm-roomlink, .tm-mini, .tm-pin, .tm-tap2, .tm-free, .tm-bars i { animation: none; }
+    .tm-rail, .tm-finger, .tm-pill, .tm-list, .tm-tap, .tm-pick, .tm-found, .tm-tool, .tm-mapbtn, .tm-roomlink, .tm-mini, .tm-pin, .tm-tap2, .tm-free, .tm-bars i, .tm-frchips .on, .tm-frbar .f { animation: none; }
     .tm-tool, .tm-list, .tm-found { opacity: 1; }
     .tm-tap, .tm-tap2, .tm-finger { display: none; }
     .tm-rail { transform: translateX(-81px); }
@@ -1629,6 +1770,8 @@
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></symbol>
   <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-door" viewBox="0 0 24 24"><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h3"/><path d="M13 20h9"/><path d="M10 12v.01"/><path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z"/></symbol>
+  <symbol id="i-scatter" viewBox="0 0 24 24"><circle cx="7" cy="16" r="2.2"/><circle cx="12" cy="8" r="2.2"/><circle cx="18" cy="14" r="2.2"/><circle cx="18" cy="5.5" r="1.4"/><circle cx="5.5" cy="7" r="1.4"/></symbol>
   <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
@@ -1655,16 +1798,29 @@
         <div id="factChecked"@@HIDE_CHECKED@@><dt>Sprawdzono</dt><dd>@@CHECKED@@</dd></div>
       </dl>
       <div class="tools enter d3" id="tools">
+      <div class="tabs" id="toolTabs" role="tablist" aria-label="Narzędzia planu">
+        <button type="button" role="tab" id="tt-plan" data-tab="plan" aria-controls="tp-plan" aria-selected="true">Plan</button>
+        <button type="button" role="tab" id="tt-export" data-tab="export" aria-controls="tp-export" aria-selected="false" tabindex="-1">Eksport</button>
+        <button type="button" role="tab" id="tt-analysis" data-tab="analysis" aria-controls="tp-analysis" aria-selected="false" tabindex="-1">Analiza</button>
+      </div>
+      <div class="toolpanel" id="tp-plan" role="tabpanel" aria-labelledby="tt-plan">
         <button class="dl" id="favBtn" type="button" aria-pressed="false"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-star"/></svg><span id="favText">Dodaj do ulubionych</span></button>
+        <button class="dl" id="subjectsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-user"/></svg>Moje przedmioty</button>
+        <button class="dl" id="tourBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-help"/></svg>Jak korzystać</button>
+        <span id="installRow" hidden><button class="dl" id="installBtn" type="button" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Zainstaluj aplikację</button><span id="installHint" class="muted"></span></span>
+      </div>
+      <div class="toolpanel" id="tp-export" role="tabpanel" aria-labelledby="tt-export" hidden>
         <a class="dl" id="icsLink" href="plan.ics" download="plan-@@GROUP@@.ics"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Pobierz plan (.ics)</a>
         <button class="dl" id="calBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-calendar-plus"/></svg>Dodaj do kalendarza</button>
         <button class="dl" id="shareBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-share"/></svg>Udostępnij</button>
-        <button class="dl" id="subjectsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-user"/></svg>Moje przedmioty</button>
+        <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
+      </div>
+      <div class="toolpanel" id="tp-analysis" role="tabpanel" aria-labelledby="tt-analysis" hidden>
         <button class="dl" id="statsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chart"/></svg>Statystyki</button>
         <button class="dl" id="compareBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"/></svg>Porównaj grupy</button>
-        <span id="installRow" hidden><button class="dl" id="installBtn" type="button" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Zainstaluj aplikację</button><span id="installHint" class="muted"></span></span>
-        <button class="dl" id="tourBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-help"/></svg>Jak korzystać</button>
-        <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
+        <button class="dl" id="roomsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-door"/></svg>Wolne sale</button>
+        <button class="dl" id="profileBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-scatter"/></svg>Mapa planów</button>
+      </div>
       </div>
       <div class="notice" id="offlineNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
@@ -1677,7 +1833,7 @@
       </div>
       <div class="notice" id="staleNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
-        <span class="notice-text">Wydział nie opublikował jeszcze planu na ten semestr. Widzisz ostatni dostępny plan; zajrzyj później, odświeżamy go codziennie.</span>
+        <span class="notice-text">Wydział nie opublikował jeszcze planu na ten semestr. Zajrzyj później: sprawdzamy go co 2 godziny, a gdy się pojawi, zobaczysz go tutaj.</span>
       </div>
       <div class="notice" id="changeNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
@@ -1781,7 +1937,7 @@
     <button class="round round-sm" id="tourClose" type="button" aria-label="Zamknij"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
   </div>
   <div class="tour-track" id="tourTrack" tabindex="0" aria-label="Krótki przewodnik, przesuwaj w bok">
-    <section class="tour-slide" aria-label="Krok 1 z 7">
+    <section class="tour-slide" aria-label="Krok 1 z 8">
       <div class="tour-art" aria-hidden="true">
         <span class="tm-week">12.10–17.10</span>
         <div class="tm-rail"><div class="tm-card"><i></i><i></i><i></i></div><div class="tm-card"><i></i><i></i><i></i></div><div class="tm-card"><i></i><i></i><i></i></div></div>
@@ -1790,7 +1946,7 @@
       <h3>Przesuń, aby zmienić tydzień</h3>
       <p>Przeciągnij plan w lewo, żeby zobaczyć następny tydzień, albo w prawo, żeby wrócić. Na komputerze użyj klawiszy <kbd>←</kbd> <kbd>→</kbd>.</p>
     </section>
-    <section class="tour-slide" aria-label="Krok 2 z 7">
+    <section class="tour-slide" aria-label="Krok 2 z 8">
       <div class="tour-art" aria-hidden="true">
         <div class="tm-pillwrap"><span class="tm-pill">12.10–17.10<svg class="i" focusable="false"><use href="#i-chevron-down"/></svg></span></div>
         <div class="tm-list"><span>5.10–10.10</span><span>12.10–17.10</span><span>19.10–24.10</span></div>
@@ -1798,7 +1954,7 @@
       <h3>Dotknij daty, aby skoczyć</h3>
       <p>Dotknięcie zakresu dat u góry otwiera listę wszystkich tygodni semestru. Przycisk „Bieżący tydzień” zawsze zabierze Cię z powrotem.</p>
     </section>
-    <section class="tour-slide" aria-label="Krok 3 z 7">
+    <section class="tour-slide" aria-label="Krok 3 z 8">
       <div class="tour-art" aria-hidden="true">
         <div class="tm-card tm-pick"><i></i><i></i></div>
         <span class="tm-tap"></span>
@@ -1808,7 +1964,7 @@
       <p>Nie byłeś na zajęciach? Dotknij ich, a PlanWAT pokaże, kiedy i gdzie te same zajęcia mają inne grupy kierunku.</p>
       <p>Przedmiot możesz też podświetlić w legendzie na dole strony.</p>
     </section>
-    <section class="tour-slide" aria-label="Krok 4 z 7">
+    <section class="tour-slide" aria-label="Krok 4 z 8">
       <div class="tour-art" aria-hidden="true">
         <div class="tm-dayhead"><b>Czwartek</b><span class="tm-mapbtn"><svg class="i" focusable="false"><use href="#i-map"/></svg>Mapa</span></div>
         <div class="tm-card tm-room"><i></i><span class="tm-roomlink"><svg class="i" focusable="false"><use href="#i-map-pin"/></svg><u>314 S</u></span></div>
@@ -1819,7 +1975,7 @@
       <p>Przycisk „Mapa” przy dniu pokazuje na mapie wszystkie budynki, w których tego dnia masz zajęcia.</p>
       <p>Podkreślona sala otwiera mapę przy jej budynku, a stamtąd wyznaczysz drogę pieszo.</p>
     </section>
-    <section class="tour-slide" aria-label="Krok 5 z 7">
+    <section class="tour-slide" aria-label="Krok 5 z 8">
       <div class="tour-art" aria-hidden="true">
         <div class="tm-cmp">
           <div class="tm-row"><em>Twoja</em><span class="tm-track"><i></i><i></i><i></i></span></div>
@@ -1832,7 +1988,20 @@
       <p>Dodaj do trzech innych grup, a plany staną obok siebie. PlanWAT wskaże godziny, w których wszyscy mają wolne, więc łatwo umówić wspólną naukę.</p>
       <p>Znajdziesz to w narzędziach pod „Porównaj grupy”.</p>
     </section>
-    <section class="tour-slide" aria-label="Krok 6 z 7">
+    <section class="tour-slide" aria-label="Krok 6 z 8">
+      <div class="tour-art" aria-hidden="true">
+        <div class="tm-frs">
+          <div class="tm-frchips"><span>30 min</span><span class="on">1 h</span><span>2 h</span></div>
+          <div class="tm-fr"><em>308 S</em><span class="tm-frbar"><i class="b"></i><i class="b"></i><i class="f"></i></span></div>
+          <div class="tm-fr"><em>0.12/ 65</em><span class="tm-frbar"><i class="b"></i><i class="f"></i><i class="b"></i></span></div>
+          <div class="tm-fr"><em>114 5</em><span class="tm-frbar"><i class="f"></i><i class="b"></i></span></div>
+        </div>
+      </div>
+      <h3>Znajdź wolną salę</h3>
+      <p>Potrzebujesz sali na odrabianie, konsultacje albo projekt? Wybierz dzień, godzinę i czas, a PlanWAT pokaże sale bez zapisanych zajęć, z paskiem dnia przy każdej: czerwone to zajęcia, zielone to wolne okno.</p>
+      <p>Znajdziesz to pod „Wolne sale” w narzędziach. To nie jest rezerwacja: o salę i tak umów się z prowadzącym lub dziekanatem.</p>
+    </section>
+    <section class="tour-slide" aria-label="Krok 7 z 8">
       <div class="tour-art" aria-hidden="true">
         <div class="tm-bars"><i></i><i></i><i></i><i></i><i></i></div>
         <div class="tm-facts"><span><b>4</b>okienka</span><span><b>8:00</b>najwcześniej</span><span><b>19 h</b>w tygodniu</span></div>
@@ -1841,7 +2010,7 @@
       <p>Ile godzin zajęć masz w tygodniu, które dni są najcięższe, ile jest okienek, kiedy zaczynasz najwcześniej i jaką salę widzisz najczęściej.</p>
       <p>Otworzysz je przyciskiem „Statystyki” w narzędziach.</p>
     </section>
-    <section class="tour-slide" aria-label="Krok 7 z 7">
+    <section class="tour-slide" aria-label="Krok 8 z 8">
       <div class="tour-art" aria-hidden="true">
         <div class="tm-tools">
           <div class="tm-tool"><span><svg class="i" focusable="false"><use href="#i-calendar-plus"/></svg></span>Kalendarz</div>
@@ -2055,7 +2224,8 @@
     return row;
   }
 
-  function buildingLabel(b) { return /^\d/.test(b.code) ? 'bud. ' + b.code : b.name; }
+  /* the SWF is named by its abbreviation everywhere on the plan; other places keep their name */
+  function buildingLabel(b) { return /^\d/.test(b.code) ? 'bud. ' + b.code : Campus.linkCode(b) === 'OSS' ? 'SWF' : b.name; }
 
   /* After the class at index li: a free stretch before the next one ("okienko") and/or the walk to the next
      class's building, flagged when the walk takes longer than the break. Overlapping classes (subgroups) get none. */
@@ -2078,9 +2248,12 @@
     }
     if (walk) {
       text.appendChild(document.createTextNode(gap ? ' · przejście do ' : 'Do '));
-      var to = text.appendChild(el('a', null, buildingLabel(walk.to)));
-      to.href = '../mapa/?b=' + encodeURIComponent(walk.to.code);
-      to.title = 'Pokaż budynek na mapie kampusu';
+      var toCode = Campus.linkCode(walk.to);
+      var to = text.appendChild(el(toCode ? 'a' : 'span', null, buildingLabel(walk.to)));
+      if (toCode) {
+        to.href = '../mapa/?b=' + encodeURIComponent(toCode);
+        to.title = 'Pokaż budynek na mapie kampusu';
+      }
       text.appendChild(document.createTextNode(' · ~' + walk.minutes + ' min pieszo' + (tight ? ', przerwa ' + brk + ' min' : '')));
     }
     group.appendChild(row);
@@ -2123,9 +2296,14 @@
       var banner = el('div', 'session-banner');
       banner.appendChild(icon('calendar-x'));
       var txt = el('span');
-      txt.appendChild(document.createTextNode('Brak zajęć stałych w tym tygodniu — '));
-      txt.appendChild(el('b', null, 'sesja egzaminacyjna'));
-      txt.appendChild(document.createTextNode(' lub przerwa. Sprawdź terminy dodatkowe w e-dziekanacie.'));
+      if (state.unpublished) {
+        txt.appendChild(el('b', null, 'Plan na ten semestr nie jest jeszcze opublikowany.'));
+        txt.appendChild(document.createTextNode(' Aktualne zajęcia sprawdzisz w e-dziekanacie.'));
+      } else {
+        txt.appendChild(document.createTextNode('Brak zajęć stałych w tym tygodniu — '));
+        txt.appendChild(el('b', null, 'sesja egzaminacyjna'));
+        txt.appendChild(document.createTextNode(' lub przerwa. Sprawdź terminy dodatkowe w e-dziekanacie.'));
+      }
       banner.appendChild(txt);
       body.appendChild(banner);
       off = 1;
@@ -3599,6 +3777,7 @@
       });
     });
     $('staleNotice').hidden = !stale;
+    state.unpublished = stale && !weeks.some(function (w) { return Object.keys(w.days).length; });
     $('termLine').textContent = m.term ? 'Plan zajęć · ' + m.term : 'Plan zajęć';
     fact('factFaculty', m.faculty);
     fact('factSemester', fmtFullDate(m.semesterStart || weeks[0].monday) + ' – ' +
@@ -3610,9 +3789,574 @@
     b.appendChild(icon('alert'));
     b.appendChild(el('span', null, 'Nie udało się wczytać danych planu (' + err + ').'));
     $('weekBody').replaceChildren(b);
-    ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'compareBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
+    ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'compareBtn', 'roomsBtn', 'profileBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
   }
 
+  /* ---------- free rooms ---------- */
+  function openRooms() {
+    var nowTime = function () { var d = new Date(); return pad2(d.getHours()) + ':' + pad2(d.getMinutes() - d.getMinutes() % 5); };
+    var opts = { date: todayIso(), time: nowTime(), dur: 60, bld: '', q: '', later: false, shown: 36 };
+    var DURS = [[30, '30 min'], [45, '45 min'], [60, '1 h'], [90, '1,5 h'], [120, '2 h'], [180, '3 h']];
+    var STEP = 36, TL_FROM = 7 * 60, TL_TO = 21 * 60;
+    var data = null, out = null, dateIn = null, timeIn = null, bldRow = null, durRow = null;
+    var span = TL_TO - TL_FROM;
+    function pct(min) { return Math.max(0, Math.min(100, (min - TL_FROM) / span * 100)); }
+    function seg(bar, cls, s, e) {
+      var from = pct(s), to = pct(e);
+      if (to - from < 0.4) return;
+      var d = bar.appendChild(el('span', 'fr-seg ' + cls));
+      d.style.setProperty('--l', from.toFixed(2));
+      d.style.setProperty('--w', (to - from).toFixed(2));
+    }
+    function buildingLabel(code, fallback) {
+      var b = code && window.Campus ? Campus.findBuilding(code) : null;
+      return b ? b.name : (fallback ? 'Budynek ' + fallback : '');
+    }
+    function card(r, from) {
+      var li = el('li', 'fr-card' + (r.free ? '' : ' later'));
+      var head = li.appendChild(el('div', 'fr-head'));
+      head.appendChild(el('strong', 'fr-room', r.room));
+      var code = window.Campus ? Campus.roomBuilding(r.room) : null;
+      var label = buildingLabel(code, r.building);
+      if (label && code) {
+        var a = head.appendChild(el('a', 'fr-bld', label));
+        a.href = '../mapa/?b=' + encodeURIComponent(code);
+      } else if (label) head.appendChild(el('span', 'fr-bld', label));
+      var when = li.appendChild(el('p', 'fr-when'));
+      when.appendChild(el('span', 'fr-time', PI.hhmm(r.start) + '–' + (r.until == null ? 'koniec dnia' : PI.hhmm(r.until))));
+      var len = r.until == null ? null : r.until - r.start;
+      when.appendChild(el('span', 'fr-len', r.free
+        ? (len == null ? 'wolna do końca dnia' : 'wolna ' + PI.fmtDuration(len))
+        : 'dopiero od ' + PI.hhmm(r.start) + (len == null ? '' : ', na ' + PI.fmtDuration(len))));
+      var bar = li.appendChild(el('div', 'fr-bar'));
+      bar.setAttribute('role', 'img');
+      bar.setAttribute('aria-label', r.busy.length
+        ? 'Zajęcia: ' + r.busy.map(function (b) { return PI.hhmm(b[0]) + '–' + PI.hhmm(b[1]); }).join(', ')
+        : 'Bez zajęć tego dnia');
+      seg(bar, 'free', r.start, r.until == null ? TL_TO : r.until);
+      r.busy.forEach(function (b) { seg(bar, 'busy', b[0], b[1]); });
+      seg(bar, 'want', r.start, Math.min(TL_TO, r.start + opts.dur));
+      return li;
+    }
+    /* buildings as chips, not a <select>: a native menu draws with inline styles, which the page's CSP forbids */
+    function fillBuildings(counts) {
+      if (opts.bld && !counts[opts.bld]) opts.bld = '';
+      var refocus = bldRow.contains(document.activeElement);
+      var total = 0;
+      Object.keys(counts).forEach(function (k) { total += counts[k]; });
+      bldRow.replaceChildren();
+      var add = function (value, label) {
+        var b = el('button', 'choice', label);
+        b.type = 'button';
+        b.setAttribute('data-value', value);
+        b.setAttribute('aria-pressed', String(opts.bld === value));
+        b.addEventListener('click', function () {
+          opts.bld = value;
+          update();
+          var on = bldRow.querySelector('[aria-pressed="true"]');
+          if (on) on.focus();
+        });
+        bldRow.appendChild(b);
+      };
+      add('', 'Wszystkie (' + total + ')');
+      Object.keys(counts).sort(function (a, b) {
+        return counts[b] - counts[a] || a.localeCompare(b, 'pl', { numeric: true });
+      }).forEach(function (k) { add(k, (k === '?' ? 'Inne' : 'Budynek ' + k) + ' (' + counts[k] + ')'); });
+      if (refocus) { var on = bldRow.querySelector('[aria-pressed="true"]'); if (on) on.focus(); }
+    }
+    function render() {
+      out.replaceChildren();
+      if (!data) { para(out, 'Wczytywanie rezerwacji sal…', 'muted'); return; }
+      if (data.error) { para(out, 'Nie udało się wczytać danych o salach. Spróbuj ponownie później.', 'muted'); return; }
+      var from = toMin(opts.time), range = PI.dataRange(data);
+      var res = PI.freeRooms(data, opts.date, from, opts.dur, opts.later);
+      if (!res) {
+        para(out, range ? 'Brak danych dla tego dnia. Dane obejmują ' + fmtFullDate(range.from) + ' – ' + fmtFullDate(range.to) + '.' : 'Brak danych o salach.', 'muted');
+        return;
+      }
+      var counts = {};
+      res.list.forEach(function (r) { var k = r.building || '?'; counts[k] = (counts[k] || 0) + 1; });
+      fillBuildings(counts);
+      var needle = PI.norm(opts.q);
+      var list = res.list.filter(function (r) {
+        if (opts.bld && (r.building || '?') !== opts.bld) return false;
+        return !needle || PI.norm(r.room).indexOf(needle) >= 0;
+      });
+      var now = list.filter(function (r) { return r.free; }).length;
+      var sum = out.appendChild(el('p', 'fr-sum'));
+      sum.setAttribute('role', 'status');
+      sum.appendChild(el('strong', null, String(list.length)));
+      sum.appendChild(document.createTextNode(' ' + PI.plural(list.length, 'wolna sala', 'wolne sale', 'wolnych sal') + ' na ' + PI.fmtDuration(opts.dur) +
+        ', ' + shortDate(opts.date) + ' od ' + PI.hhmm(from) + (opts.later && now !== list.length ? ' (od razu: ' + now + ')' : '')));
+      if (res.skipped) para(out, 'Pominięto ' + res.skipped + ' ' + PI.plural(res.skipped, 'salę', 'sale', 'sal') + ' bez żadnych zajęć w ciągu dwóch tygodni od tego dnia: nie wiadomo, czy są w użyciu.', 'muted fr-note');
+      if (!list.length) {
+        if (!opts.later) para(out, 'Nic nie jest wolne od razu. Zaznacz „Pokaż też sale wolne później”, żeby zobaczyć, co zwolni się w ciągu dnia.', 'muted');
+        return;
+      }
+      var ul = out.appendChild(el('ul', 'fr-list'));
+      list.slice(0, opts.shown).forEach(function (r) { ul.appendChild(card(r, from)); });
+      if (list.length > opts.shown) {
+        var more = out.appendChild(el('button', 'dl fr-more', 'Pokaż więcej (' + (list.length - opts.shown) + ')'));
+        more.type = 'button';
+        more.addEventListener('click', function () { opts.shown += STEP; render(); });
+      }
+    }
+    var update = function () { opts.shown = STEP; render(); };
+    openTool('Wolne sale', function (body) {
+      para(body, 'Kiedy sala nie ma zapisanych zajęć: przy ustalaniu terminu odrabiania, egzaminu, konsultacji albo projektu zespołowego. To nie jest rezerwacja: o salę i tak umawiasz się z prowadzącym lub dziekanatem.', 'muted');
+      var fields = body.appendChild(el('div', 'fields'));
+      dateIn = el('input');
+      dateIn.type = 'date';
+      dateIn.id = 'frDate';
+      dateIn.value = opts.date;
+      timeIn = el('input');
+      timeIn.type = 'time';
+      timeIn.id = 'frTime';
+      timeIn.step = 300;
+      timeIn.value = opts.time;
+      var q = el('input');
+      q.type = 'search';
+      q.id = 'frQuery';
+      q.placeholder = 'np. 308';
+      q.autocomplete = 'off';
+      fields.appendChild(field('Dzień', dateIn));
+      fields.appendChild(field('Od godziny', timeIn));
+      fields.appendChild(field('Sala', q));
+      bldRow = el('div', 'choices fr-blds');
+      bldRow.id = 'frBuilding';
+      bldRow.setAttribute('role', 'group');
+      bldRow.setAttribute('aria-label', 'Budynek');
+      var bf = body.appendChild(el('div', 'field fr-bf'));
+      bf.appendChild(el('span', null, 'Budynek'));
+      bf.appendChild(bldRow);
+      var nowBtn = body.appendChild(el('button', 'choice fr-now', 'Ustaw na teraz'));
+      nowBtn.type = 'button';
+      nowBtn.addEventListener('click', function () {
+        opts.date = todayIso();
+        opts.time = nowTime();
+        dateIn.value = opts.date;
+        timeIn.value = opts.time;
+        update();
+      });
+      durRow = choices('Potrzebuję', 'frDur', DURS, opts.dur, function (v) {
+        opts.dur = v;
+        Array.prototype.forEach.call(durRow.querySelectorAll('.choice'), function (b) {
+          b.setAttribute('aria-pressed', String(b.getAttribute('data-value') === String(v)));
+        });
+        update();
+      });
+      body.appendChild(durRow);
+      var laterLabel = body.appendChild(el('label', 'fr-later'));
+      var later = el('input');
+      later.type = 'checkbox';
+      later.id = 'frLater';
+      laterLabel.appendChild(later);
+      laterLabel.appendChild(el('span', null, 'Pokaż też sale wolne później tego dnia'));
+      later.addEventListener('change', function () { opts.later = later.checked; update(); });
+      dateIn.addEventListener('change', function () { opts.date = dateIn.value || opts.date; update(); });
+      timeIn.addEventListener('change', function () { opts.time = timeIn.value || opts.time; update(); });
+      q.addEventListener('input', function () { opts.q = q.value; update(); });
+      var asof = el('p', 'fr-asof muted');
+      asof.id = 'frAsof';
+      body.appendChild(asof);
+      out = body.appendChild(el('div'));
+      out.id = 'frResult';
+      render();
+    });
+    getJSON('data/rooms.json').then(function (d) {
+      data = d;
+      var range = PI.dataRange(d);
+      if (range && dateIn) { dateIn.min = range.from; dateIn.max = range.to; }
+      var asof = $('frAsof');
+      if (asof) asof.textContent = 'Według opublikowanych planów' + (d.asof ? ' · dane z ' + fmtFullDate(d.asof) : '') +
+        '. Nie obejmują wszystkich rezerwacji ani informacji o otwarciu sal, więc egzaminy, wydarzenia i plany spoza PlanWAT nie są tu widoczne.';
+      if (out) render();
+    }, function () { data = { error: true }; if (out) render(); });
+  }
+  $('roomsBtn').addEventListener('click', openRooms);
+
+  /* ---------- tabs ---------- */
+  /* Wires a tab bar that already exists: each [role=tab] names its panel in aria-controls and its key in data-tab.
+     Click, arrows, Home and End move between tabs. Returns show(key). */
+  function wireTabs(list, onShow) {
+    var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    function show(tab, focus) {
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        var panel = document.getElementById(t.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !on;
+      });
+      if (focus) tab.focus();
+      if (onShow) onShow(tab.getAttribute('data-tab'));
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { show(t); });
+      t.addEventListener('keydown', function (e) {
+        var j = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
+        if (j < 0) return;
+        e.preventDefault();
+        show(tabs[(j + tabs.length) % tabs.length], true);
+      });
+    });
+    return function (key) {
+      var hit = tabs.filter(function (t) { return t.getAttribute('data-tab') === key; })[0];
+      if (hit) show(hit);
+    };
+  }
+
+  /* ---------- plan map ---------- */
+  var COEF_NAME = 'Współczynnik przejebania™';  /* what the load score is called on the page */
+  function openProfile() {
+    var code = groupCode();
+    var data = null, me = null, view = null, picked = null, mode = 'near', focusArch = -1, ix = {};
+    var canvas = null, cardBox = null, listBox = null, panels = {}, legendBox = null, modeRow = null, showTab = null;
+    var VIEW_ALL = { x: 500, y: 500, r: 560 };
+    function hue(pct) {  /* light (blue) through grey to heavy (red) */
+      var a = [10, 132, 255], m = [142, 142, 147], b = [255, 69, 58];
+      var t = Math.max(0, Math.min(100, pct)) / 100, from = t < 0.5 ? a : m, to = t < 0.5 ? m : b, k = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+      return 'rgb(' + [0, 1, 2].map(function (i) { return Math.round(from[i] + (to[i] - from[i]) * k); }).join(',') + ')';
+    }
+    function scaleOf(w, h) { return Math.min(w, h) / (2 * view.r); }
+    function val(row, key) { return PI.featureValue(data, row, ix[key]); }
+    function show(f, v) { return PI.fmtFeature(f, v); }
+    function typicalOf(row) { return PI.fmtTypical([val(row, 'hours'), val(row, 'days'), val(row, 'gaps'), val(row, 'span')]); }
+    function badge(n, cls) { return el('span', 'pm-badge' + (cls ? ' ' + cls : ''), String(n)); }
+
+    function draw() {
+      if (!canvas || !data || !view || canvas.offsetParent === null) return;
+      var box = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+      var w = Math.max(200, Math.round(box.width)), h = Math.max(200, Math.round(box.height));
+      if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+      var g = canvas.getContext('2d'), s = scaleOf(w, h);
+      var css = getComputedStyle(document.documentElement);
+      var ink = css.getPropertyValue('--t1').trim() || '#fff', soft = css.getPropertyValue('--t2').trim() || '#aaa';
+      var back = css.getPropertyValue('--s1').trim() || '#111';
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, w, h);
+      var px = function (x) { return w / 2 + (x - view.x) * s; }, py = function (y) { return h / 2 + (y - view.y) * s; };
+      var dot = Math.max(2.2, Math.min(5.5, s * 9));
+      data.groups.forEach(function (r) {
+        g.beginPath();
+        g.arc(px(r[2]), py(r[3]), dot, 0, 6.2832);
+        g.fillStyle = hue(r[4]);
+        g.globalAlpha = focusArch >= 0 ? (r[5] === focusArch ? 0.95 : 0.14) : (me && r[5] === me[5] ? 0.95 : 0.55);
+        g.fill();
+      });
+      g.globalAlpha = 1;
+      g.font = '600 11px ' + (css.getPropertyValue('--font').trim() || 'sans-serif');
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      data.archetypes.forEach(function (a, i) {  /* a numbered badge at the middle of each archetype */
+        var xs = 0, ys = 0, n = 0;
+        data.groups.forEach(function (r) { if (r[5] === i) { xs += r[2]; ys += r[3]; n++; } });
+        if (!n) return;
+        var x = px(xs / n), y = py(ys / n), strong = i === focusArch || (focusArch < 0 && me && me[5] === i);
+        g.beginPath();
+        g.arc(x, y, 10, 0, 6.2832);
+        g.fillStyle = back;
+        g.globalAlpha = focusArch >= 0 && !strong ? 0.4 : 0.9;
+        g.fill();
+        g.lineWidth = strong ? 2 : 1;
+        g.strokeStyle = strong ? ink : soft;
+        g.stroke();
+        g.globalAlpha = focusArch >= 0 && !strong ? 0.5 : 1;
+        g.fillStyle = ink;
+        g.fillText(String(i + 1), x, y + 0.5);
+        g.globalAlpha = 1;
+      });
+      [me, picked].forEach(function (r, i) {
+        if (!r) return;
+        g.beginPath();
+        g.arc(px(r[2]), py(r[3]), dot + 4, 0, 6.2832);
+        g.lineWidth = 2;
+        g.strokeStyle = i === 0 ? '#32d74b' : ink;
+        g.stroke();
+      });
+      if (me) {
+        g.textAlign = 'left';
+        g.fillStyle = '#32d74b';
+        g.fillText('Twój plan', px(me[2]) + dot + 8, py(me[3]) - dot - 6);
+      }
+    }
+    function drawLater() { window.requestAnimationFrame(draw); }
+    function setView(v) { view = { x: v.x, y: v.y, r: v.r }; drawLater(); }
+
+    function showCard() {
+      cardBox.replaceChildren();
+      var r = picked || me;
+      if (!r) return;
+      var head = cardBox.appendChild(el('div', 'pm-cardhead'));
+      head.appendChild(el('strong', null, r[0] + (r === me ? ' (Twój plan)' : '')));
+      head.appendChild(el('span', 'pm-coef', 'współczynnik ' + r[4]));
+      var line = cardBox.appendChild(el('p', 'pm-cardmeta'));
+      line.appendChild(badge(r[5] + 1, 'sm'));
+      line.appendChild(document.createTextNode(' ' + r[1] + ' · ' + data.archetypes[r[5]].name));
+      cardBox.appendChild(el('p', 'pm-cardmeta', typicalOf(r)));
+      if (r !== me) {
+        var open = cardBox.appendChild(el('a', 'dl pm-open', 'Otwórz plan ' + r[0]));
+        open.href = '../' + encodeURIComponent(r[0]) + '/';
+      }
+    }
+
+    function renderYou() {
+      var p = panels.you;
+      p.replaceChildren();
+      var faculties = {};
+      data.groups.forEach(function (r) { faculties[r[1]] = true; });
+      var nf = Object.keys(faculties).length;
+      var hero = p.appendChild(el('div', 'pm-hero'));
+      var big = hero.appendChild(el('div', 'pm-big'));
+      big.appendChild(el('b', null, String(me[4])));
+      big.style.setProperty('--c', hue(me[4]));
+      var txt = hero.appendChild(el('div', 'pm-herotext'));
+      txt.appendChild(el('strong', null, COEF_NAME));
+      txt.appendChild(el('p', null, me[4] + '% porównanych planów jest lżejszych niż ' + code));
+      var gauge = hero.appendChild(el('div', 'pm-gauge'));
+      gauge.setAttribute('role', 'img');
+      gauge.setAttribute('aria-label', 'Współczynnik ' + me[4] + ' na 100');
+      gauge.style.setProperty('--p', String(me[4]));
+      gauge.appendChild(el('i', 'pm-mark'));
+      var ends = hero.appendChild(el('div', 'pm-gaugeends'));
+      ends.appendChild(el('span', null, '0 · najlżejszy'));
+      ends.appendChild(el('span', null, 'najcięższy · 100'));
+      p.appendChild(el('p', 'muted pm-src', data.groups.length + ' ' + PI.plural(data.groups.length, 'plan', 'plany', 'planów') + ' z ' + nf + ' ' +
+        PI.plural(nf, 'wydziału', 'wydziałów', 'wydziałów') + (data.asof ? ' · dane z ' + fmtFullDate(data.asof) : '')));
+      var what = p.appendChild(el('details', 'pm-what'));
+      what.appendChild(el('summary', null, 'Co znaczy ten współczynnik?'));
+      var weighed = data.features.filter(function (f) { return f.w > 0; }).map(function (f) { return f.name.toLowerCase(); });
+      what.appendChild(el('p', null, 'To liczba od 0 do 100: jaka część porównanych planów jest lżejsza od Twojego, więc 0 to najlżejszy plan, a 100 najcięższy. ' +
+        'Waży ją ' + weighed.length + ' cech tygodnia: ' + weighed.join(', ') + ' (wagi i definicje w zakładce „Metoda”). ' +
+        'To porównanie planów między sobą, a nie miara trudności studiów.'));
+
+      var arch = p.appendChild(el('div', 'pm-arch'));
+      var ah = arch.appendChild(el('div', 'pm-archhead'));
+      ah.appendChild(badge(me[5] + 1));
+      var at = ah.appendChild(el('div'));
+      at.appendChild(el('span', 'pm-eyebrow', 'Archetyp planu'));
+      at.appendChild(el('strong', null, data.archetypes[me[5]].name));
+      arch.appendChild(el('p', 'pm-archrow', 'Twój tydzień: ' + typicalOf(me)));
+      arch.appendChild(el('p', 'pm-archrow muted', 'Typowy w tym archetypie (' + data.archetypes[me[5]].n + ' ' +
+        PI.plural(data.archetypes[me[5]].n, 'grupa', 'grupy', 'grup') + '): ' + PI.fmtTypical(data.archetypes[me[5]].typical)));
+      var seeMap = arch.appendChild(el('button', 'choice pm-seemap', 'Pokaż na mapie'));
+      seeMap.type = 'button';
+      seeMap.addEventListener('click', function () { focusArch = me[5]; showTab('map'); renderLegend(); setView(VIEW_ALL); });
+
+      el('h3');
+      p.appendChild(el('h3', null, 'Co wyróżnia ten plan'));
+      var traits = PI.traits(data, me, 5);
+      if (!traits.length) p.appendChild(el('p', 'muted', 'Ten plan niczym się nie wyróżnia: jest bliski przeciętnemu.'));
+      var list = p.appendChild(el('ul', 'pm-traits'));
+      traits.forEach(function (t) {
+        var i = ix[t.key], f = data.features[i];
+        var li = list.appendChild(el('li', 'pm-trait ' + t.tone));
+        var top = li.appendChild(el('div', 'pm-trow'));
+        top.appendChild(el('strong', null, f.name));
+        top.appendChild(el('span', 'pm-ts', t.strength));
+        li.appendChild(el('p', 'pm-tphrase', t.label));
+        var bar = li.appendChild(el('span', 'pm-tb'));
+        bar.appendChild(el('i')).style.setProperty('--w', String(Math.round(Math.min(3, Math.abs(t.z)) / 3 * 100)));
+        li.appendChild(el('p', 'pm-tvals', 'Ty: ' + show(f, val(me, t.key)) + ' · średnia: ' + show(f, f.mean)));
+      });
+    }
+
+    function renderLegend() {
+      legendBox.replaceChildren();
+      data.archetypes.forEach(function (a, i) {
+        var li = legendBox.appendChild(el('li'));
+        var b = li.appendChild(el('button', 'pm-legrow' + (me && me[5] === i ? ' mine' : '')));
+        b.type = 'button';
+        b.setAttribute('aria-pressed', String(focusArch === i));
+        b.appendChild(badge(i + 1));
+        var t = b.appendChild(el('span', 'pm-legtext'));
+        t.appendChild(el('strong', null, a.name + (me && me[5] === i ? ' · Twój' : '')));
+        t.appendChild(el('span', null, a.n + ' ' + PI.plural(a.n, 'grupa', 'grupy', 'grup') + ' · ' + PI.fmtTypical(a.typical)));
+        b.addEventListener('click', function () {
+          focusArch = focusArch === i ? -1 : i;
+          renderLegend();
+          drawLater();
+        });
+      });
+    }
+
+    function renderList() {
+      listBox.replaceChildren();
+      var found = PI.similarPlans(data, me, mode, 6);
+      if (!found.length) { listBox.appendChild(el('p', 'muted', 'Żaden plan nie pasuje do tego kryterium.')); return; }
+      var ul = listBox.appendChild(el('ul', 'pm-sim'));
+      found.forEach(function (f) {
+        var other = PI.profileRow(data, f.code);
+        var li = ul.appendChild(el('li'));
+        var head = li.appendChild(el('div', 'pm-simhead'));
+        var a = head.appendChild(el('a', null, f.code));
+        a.href = '../' + encodeURIComponent(f.code) + '/';
+        head.appendChild(el('span', 'pm-coef', 'współczynnik ' + f.pct));
+        li.appendChild(el('p', 'pm-simmeta', f.faculty + ' · ' + PI.likeness(f.dist) + ' · archetyp ' + (f.arch + 1)));
+        var diff = PI.differences(data, me, other, 3);
+        li.appendChild(el('p', 'pm-simdiff', diff.length ? 'W porównaniu z Twoim: ' + diff.join(', ') : 'Prawie taki sam rozkład tygodnia'));
+      });
+    }
+
+    function renderHow() {
+      var p = panels.how;
+      p.replaceChildren();
+      p.appendChild(el('p', null, 'Każdy plan to trzynaście liczb opisujących typowy tydzień z zajęciami: godziny, okienka, długość dnia, początki i końce zajęć, weekendy, zmiany budynków i sale. ' +
+        'Współczynnik to ważona suma tych liczb w porównaniu z innymi planami, więc im wyżej, tym więcej planów jest lżejszych.'));
+      p.appendChild(el('h3', null, 'Cechy planu'));
+      var dl = p.appendChild(el('ul', 'pm-feats'));
+      data.features.forEach(function (f, i) {
+        var li = dl.appendChild(el('li'));
+        var top = li.appendChild(el('div', 'pm-trow'));
+        top.appendChild(el('strong', null, f.name));
+        var w = top.appendChild(el('span', 'pm-weight'));
+        var dots = f.w > 0 ? Math.max(1, Math.round(f.w * 5)) : 0;
+        w.setAttribute('role', 'img');
+        w.setAttribute('aria-label', f.w > 0 ? 'Waga we współczynniku: ' + dots + ' z 5' : 'Nie waży we współczynniku');
+        if (!dots) w.appendChild(el('em', null, 'tylko opis'));
+        for (var k = 0; k < dots; k++) w.appendChild(el('i'));
+        li.appendChild(el('p', 'pm-def', f.def));
+        li.appendChild(el('p', 'pm-tvals', 'Ty: ' + show(f, val(me, f.key)) + ' · średnia: ' + show(f, f.mean)));
+      });
+      p.appendChild(el('h3', null, 'Archetypy'));
+      p.appendChild(el('p', null, 'Plany o podobnym tygodniu grupujemy w ' + data.archetypes.length + ' archetypów (metoda k-średnich). Nazwa archetypu to dwie cechy, którymi jego środek najbardziej odbiega od przeciętnej. Numery na mapie to numery z tej tabeli, od najlżejszego do najcięższego.'));
+      var total = data.groups.length;
+      var t = p.appendChild(el('table', 'pm-tab'));
+      var head = t.appendChild(el('thead')).appendChild(el('tr'));
+      ['Nr', 'Archetyp', 'Grup', 'Udział'].forEach(function (h) { head.appendChild(el('th', null, h)).scope = 'col'; });
+      var body = t.appendChild(el('tbody'));
+      data.archetypes.forEach(function (a, i) {
+        var tr = body.appendChild(el('tr', me && me[5] === i ? 'mine' : null));
+        tr.appendChild(el('td', null, String(i + 1)));
+        var name = tr.appendChild(el('td'));
+        name.appendChild(el('strong', null, a.name));
+        name.appendChild(el('span', 'pm-typ', PI.fmtTypical(a.typical)));
+        tr.appendChild(el('td', 'n', String(a.n)));
+        tr.appendChild(el('td', 'n', Math.round(a.n / total * 100) + '%'));
+      });
+      p.appendChild(el('h3', null, 'Mapa'));
+      p.appendChild(el('p', null, 'Mapa to rzut główny (PCA) tych samych trzynastu liczb na dwa wymiary: grupy o podobnym tygodniu leżą blisko siebie, a lekkie plany po lewej, ciężkie po prawej. ' +
+        data.explained * 100 + '% zróżnicowania planów mieści się w tych dwóch wymiarach, więc odległości na mapie są przybliżone.'));
+      p.appendChild(el('p', 'muted', 'Wszystko liczy się przy każdej budowie strony z planów opublikowanych przez wydziały. Nic nie jest trenowane na zewnętrznych danych. To żart oparty na danych, nie ocena grupy ani uczelni.'));
+    }
+
+    function attachMap() {
+      var drag = null;
+      canvas.addEventListener('pointerdown', function (e) {
+        drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: 0 };
+        canvas.setPointerCapture(e.pointerId);
+      });
+      canvas.addEventListener('pointermove', function (e) {
+        if (!drag) return;
+        var box = canvas.getBoundingClientRect(), s = scaleOf(box.width, box.height);
+        drag.moved = Math.max(drag.moved, Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y));
+        if (drag.moved > 6) { view.x = drag.vx - (e.clientX - drag.x) / s; view.y = drag.vy - (e.clientY - drag.y) / s; drawLater(); }
+      });
+      canvas.addEventListener('pointerup', function (e) {
+        var d = drag;
+        drag = null;
+        if (!d || d.moved > 6) return;
+        var box = canvas.getBoundingClientRect(), s = scaleOf(box.width, box.height);
+        var x = view.x + (e.clientX - box.left - box.width / 2) / s, y = view.y + (e.clientY - box.top - box.height / 2) / s;
+        picked = PI.hitDot(data, x, y, 16 / s);
+        showCard();
+        drawLater();
+      });
+    }
+
+    function buildMapPanel(p) {
+      p.appendChild(el('p', 'muted', 'Każda kropka to grupa, a bliskie siebie leżą grupy o podobnym tygodniu. Kolor to współczynnik, numery to archetypy z listy pod mapą.'));
+      canvas = p.appendChild(el('canvas', 'pm-map'));
+      canvas.id = 'pmMap';
+      canvas.setAttribute('role', 'img');
+      canvas.setAttribute('aria-label', 'Mapa planów: każda kropka to grupa, bliskie kropki to podobne plany');
+      var ctl = p.appendChild(el('div', 'pm-ctl'));
+      [['Moje otoczenie', function () { setView({ x: me[2], y: me[3], r: PI.neighbourhood(data, me, 40).r * 1.25 }); }],
+       ['Wszystkie plany', function () { setView(VIEW_ALL); }],
+       ['+', function () { setView({ x: view.x, y: view.y, r: Math.max(25, view.r / 1.5) }); }],
+       ['−', function () { setView({ x: view.x, y: view.y, r: Math.min(900, view.r * 1.5) }); }]].forEach(function (b, i) {
+        var btn = ctl.appendChild(el('button', 'choice', b[0]));
+        btn.type = 'button';
+        if (i > 1) btn.setAttribute('aria-label', i === 2 ? 'Przybliż mapę' : 'Oddal mapę');
+        btn.addEventListener('click', function () { if (data && me) b[1](); });
+      });
+      var scale = p.appendChild(el('div', 'pm-scale'));
+      scale.appendChild(el('span', null, 'lżejszy'));
+      scale.appendChild(el('i'));
+      scale.appendChild(el('span', null, 'cięższy'));
+      cardBox = p.appendChild(el('div', 'pm-card'));
+      p.appendChild(el('h3', null, 'Archetypy na mapie'));
+      p.appendChild(el('p', 'muted', 'Dotknij archetypu, żeby zostawić na mapie tylko jego plany.'));
+      legendBox = p.appendChild(el('ul', 'pm-legend'));
+    }
+
+    openTool('Mapa planów', function (body) {
+      var wrap = body.appendChild(el('div', 'pm-tabwrap'));
+      var bar = wrap.appendChild(el('div', 'tabs pm-tabs'));
+      bar.setAttribute('role', 'tablist');
+      bar.setAttribute('aria-label', 'Sekcje mapy planów');
+      [['you', 'Twój plan'], ['map', 'Mapa'], ['like', 'Podobne'], ['how', 'Metoda']].forEach(function (t, i) {
+        var b = bar.appendChild(el('button', null, t[1]));
+        b.type = 'button';
+        b.id = 'pmt-' + t[0];
+        b.setAttribute('role', 'tab');
+        b.setAttribute('data-tab', t[0]);
+        b.setAttribute('aria-controls', 'pmp-' + t[0]);
+        b.setAttribute('aria-selected', String(i === 0));
+        b.tabIndex = i === 0 ? 0 : -1;
+        var p = body.appendChild(el('div', 'pm-panel'));
+        p.id = 'pmp-' + t[0];
+        p.setAttribute('role', 'tabpanel');
+        p.setAttribute('aria-labelledby', b.id);
+        p.hidden = i !== 0;
+        panels[t[0]] = p;
+      });
+      showTab = wireTabs(bar, function (key) {
+        $('toolBody').scrollTop = 0;
+        if (key === 'map') drawLater();
+      });
+      panels.you.appendChild(el('p', 'muted', 'Wczytywanie planów…'));
+      buildMapPanel(panels.map);
+      panels.like.appendChild(el('h3', null, 'Znajdź plan pod swój rytm'));
+      modeRow = choices('Szukam planu', 'pmMode', [['near', 'Najbardziej podobnego'], ['lighter', 'Lżejszego'], ['gaps', 'Z mniejszą liczbą okienek'],
+        ['short', 'Z krótszymi dniami'], ['late', 'Z późniejszymi startami']], mode, function (v) {
+          mode = v;
+          Array.prototype.forEach.call(modeRow.querySelectorAll('.choice'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-value') === v)); });
+          if (data && me) renderList();
+        });
+      panels.like.appendChild(modeRow);
+      listBox = panels.like.appendChild(el('div'));
+      panels.like.appendChild(el('p', 'muted', 'To porównanie rozkładu zajęć, a nie zgodności programu studiów. Zmianę grupy trzeba uzgodnić na uczelni.'));
+    });
+    window.addEventListener('resize', drawLater);
+
+    getJSON('data/profiles.json').then(function (d) {
+      data = d;
+      d.features.forEach(function (f, i) { ix[f.key] = i; });
+      me = PI.profileRow(d, code);
+      if (!me) {
+        panels.you.replaceChildren(el('p', 'muted', 'Za mało zajęć w planie ' + code + ', żeby go porównać z innymi.'));
+        return;
+      }
+      attachMap();
+      renderYou();
+      renderLegend();
+      renderList();
+      renderHow();
+      showCard();
+      setView(VIEW_ALL);
+    }, function () {
+      panels.you.replaceChildren(el('p', 'muted', 'Nie udało się wczytać planów do porównania. Spróbuj ponownie później.'));
+    });
+  }
+  $('profileBtn').addEventListener('click', openProfile);
+
+  /* the tools row: three tabs, the last one used is remembered on this device */
+  (function () {
+    var KEY = 'planwat.toolTab', list = $('toolTabs');
+    var showTool = wireTabs(list, function (key) { try { localStorage.setItem(KEY, key); } catch (e) { /* private mode */ } });
+    try { var saved = localStorage.getItem(KEY); if (saved && saved !== 'plan') showTool(saved); } catch (e) { /* private mode */ }
+  })();
   /* offline: the service worker keeps the last copy of this page and its plan; say that it is a saved copy */
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(function () {});
   /* installing the site as an app: Chrome/Edge/Android offer a prompt we can trigger; iOS Safari has only the share menu */
@@ -3625,10 +4369,21 @@
     function show(on) { var row = document.getElementById('installRow'); if (row) row.hidden = !on; btn.hidden = !on; }
     if (standalone) return;
     if (ios) {
-      if (hint) hint.textContent = 'W Safari: Udostępnij → „Do ekranu początkowego”.';
-      btn.hidden = true;
-      var row = document.getElementById('installRow');
-      if (row) row.hidden = false;
+      /* iOS has no install prompt to trigger: the button opens the three taps that do it from the share menu */
+      var safari = !/crios|fxios|edgios|opios|duckduckgo|gsa\//i.test(navigator.userAgent);
+      if (hint) hint.textContent = '';
+      show(true);
+      btn.addEventListener('click', function () {
+        openTool('Zainstaluj aplikację', function (body) {
+          para(body, 'PlanWAT działa wtedy jak aplikacja: ikona na ekranie początkowym, pełny ekran i plan także bez internetu.');
+          var steps = el('ol', 'install-steps');
+          ['Dotknij przycisku Udostępnij (kwadrat ze strzałką w górę) na dolnym pasku przeglądarki.',
+           'Przewiń listę i wybierz „Do ekranu początkowego”.',
+           'Dotknij „Dodaj”. Ikona PlanWAT pojawi się na ekranie początkowym.'].forEach(function (t) { steps.appendChild(el('li', null, t)); });
+          body.appendChild(steps);
+          if (!safari) para(body, 'Nie widzisz „Do ekranu początkowego”? Otwórz tę stronę w Safari i powtórz kroki.', 'muted');
+        });
+      });
       return;
     }
     window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); offer = e; show(true); });

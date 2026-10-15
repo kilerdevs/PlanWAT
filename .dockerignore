@@ -1,6 +1,7 @@
 # Only what the Dockerfile copies is needed; keep everything else out of the build context.
 *
 !build.py
+!profiles.py
 !src/
 !timetables/
 !deploy/nginx.conf

@@ -262,12 +262,171 @@
     return weeks;
   }
 
+  /* ---------- "Wolne sale" ---------- */
+  var DAY_END = 24 * 60;
+  var NEAR_DAYS = 14;  /* a room counts as known on a day when it has a class within two weeks of it */
+
+  /* "308 S" -> "S", "0.24/135" -> "135", "T3.1W" -> "" : the building a room belongs to */
+  function building(room) {
+    var m = /\/\s*(\w+)\s*$/.exec(room) || /^\S+\s+([A-Za-zĄĆĘŁŃÓŚŹŻ]{1,3}|\d{1,3}[A-Z]?)$/.exec(room);
+    return m ? m[1] : '';
+  }
+  function dataRange(roomData) {
+    var epoch = dayNumber(roomData.epoch), b = roomData.b, lo = Infinity, hi = -Infinity;
+    for (var i = 1; i < b.length; i += 4) { lo = Math.min(lo, b[i]); hi = Math.max(hi, b[i]); }
+    return lo > hi ? null : { from: isoFromDayNumber(epoch + lo), to: isoFromDayNumber(epoch + hi) };
+  }
+  /* The earliest window of at least `need` minutes at or after `from`, given a room's merged busy spans
+     [[start, end], ...] sorted by start: { start, until } (until null: free for the rest of the day), or null. */
+  function firstWindow(busy, from, need) {
+    var at = from;
+    for (var i = 0; i < busy.length; i++) {
+      if (busy[i][1] <= at) continue;
+      if (busy[i][0] >= at + need) return { start: at, until: busy[i][0] };
+      at = Math.max(at, busy[i][1]);
+    }
+    return at + need <= DAY_END ? { start: at, until: null } : null;
+  }
+  /* rooms.json -> the rooms with no class for `need` minutes from `from` on the date.
+     Each is { room, building, start, until, free (free from `from` on), busy: [[s, e], ...] } ordered best-first:
+     free now before free later, then the longest stretch. With `later`, rooms whose window opens after `from`
+     are listed too. Rooms with no class within two weeks of the date are not guessed at: they are counted in
+     `skipped`. Null when the date lies outside the data. */
+  function freeRooms(roomData, iso, from, need, later) {
+    var epoch = dayNumber(roomData.epoch), day = dayNumber(iso) - epoch, b = roomData.b;
+    var byRoom = {}, known = {}, first = Infinity, last = -Infinity;
+    for (var i = 0; i + 3 < b.length; i += 4) {
+      first = Math.min(first, b[i + 1]);
+      last = Math.max(last, b[i + 1]);
+      if (Math.abs(b[i + 1] - day) <= NEAR_DAYS) known[b[i]] = true;
+      if (b[i + 1] === day) (byRoom[b[i]] = byRoom[b[i]] || []).push([b[i + 2], b[i + 3]]);
+    }
+    if (day < first || day > last) return null;
+    var list = [], skipped = 0;
+    roomData.rooms.forEach(function (name, r) {
+      if (!known[r]) { skipped++; return; }
+      var busy = (byRoom[r] || []).sort(function (x, y) { return x[0] - y[0] || x[1] - y[1]; });
+      var win = firstWindow(busy, from, need);
+      if (!win || (!later && win.start !== from)) return;
+      list.push({ room: name, building: building(name), start: win.start, until: win.until, free: win.start === from, busy: busy });
+    });
+    list.sort(function (x, y) {
+      var ux = x.until == null ? 1e9 : x.until - x.start, uy = y.until == null ? 1e9 : y.until - y.start;
+      return (y.free - x.free) || (x.free ? 0 : x.start - y.start) || (uy - ux) ||
+        x.room.localeCompare(y.room, 'pl', { numeric: true });
+    });
+    return { list: list, skipped: skipped };
+  }
+
+  /* ---------- "Mapa planów" ---------- */
+  /* data/profiles.json rows: [group, faculty, x, y, percentile, archetype, load, z1 ... z13], x and y in 0..1000,
+     z-scores in hundredths. The first PROFILE_Z columns are everything before the z-scores. */
+  var PROFILE_Z = 7;
+  function profileRow(data, code) {
+    var rows = (data && data.groups) || [];
+    for (var i = 0; i < rows.length; i++) if (rows[i][0] === code) return rows[i];
+    return null;
+  }
+  function zOf(row, i) { return row[PROFILE_Z + i] / 100; }
+  function strengthLabel(z) {
+    var a = Math.abs(z);
+    return a >= 1.5 ? 'duża różnica' : a >= 0.8 ? 'różnica' : 'drobna różnica';
+  }
+  /* what sets one plan apart: the features furthest from the average, strongest first
+     ({ key, label, z, strength, tone: 'heavier' | 'lighter' | 'plain' }) */
+  function traits(data, row, n) {
+    var out = [];
+    data.features.forEach(function (f, i) {
+      var z = zOf(row, i);
+      if (Math.abs(z) < 0.4) return;
+      out.push({ key: f.key, label: z > 0 ? f.high : f.low, z: z, strength: strengthLabel(z),
+        tone: !f.w ? 'plain' : (z > 0) === (f.w > 0) ? 'heavier' : 'lighter' });
+    });
+    out.sort(function (a, b) { return Math.abs(b.z) - Math.abs(a.z) || (a.key < b.key ? -1 : 1); });
+    return out.slice(0, n || 5);
+  }
+  var PLAN_MODES = {
+    near: null,
+    lighter: function (row, other) { return other[6] < row[6]; },
+    gaps: function (row, other, at) { return zOf(other, at.gaps) <= zOf(row, at.gaps) - 0.5; },
+    short: function (row, other, at) { return zOf(other, at.span) <= zOf(row, at.span) - 0.5; },
+    late: function (row, other, at) { return zOf(other, at.early) <= zOf(row, at.early) - 0.5; }
+  };
+  /* other plans like this one, nearest first: by the distance between their weeks (all features alike), or only among
+     those that also are lighter / have fewer gaps / shorter days / later starts than this one */
+  function similarPlans(data, row, mode, n) {
+    var at = {};
+    data.features.forEach(function (f, i) { at[f.key] = i; });
+    var keep = PLAN_MODES[mode] || null, out = [];
+    data.groups.forEach(function (other) {
+      if (other[0] === row[0] || (keep && !keep(row, other, at))) return;
+      var d = 0;
+      for (var i = 0; i < data.features.length; i++) { var diff = zOf(row, i) - zOf(other, i); d += diff * diff; }
+      out.push({ code: other[0], faculty: other[1], pct: other[4], arch: other[5], dist: Math.sqrt(d) });
+    });
+    out.sort(function (a, b) { return a.dist - b.dist || (a.code < b.code ? -1 : 1); });
+    return out.slice(0, n || 6);
+  }
+  /* a feature's real value for a plan (from its z-score) and how the page prints it */
+  function featureValue(data, row, i) {
+    var f = data.features[i];
+    return f.mean + zOf(row, i) * f.std;
+  }
+  function fmtFeature(f, v) {
+    var n1 = function (x) { return (Math.round(x * 10) / 10).toString().replace('.', ','); };
+    if (f.unit === 'h') return n1(v) + ' h';
+    if (f.unit === 'min') return fmtDuration(Math.max(0, Math.round(v)));
+    if (f.unit === 'pct') return Math.round(Math.max(0, v) * 100) + '%';
+    return v >= 10 ? String(Math.round(v)) : n1(Math.max(0, v));
+  }
+  /* "typical week" of an archetype: [hours, days, gaps minutes, day length minutes] */
+  function fmtTypical(t) {
+    return fmtFeature({ unit: 'h' }, t[0]) + ' zajęć · ' + fmtFeature({ unit: 'n' }, t[1]) + ' ' + plural(Math.round(t[1]), 'dzień', 'dni', 'dni') +
+      ' · okienka ' + fmtFeature({ unit: 'min' }, t[2]) + ' · dzień ' + fmtFeature({ unit: 'min' }, t[3]);
+  }
+
+  /* how another plan differs from this one in words: the features where they are far apart, biggest gap first
+     ("krótsze dni na uczelni", "bez weekendów", ...), at most n */
+  function differences(data, row, other, n) {
+    var out = [];
+    data.features.forEach(function (f, i) {
+      var d = zOf(other, i) - zOf(row, i);
+      if (Math.abs(d) >= 0.6) out.push({ d: d, key: f.key, text: d > 0 ? f.high : f.low });
+    });
+    out.sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d) || (a.key < b.key ? -1 : 1); });
+    return out.slice(0, n || 2).map(function (x) { return x.text; });
+  }
+  /* how alike two plans are, in words, from the distance between their weeks */
+  function likeness(dist) {
+    return dist < 1 ? 'bardzo podobny' : dist < 2 ? 'podobny' : 'trochę inny';
+  }
+  /* the plans nearest to one on the map, for "moje otoczenie": a box in map units that holds `count` of them */
+  function neighbourhood(data, row, count) {
+    var near = data.groups.slice().sort(function (a, b) {
+      return Math.hypot(a[2] - row[2], a[3] - row[3]) - Math.hypot(b[2] - row[2], b[3] - row[3]);
+    }).slice(0, count || 40);
+    var r = 0;
+    near.forEach(function (o) { r = Math.max(r, Math.hypot(o[2] - row[2], o[3] - row[3])); });
+    return { x: row[2], y: row[3], r: Math.max(r, 40) };
+  }
+  /* the dot under a point, within `reach` map units, or null */
+  function hitDot(data, x, y, reach) {
+    var best = null, bd = reach;
+    data.groups.forEach(function (g) {
+      var d = Math.hypot(g[2] - x, g[3] - y);
+      if (d <= bd) { bd = d; best = g; }
+    });
+    return best;
+  }
+
   var PlanInsights = {
     toMin: toMin, hhmm: hhmm, fmtDuration: fmtDuration, plural: plural, norm: norm,
     lessons: lessons, gaps: gaps, isExam: isExam, subjectProgress: subjectProgress, ordinals: ordinals, stats: stats,
     lessonKey: lessonKey, fingerprint: fingerprint, diff: diff,
     freeWindows: freeWindows, intervals: intervals, overlaps: overlaps, byDate: byDate,
     yearOf: yearOf, peersOf: peersOf, catchUp: catchUp,
+    differences: differences, likeness: likeness, featureValue: featureValue, fmtFeature: fmtFeature, fmtTypical: fmtTypical, profileRow: profileRow, traits: traits, similarPlans: similarPlans, neighbourhood: neighbourhood, hitDot: hitDot,
+    freeRooms: freeRooms, firstWindow: firstWindow, dataRange: dataRange, building: building,
     monthGrid: monthGrid, dayNumber: dayNumber, isoFromDayNumber: isoFromDayNumber
   };
   if (typeof module === 'object' && module.exports) module.exports = PlanInsights;

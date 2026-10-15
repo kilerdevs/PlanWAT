@@ -391,8 +391,18 @@ ROOM_TITLES = {"dr", "hab", "prof", "inż", "inz", "mgr", "lic", "płk", "ppłk"
                "ppor", "gen", "bryg", "rez", "ucz"}
 
 
+# A lecturer alias the converter failed to split off the room: initial(s) glued to a capitalised surname
+# ('AKowalski'). A real room never has two capitals followed by a run of lowercase letters ('Teams', '314 S',
+# 'ST.nr 1(PWC2)'); U+FFFD stands in for a letter lost to the page's code page.
+_UP, _LOW = 'A-ZĄĆĘŁŃÓŚŹŻ', 'a-ząćęłńóśźż'
+ALIAS_RE = re.compile(rf'[{_UP}�]{{1,2}}[{_UP}][{_LOW}�]{{3,}}(?:-[{_UP}][{_LOW}�]+)?')
+
+
 def names_person(part):
-    """True for 'dr inż. Kowalski Jan': leading title(s) followed by a capitalised name."""
+    """True for 'dr inż. Kowalski Jan' (leading title(s) followed by a capitalised name) and for a bare
+    lecturer alias such as 'AKowalski'."""
+    if ALIAS_RE.fullmatch(part.strip()):
+        return True
     toks = [t for t in re.split(r"[\s.()]+", part.strip()) if t]
     i = 0
     while i < len(toks) and toks[i].lower() in ROOM_TITLES:

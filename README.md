@@ -186,9 +186,18 @@ node tests/e2e/serve.js           # podgląd: http://127.0.0.1:4173 (tak jak Git
 
 ### Narzędzia
 
+Narzędzia są w trzech zakładkach pod tytułem planu: **Plan** (ulubione, moje przedmioty, jak korzystać, instalacja), **Eksport**
+(pobranie `.ics`, kalendarz, udostępnianie, drukowanie) i **Analiza** (statystyki, porównanie grup, wolne sale, mapa planów).
+
 - **Gdzie odrobić?** znajduje te same zajęcia (ten sam przedmiot, rodzaj i numer) w innych grupach rocznika i zaznacza
   terminy kolidujące z Twoim planem.
 - **Porównaj grupy**: plany do czterech grup obok siebie i godziny, w których wszyscy mają wolne.
+- **Wolne sale**: dzień, godzina, czas od 30 min do 3 h, budynek i numer sali; przy każdej sali pasek dnia z zajęciami i wolnym
+  oknem, a „pokaż też sale wolne później” dopisuje te, które zwolnią się w ciągu dnia. To nie jest rezerwacja.
+- **Mapa planów** (cztery zakładki: Twój plan, Mapa, Podobne, Metoda): „Współczynnik przejebania™” (0–100, jaka część
+  porównanych planów jest lżejsza od Twojego), archetyp, to, co plan wyróżnia, mapa wszystkich planów z numerowaną listą
+  archetypów, wyszukiwanie planu podobnego, lżejszego albo z mniejszą liczbą okienek i definicje wszystkich cech. Liczone w
+  `profiles.py` z opublikowanych planów (PCA i k-średnie), bez uczenia modeli. To żart oparty na danych, nie ocena grupy.
 - **Statystyki**: godziny w tygodniu, według dni i rodzajów zajęć, najwcześniejszy początek, najdłuższy dzień, okienka.
 - **Kalendarz**: pobranie `.ics`, subskrypcja (Google, Apple przez `webcal`, link), wariant z przypomnieniem 15 minut
   przed zajęciami (`plan-przypomnienia.ics`), udostępnianie.
@@ -212,7 +221,7 @@ Strona `/mapa/` pokazuje wszystkie budynki WAT na mapie 3D, pokolorowane według
 
 - **Motyw jasny i ciemny**: domyślnie według systemu, z przełącznikiem Auto / Ciemny / Jasny. Mapa zawsze jest ciemna.
 - **Aplikacja offline**: Service Worker zachowuje otwarte strony i plany, a każdą grupę można dodać do ekranu głównego.
-- **Przewodnik** przy pierwszej wizycie: siedem krótkich kroków z animowanymi przykładami.
+- **Przewodnik** przy pierwszej wizycie: osiem krótkich kroków z animowanymi przykładami (także „Znajdź wolną salę”).
 - **WCAG 2.1 AA**: kontrast, obsługa klawiatury i czytników ekranu, szanowane `prefers-reduced-motion`.
 - Bez frameworka, bez skryptów firm trzecich, płynnie na przeciętnym telefonie.
 
@@ -235,7 +244,7 @@ site/<GRUPA>/index.html                 strona planu
 site/<GRUPA>/plan.ics                   bajt w bajt kopia kalendarza bieżącego semestru
 site/<GRUPA>/plan-<semestr>.ics         drugi semestr grupy (jeśli istnieje)
 site/mapa/index.html                    mapa kampusu
-site/data/…                             lista grup i zajęcia z roczników: „Porównaj” i „Gdzie odrobić?”
+site/data/…                             lista grup i zajęcia z roczników: „Porównaj”, „Gdzie odrobić?” i „Wolne sale”
             │
             ▼  GitHub Pages             wdrożenie po każdym pushu na master i codzienna przebudowa,
                                         dzięki której nowy semestr startuje pierwszego dnia
@@ -277,7 +286,7 @@ grupy i linkiem do oficjalnego planu.
 
 <img src="docs/diagrams/aktualizacja-planow.svg" alt="Codziennie w nocy runner odczytuje strony wydziałów przez proxy z listą dozwolonych hostów, konwertuje plany do kalendarzy, waliduje je i wypycha na gałąź data. Pages nakłada je na strony i publikuje." width="760">
 
-- Zaplanowany workflow co noc czyta strony wydziałów, konwertuje plany, **waliduje** je i wypycha wyłącznie zmienione
+- Zaplanowany workflow co 2 godziny czyta strony wydziałów, konwertuje plany, **waliduje** je i wypycha wyłącznie zmienione
   kalendarze na gałąź `data`. Pages nakłada je na strony przed budową, więc **żaden commit na `master` ani `dev` nie jest
   potrzebny**.
 - Crawler jest uprzejmy: jedno żądanie naraz, losowe przerwy, `robots.txt`, warunkowe pobieranie (`304`), ominięcie grup
