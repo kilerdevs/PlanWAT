@@ -221,7 +221,7 @@ const profileData = () => {
   return { features, archetypes: [{ name: 'a', n: 4 }], groups: [
     row('A', 500, 500, 50, 0, [0, 0, 0, 0, 0]),
     row('B', 520, 510, 70, 40, [60, 90, 40, 30, 0]),
-    row('C', 480, 480, 20, -40, [-60, -90, -40, -90, 0]),
+    row('C', 480, 480, 20, -40, [-60, -90, -80, -90, 0]),
     row('D', 900, 900, 95, 90, [200, 150, 190, 120, 160]),
   ] };
 };
@@ -245,6 +245,7 @@ test('similarPlans orders by distance and the modes keep only the plans that are
   assert.deepEqual(I.similarPlans(d, a, 'near', 5).map((x) => x.code), ['B', 'C', 'D']);
   assert.deepEqual(I.similarPlans(d, a, 'lighter', 5).map((x) => x.code), ['C']);
   assert.deepEqual(I.similarPlans(d, a, 'gaps', 5).map((x) => x.code), ['C']);
+  assert.deepEqual(I.similarPlans(d, a, 'short', 5).map((x) => x.code), ['C']);
   assert.deepEqual(I.similarPlans(d, a, 'late', 5).map((x) => x.code), ['C']);
   assert.deepEqual(I.similarPlans(d, d.groups[3], 'lighter', 2).map((x) => x.code), ['B', 'A']);
 });
