@@ -1159,7 +1159,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     keys.forEach(function (k) {
       var c = facs[k] || {}, st2 = [];
       if (c.blocked) st2.push('<span class="tag bad">zablokowany' + (c.cause ? ' (' + esc(c.cause) + ')' : '') + '</span>');
-      if (c.degraded) st2.push('<span class="tag warn">zdegradowany</span>');
+      if (c.degraded) st2.push('<span class="tag warn">zdegradowany' + (c.cause && !c.blocked ? ' (' + esc(c.cause) + ')' : '') + '</span>');
       if (c.ahead) st2.push('<span class="tag">nadchodz\u0105cy</span>');
       if (!st2.length) st2.push('<span class="tag">ok</span>');
       var wait = c.wait ? fmtDur(c.wait.waited) + ' (' + fmtNum(c.wait.probes) + ' pr\u00f3b' + (c.wait.recovered ? ', wr\u00f3ci\u0142' : '') + ')' : '\u2013';
@@ -1190,7 +1190,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
           + (c.skipped ? ' \u00b7 pomini\u0119te: ' + c.skipped : '')
           + (c.not_ready ? ' \u00b7 niegotowe: ' + c.not_ready : '')
           + (c.blocked ? ' \u00b7 zablokowany' + (c.cause ? ' (' + c.cause + ')' : '') : '')
-          + (c.degraded ? ' \u00b7 zdegradowany' : '')
+          + (c.degraded ? ' \u00b7 zdegradowany' + (!c.blocked && c.cause ? ' (' + c.cause + ')' : '') : '')
           + (c.ahead ? ' \u00b7 nadchodz\u0105cy semestr' : '')
           + (c.wait ? ' \u00b7 czeka\u0142 ' + fmtDur(c.wait.waited) + (c.wait.recovered ? ' (wr\u00f3ci\u0142)' : '') : '')
           + (c.at ? ' \u00b7 o ' + isoClock(c.at) : '');

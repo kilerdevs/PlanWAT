@@ -1251,6 +1251,21 @@ class DegradedTest(unittest.TestCase):
         self.assertTrue(state.faculties['wlo']['run']['degraded'])
         self.assertEqual(state.faculties['wlo']['last_count'], 1)
 
+    def test_a_listing_failure_is_reported_fresh(self):
+        # A transient listing error (say, the egress proxy was restarting) must not resend the
+        # previous run's stats and degraded flag as this run's verdict: the faculty gets its
+        # own entry, with this run's timestamp and the cause named.
+        def boom(*a, **k):
+            raise ConnectionError('proxy CONNECT aborted')
+        original = refresh.discover_with_retry
+        refresh.discover_with_retry = boom
+        self.addCleanup(setattr, refresh, 'discover_with_retry', original)
+        (changed, blocked, complete), state = self.faculty({})
+        self.assertEqual((changed, blocked, complete), ([], False, False))
+        run = state.faculties['wlo']['run']
+        self.assertEqual((run['cause'], run['blocked'], run['degraded']), ('listing', False, True))
+        self.assertEqual((run['checked'], run['changed']), (0, 0))
+
     def test_a_stable_listing_stays_clean(self):
         index = ('<?xml version="1.0"?><index><period name="zima"/>'
                  '<gro href="WLO26AX1S1.htm"/></index>')

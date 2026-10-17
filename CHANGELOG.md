@@ -142,6 +142,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   urwany plan; teraz WCY publikuje właściwe, jednosemestralne kalendarze i nie degraduje przebiegu.
 - **Odświeżanie:** raporty przebiegu znów docierają do GUI proxy (proxy odpowiadało na nie 403, bo szły przez nie samo); raport
   leci teraz połączeniem omijającym proxy, przez sieć wewnętrzną.
+- **Odświeżanie:** wydział, któremu nie udało się wylistować grup (np. chwilowa awaria proxy egress w trakcie przebiegu), nie
+  przepisuje już do raportu zeszłego wpisu — dostaje świeży wpis z przyczyną `listing` i flagą zdegradowany, więc panel i
+  zgłoszenie mówią, co naprawdę się stało, a stara degradacja nie ciągnie się przez kolejne przebiegi.
 - **Prywatność:** aliasy prowadzących (inicjał i nazwisko sklejone w polu sali, np. `AKowalski`) nie trafiają już do planów.
   Konwerter je odrzuca, `build.py` odmawia zbudowania kalendarza z takim polem, a `tools/scrub_staff.py` czyści już opublikowane.
 - **iPhone:** przyciski nad planem są zwarte zamiast dużych owali, „Zainstaluj aplikację” pokazuje kroki dodania do

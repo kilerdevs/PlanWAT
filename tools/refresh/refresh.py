@@ -375,6 +375,11 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         return [], True, False
     except Exception as err:
         log(f'[{name}] cannot list groups: {err}')
+        # The report reads fac['run']: leaving the previous entry here would resend the last
+        # run's numbers (and its degraded flag) as if they were this run's verdict.
+        fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0, 'changed': 0,
+                      'skipped': 0, 'not_ready': 0, 'blocked': False, 'ahead': ahead,
+                      'cause': 'listing', 'degraded': True}
         return [], False, False
     # The ahead pass must not clear a degraded flag the main pass already raised.
     degraded = fac.get('run', {}).get('degraded', False) if ahead else False
