@@ -444,7 +444,11 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if bounds_patched:
             log(f'[{name}] {item.code}: faculty term label left the filed term; '
                 f'keeping the {tid} grid')
-        ok, why = core.validate(ics, item.code, tid, old)
+        # The filed calendar may itself still carry another semester's lessons (a file seeded
+        # while the faculty was showing the old grid, as WCY's were): clip it first so publishing
+        # its cleaned-up version is not read as the page suddenly losing most of its plan.
+        previous = core.clip_to_term(old, tid) if old is not None else None
+        ok, why = core.validate(ics, item.code, tid, previous)
         if not ok:
             log(f'[{name}] {item.code}: rejected ({why}), keeping the old calendar')
             failed += 1

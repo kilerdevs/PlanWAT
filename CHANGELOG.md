@@ -124,6 +124,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Odświeżanie WTC:** indeks wydziału jest znów czytany poprawnie (płaski `/Plany/index.xml` w miejsce nieistniejącego
   `Plany/<semestr>/index.xml`), a PDF-y są plikowane tylko wtedy, gdy indeks nazywa odświeżany semestr — plany WTC są w końcu
   odświeżane automatycznie.
+- **Odświeżanie WCY:** nowy kalendarz jest porównywany ze starym po przycięciu starego do odświeżanego semestru — plik zasiany
+  13.10 niósł jeszcze lekcje poprzedniego lata, więc jego oczyszczenie (np. 621 → 309 wydarzeń) było odrzucane jako podejrzanie
+  urwany plan; teraz WCY publikuje właściwe, jednosemestralne kalendarze i nie degraduje przebiegu.
 - **Odświeżanie:** raporty przebiegu znów docierają do GUI proxy (proxy odpowiadało na nie 403, bo szły przez nie samo); raport
   leci teraz połączeniem omijającym proxy, przez sieć wewnętrzną.
 - **Prywatność:** aliasy prowadzących (inicjał i nazwisko sklejone w polu sali, np. `AKowalski`) nie trafiają już do planów.

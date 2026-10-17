@@ -195,6 +195,47 @@ class Run(unittest.TestCase):
         self.assertEqual((changed, blocked, complete), ([], False, True))
         self.assertEqual(self.ics().read_bytes(), first)
 
+    def touch_the_page(self):
+        """The same page with one cosmetic change: a fresh digest, an identical conversion."""
+        routes = dict(self.routes)
+        routes['https://example.test/plan/zima/WLO26AX1S1.htm'] = Resp(
+            200, page('WLO26AX1S1.htm').replace(b'<HTML>', b'<HTML data-x="1">'))
+        return routes
+
+    def test_a_filed_calendar_still_holding_last_semester_is_cleaned_not_read_as_shrunken(self):
+        # What WCY's seeded files hold: last summer's lessons still filed under this term, so the
+        # converted page drops far fewer events than the file holds. The file gets clipped before
+        # the comparison, so publishing its cleaned-up version is not read as a huge loss.
+        self.run_once()
+        old = self.ics().read_text(encoding='utf-8')
+        extras = ''.join(
+            f'BEGIN:VEVENT\r\nUID:lato{m}-{d}@t\r\n'
+            f'DTSTART;TZID=Europe/Warsaw:2026{m:02d}{d:02d}T080000\r\nSUMMARY:Fizyka\r\nEND:VEVENT\r\n'
+            for m in range(1, 9) for d in range(1, 26))  # 200 lessons of the term before this one
+        self.ics().write_text(old.replace('END:VCALENDAR', extras + 'END:VCALENDAR'), encoding='utf-8')
+        (changed, blocked, complete), _ = self.run_once(self.touch_the_page())
+        self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
+        cleaned = self.ics().read_text(encoding='utf-8')
+        self.assertNotIn('lato1-1@t', cleaned)
+        self.assertNotIn('20260101', cleaned)
+
+    def test_a_filed_calendar_whose_plan_really_shrank_is_still_rejected(self):
+        # The same machinery, with the extra lessons inside the term: the page dropping them is
+        # real shrinkage (a half-broken page), so the guard holds and the old calendar stays.
+        self.run_once()
+        old = self.ics().read_text(encoding='utf-8')
+        extras = ''.join(
+            f'BEGIN:VEVENT\r\nUID:gora{m}-{d}-{n}@t\r\n'
+            f'DTSTART;TZID=Europe/Warsaw:2026{m:02d}{d:02d}T08{n}0000\r\nSUMMARY:Fizyka\r\nEND:VEVENT\r\n'
+            for m in (10, 11, 12) for d in range(1, 31) for n in range(3))
+        self.ics().write_text(old.replace('END:VCALENDAR', extras + 'END:VCALENDAR'), encoding='utf-8')
+        filed = self.ics().read_bytes()
+        (changed, blocked, complete), _ = self.run_once(self.touch_the_page())
+        self.assertEqual((changed, blocked, complete), ([], False, True))
+        self.assertEqual(self.ics().read_bytes(), filed)
+        state = core.State(self.tmp / core.STATE_FILE)
+        self.assertEqual(state.faculties['wlo']['run']['skipped'], 1)
+
     def test_the_coming_semester_is_refreshed_into_its_own_term_with_its_own_state(self):
         args = refresh.parse(['--out', str(self.tmp), '--force'])
         state = core.State(self.tmp / core.STATE_FILE)
