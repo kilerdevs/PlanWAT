@@ -150,7 +150,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zgłoszenie mówią, co naprawdę się stało, a stara degradacja nie ciągnie się przez kolejne przebiegi.
 - **Egress:** panel nie przelewa się na wąskich ekranach: wiersze przebiegów układają się w bloki, a szczegóły przewijają się
   poziomo w swojej własnej tabeli (zamiast rozsypywać kolumny i wypychać kartę poza ekran), tabela wydziałów i pula chowają
-  najmniej istotne kolumny („obejścia”, „źródło”), a kafelki nie przycinają etykiet (np. „odrzuconych”).
+  najmniej istotne kolumny („obejścia”, „źródło”), a kafelki nie przycinają etykiet (np. „odrzuconych”). Panel znosi też
+  powiększoną czcionkę przeglądarki: nagłówki kolumn liczb mają zapas (w najgorszym razie kończą się wielokropkiem zamiast
+  nachodzić na siebie), długie etykiety kafelków dzielą się z myślnikiem, a licznik nowych wychodów przeniósł się do nagłówka
+  karty puli.
 - **Prywatność:** aliasy prowadzących (inicjał i nazwisko sklejone w polu sali, np. `AKowalski`) nie trafiają już do planów.
   Konwerter je odrzuca, `build.py` odmawia zbudowania kalendarza z takim polem, a `tools/scrub_staff.py` czyści już opublikowane.
 - **iPhone:** przyciski nad planem są zwarte zamiast dużych owali, „Zainstaluj aplikację” pokazuje kroki dodania do

@@ -881,7 +881,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(78px,1fr)); gap:var(--sp-2); margin-bottom:12px; }
   .tile { min-width:0; padding:10px 8px; border-radius:var(--r-ctl); background:var(--s3); }
   .tile b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-20); font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
-  .tile span { font-size:var(--fs-12); color:var(--t2); }
+  .tile span { display:block; font-size:var(--fs-12); color:var(--t2); hyphens:auto; -webkit-hyphens:auto; overflow-wrap:break-word; }
   table.data { width:100%; border-collapse:collapse; font-size:var(--fs-13); font-variant-numeric:tabular-nums; }
   table.data th, table.data td { padding:6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
   table.data thead th { color:var(--t2); font-weight:500; }
@@ -890,6 +890,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   table.data .num { text-align:right; }
   table.data .ell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   table.data th[title], table.data td[title] { cursor:help; }
+  table.data.fixed th { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .scroll { max-height:300px; overflow:auto; scrollbar-gutter:stable; }
   .scroll.more { -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent); mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent); }
   .scroll thead th { position:sticky; top:0; z-index:1; background:var(--s2); border-bottom:0; box-shadow:inset 0 -1px 0 var(--line); }
@@ -945,12 +946,12 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   <div class="grid2">
     <section class="card">
       <div class="card-head"><h2>Wydziały</h2><span class="dim small">weryfikacja per host</span></div>
-      <table class="data fixed hosts"><colgroup><col><col style="width:118px"><col style="width:52px"><col class="c4" style="width:58px"></colgroup><thead><tr><th>host</th><th>tryb</th><th class="num" title="wyjścia potwierdzone dla tego hosta">zweryf.</th><th class="num" title="połączenia awaryjne z łącza domowego">obejścia</th></tr></thead><tbody id="hosts-rows"></tbody></table>
+      <table class="data fixed hosts"><colgroup><col><col style="width:132px"><col style="width:68px"><col class="c4" style="width:78px"></colgroup><thead><tr><th>host</th><th>tryb</th><th class="num" title="wyjścia potwierdzone dla tego hosta">zweryf.</th><th class="num" title="połączenia awaryjne z łącza domowego">obejścia</th></tr></thead><tbody id="hosts-rows"></tbody></table>
     </section>
     <section class="card">
       <div class="card-head"><h2>Pula proxy</h2><span class="dim small" id="pool-meta"></span></div>
       <div class="tiles" id="pool-tiles"></div>
-      <div class="scroll" id="pool-scroll"><table class="data fixed pool"><colgroup><col><col style="width:60px"><col style="width:48px"><col style="width:52px"><col class="c5" style="width:88px"></colgroup><thead><tr><th>proxy</th><th>status</th><th class="num">ping</th><th class="num" title="nieudane próby dla hostów obsługiwanych przez ten wychód">pudła</th><th>źródło</th></tr></thead><tbody id="proxy-rows"></tbody></table></div>
+      <div class="scroll" id="pool-scroll"><table class="data fixed pool"><colgroup><col><col style="width:64px"><col style="width:52px"><col style="width:60px"><col class="c5" style="width:92px"></colgroup><thead><tr><th>proxy</th><th>status</th><th class="num">ping</th><th class="num" title="nieudane próby dla hostów obsługiwanych przez ten wychód">pudła</th><th>źródło</th></tr></thead><tbody id="proxy-rows"></tbody></table></div>
     </section>
   </div>
 
@@ -1125,10 +1126,9 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
 
   function renderPool(st) {
     var pool = st.pool || {}, bs = pool.by_status || {};
-    $('pool-tiles').innerHTML = tile(fmtNum(pool.total), 'w puli') + tile(fmtNum(bs.ok || 0), 'zdrowych')
-      + tile(fmtNum(bs.new || 0), 'nowych') + tile(bs.fail ? fmtNum(bs.fail) : '0', 'odrzuconych')
-      + tile(fmtMs(pool.p95_ok_ms), 'p95');
-    var meta = 'mediana ' + fmtMs(pool.median_ok_ms)
+    $('pool-tiles').innerHTML = tile(fmtNum(pool.total), 'w puli') + tile(fmtNum(bs.ok || 0), 'zdro\u00adwych')
+      + tile(fmtNum(bs.fail || 0), 'odrzu\u00adconych') + tile(fmtMs(pool.p95_ok_ms), 'p95');
+    var meta = 'mediana ' + fmtMs(pool.median_ok_ms) + ' \u00b7 nowych ' + fmtNum(bs.new || 0)
       + ' \u00b7 od\u015bwie\u017cono ' + (pool.last_refresh ? new Date(pool.last_refresh * 1000).toLocaleTimeString('pl-PL') : 'nigdy')
       + ' \u00b7 obej\u015bcia ' + fmtNum(st.fallbacks_total);
     if (pool.tripped) meta += ' \u00b7 <span class="meta-bad" title="pula wstrzyma\u0142a rotacj\u0119 po serii niepowodze\u0144">przerwa</span>';

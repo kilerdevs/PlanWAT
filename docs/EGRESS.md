@@ -70,8 +70,8 @@ zapisywanym w przeglądarce) i odświeża się bez przeładowania co 4 s z `GET 
   (ROTATING vs DIRECT);
 - tabelę „Wydziały”: wiersz na host z trybem (ROTATING / DIRECT (lista) / DIRECT), liczbą potwierdzonych wyjść i połączeń
   awaryjnych, z podpowiedziami w nagłówkach kolumn;
-- kartę „Pula proxy”: rozmiar, zdrowych, nowych i odrzuconych wychodów, mediana i p95 opóźnienia (w sekundach), liczniki
-  fallbacków, a w samej tabeli adres, stan, ping, „pudła” (nieudane próby per host) i źródło; wiersz ma podpowiedź z czasem
+- kartę „Pula proxy”: rozmiar, zdrowych i odrzuconych wychodów oraz p95 opóźnienia (w sekundach), a w nagłówku mediana,
+  liczniki nowych wychodów i obejść; w tabeli adres, stan, ping, „pudła” (nieudane próby per host) i źródło; wiersz ma podpowiedź z czasem
   ostatniego sprawdzenia, a nagłówek tabeli zostaje na miejscu przy przewijaniu;
 - „Przebiegi odświeżania”: ostatnie 10 raportów z czasem trwania i liczbą sprawdzonych oraz pominiętych grup, kodem wyjścia
   (raport bez kodu czyta się jako „nieznany”), a każdy wydział ma podpowiedź ze sprawdzonymi/zmienionymi/pominiętymi, przyczyną
