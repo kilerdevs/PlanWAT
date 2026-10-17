@@ -53,8 +53,8 @@
     "driver": "wtc",
     "label": "WTC",
     "prefix": "WTC",
-    "base": "https://wtc.wat.edu.pl/Plany/{season}/",
+    "base": "https://wtc.wat.edu.pl/Plany/",
     "enabled": true,
-    "note": "Enabled 2026-10-13: crawler + PDF converter in drivers/wtc (pymupdf). Watch the first runs; the site sits behind Incapsula."
+    "note": "Enabled 2026-10-13: crawler + PDF converter in drivers/wtc (pymupdf). The index is flat (/Plany/index.xml) and names the semester it lists; the driver files PDFs only when that is the term being refreshed. The site sits behind Incapsula."
   }
 }

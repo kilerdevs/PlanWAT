@@ -101,6 +101,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Prywatność:** tabela „PlanWAT kontra serwis z logowaniem kodem” z README także na stronie `/prywatnosc/`.
 - **Aktualizacja planów** co 2 godziny zamiast raz na dobę, a strona jest odbudowywana zaraz po zakończeniu przebiegu.
 - **Wychowanie fizyczne** ma salę: Ośrodek Szkoleniowo-Sportowy WAT, także jako punkt na mapie.
+- **Odświeżanie:** zgłoszenia blokad z crawla do proxy wyjściowego (`POST /api/block`): proxy wycofuje wyjście puli, które
+  przewiozło stronę blokady, a lista `EGRESS_DIRECT_FACULTY` prowadzi wybrane wydziały linią domową — jedno oznaczone wyjście
+  nie psuje już całego wydziału (zob. docs/EGRESS.md).
 
 ### Zmieniono
 - **Plan:** ✓ przy każdych skończonych zajęciach, nie tylko dzisiejszych.
@@ -110,9 +113,22 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - Testy podążają za grupami w `timetables/` zamiast zakładać jedną: każda grupa musi dostać stronę i kalendarz bajt w bajt, a
   każda strona grupy musi renderować się w przeglądarce bez błędów i naruszeń CSP. Przekierowanie dla pojedynczej grupy pokrywa
   syntetyczny test budowy.
+- **Odświeżanie:** szybsze i szersze: przerwy 1,5–4 s, próg świeżości 60 minut, sześć torów (wszystkie polityki Incapsula
+  naraz), a odpowiedź blokady jest ponawiana na świeżym połączeniu (`--block-retries`, domyślnie 2) zamiast od razu kończyć
+  wydział; pula rotuje wyjścia w obrębie warstwy zweryfikowanej.
+- **Odświeżanie:** strony WCY z planem innego semestru (albo pustą siatką) liczą się jako jeszcze nieopublikowane, bez
+  oznaczania przebiegu jako pogorszony.
 - `CI`, `Egress` i `SAST` nie uruchamiają się już po pushu na `master`: pull request wydania zdążył je wykonać.
 
 ### Naprawiono
+- **Odświeżanie WTC:** indeks wydziału jest znów czytany poprawnie (płaski `/Plany/index.xml` w miejsce nieistniejącego
+  `Plany/<semestr>/index.xml`), a PDF-y są plikowane tylko wtedy, gdy indeks nazywa odświeżany semestr — plany WTC są w końcu
+  odświeżane automatycznie.
+- **Odświeżanie WCY:** nowy kalendarz jest porównywany ze starym po przycięciu starego do odświeżanego semestru — plik zasiany
+  13.10 niósł jeszcze lekcje poprzedniego lata, więc jego oczyszczenie (np. 621 → 309 wydarzeń) było odrzucane jako podejrzanie
+  urwany plan; teraz WCY publikuje właściwe, jednosemestralne kalendarze i nie degraduje przebiegu.
+- **Odświeżanie:** raporty przebiegu znów docierają do GUI proxy (proxy odpowiadało na nie 403, bo szły przez nie samo); raport
+  leci teraz połączeniem omijającym proxy, przez sieć wewnętrzną.
 - **Prywatność:** aliasy prowadzących (inicjał i nazwisko sklejone w polu sali, np. `AKowalski`) nie trafiają już do planów.
   Konwerter je odrzuca, `build.py` odmawia zbudowania kalendarza z takim polem, a `tools/scrub_staff.py` czyści już opublikowane.
 - **iPhone:** przyciski nad planem są zwarte zamiast dużych owali, „Zainstaluj aplikację” pokazuje kroki dodania do

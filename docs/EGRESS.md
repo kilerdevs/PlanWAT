@@ -18,7 +18,7 @@ Zastępuje rolę tinyproxy:
 | Cel | Polityka |
 |---|---|
 | infrastruktura (GitHub, PyPI, listy proxy, … na równi z `allow.txt`) | bezpośrednie wyjście |
-| wydziały (`*.wat.edu.pl`) | przez rotującą pulę publicznych proxy, inny adres wyjściowy na każde połączenie |
+| wydziały (`*.wat.edu.pl`) | przez rotującą pulę publicznych proxy, inny adres wyjściowy na każde połączenie; hosty z listy `EGRESS_DIRECT_FACULTY` idą jednak bezpośrednio, bo to wyjścia puli dostają od nich blokady, a linia domowa serwuje je normalnie |
 | cokolwiek innego | 403 (ta sama domyślna odmowa co w tinyproxy) |
 
 <img src="diagrams/proxy-egress.svg" alt="Runner wysyła ruch przez proxy egress: infrastruktura bezpośrednio, strony wydziałów przez pulę proxy, reszta dostaje 403. Panel monitoringu w LAN odbiera raporty." width="760">
@@ -26,16 +26,22 @@ Zastępuje rolę tinyproxy:
 Dlaczego pula mieszka tutaj, a nie w `refresh.py`: kontener runnera nie ma bezpośredniej trasy na zewnątrz, wszystko przechodzi
 przez warstwę proxy, która odrzuca kodem 403 wszystko spoza listy dozwolonych (także gołe adresy proxy). Proces w runnerze
 *nie może dotrzeć* do publicznych proxy, więc rotacja musi odbywać się w warstwie wyjścia. `refresh.py` potrzebował tylko
-ponowień z odczekaniem (`--retries/--retry-backoff`) i raportu przebiegu dla GUI.
+ponowień z odczekaniem (`--retries/--retry-backoff`) i raportu przebiegu dla GUI. Od 17.10.2026 crawl raportuje też blokady
+(`POST /api/block`): w tunelu CONNECT proxy nie widzi strony blokady, ale crawler ją czyta, więc mówi proxy, którego celu
+dotyczyła — a to wycofuje wyjście z ostatniego tunelu do tego hosta. Bez tego pula wierzyła, że oznaczone wyjście nadal działa
+(tunel się przecież udał), i podawała je dalej, dopóki cały wydział nie stanął.
 
 ## Części
 
 - `tools/egress/pool.py`: pula proxy (wzorzec z DeadDropMGMT). Pobiera te same 9 list proxy z GitHub (proxifly, monosans,
   thespeedx, roosterkid), sprawdza kandydatów *przez nich samych* na stronie indeksu wydziału (bez zewnętrznego sędziego: 200 +
-  znacznik = zdrowy), sortuje ok → nowe → błąd według opóźnienia i zapisuje `pool.json`. Uszkodzone proxy odpoczywają 15 minut.
+  znacznik = zdrowy), sortuje ok → nowe → błąd według opóźnienia i zapisuje `pool.json`. Uszkodzone proxy odpoczywają 15 minut,
+  a wybór z warstwy zweryfikowanej rotuje między wyjściami — jedno szybkie proxy nie dostaje całego crawla, więc nie zostaje
+  przez to oznaczone przez WAF.
 - `tools/egress/server.py`: proxy przekazujące `:8888` (CONNECT i zwykłe HTTP, tylko porty 443/80) z łączeniem łańcuchowym
   HTTP/SOCKS5/SOCKS4a, plus GUI monitoringu w sieci LAN `:8080` (na hoście `:18080`, bo `:8080` zajmuje cAdvisor na hoście runnera)
-  (`/` panel, `GET /api/status`, `POST /api/run` skrzynka raportów, `POST /api/refresh` wymuszenie odświeżenia). Żądania POST
+  (`/` panel, `GET /api/status`, `POST /api/run` skrzynka raportów, `POST /api/block` zgłoszenie blokady (wycofuje wyjście),
+  `POST /api/refresh` wymuszenie odświeżenia). Żądania POST
   niosą `Authorization: Bearer $EGRESS_API_TOKEN`, gdy ustawiono `EGRESS_API_TOKEN`.
 - `Dockerfile.egress`, `requirements.txt` (curl_cffi, ta sama wersja co w odświeżaniu), `compose.fragment.yml` (fragment usługi
   do pliku compose plebanii).
@@ -46,14 +52,19 @@ Polityka pustej puli to świadomy wybór operatora „fail-open”: ruch do wydz
 (`PLANWAT_EGRESS_DIRECT_FALLBACK=1`). Ustaw `0`, by uzyskać „fail-closed” w stylu DeadDropMGMT (żądania do wydziałów dostają 403, aż pula
 wróci do zdrowia).
 
+Lista `EGRESS_DIRECT_FACULTY` (nazwy hostów rozdzielone przecinkami lub spacjami, ustawiana w `compose.yml`) wyłącza wybrane
+hosty wydziałów z puli: wszystkie poza `planzajec.wcy.wat.edu.pl` idą bezpośrednio linią domową, bo publiczne wyjścia dostają od
+nich blokady Incapsuli, a linia domowa serwuje je normalnie (WCY odwrotnie: jego blokuje linia domowa, więc zostaje na puli).
+Host z listy pokazuje w GUI tryb `DIRECT (lista)`.
+
 ## GUI monitoringu
 
 Tylko LAN: `http://<host-egress>:18080/` (kontener `:8080`; zawęź bind, jeśli maszyna jest bardziej wystawiona niż domowa sieć LAN).
 Odświeża się automatycznie co 30 s. Pokazuje:
 
 - tryb ROTATING vs DIRECT, rozmiar, zdrowie i medianę opóźnienia puli, liczniki fallbacków i odmów;
-- wiersze ROTATING/DIRECT dla każdego hosta (`/api/status` `.hosts.<host>`: liczba `verified` i fallbacki; 0 zweryfikowanych =
-  wydział jedzie bezpośrednio);
+- wiersze ROTATING / DIRECT (lista) / DIRECT dla każdego hosta (`/api/status` `.hosts.<host>`: liczba `verified` i fallbacki;
+  `DIRECT (lista)` = host z `EGRESS_DIRECT_FACULTY`, 0 zweryfikowanych = wydział jedzie bezpośrednio);
 - tabelę proxy (adres, stan, opóźnienie, źródło);
 - ostatnie przebiegi odświeżania zgłoszone przez `refresh.py` (`started/ended/exit` + dla wydziału sprawdzone/zmienione/
   pominięte/zablokowane, a przy masowym pomijaniu także `degraded`). Raporty są też zapisywane w `/data/runs.json`.

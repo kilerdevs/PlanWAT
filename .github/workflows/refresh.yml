@@ -6,9 +6,10 @@ name: Refresh timetables
 # Runs only on the self-hosted runner (label "planwat"): the faculty sites' Incapsula wall blocks GitHub's
 # datacenter addresses on the first request, so a hosted runner can only fail.
 on:
-  # Every two hours, round the clock: a pass over every group takes well under an hour (faculties on separate
-  # Incapsula policies crawl side by side) and most pages answer 304, so a quiet pass is cheap. A group checked
-  # within the last 90 minutes is skipped, so a run that overlaps a slow predecessor never repeats its work.
+  # Every two hours, round the clock: a pass over every group takes well under an hour (all policy
+  # groups crawl side by side, one request at a time per host) and most pages answer 304, so a quiet
+  # pass is cheap. A group checked within the last hour is skipped, so a run that overlaps a slow
+  # predecessor never repeats its work while every two-hour run still covers every group.
   schedule:
     - cron: '23 */2 * * *'
   workflow_dispatch:

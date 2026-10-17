@@ -30,15 +30,31 @@ class Driver:
                 items.append(Item(code, self.cfg['page'].format(group=code), code))
         return items
 
-    def page_ok(self, text):
-        # The faculty keeps showing the previous semester's lessons until the new plan is published; such a page
-        # must not be filed under the current term, so it counts as "not ready" and the old calendar stays.
-        if 'rozklad_container' not in text or 'lessons hidden' not in text:
-            return False
+    def _term_start(self):
+        """The first day of the term being refreshed, as YYYYMMDD."""
         season, year = core.season_of(self.today)
-        begins = f'{year}0901' if season == 'zima' else f'{year + 1}0201'
+        return f'{year}0901' if season == 'zima' else f'{year + 1}0201'
+
+    def _checked_plan(self, text):
+        """(looks like a plan page, newest lesson date or '' on the page)."""
+        if 'rozklad_container' not in text or 'lessons hidden' not in text:
+            return False, ''
         dates = [x['date'].replace('_', '') for x in rozklad2ics.parse_hidden_lessons(text) if x['date']]
-        return bool(dates) and max(dates) >= begins
+        return True, (max(dates) if dates else '')
+
+    def page_ok(self, text):
+        plan, latest = self._checked_plan(text)
+        return plan and bool(latest) and latest >= self._term_start()
+
+    def not_ready(self, text):
+        """A healthy plan page without lessons of the term being refreshed yet.
+
+        The faculty keeps the previous semester's grid (sometimes an empty one) up until the
+        new plan is published. That is expected, not a failure: the old calendar stays and the
+        page does not count towards the run's skip ratio (see refresh_faculty).
+        """
+        plan, latest = self._checked_plan(text)
+        return plan and (not latest or latest < self._term_start())
 
     def convert(self, item, raw):
         with tempfile.TemporaryDirectory() as tmp:

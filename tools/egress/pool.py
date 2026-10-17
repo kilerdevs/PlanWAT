@@ -187,6 +187,7 @@ class ProxyPool:
         self._refresh_lock = threading.Lock()
         self._fail_times = deque()
         self._breaker_until = 0.0
+        self._rotor = {}  # host -> rotation cursor over the verified tier (see pick_many)
         self.load()
 
     # -- persistence -----------------------------------------------------
@@ -280,11 +281,24 @@ class ProxyPool:
             return ranked[0][1] if ranked else None
 
     def pick_many(self, host, n=3):
-        """Up to `n` candidate URLs for `host`, best-first. [] while tripped/empty."""
+        """Up to `n` candidate URLs for `host`, best-first — but rotating across the verified tier.
+
+        One fast verified exit would otherwise absorb every request (each pick returns the same
+        best-first order) and a proxy that absorbs a whole crawl gets flagged by the WAF, after
+        which every later request through it fails. Round-robin spreads the load, so the tier
+        and the exits' reputations survive; unverified globally-alive proxies stay the tail.
+        """
         with self.lock:
             if self._tripped():
                 return []
-            return [url for _, url in self._pick_ranked(host)[:max(0, n)]]
+            ranked = self._pick_ranked(host)
+            verified = [url for key, url in ranked if key[0] == 0]
+            rest = [url for key, url in ranked if key[0] != 0]
+            if len(verified) > 1:
+                k = self._rotor.get(host, 0) % len(verified)
+                self._rotor[host] = k + 1
+                verified = verified[k:] + verified[:k]
+            return (verified + rest)[:max(0, n)]
 
     def mark(self, url, host, ok, latency_ms=None, live=False):
         """Record one use through `url` for `host` (the osm_proxy_mark() equivalent).

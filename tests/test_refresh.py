@@ -17,6 +17,7 @@ import refresh  # noqa: E402
 import wlo2ics  # noqa: E402
 from drivers import Item  # noqa: E402
 from drivers import plansoft  # noqa: E402
+from drivers import wcy  # noqa: E402
 from drivers import wml  # noqa: E402
 from drivers import wtc  # noqa: E402 (stdlib-only import; pymupdf stays lazy)
 
@@ -24,7 +25,7 @@ TODAY = dt.date(2026, 10, 15)
 INDEX = ('<?xml version="1.0"?><index><period name="zima"/>'
          '<gro href="WLO26AX1S1.htm"/><gro href="Kurs_-_Cos_10.26.htm"/></index>')
 WLO_CFG = {'driver': 'plansoft', 'label': 'WLO', 'prefix': 'WLO', 'base': 'https://example.test/plan/{season}/'}
-WTC_CFG = {'driver': 'wtc', 'label': 'WTC', 'prefix': 'WTC', 'base': 'https://example.test/plany/{season}/'}
+WTC_CFG = {'driver': 'wtc', 'label': 'WTC', 'prefix': 'WTC', 'base': 'https://example.test/plany/'}
 WTC_INDEX = ('<?xml version="1.0"?><index><period>WTC zima 2026/2027</period>'
              '<gro href="WTC26M1.pdf"/><gro href="WTC26M2.pdf"/><gro href="Kurs_-_Cos.pdf"/></index>')
 WML_CFG = {'driver': 'wml', 'label': 'WML', 'prefix': 'WML', 'keep_prefixes': ['WMT'],
@@ -63,8 +64,39 @@ class FakeSession:
         return self.routes.get(url, Resp(404))
 
 
+class SequenceSession(FakeSession):
+    """Like FakeSession, but a URL mapped to a list serves it item by item (the last repeating).
+
+    That models a page whose next fetch answers differently — e.g. a block page, then the real
+    one through another exit of a rotating egress.
+    """
+
+    def __init__(self, routes):
+        super().__init__({})
+        self.queues = {url: (list(value) if isinstance(value, list) else [value])
+                       for url, value in routes.items()}
+
+    def get(self, url, timeout=0, headers=None):
+        self.seen.append(url)
+        self.sent_headers[url] = headers or {}
+        queue = self.queues.get(url)
+        if not queue:
+            return Resp(404)
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+
 def page(name):
     return (FIXTURES / name).read_bytes()
+
+
+def wcy_page(dates):
+    """A minimal WCY plan page: the hidden lesson island with `dates` (YYYY_MM_DD) + container."""
+    lessons = ''.join(
+        f'<div class="lesson"><span class="name">Matematyka (MAT)<br>W1</span>'
+        f'<span class="date">{d}</span><span class="block_id">block1</span>'
+        f'<span class="info">wykład;;s. 101</span></div>' for d in dates)
+    return (f'<html><body><div class="lessons hidden">{lessons}</div>'
+            f'<div class="rozklad_container"></div></body></html>')
 
 
 class Detection(unittest.TestCase):
@@ -141,7 +173,7 @@ class Run(unittest.TestCase):
     def run_once(self, routes=None, extra=()):
         args = refresh.parse(['--out', str(self.tmp), '--force', *extra])
         state = core.State(self.tmp / core.STATE_FILE)
-        session = FakeSession(routes or self.routes)
+        session = SequenceSession(routes or self.routes)
         result = refresh.refresh_faculty('wlo', WLO_CFG, args, state, TODAY, session, sleep=lambda s: None)
         state.save()
         return result, session
@@ -162,6 +194,47 @@ class Run(unittest.TestCase):
         (changed, blocked, complete), _ = self.run_once()
         self.assertEqual((changed, blocked, complete), ([], False, True))
         self.assertEqual(self.ics().read_bytes(), first)
+
+    def touch_the_page(self):
+        """The same page with one cosmetic change: a fresh digest, an identical conversion."""
+        routes = dict(self.routes)
+        routes['https://example.test/plan/zima/WLO26AX1S1.htm'] = Resp(
+            200, page('WLO26AX1S1.htm').replace(b'<HTML>', b'<HTML data-x="1">'))
+        return routes
+
+    def test_a_filed_calendar_still_holding_last_semester_is_cleaned_not_read_as_shrunken(self):
+        # What WCY's seeded files hold: last summer's lessons still filed under this term, so the
+        # converted page drops far fewer events than the file holds. The file gets clipped before
+        # the comparison, so publishing its cleaned-up version is not read as a huge loss.
+        self.run_once()
+        old = self.ics().read_text(encoding='utf-8')
+        extras = ''.join(
+            f'BEGIN:VEVENT\r\nUID:lato{m}-{d}@t\r\n'
+            f'DTSTART;TZID=Europe/Warsaw:2026{m:02d}{d:02d}T080000\r\nSUMMARY:Fizyka\r\nEND:VEVENT\r\n'
+            for m in range(1, 9) for d in range(1, 26))  # 200 lessons of the term before this one
+        self.ics().write_text(old.replace('END:VCALENDAR', extras + 'END:VCALENDAR'), encoding='utf-8')
+        (changed, blocked, complete), _ = self.run_once(self.touch_the_page())
+        self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
+        cleaned = self.ics().read_text(encoding='utf-8')
+        self.assertNotIn('lato1-1@t', cleaned)
+        self.assertNotIn('20260101', cleaned)
+
+    def test_a_filed_calendar_whose_plan_really_shrank_is_still_rejected(self):
+        # The same machinery, with the extra lessons inside the term: the page dropping them is
+        # real shrinkage (a half-broken page), so the guard holds and the old calendar stays.
+        self.run_once()
+        old = self.ics().read_text(encoding='utf-8')
+        extras = ''.join(
+            f'BEGIN:VEVENT\r\nUID:gora{m}-{d}-{n}@t\r\n'
+            f'DTSTART;TZID=Europe/Warsaw:2026{m:02d}{d:02d}T08{n}0000\r\nSUMMARY:Fizyka\r\nEND:VEVENT\r\n'
+            for m in (10, 11, 12) for d in range(1, 31) for n in range(3))
+        self.ics().write_text(old.replace('END:VCALENDAR', extras + 'END:VCALENDAR'), encoding='utf-8')
+        filed = self.ics().read_bytes()
+        (changed, blocked, complete), _ = self.run_once(self.touch_the_page())
+        self.assertEqual((changed, blocked, complete), ([], False, True))
+        self.assertEqual(self.ics().read_bytes(), filed)
+        state = core.State(self.tmp / core.STATE_FILE)
+        self.assertEqual(state.faculties['wlo']['run']['skipped'], 1)
 
     def test_the_coming_semester_is_refreshed_into_its_own_term_with_its_own_state(self):
         args = refresh.parse(['--out', str(self.tmp), '--force'])
@@ -274,6 +347,56 @@ class Run(unittest.TestCase):
             session.sent_headers['https://example.test/plan/zima/WLO26AX1S1.htm'],
             {'If-Modified-Since': 'Tue, 13 Oct 2026 13:11:56 GMT'})
 
+    BLOCK_PAGE = b'<iframe id="main-iframe" src="/x?incident_id=1-2"></iframe>'
+
+    def block_routes(self):
+        routes = dict(self.routes)
+        routes['https://example.test/plan/zima/WLO26AX1S1.htm'] = [
+            Resp(200, self.BLOCK_PAGE), Resp(200, page('WLO26AX1S1.htm'))]
+        return routes
+
+    def test_a_block_page_is_retried_on_a_fresh_connection(self):
+        # One flagged exit in the rotating pool must not read as a wall: the retry (a fresh
+        # connection, hence another exit) gets the real page and the run finishes clean.
+        (changed, blocked, complete), session = self.run_once(self.block_routes())
+        self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
+        page_url = 'https://example.test/plan/zima/WLO26AX1S1.htm'
+        self.assertEqual(len([u for u in session.seen if u == page_url]), 2)
+
+    def test_a_block_that_survives_every_retry_is_still_a_wall(self):
+        routes = dict(self.routes)
+        routes['https://example.test/plan/zima/WLO26AX1S1.htm'] = Resp(200, self.BLOCK_PAGE)
+        (changed, blocked, complete), session = self.run_once(routes)
+        self.assertEqual((changed, blocked, complete), ([], True, False))
+        page_url = 'https://example.test/plan/zima/WLO26AX1S1.htm'
+        self.assertEqual(len([u for u in session.seen if u == page_url]), 3)  # 1 + 2 retries
+        state = core.State(self.tmp / core.STATE_FILE)
+        self.assertEqual(state.faculties['wlo']['run']['cause'], 'wall')
+
+    def test_block_retries_can_be_switched_off(self):
+        routes = dict(self.routes)
+        routes['https://example.test/plan/zima/WLO26AX1S1.htm'] = Resp(200, self.BLOCK_PAGE)
+        (_, blocked, _), session = self.run_once(routes, extra=['--block-retries', '0'])
+        self.assertTrue(blocked)
+        page_url = 'https://example.test/plan/zima/WLO26AX1S1.htm'
+        self.assertEqual(len([u for u in session.seen if u == page_url]), 1)
+
+    def test_a_blocked_index_is_retried_on_a_fresh_connection(self):
+        routes = dict(self.routes)
+        routes['https://example.test/plan/zima/index.xml'] = [
+            Resp(403, b'Incapsula incident ID'), Resp(200, INDEX.encode())]
+        (changed, blocked, complete), session = self.run_once(routes)
+        self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
+        self.assertEqual(len([u for u in session.seen if u.endswith('index.xml')]), 2)
+
+    def test_a_block_response_is_reported_so_the_egress_demotes_the_exit(self):
+        reported = []
+        orig = refresh.post_block_report
+        refresh.post_block_report = lambda host, url=None, timeout=5: reported.append(host)
+        self.addCleanup(setattr, refresh, 'post_block_report', orig)
+        self.run_once(self.block_routes())
+        self.assertEqual(reported, ['example.test'])
+
 
 class TitlesTest(unittest.TestCase):
     def test_title_words_cover_academic_and_military_ranks(self):
@@ -337,7 +460,7 @@ class PublicRoomTest(unittest.TestCase):
 class WtcDiscovery(unittest.TestCase):
     def discover(self, body, headers=None):
         driver = wtc.Driver('wtc', WTC_CFG, TODAY)
-        session = FakeSession({'https://example.test/plany/zima/index.xml': Resp(200, body)})
+        session = FakeSession({'https://example.test/plany/index.xml': Resp(200, body)})
         if headers is not None:
             session.headers = headers
         return driver, session, driver.discover(session)
@@ -345,19 +468,39 @@ class WtcDiscovery(unittest.TestCase):
     def test_lists_the_pdf_groups(self):
         _, _, items = self.discover(WTC_INDEX.encode())
         self.assertEqual([i.code for i in items], ['WTC26M1', 'WTC26M2'])
-        self.assertEqual(items[0].url, 'https://example.test/plany/zima/WTC26M1.pdf')
+        self.assertEqual(items[0].url, 'https://example.test/plany/WTC26M1.pdf')
         self.assertEqual(items[0].page, 'WTC26M1')
+
+    def test_the_period_attribute_form_is_read_too(self):
+        index = ('<xml><period name="WTC zima 2026/2027"></period>'
+                 '<gro href="WTC26M1.pdf"/></xml>')
+        _, _, items = self.discover(index.encode())
+        self.assertEqual([i.code for i in items], ['WTC26M1'])
+
+    def test_an_index_of_another_term_lists_nothing(self):
+        # The faculty keeps the same index up until the coming semester is ready; its PDFs
+        # belong to the running one and must not be filed under the coming term.
+        index = ('<xml><period name="WTC lato 2026/2027"></period>'
+                 '<gro href="WTC26M1.pdf"/></xml>')
+        _, session, items = self.discover(index.encode())
+        self.assertEqual(items, [])
+        self.assertEqual(session.seen, ['https://example.test/plany/index.xml'])
+
+    def test_an_index_without_a_readable_period_still_lists(self):
+        index = '<xml><period name=""></period><gro href="WTC26M1.pdf"/></xml>'
+        _, _, items = self.discover(index.encode())
+        self.assertEqual([i.code for i in items], ['WTC26M1'])
 
     def test_a_blocked_index_raises(self):
         driver = wtc.Driver('wtc', WTC_CFG, TODAY)
-        session = FakeSession({'https://example.test/plany/zima/index.xml': Resp(403, b'')})
+        session = FakeSession({'https://example.test/plany/index.xml': Resp(403, b'')})
         with self.assertRaises(core.Blocked):
             driver.discover(session)
 
     def test_pdfs_are_fetched_with_the_index_as_referer(self):
         headers = {}
         _, _, _ = self.discover(WTC_INDEX.encode(), headers)
-        self.assertEqual(headers.get('Referer'), 'https://example.test/plany/zima/index.xml')
+        self.assertEqual(headers.get('Referer'), 'https://example.test/plany/index.xml')
 
     def test_page_ok_accepts_only_pdfs(self):
         driver = wtc.Driver('wtc', WTC_CFG, TODAY)
@@ -370,11 +513,61 @@ class WtcDiscovery(unittest.TestCase):
             driver.convert(Item('WTC26M1', 'https://example.test/WTC26M1.pdf', 'WTC26M1'), b'<html></html>')
 
 
+class WtcPeriod(unittest.TestCase):
+    def test_period_labels_are_read_from_both_xml_shapes(self):
+        self.assertEqual(wtc.index_period('<period name="WTC zima 2026/2027"></period>'),
+                         'WTC zima 2026/2027')
+        self.assertEqual(wtc.index_period('<period>WTC lato 2026/2027</period>'), 'WTC lato 2026/2027')
+        self.assertEqual(wtc.index_period('<xml></xml>'), '')
+
+    def test_period_labels_name_their_term(self):
+        self.assertEqual(wtc.period_term('WTC zima 2026/2027'), '2026-27-zima')
+        self.assertEqual(wtc.period_term('WTC lato 2027/2028'), '2027-28-lato')
+        self.assertEqual(wtc.period_term('WTC zima 26/27'), '2026-27-zima')
+        self.assertEqual(wtc.period_term('WTC zima 26-27'), '2026-27-zima')
+        self.assertIsNone(wtc.period_term('WTC semestr zimowy'))
+        self.assertIsNone(wtc.period_term(''))
+
+
+class WcyReadiness(unittest.TestCase):
+    """The WCY driver tells 'healthy page, other semester' apart from 'something is wrong'."""
+
+    def driver(self):
+        cfg = {'driver': 'wcy', 'label': 'WCY',
+               'index': 'https://example.test/pl/rozklad',
+               'page': 'https://example.test/pl/rozklad?grupa_id={group}'}
+        return wcy.Driver('wcy', cfg, TODAY)
+
+    def test_a_page_of_this_semester_is_ok(self):
+        d = self.driver()
+        text = wcy_page(['2026_10_05'])
+        self.assertTrue(d.page_ok(text))
+        self.assertFalse(d.not_ready(text))
+
+    def test_last_semesters_grid_is_not_ready_not_a_failure(self):
+        d = self.driver()
+        text = wcy_page(['2026_03_23'])
+        self.assertFalse(d.page_ok(text))
+        self.assertTrue(d.not_ready(text))
+
+    def test_an_empty_plan_is_not_ready(self):
+        d = self.driver()
+        text = wcy_page([])
+        self.assertFalse(d.page_ok(text))
+        self.assertTrue(d.not_ready(text))
+
+    def test_a_page_without_the_plan_structure_is_neither(self):
+        d = self.driver()
+        text = '<html><body>maintenance in progress</body></html>'
+        self.assertFalse(d.page_ok(text))
+        self.assertFalse(d.not_ready(text))
+
+
 @unittest.skipUnless(HAS_PYMUPDF, 'pymupdf not installed')
 class WtcConversion(unittest.TestCase):
     def test_a_crawled_pdf_becomes_a_valid_calendar_without_staff_names(self):
         driver = wtc.Driver('wtc', WTC_CFG, TODAY)
-        ics = driver.convert(Item('WTC26M1', 'https://example.test/plany/zima/WTC26M1.pdf', 'WTC26M1'),
+        ics = driver.convert(Item('WTC26M1', 'https://example.test/plany/WTC26M1.pdf', 'WTC26M1'),
                              page('WTC26M1.pdf'))
         self.assertIn('X-PLAN-GROUP:WTC26M1', ics)
         self.assertIn('X-PLAN-SOURCE:wtc-plansoft', ics)
@@ -387,7 +580,7 @@ class WtcConversion(unittest.TestCase):
     def test_full_faculty_run_publishes_a_name_free_calendar(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
-        base = 'https://example.test/plany/zima/'
+        base = 'https://example.test/plany/'
         routes = {
             base + 'index.xml': Resp(200, WTC_INDEX.encode()),
             base + 'WTC26M1.pdf': Resp(200, page('WTC26M1.pdf')),
@@ -771,6 +964,56 @@ class RetryTaxonomy(unittest.TestCase):
         self.assertEqual(result.content, b'page')
 
 
+class DiscoverRetry(unittest.TestCase):
+    """discover_with_retry: transport flakiness first, then single flagged exits of the pool."""
+
+    class Driver:
+        def __init__(self, outcomes):
+            self.outcomes, self.calls = list(outcomes), 0
+
+        def discover(self, session):
+            self.calls += 1
+            out = self.outcomes.pop(0) if self.outcomes else []
+            if isinstance(out, Exception):
+                raise out
+            return out
+
+    def retry(self, driver, retries=0, block_retries=0, on_block=None):
+        return refresh.discover_with_retry(driver, None, retries=retries, backoff=0.0,
+                                           sleep=lambda s: None,
+                                           block_retries=block_retries, on_block=on_block)
+
+    def test_a_blocked_discover_is_retried_and_reports_the_flagged_exit(self):
+        driver = DiscoverRetry.Driver([core.Blocked('403'), ['a']])
+        reported = []
+        items = self.retry(driver, block_retries=1, on_block=lambda: reported.append(1))
+        self.assertEqual(items, ['a'])
+        self.assertEqual((driver.calls, reported), (2, [1]))
+
+    def test_a_sustained_block_raises_and_reports_each_flagged_exit(self):
+        driver = DiscoverRetry.Driver([core.Blocked('403')] * 3)
+        reported = []
+        with self.assertRaises(core.Blocked):
+            self.retry(driver, block_retries=2, on_block=lambda: reported.append(1))
+        self.assertEqual((driver.calls, len(reported)), (3, 2))
+
+    def test_without_block_retries_a_block_raises_at_once(self):
+        driver = DiscoverRetry.Driver([core.Blocked('403')])
+        with self.assertRaises(core.Blocked):
+            self.retry(driver, retries=2)
+        self.assertEqual(driver.calls, 1)
+
+    def test_transport_flakiness_keeps_its_own_budget(self):
+        driver = DiscoverRetry.Driver([TimeoutError('x'), ['a']])
+        self.assertEqual(self.retry(driver, retries=1, block_retries=5), ['a'])
+        self.assertEqual(driver.calls, 2)
+
+    def test_a_transport_error_during_the_block_retries_is_raised(self):
+        driver = DiscoverRetry.Driver([core.Blocked('403'), TimeoutError('boom')])
+        with self.assertRaises(TimeoutError):
+            self.retry(driver, block_retries=1)
+
+
 class ExhaustionCause(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -804,6 +1047,77 @@ class ExhaustionCause(unittest.TestCase):
         (changed, blocked, complete), state = self.faculty(Flaky(routes))
         self.assertEqual((changed, blocked, complete), ([], True, False))
         self.assertEqual(state.faculties['wlo']['run']['cause'], 'flaky')
+
+
+class NotReadyTest(unittest.TestCase):
+    """Pages of another semester are expected during publication season, not a failure."""
+
+    class Driver:
+        def __init__(self, faculty, cfg, today):
+            self.faculty = faculty
+
+        def discover(self, session):
+            return [Item(f'WCY26A{i}1S1', f'https://example.test/wcy{i}.htm', f'WCY26A{i}1S1')
+                    for i in range(6)]
+
+        def page_ok(self, text):
+            return text.startswith('ready')
+
+        def not_ready(self, text):
+            return text.startswith('old')
+
+        def convert(self, item, raw):
+            raise ValueError('never called')
+
+    def test_not_ready_pages_count_as_such_and_do_not_degrade_the_run(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        routes = {f'https://example.test/wcy{i}.htm': Resp(200, b'old semester grid')
+                  for i in range(6)}
+        args = refresh.parse(['--out', str(tmp), '--force'])
+        state = core.State(tmp / core.STATE_FILE)
+        orig_load = refresh.drivers.load
+        refresh.drivers.load = lambda name, faculty, cfg, today: NotReadyTest.Driver(faculty, cfg, today)
+        self.addCleanup(setattr, refresh.drivers, 'load', orig_load)
+        result = refresh.refresh_faculty('wcy', {'driver': 'stub', 'label': 'WCY'}, args, state,
+                                         TODAY, FakeSession(routes), sleep=lambda s: None)
+        self.assertEqual(result, ([], False, True))
+        run = state.faculties['wcy']['run']
+        self.assertEqual(run['not_ready'], 6)
+        self.assertEqual(run['skipped'], 0)
+        self.assertFalse(run['degraded'])
+
+
+class BlockReports(unittest.TestCase):
+    def test_faculty_host_reads_the_config_urls(self):
+        self.assertEqual(refresh.faculty_host({'base': 'https://wlo.wat.edu.pl/planzajec/{season}/'}),
+                         'wlo.wat.edu.pl')
+        self.assertEqual(refresh.faculty_host(
+            {'page': 'https://planzajec.wcy.wat.edu.pl/pl/rozklad?grupa_id={group}'}),
+            'planzajec.wcy.wat.edu.pl')
+        self.assertEqual(refresh.faculty_host({}), '')
+
+    def test_a_block_report_without_a_sink_is_a_no_op(self):
+        orig = os.environ.pop('PLANWAT_EGRESS_BLOCK', None)
+        if orig is not None:
+            self.addCleanup(os.environ.__setitem__, 'PLANWAT_EGRESS_BLOCK', orig)
+        refresh.post_block_report('example.test')  # nothing configured: must not raise
+        refresh.post_block_report('', url='http://127.0.0.1:9/block')  # nothing to report
+
+    def test_a_block_report_to_a_dead_sink_is_swallowed(self):
+        refresh.post_block_report('example.test', url='http://127.0.0.1:9/block', timeout=1)
+
+
+class Defaults(unittest.TestCase):
+    def test_the_crawl_is_aggressive_by_default(self):
+        args = refresh.parse(['--out', '/tmp/nowhere'])
+        self.assertEqual(args.fresh_hours, 1.0)
+        self.assertEqual(args.lanes, 6)
+        self.assertEqual(args.block_retries, 2)
+
+    def test_the_selfhosted_profile_paces_without_going_slow(self):
+        args = refresh.parse(['--out', '/tmp/nowhere', '--profile', 'selfhosted'])
+        self.assertEqual(args.delay, (1.5, 4.0))
 
 
 class FreshTest(unittest.TestCase):
@@ -1091,7 +1405,9 @@ class MainTest(unittest.TestCase):
         return refresh.main(argv, session=session, today=today, sleep=clock.sleep, clock=clock)
 
     def test_shared_policy_group_waits_once_then_resumes_both(self):
-        StubDriver.fails = {'wlo': {'main': 1}, 'wel': {'main': 1}}
+        # The wall must outlast the discover block-retries (--block-retries 2 -> 3 attempts):
+        # a single Blocked verdict is retried on a fresh connection, not taken for a wall.
+        StubDriver.fails = {'wlo': {'main': 3}, 'wel': {'main': 3}}
         StubDriver.dirty = {'wlo'}
         session = FakeSession({})
         session.headers = {}
@@ -1114,7 +1430,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(len(self.sessions), 3)  # probe + two fresh resume sessions
 
     def test_recovery_reruns_only_the_ahead_pass_when_main_finished(self):
-        StubDriver.fails = {'wlo': {'ahead': 1}}
+        StubDriver.fails = {'wlo': {'ahead': 3}}  # outlast the discover block-retries (3 attempts)
         session = FakeSession({})
         session.headers = {}
         today, coming = dt.date(2026, 8, 20), dt.date(2026, 9, 1)
@@ -1123,7 +1439,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(code, 0)  # the main pass was clean; only the ahead pass needed a resume
         dates = [day for fac, day, _ in StubDriver.calls if fac == 'wlo']
         self.assertEqual(dates.count(today), 2)  # the clean main pass + the group probe
-        self.assertEqual(dates.count(coming), 2)  # the blocked ahead pass + its resume only
+        self.assertEqual(dates.count(coming), 4)  # the blocked ahead pass (3 tries) + its resume only
         state = core.State(self.tmp / core.STATE_FILE)
         self.assertTrue(state.faculties['wlo']['wait']['recovered'])
         self.assertTrue(state.faculties['wlo']['run']['ahead'])
@@ -1136,7 +1452,7 @@ class MainTest(unittest.TestCase):
                           '--max-block-wait-minutes', '90'], session, dt.date(2026, 10, 15))
         self.assertEqual(code, 3)  # nothing recovered; still blocked
         self.assertEqual([name for name, _ in self.wait_calls], ['wat-edge', 'wim', 'ioe'])
-        self.assertEqual([budget for _, budget in self.wait_calls], [1800.0, 1800.0, 1800.0])
+        self.assertEqual([round(budget, 6) for _, budget in self.wait_calls], [1800.0, 1800.0, 1800.0])
 
     def test_policy_groups_become_lanes_in_the_order_asked(self):
         self.assertEqual(refresh.plan_lanes(['wim', 'wel', 'ioe', 'wlo', 'wml']),

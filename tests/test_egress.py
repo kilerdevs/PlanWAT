@@ -2,7 +2,9 @@
 import sys
 import tempfile
 import threading
+import time
 import unittest
+from collections import deque
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -167,6 +169,27 @@ class PoolPick(unittest.TestCase):
         self.assertEqual(len(got), 2)
         self.assertEqual(got[0], 'http://n0:1')
         self.assertEqual(len(self.pool.pick_many('example.test', 10)), 4)
+
+    def test_pick_many_rotates_across_the_verified_tier(self):
+        self.pool.entries = {
+            f'http://n{i}:1': {'status': 'ok', 'latency_ms': 10 * i, 'fails': 0,
+                               'hosts': {'example.test': {'ok': True, 'ms': 10 * i}}}
+            for i in range(3)
+        }
+        # Consecutive picks start on consecutive exits: no single proxy absorbs the crawl.
+        firsts = [self.pool.pick_many('example.test', 1)[0] for _ in range(4)]
+        self.assertEqual(firsts, ['http://n0:1', 'http://n1:1', 'http://n2:1', 'http://n0:1'])
+        self.assertEqual(self.pool.pick_many('example.test', 3),
+                         ['http://n1:1', 'http://n2:1', 'http://n0:1'])
+
+    def test_pick_many_keeps_the_optimistic_tail_behind_the_verified_tier(self):
+        self.pool.entries = {
+            'http://v:1': {'status': 'ok', 'latency_ms': 500, 'fails': 0,
+                           'hosts': {'example.test': {'ok': True, 'ms': 500}}},
+            'http://u:1': {'status': 'ok', 'latency_ms': 1, 'fails': 0, 'hosts': {}},
+        }
+        self.assertEqual(self.pool.pick_many('example.test', 2),
+                         ['http://v:1', 'http://u:1'])
 
     def test_breaker_trips_and_clears(self):
         self.pool.mark('http://good:1', 'example.test', True, 50, live=True)
@@ -411,6 +434,27 @@ class WalkTest(unittest.TestCase):
         finally:
             server.chain_connect = orig
 
+    def test_open_remembers_the_exit_for_block_reports(self):
+        tmp = Path(tempfile.mkdtemp()) / 'pool.json'
+        p = pool.ProxyPool(tmp, R2)
+        p.entries = {
+            'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
+                           'hosts': {self.HOST: {'ok': True, 'ms': 10}}},
+        }
+        orig = server.chain_connect
+        server.chain_connect = lambda *a, **k: object()
+        try:
+            handler = server.ProxyHandler.__new__(server.ProxyHandler)
+            from types import SimpleNamespace
+            recent = []
+            handler.server = SimpleNamespace(pool=p, fallbacks={},
+                                             fallbacks_lock=threading.Lock(), blocks=0,
+                                             remember_tunnel=lambda h, v: recent.append((h, v)))
+            handler._open(self.HOST, 443)
+            self.assertEqual(recent, [(self.HOST, 'http://a:1')])
+        finally:
+            server.chain_connect = orig
+
     def test_open_falls_back_after_all_fail(self):
         import socket as _sock
         tmp = Path(tempfile.mkdtemp()) / 'pool.json'
@@ -475,6 +519,17 @@ class Routing(unittest.TestCase):
         for host in ('wlo.wat.edu.pl', 'wel.wat.edu.pl', 'www.wim.wat.edu.pl',
                       'planzajec.wcy.wat.edu.pl', 'wml.wat.edu.pl', 'wtc.wat.edu.pl', 'ioe.wat.edu.pl'):
             self.assertEqual(server.route(host), 'chain', host)
+
+    def test_direct_faculty_list_overrides_the_pool(self):
+        orig = server.DIRECT_FACULTY
+        server.DIRECT_FACULTY = ('wtc.wat.edu.pl',)
+        try:
+            self.assertEqual(server.route('wtc.wat.edu.pl'), 'direct')
+            self.assertEqual(server.route('sub.wtc.wat.edu.pl'), 'direct')
+            self.assertEqual(server.route('wlo.wat.edu.pl'), 'chain')  # not listed: still pooled
+            self.assertEqual(server.route('wtc.wat.edu.pl.evil.test'), 'deny')
+        finally:
+            server.DIRECT_FACULTY = orig
 
     def test_everything_else_denied(self):
         for host in ('evil.example', 'wat.edu.pl.evil.example', '', 'localhost', '127.0.0.1'):
@@ -709,6 +764,65 @@ class Report(unittest.TestCase):
                 _os.environ.pop('EGRESS_API_TOKEN', None)
             else:
                 _os.environ['EGRESS_API_TOKEN'] = prev
+            gui.shutdown()
+
+
+class BlockDispatch(unittest.TestCase):
+    """The crawler reports block pages; the proxy demotes the exit that carried the tunnel."""
+
+    HOST = 'wlo.wat.edu.pl'
+
+    def pool_with_verified(self):
+        tmp = Path(tempfile.mkdtemp()) / 'pool.json'
+        p = pool.ProxyPool(tmp, R2)
+        p.entries = {'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
+                                    'hosts': {self.HOST: {'ok': True, 'ms': 10}}}}
+        return p
+
+    def stub(self, p, recent):
+        from types import SimpleNamespace
+        return SimpleNamespace(pool=p, recent=deque(recent), recent_lock=threading.Lock())
+
+    def test_demote_recent_marks_the_exit_that_carried_the_last_tunnel(self):
+        p = self.pool_with_verified()
+        stub = self.stub(p, [(self.HOST, 'http://a:1', time.monotonic())])
+        via = server.ProxyServer.demote_recent(stub, self.HOST)
+        self.assertEqual(via, 'http://a:1')
+        self.assertFalse(p.entries['http://a:1']['hosts'][self.HOST]['ok'])
+
+    def test_demote_recent_ignores_direct_old_and_other_host_tunnels(self):
+        p = self.pool_with_verified()
+        now = time.monotonic()
+        stub = self.stub(p, [('other.test', 'http://a:1', now), (self.HOST, 'direct', now)])
+        self.assertIsNone(server.ProxyServer.demote_recent(stub, self.HOST))
+        stub = self.stub(p, [(self.HOST, 'http://a:1', now - 9999)])
+        self.assertIsNone(server.ProxyServer.demote_recent(stub, self.HOST))
+        self.assertTrue(p.entries['http://a:1']['hosts'][self.HOST]['ok'])
+
+    def test_the_block_endpoint_demotes_through_the_gui(self):
+        import json
+        import urllib.request
+        from types import SimpleNamespace
+        tmp = Path(tempfile.mkdtemp())
+        test_pool = pool.ProxyPool(tmp / 'pool.json', R2)
+        gui = server.GuiServer(('127.0.0.1', 0), server.GuiHandler)
+        calls = []
+        gui.pool, gui.runs, gui.proxy_port = test_pool, server.RunLog(tmp / 'runs.json'), 8888
+        gui.proxy_server = SimpleNamespace(demote_recent=lambda h: calls.append(h) or 'http://a:1',
+                                           fallbacks={}, blocks=0,
+                                           fallbacks_lock=threading.Lock())
+        threading.Thread(target=gui.serve_forever, daemon=True).start()
+        try:
+            base = f'http://127.0.0.1:{gui.server_address[1]}'
+            req = urllib.request.Request(base + '/api/block',
+                                         data=json.dumps({'host': self.HOST}).encode('utf-8'),
+                                         headers={'Content-Type': 'application/json'},
+                                         method='POST')
+            with urllib.request.urlopen(req, timeout=5) as r:
+                body = json.loads(r.read().decode('utf-8'))
+            self.assertEqual(body['demoted'], 'http://a:1')
+            self.assertEqual(calls, [self.HOST])
+        finally:
             gui.shutdown()
 
 

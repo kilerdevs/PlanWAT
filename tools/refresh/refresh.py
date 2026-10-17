@@ -13,11 +13,14 @@ A block (any status but 200/304/404, an Incapsula incident page) no longer ends 
 deferred while the others are covered, then the run sleeps out the block and resumes. How long to sleep is
 learned per policy group from past recoveries (median, 20 min .. 12 h, 2 h without history; wall-caused
 episodes count more than flaky ones), recovery is probed with cheap index fetches on a sparse-then-dense
-schedule (--block-probes), and the whole wait is capped (--max-block-wait-minutes). A block verdict is never
-retried, nothing half-converted is published, the old calendars stay. A merely transient fetch (transport
-error, 408/425/429/500/502/503/504, an empty 200) is retried a few times with exponential backoff first
-(--retries/--retry-backoff); exhaustion raises core.Blocked for HTTP transients (a wall) and the transport
-error itself for flakiness, so the run learns the cause.
+schedule (--block-probes), and the whole wait is capped (--max-block-wait-minutes). A block response is not
+taken at face value at once: it is reported to the egress (which demotes the exit that carried it, see
+PLANWAT_EGRESS_BLOCK) and retried on a fresh connection (--block-retries), so one flagged exit in the
+rotating pool no longer reads as a wall; only a sustained block is one. Nothing half-converted is published,
+the old calendars stay. A merely transient fetch (transport error, 408/425/429/500/502/503/504, an empty
+200) is retried a few times with exponential backoff first (--retries/--retry-backoff); exhaustion raises
+core.Blocked for HTTP transients (a wall) and the transport error itself for flakiness, so the run learns
+the cause.
 Exit codes: 0 done, 3 blocked, 4 incomplete.
 With GITHUB_OUTPUT set, `blocked`, `incomplete` and `changed` are exported for the workflow.
 """
@@ -35,9 +38,11 @@ sys.path.insert(0, str(HERE))
 import core  # noqa: E402
 import drivers  # noqa: E402
 
-PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (2.5, 6.0)}  # seconds between pages
+PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (1.5, 4.0)}  # seconds between pages
 # WLO and WEL share one Incapsula policy (cookies for .wat.edu.pl): crawling either too fast blocks both home
-# addresses for hours. The self-hosted range above stays unblocked; the hosted range is for datacenter egress,
+# addresses for hours. The ranges above are for the home line with one request at a time per host; a block
+# response now costs a reported retry on a fresh exit before it counts as a wall (--block-retries), and the
+# AIMD multiplier still stretches the pause after any real wall. The hosted range is for datacenter egress,
 # which Incapsula already distrusts. Do not tune these down without a dry run from the crawling machine.
 
 
@@ -82,7 +87,8 @@ def post_run_report(report, url=None, timeout=10):
     """Tell the egress GUI how the run went. Best effort: never fails the crawl.
 
     Uses a proxy-less opener on purpose — the report goes to the egress box over
-    the inner network, not through the proxy itself.
+    the inner network, not through the proxy itself (the job's HTTP_PROXY would
+    answer 403 for the egress' own address).
     """
     import urllib.request
     url = url or os.environ.get('PLANWAT_EGRESS_STATUS', 'http://egress:8080/api/run')
@@ -91,9 +97,41 @@ def post_run_report(report, url=None, timeout=10):
     try:
         req = urllib.request.Request(url, data=json.dumps(report).encode('utf-8'),
                                      headers={'Content-Type': 'application/json'}, method='POST')
-        urllib.request.build_opener().open(req, timeout=timeout).read()
+        urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout).read()
     except Exception as err:
         log(f'run report not delivered ({err}); continuing')
+
+
+def faculty_host(cfg):
+    """The destination host of a faculty's config (for egress block reports); '' when unknown."""
+    from urllib.parse import urlsplit
+    for key in ('base', 'index', 'landing', 'page'):
+        url = cfg.get(key)
+        if url:
+            host = urlsplit(url).hostname
+            if host:
+                return host
+    return ''
+
+
+def post_block_report(host, url=None, timeout=5):
+    """Tell the egress that `host` just answered with a block page, so it can demote the exit that
+    carried the response (inside a CONNECT tunnel the egress cannot see the block itself; the
+    crawler can, and most recent tunnel is the one to blame). Best effort, never fails the crawl.
+
+    Opt-in: reporting is enabled by setting PLANWAT_EGRESS_BLOCK to the egress' /api/block URL
+    (the refresh action does); without it the call is a no-op, keeping offline tests offline.
+    """
+    url = url or os.environ.get('PLANWAT_EGRESS_BLOCK', '')
+    if not url or not host:
+        return
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, data=json.dumps({'host': host}).encode('utf-8'),
+                                     headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout).read()
+    except Exception:
+        pass  # the demotion is a nice-to-have; the retry path works without it
 
 
 def wait_for_recovery(name, probe, model, budget, max_probes=5, sleep=time.sleep, clock=time.monotonic):
@@ -134,22 +172,38 @@ def wait_for_recovery(name, probe, model, budget, max_probes=5, sleep=time.sleep
     return False, waited, probes
 
 
-def discover_with_retry(driver, session, retries=2, backoff=2.0, sleep=time.sleep):
-    """List the groups, riding out flaky transports (a dead pool proxy, a reset).
+def discover_with_retry(driver, session, retries=2, backoff=2.0, sleep=time.sleep,
+                        block_retries=0, on_block=None):
+    """List the groups, riding out flaky transports, then a single flagged exit.
 
-    A Blocked verdict (wall content, unexpected status) is re-raised at once, never
-    retried: only the transport may be flaky. Raises the last error when exhausted.
+    Transport trouble (a dead pool proxy, a reset) gets `retries` more goes with exponential
+    backoff. A Blocked verdict gets `block_retries` more goes, each on a fresh connection —
+    with a rotating egress that rides another exit — with `on_block()` called first so the
+    caller can report the exit that just answered the block. Raises the last error.
     """
     last = None
     for attempt in range(retries + 1):
         try:
             return driver.discover(session)
-        except core.Blocked:
-            raise
+        except core.Blocked as err:
+            last = err
+            if not block_retries:
+                raise  # a wall is a verdict: only the caller decides to retry it
+            break
         except Exception as err:
             last = err
         if attempt < retries:
             sleep(backoff * (2 ** attempt) + random.uniform(0, 1))
+    else:
+        raise last
+    for attempt in range(block_retries):
+        if on_block is not None:
+            on_block()
+        sleep(backoff * (attempt + 1) + random.uniform(0, 1))
+        try:
+            return driver.discover(session)
+        except Exception as err:  # noqa: BLE001 (Blocked and transport trouble alike)
+            last = err
     raise last
 
 
@@ -238,6 +292,8 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
     out = Path(args.out)
     fac = state.faculties.setdefault(name, {})
     group = core.group_of(name)
+    host = faculty_host(cfg)
+    on_block = (lambda: post_block_report(host)) if host else None
     # AIMD pacing: the policy group's multiplier stretches the pause between pages. It grows on
     # every block verdict and decays on every clean faculty, persisting through state.save.
     mult = state.data.get('pacing', {}).get(group, 1.0)
@@ -247,12 +303,13 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         pacing[group] = min(3.0, mult * 1.5) if blocked else max(1.0, mult * 0.9)
 
     try:
-        items = discover_with_retry(driver, session, args.retries, args.retry_backoff, sleep)
+        items = discover_with_retry(driver, session, args.retries, args.retry_backoff, sleep,
+                                    block_retries=args.block_retries, on_block=on_block)
     except core.Blocked as err:
         log(f'[{name}] BLOCKED while listing groups: {err}')
         fac['blocked_at'] = core.now_utc().isoformat()
-        fac['run'] = {'at': fac['blocked_at'], 'checked': 0, 'changed': 0,
-                      'skipped': 0, 'blocked': True, 'ahead': ahead, 'cause': 'wall', 'degraded': False}
+        fac['run'] = {'at': fac['blocked_at'], 'checked': 0, 'changed': 0, 'skipped': 0,
+                      'not_ready': 0, 'blocked': True, 'ahead': ahead, 'cause': 'wall', 'degraded': False}
         pace(True)
         return [], True, False
     except Exception as err:
@@ -270,8 +327,8 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
     if not items:
         log(f'[{name}] no groups listed; leaving the faculty untouched')
         if degraded:
-            fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0,
-                          'changed': 0, 'skipped': 0, 'blocked': False, 'ahead': ahead,
+            fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0, 'changed': 0,
+                          'skipped': 0, 'not_ready': 0, 'blocked': False, 'ahead': ahead,
                           'cause': None, 'degraded': True}
         return [], False, False
     if not robots_allows(session, items[0].url, state):
@@ -291,6 +348,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         todo = todo[:args.limit]
     log(f'[{name}] {len(items)} groups, {len(items) - len(todo)} fresh, {len(todo)} to check (term {tid})')
     started, changed, failed, checked = clock(), [], 0, 0
+    not_ready = 0
     for n, item in enumerate(todo, 1):
         if args.max_minutes and (clock() - started) / 60 > args.max_minutes:
             log(f'[{name}] time budget used up after {n - 1} groups')
@@ -300,26 +358,48 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if n % 25 == 0 and not args.dry_run:
             state.save()  # checkpoint every 25 checks, however they end (a 304 or an unchanged hash included)
         entry = state.groups.setdefault(key(item.code), {})
-        try:
-            r = get_with_retry(session, item.url, timeout=60, headers=conditional_headers(entry),
-                               retries=args.retries, backoff=args.retry_backoff, sleep=sleep)
-            checked += 1
-        except core.Blocked as err:
-            log(f'[{name}] BLOCKED on {item.code}: {err}')
-            fac['blocked_at'] = core.now_utc().isoformat()
-            fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
-                          'changed': len(changed), 'skipped': failed, 'blocked': True, 'ahead': ahead,
-                          'cause': 'wall', 'degraded': degraded}
-            pace(True)
-            return changed, True, False
-        except Exception as err:
-            log(f'[{name}] flaky fetch on {item.code}, {checked} responses in: {err}')
-            fac['blocked_at'] = core.now_utc().isoformat()
-            fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
-                          'changed': len(changed), 'skipped': failed, 'blocked': True, 'ahead': ahead,
-                          'cause': 'flaky', 'degraded': degraded}
-            pace(True)
-            return changed, True, False
+        # A block response is reported to the egress (which demotes the exit that carried it) and
+        # retried on a fresh connection: with a rotating egress each attempt rides another exit, so
+        # one flagged proxy no longer reads as a wall. Only a block that survives every attempt does.
+        attempts = max(1, args.block_retries + 1)
+        for attempt in range(1, attempts + 1):
+            try:
+                r = get_with_retry(session, item.url, timeout=60, headers=conditional_headers(entry),
+                                   retries=args.retries, backoff=args.retry_backoff, sleep=sleep)
+                checked += 1
+            except core.Blocked as err:
+                log(f'[{name}] BLOCKED on {item.code}: {err}')
+                fac['blocked_at'] = core.now_utc().isoformat()
+                fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
+                              'changed': len(changed), 'skipped': failed, 'not_ready': not_ready,
+                              'blocked': True, 'ahead': ahead, 'cause': 'wall', 'degraded': degraded}
+                pace(True)
+                return changed, True, False
+            except Exception as err:
+                log(f'[{name}] flaky fetch on {item.code}, {checked} responses in: {err}')
+                fac['blocked_at'] = core.now_utc().isoformat()
+                fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
+                              'changed': len(changed), 'skipped': failed, 'not_ready': not_ready,
+                              'blocked': True, 'ahead': ahead, 'cause': 'flaky', 'degraded': degraded}
+                pace(True)
+                return changed, True, False
+            if r.status_code in (304, 404):
+                break
+            text = r.content.decode('utf-8', errors='replace') if r.status_code == 200 else ''
+            if not core.is_blocked(r.status_code, text):
+                break
+            post_block_report(host)
+            if attempt >= attempts:
+                log(f'[{name}] BLOCKED on {item.code} (HTTP {r.status_code}) after {n - 1} pages')
+                fac['blocked_at'] = core.now_utc().isoformat()
+                fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
+                              'changed': len(changed), 'skipped': failed, 'not_ready': not_ready,
+                              'blocked': True, 'ahead': ahead, 'cause': 'wall', 'degraded': degraded}
+                pace(True)
+                return changed, True, False
+            log(f'[{name}] {item.code}: block response (HTTP {r.status_code}); '
+                f'riding a fresh connection ({attempt + 1}/{attempts})')
+            sleep(random.uniform(2.0, 4.0) * attempt)
         if r.status_code == 304:
             # The server says the page is byte-identical: no download, no conversion, just a fresh check mark.
             remember_validators(entry, r)
@@ -330,15 +410,12 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if r.status_code == 404:
             log(f'[{name}] {item.code}: gone (404), keeping the old calendar')
             continue
-        if core.is_blocked(r.status_code, text):
-            log(f'[{name}] BLOCKED on {item.code} (HTTP {r.status_code}) after {n - 1} pages')
-            fac['blocked_at'] = core.now_utc().isoformat()
-            fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
-                          'changed': len(changed), 'skipped': failed, 'blocked': True, 'ahead': ahead,
-                          'cause': 'wall', 'degraded': degraded}
-            pace(True)
-            return changed, True, False
         if not driver.page_ok(text):
+            if getattr(driver, 'not_ready', None) and driver.not_ready(text):
+                not_ready += 1
+                log(f'[{name}] {item.code}: not ready for {tid} yet (the faculty still shows '
+                    f'another semester); keeping the old calendar')
+                continue
             log(f'[{name}] {item.code}: not a timetable page, skipped')
             failed += 1
             continue
@@ -367,7 +444,11 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if bounds_patched:
             log(f'[{name}] {item.code}: faculty term label left the filed term; '
                 f'keeping the {tid} grid')
-        ok, why = core.validate(ics, item.code, tid, old)
+        # The filed calendar may itself still carry another semester's lessons (a file seeded
+        # while the faculty was showing the old grid, as WCY's were): clip it first so publishing
+        # its cleaned-up version is not read as the page suddenly losing most of its plan.
+        previous = core.clip_to_term(old, tid) if old is not None else None
+        ok, why = core.validate(ics, item.code, tid, previous)
         if not ok:
             log(f'[{name}] {item.code}: rejected ({why}), keeping the old calendar')
             failed += 1
@@ -382,7 +463,9 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(ics.encode('utf-8'))
     # Skips (unreadable pages, failed conversions, rejected calendars) against responses
-    # received: too many means the site is half-broken, not the plans half-changed.
+    # received: too many means the site is half-broken, not the plans half-changed. Pages
+    # that are merely "not ready" (the faculty still shows another semester) are expected
+    # during publication season and never count as skips.
     if checked >= 5 and failed / checked > 0.3:
         degraded = True
         log(f'[{name}] DEGRADED: {failed} of {checked} checked groups skipped; flagging the run')
@@ -391,9 +474,10 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         fac['last_ok'] = core.now_utc().isoformat()
         fac['blocked_at'] = None
     fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': checked,
-                  'changed': len(changed), 'skipped': failed, 'blocked': False, 'ahead': ahead,
-                  'cause': None, 'degraded': degraded}
-    log(f'[{name}] done: {len(changed)} changed, {failed} skipped')
+                  'changed': len(changed), 'skipped': failed, 'not_ready': not_ready,
+                  'blocked': False, 'ahead': ahead, 'cause': None, 'degraded': degraded}
+    log(f'[{name}] done: {len(changed)} changed, {failed} skipped'
+        + (f', {not_ready} not ready' if not_ready else ''))
     return changed, False, True
 
 
@@ -412,16 +496,19 @@ def parse(argv=None):
     ap.add_argument('--profile', choices=sorted(PROFILES), default='hosted')
     ap.add_argument('--limit', type=int, default=0, help='check at most N groups per faculty')
     ap.add_argument('--max-minutes', type=float, default=0, help='stop gracefully after this long (0 = no limit)')
-    ap.add_argument('--fresh-hours', type=float, default=1.5, help='skip groups checked more recently than this')
+    ap.add_argument('--fresh-hours', type=float, default=1.0, help='skip groups checked more recently than this')
     ap.add_argument('--force', action='store_true', help='ignore --fresh-hours')
     ap.add_argument('--dry-run', action='store_true', help='fetch and convert, write nothing')
     ap.add_argument('--retries', type=int, default=3,
-                    help='retry a flaky page fetch this many times (blocks are never retried)')
+                    help='retry a flaky page fetch this many times (block responses are the exception)')
     ap.add_argument('--retry-backoff', type=float, default=2.0,
                     help='base seconds between fetch retries (exponential + jitter)')
+    ap.add_argument('--block-retries', type=int, default=2,
+                    help='after a block response, retry on a fresh connection this many times before '
+                         'calling it a wall (each retry rides another exit of a rotating egress)')
     ap.add_argument('--max-block-wait-minutes', type=float, default=30,
                     help='total minutes a run may sleep out blocks before giving up (0 = exit on block)')
-    ap.add_argument('--lanes', type=int, default=4,
+    ap.add_argument('--lanes', type=int, default=6,
                     help='policy groups crawled side by side (1 = strictly one faculty at a time)')
     ap.add_argument('--block-probes', type=int, default=5,
                     help='recovery probes per block (one cheap index fetch each)')
