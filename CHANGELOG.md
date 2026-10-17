@@ -126,6 +126,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - `CI`, `Egress` i `SAST` nie uruchamiają się już po pushu na `master`: pull request wydania zdążył je wykonać.
 
 ### Naprawiono
+- **Egress:** panel monitoringu znów mieści swoje dane: nagłówki kart się nie łamią, tabela wydziałów nie ucina ostatnich kolumn
+  (sztywny układ, liczby do prawej), wartości kafelków się nie zawijają (opóźnienia w sekundach, np. `5,7 s`), a raport bez kodu
+  wyjścia czyta się jako „nieznany” zamiast „undefined”. Godziny raportów są w końcu lokalne (były w UTC czytanym jak lokalny),
+  tabela wychodów ma kolumnę „pudła” (nieudane próby), przyklejony nagłówek i podpowiedź z ostatnim sprawdzeniem, a nowa karta
+  Egress pokazuje obsłużone żądania proxy, tunele w toku, odmowy i czas działania kontenera.
 - **Odświeżanie WTC:** indeks wydziału jest znów czytany poprawnie (płaski `/Plany/index.xml` w miejsce nieistniejącego
   `Plany/<semestr>/index.xml`), a PDF-y są plikowane tylko wtedy, gdy indeks nazywa odświeżany semestr — plany WTC są w końcu
   odświeżane automatycznie.

@@ -640,6 +640,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def do_CONNECT(self):
         if not TUNNEL_SLOTS.acquire(blocking=False):
             return self._deny(503)
+        self.server.requests += 1
+        self.server.active += 1
         try:
             target = split_target(self.path)
             if target is None:
@@ -670,11 +672,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
                               'via': via, 'secs': round(secs, 3), 'up': up, 'down': down}),
                   flush=True)
         finally:
+            self.server.active -= 1
             TUNNEL_SLOTS.release()
 
     def _forward_plain(self):
         if not TUNNEL_SLOTS.acquire(blocking=False):
             return self._deny(503)
+        self.server.requests += 1
+        self.server.active += 1
         try:
             parts = urllib.parse.urlsplit(self.path)
             if parts.scheme not in ('http',) or not parts.hostname:
@@ -711,6 +716,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 except OSError:
                     pass
         finally:
+            self.server.active -= 1
             TUNNEL_SLOTS.release()
 
     do_GET = _forward_plain
@@ -727,6 +733,9 @@ class ProxyServer(ThreadingHTTPServer):
         super().__init__(addr, ProxyHandler)
         self.pool = pool
         self.blocks = 0
+        self.started = time.time()
+        self.requests = 0   # proxy requests handled (CONNECT + absolute-URI) since start
+        self.active = 0     # requests relaying right now
         self.fallbacks = {}  # host -> direct-fallback count
         self.fallbacks_lock = threading.Lock()
         self.recent = deque(maxlen=200)  # (host, via, monotonic) of pooled tunnels, for block reports
@@ -819,8 +828,9 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   .pill.sm { padding:2px 10px; font-size:var(--fs-12); box-shadow:none; background:var(--s3); }
   .pill.sm.rot { color:var(--free); } .pill.sm.dir { color:var(--warn); } .pill.sm.empty { color:var(--busy); } .pill.sm.dim { color:var(--t3); }
   .card { padding:var(--sp-4) var(--sp-5) var(--sp-5); border-radius:var(--r-card); background:var(--s2); box-shadow:var(--edge); margin-bottom:16px; }
-  .card h2 { margin:0; font-size:var(--fs-17); font-weight:600; letter-spacing:-.012em; }
-  .card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  .card h2 { margin:0; font-size:var(--fs-17); font-weight:600; letter-spacing:-.012em; white-space:nowrap; }
+  .card-head { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 12px; margin-bottom:12px; }
+  .card-head > :not(h2) { margin-left:auto; text-align:right; }
   .dim { color:var(--t3); } .small { font-size:var(--fs-12); }
   .status { font-size:var(--fs-13); font-weight:600; color:var(--t2); }
   .status.live { color:var(--accent-text); } .status.done { color:var(--free); } .status.blocked { color:var(--busy); }
@@ -848,17 +858,24 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   .lane .val { color:var(--t2); font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
   .lane .val b { color:var(--t1); font-weight:600; }
   @keyframes pulse { 50% { opacity:.35; } }
-  .grid2 { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:16px; align-items:start; }
+  .grid2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.05fr); gap:16px; align-items:start; }
   @media (max-width:780px) { .grid2 { grid-template-columns:1fr; } .lane { grid-template-columns:112px minmax(40px,1fr) minmax(0,auto); } }
-  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(92px,1fr)); gap:var(--sp-2); margin-bottom:12px; }
-  .tile { padding:10px 12px; border-radius:var(--r-ctl); background:var(--s3); }
-  .tile b { display:block; font-size:var(--fs-20); font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(78px,1fr)); gap:var(--sp-2); margin-bottom:12px; }
+  .tile { min-width:0; padding:10px; border-radius:var(--r-ctl); background:var(--s3); }
+  .tile b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-20); font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
   .tile span { font-size:var(--fs-12); color:var(--t2); }
   table.data { width:100%; border-collapse:collapse; font-size:var(--fs-13); font-variant-numeric:tabular-nums; }
   table.data th, table.data td { padding:6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
   table.data thead th { color:var(--t2); font-weight:500; }
   table.data tbody tr:last-child td { border-bottom:0; }
-  .scroll { max-height:300px; overflow:auto; }
+  table.data.fixed { table-layout:fixed; }
+  table.data .num { text-align:right; }
+  table.data .ell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  table.data th[title], table.data td[title] { cursor:help; }
+  .scroll { max-height:300px; overflow:auto; scrollbar-gutter:stable; }
+  .scroll.more { -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent); mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent); }
+  .scroll thead th { position:sticky; top:0; z-index:1; background:var(--s2); border-bottom:0; box-shadow:inset 0 -1px 0 var(--line); }
+  .meta-warn { color:var(--warn); } .meta-bad { color:var(--busy); }
   .chips { display:flex; flex-wrap:wrap; gap:4px; }
   .tag { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:var(--r-pill); background:var(--s3); font-size:var(--fs-12); color:var(--t2); white-space:nowrap; }
   .tag.chg { color:var(--accent-text); background:var(--accent-soft); }
@@ -892,15 +909,20 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     <ul class="lanes" id="crawl-lanes"></ul>
   </section>
 
+    <section class="card">
+      <div class="card-head"><h2>Egress</h2><span class="dim small" id="egress-meta"></span></div>
+      <div class="tiles" id="egress-tiles"></div>
+    </section>
+
   <div class="grid2">
     <section class="card">
       <div class="card-head"><h2>Wydziały</h2><span class="dim small">weryfikacja per host</span></div>
-      <table class="data"><thead><tr><th>host</th><th>tryb</th><th>zweryf.</th><th>obejścia</th></tr></thead><tbody id="hosts-rows"></tbody></table>
+      <table class="data fixed"><colgroup><col><col style="width:118px"><col style="width:52px"><col style="width:58px"></colgroup><thead><tr><th>host</th><th>tryb</th><th class="num" title="wyjścia potwierdzone dla tego hosta">zweryf.</th><th class="num" title="połączenia awaryjne z łącza domowego">obejścia</th></tr></thead><tbody id="hosts-rows"></tbody></table>
     </section>
     <section class="card">
       <div class="card-head"><h2>Pula proxy</h2><span class="dim small" id="pool-meta"></span></div>
       <div class="tiles" id="pool-tiles"></div>
-      <div class="scroll"><table class="data"><thead><tr><th>proxy</th><th>status</th><th>ping</th><th>źródło</th></tr></thead><tbody id="proxy-rows"></tbody></table></div>
+      <div class="scroll" id="pool-scroll"><table class="data fixed"><colgroup><col><col style="width:60px"><col style="width:48px"><col style="width:52px"><col style="width:88px"></colgroup><thead><tr><th>proxy</th><th>status</th><th class="num">ping</th><th class="num" title="nieudane próby dla hostów obsługiwanych przez ten wychód">pudła</th><th>źródło</th></tr></thead><tbody id="proxy-rows"></tbody></table></div>
     </section>
   </div>
 
@@ -927,20 +949,42 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   function fmtDur(s) {
     if (s == null || !isFinite(s)) return null;
     s = Math.max(0, Math.round(s));
-    if (s < 90) return '1 min';
-    var m = Math.round(s / 60);
-    if (m < 60) return m + ' min';
-    var h = Math.floor(m / 60); m = m % 60;
-    return h + ' h' + (m ? ' ' + m + ' min' : '');
+    if (s < 45) return s + ' s';
+    if (s < 3600) { var m = Math.max(1, Math.round(s / 60)); if (m < 60) return m + ' min'; }
+    var h = Math.floor(s / 3600), m2 = Math.round((s % 3600) / 60);
+    if (m2 === 60) { h += 1; m2 = 0; }
+    return h + ' h' + (m2 ? ' ' + m2 + ' min' : '');
+  }
+  function fmtMs(ms) {
+    if (ms == null) return '\u2013';
+    if (ms < 1000) return fmtNum(ms) + ' ms';
+    return (ms / 1000).toFixed(1).replace('.', ',') + ' s';
   }
   function clock(ep) { return ep == null ? '\u2013' : new Date(ep * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }); }
-  function isoClock(iso) { if (!iso) return '\u2013'; var d = new Date(iso); return isNaN(d) ? String(iso) : d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }); }
+  function ts(iso) { if (!iso) return null; iso = String(iso); return new Date(/[zZ]$|[+-][0-9][0-9]:?([0-9][0-9])?$/.test(iso) ? iso : iso + 'Z'); }
+  function isoClock(iso) { var d = ts(iso); if (!d) return '\u2013'; return isNaN(d) ? String(iso) : d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }); }
+  function ago(ep) {
+    if (!ep) return 'nieznane';
+    var d = Math.max(0, Math.floor(Date.now() / 1000 - ep));
+    if (d < 60) return 'przed chwil\u0105';
+    if (d < 3600) return Math.round(d / 60) + ' min temu';
+    if (d < 86400) return Math.round(d / 3600) + ' h temu';
+    return Math.round(d / 86400) + ' dni temu';
+  }
+  function nextRunAt() {
+    var t = new Date(Date.now());
+    t.setUTCSeconds(0); t.setUTCMilliseconds(0); t.setUTCMinutes(23);
+    while (t.getTime() <= Date.now() || t.getUTCHours() % 2) t.setTime(t.getTime() + 3600000);
+    return t;
+  }
+  function fade(el) { if (el) el.classList.toggle('more', el.scrollTop + el.clientHeight < el.scrollHeight - 2); }
   function modeClass(mode) { mode = String(mode); return mode.indexOf('ROTATING') === 0 ? 'rot' : (mode.indexOf('DIRECT (pula') === 0 ? 'empty' : 'dir'); }
   function tile(v, l) { return '<div class="tile"><b>' + v + '</b><span>' + l + '</span></div>'; }
   function exitPill(exit) {
+    if (exit == null) return '<span class="pill sm dim" title="raport bez kodu wyj\u015bcia">nieznany</span>';
     var cls = exit === 0 ? 'rot' : (exit === 3 ? 'empty' : (exit === 4 ? 'dir' : 'dim'));
-    var label = exit === 0 ? 'ok' : (exit === 3 ? 'zablokowany' : (exit === 4 ? 'niekompletny' : String(exit)));
-    return '<span class="pill sm ' + cls + '">' + esc(label) + '</span>';
+    var label = exit === 0 ? 'ok' : (exit === 3 ? 'zablokowany' : (exit === 4 ? 'niekompletny' : 'exit ' + exit));
+    return '<span class="pill sm ' + cls + '" title="kod wyj\u015bcia ' + esc(exit) + '">' + esc(label) + '</span>';
   }
   var SLOT = { queued: 'w kolejce', crawling: 'sprawdza', waiting: 'czeka na odblokowanie', blocked: 'zablokowany', stalled: 'brak postępu', stopped: 'przerwany', done: 'gotowe' };
   var SLOTCOLOR = { crawling: 'var(--accent)', waiting: 'var(--warn)', blocked: 'var(--busy)', stalled: 'var(--busy)', stopped: 'var(--t4)', done: 'var(--free)', queued: 'var(--s4)' };
@@ -962,14 +1006,21 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
       bar.className = 'bigbar'; fill.style.width = '0%'; bar.setAttribute('aria-valuenow', '0');
       state.className = 'status'; state.textContent = 'bez przebiegu';
       count.textContent = 'brak aktywnego przebiegu';
-      sub.textContent = 'harmonogram: co 2 h (cron 23 */2)';
+      sub.textContent = 'harmonogram: co 2 h \u00b7 nast\u0119pny \u2248 ' + clock(nextRunAt().getTime() / 1000);
       var last = (st.runs || [])[0];
       if (last) {
-        var changed = 0, blocked = 0, facs = last.faculties || {};
-        Object.keys(facs).forEach(function (k) { changed += facs[k].changed || 0; if (facs[k].blocked) blocked += 1; });
-        eta.className = '';
-        eta.textContent = 'ostatni: ' + isoClock(last.started) + ' \u00b7 exit ' + last.exit + ' \u00b7 zmiany: ' + changed + (blocked ? ' \u00b7 zablokowane: ' + blocked : '');
-      } else { eta.textContent = ''; }
+        var changed = 0, blocked = 0, checked = 0, degradedN = 0, facs = last.faculties || {};
+        Object.keys(facs).forEach(function (k) {
+          var c = facs[k] || {};
+          changed += c.changed || 0; checked += c.checked || 0;
+          if (c.blocked) blocked += 1;
+          if (c.degraded) degradedN += 1;
+        });
+        eta.className = (blocked || degradedN || last.exit === 3 || last.exit === 4) ? 'blocked' : 'done';
+        eta.textContent = 'ostatni: ' + isoClock(last.started) + ' \u00b7 exit ' + (last.exit == null ? '?' : last.exit)
+          + ' \u00b7 zmiany: ' + changed + (checked ? ' \u00b7 sprawdzone: ' + fmtNum(checked) : '')
+          + (blocked ? ' \u00b7 zablokowane: ' + blocked : '') + (degradedN ? ' \u00b7 zdegradowane: ' + degradedN : '');
+      } else { eta.textContent = ''; eta.className = ''; }
       lanes.innerHTML = '';
       return;
     }
@@ -1036,7 +1087,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     var hosts = st.hosts || {};
     Object.keys(hosts).forEach(function (h) {
       var v = hosts[h] || {};
-      rows += '<tr><td>' + esc(h) + '</td><td><span class="pill sm ' + modeClass(v.mode) + '">' + esc(v.mode) + '</span></td><td>' + fmtNum(v.verified) + '</td><td>' + fmtNum(v.fallbacks) + '</td></tr>';
+      rows += '<tr><td class="ell" title="' + esc(h) + '">' + esc(h) + '</td><td><span class="pill sm ' + modeClass(v.mode) + '">' + esc(v.mode) + '</span></td><td class="num">' + fmtNum(v.verified) + '</td><td class="num">' + fmtNum(v.fallbacks) + '</td></tr>';
     });
     $('hosts-rows').innerHTML = rows || '<tr><td colspan="4" class="dim">brak hostów</td></tr>';
   }
@@ -1045,29 +1096,68 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     var pool = st.pool || {}, bs = pool.by_status || {};
     $('pool-tiles').innerHTML = tile(fmtNum(pool.total), 'w puli') + tile(fmtNum(bs.ok || 0), 'zdrowych')
       + tile(fmtNum(bs.new || 0), 'nowych') + tile(bs.fail ? fmtNum(bs.fail) : '0', 'odrzuconych')
-      + tile(pool.p95_ok_ms ? fmtNum(pool.p95_ok_ms) + ' ms' : '\u2013', 'p95');
-    $('pool-meta').textContent = 'mediana ' + (pool.median_ok_ms ? pool.median_ok_ms + ' ms' : '\u2013')
-      + ' \u00b7 odświeżono ' + (pool.last_refresh ? new Date(pool.last_refresh * 1000).toLocaleTimeString('pl-PL') : 'nigdy')
-      + ' \u00b7 obejścia ' + fmtNum(st.fallbacks_total) + ' \u00b7 odrzucone ' + fmtNum(st.denied);
+      + tile(fmtMs(pool.p95_ok_ms), 'p95');
+    var meta = 'mediana ' + fmtMs(pool.median_ok_ms)
+      + ' \u00b7 od\u015bwie\u017cono ' + (pool.last_refresh ? new Date(pool.last_refresh * 1000).toLocaleTimeString('pl-PL') : 'nigdy')
+      + ' \u00b7 obej\u015bcia ' + fmtNum(st.fallbacks_total);
+    if (pool.tripped) meta += ' \u00b7 <span class="meta-bad" title="pula wstrzyma\u0142a rotacj\u0119 po serii niepowodze\u0144">przerwa</span>';
+    if (pool.last_error) meta += ' \u00b7 <span class="meta-warn" title="' + esc(pool.last_error) + '">b\u0142\u0105d od\u015bwie\u017cania</span>';
+    $('pool-meta').innerHTML = meta;
     var rows = '';
     (st.proxies || []).slice(0, 100).forEach(function (p) {
       var cls = p.status === 'ok' ? 'rot' : (p.status === 'fail' ? 'empty' : 'dim');
-      rows += '<tr><td>' + esc(p.url) + '</td><td><span class="pill sm ' + cls + '">' + esc(p.status) + (p.fails ? ' \u00d7' + p.fails : '') + '</span></td><td>' + (p.latency_ms ? fmtNum(p.latency_ms) : '\u2013') + '</td><td class="dim">' + esc(p.source || '') + '</td></tr>';
+      var tip = [p.url, p.source ? 'źr\u00f3d\u0142o: ' + p.source : '',
+                 p.last_checked ? 'sprawdzony ' + ago(p.last_checked) : '',
+                 p.fails ? p.fails + ' nieudanych pr\u00f3b' : ''].filter(Boolean).join(' \u00b7 ');
+      rows += '<tr title="' + esc(tip) + '"><td class="ell">' + esc(p.url) + '</td>'
+        + '<td><span class="pill sm ' + cls + '">' + esc(p.status) + '</span></td>'
+        + '<td class="num">' + (p.latency_ms ? fmtNum(p.latency_ms) : '\u2013') + '</td>'
+        + '<td class="num">' + (p.fails ? fmtNum(p.fails) : '\u2013') + '</td>'
+        + '<td class="ell dim" title="' + esc(p.source || '') + '">' + esc(p.source || '') + '</td></tr>';
     });
-    $('proxy-rows').innerHTML = rows || '<tr><td colspan="4" class="dim">pula jest pusta</td></tr>';
+    $('proxy-rows').innerHTML = rows || '<tr><td colspan="5" class="dim">pula jest pusta</td></tr>';
+    fade($('pool-scroll'));
+  }
+
+  function renderEgress(st) {
+    var up = st.started ? (Date.now() / 1000 - st.started) : null;
+    $('egress-tiles').innerHTML = tile(up == null ? '\u2013' : fmtDur(up), 'dzia\u0142a')
+      + tile(fmtNum(st.requests), 'obs\u0142u\u017cone')
+      + tile(fmtNum(st.active), 'w toku')
+      + tile(fmtNum(st.denied), 'odrzucone');
+    $('egress-meta').textContent = 'proxy na porcie ' + (st.proxy_port == null ? '\u2013' : st.proxy_port)
+      + ' \u00b7 liczniki od startu';
   }
 
   function renderRuns(st) {
     var rows = '';
     (st.runs || []).forEach(function (r) {
-      var tags = '';
+      var tags = '', checked = 0, skipped = 0;
       var facs = r.faculties || {};
       Object.keys(facs).forEach(function (k) {
         var c = facs[k] || {};
+        checked += c.checked || 0; skipped += c.skipped || 0;
         var cls = c.blocked ? 'bad' : (c.degraded ? 'warn' : (c.changed ? 'chg' : ''));
-        tags += '<span class="tag ' + cls + '">' + esc(k.toUpperCase()) + (c.changed ? ' +' + c.changed : '') + (c.blocked ? ' \u26d4' : '') + (c.degraded ? ' \u26a0' : '') + '</span>';
+        var tip = k.toUpperCase() + (c.term ? ' \u00b7 termin ' + c.term : '')
+          + ' \u00b7 sprawdzone: ' + (c.checked == null ? '?' : c.checked)
+          + ' \u00b7 zmiany: ' + (c.changed || 0)
+          + (c.skipped ? ' \u00b7 pomini\u0119te: ' + c.skipped : '')
+          + (c.not_ready ? ' \u00b7 niegotowe: ' + c.not_ready : '')
+          + (c.blocked ? ' \u00b7 zablokowany' + (c.cause ? ' (' + c.cause + ')' : '') : '')
+          + (c.degraded ? ' \u00b7 zdegradowany' : '')
+          + (c.ahead ? ' \u00b7 nadchodz\u0105cy semestr' : '')
+          + (c.wait ? ' \u00b7 czeka\u0142 ' + fmtDur(c.wait.waited) + (c.wait.recovered ? ' (wr\u00f3ci\u0142)' : '') : '')
+          + (c.at ? ' \u00b7 o ' + isoClock(c.at) : '');
+        tags += '<span class="tag ' + cls + '" title="' + esc(tip) + '">' + esc(k.toUpperCase()) + (c.changed ? ' +' + c.changed : '') + (c.blocked ? ' \u26d4' : '') + (c.degraded ? ' \u26a0' : '') + '</span>';
       });
-      rows += '<tr><td>' + esc(isoClock(r.received)) + '</td><td>' + esc(isoClock(r.started)) + ' \u2013 ' + esc(isoClock(r.ended)) + '</td><td>' + exitPill(r.exit) + '</td><td><span class="chips">' + (tags || '<span class="dim">\u2013</span>') + '</span></td></tr>';
+      var d1 = ts(r.started), d2 = ts(r.ended);
+      var bits = [];
+      if (d1 && d2 && !isNaN(d1) && !isNaN(d2) && d2 > d1) { var dur = fmtDur((d2 - d1) / 1000); if (dur) bits.push(dur); }
+      if (checked) bits.push(fmtNum(checked) + ' sprawdzonych');
+      if (skipped) bits.push(fmtNum(skipped) + ' pomini\u0119tych');
+      var span = esc(isoClock(r.started)) + ' \u2013 ' + esc(isoClock(r.ended))
+        + (bits.length ? ' <span class="dim">\u00b7 ' + esc(bits.join(' \u00b7 ')) + '</span>' : '');
+      rows += '<tr><td>' + esc(isoClock(r.received)) + '</td><td>' + span + '</td><td>' + exitPill(r.exit) + '</td><td><span class="chips">' + (tags || '<span class="dim">\u2013</span>') + '</span></td></tr>';
     });
     $('runs-rows').innerHTML = rows || '<tr><td colspan="4" class="dim">brak przebiegów</td></tr>';
   }
@@ -1077,8 +1167,13 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     renderCrawl(st.progress || {}, st);
     renderHosts(st);
     renderPool(st);
+    renderEgress(st);
     renderRuns(st);
   }
+
+  var poolScroll = $('pool-scroll');
+  if (poolScroll) poolScroll.addEventListener('scroll', function () { fade(poolScroll); });
+  if (window.addEventListener) window.addEventListener('resize', function () { fade(poolScroll); });
 
   render(boot);
   function poll() {
@@ -1172,15 +1267,21 @@ class GuiHandler(BaseHTTPRequestHandler):
                 host_mode = 'ROTATING' if n else 'DIRECT'
             host_modes[h] = {'mode': host_mode, 'verified': n, 'fallbacks': fallbacks.get(h, 0)}
         open_runs = list(getattr(runs, 'open_runs', []))
-        return {'mode': mode, 'proxy_port': self.server.proxy_port, 'pool': stats,
+        ps = self.server.proxy_server
+        return {'mode': mode, 'proxy_port': self.server.proxy_port,
+                'started': getattr(ps, 'started', None),
+                'requests': getattr(ps, 'requests', 0),
+                'active': getattr(ps, 'active', 0),
+                'pool': stats,
                 'fallbacks': fallbacks, 'fallbacks_total': sum(fallbacks.values()),
                 'hosts': host_modes,
-                'denied': self.server.proxy_server.blocks,
+                'denied': ps.blocks,
                 'open_runs': open_runs,
                 'progress': _live(self.server).snapshot(),
                 'proxies': [{'url': p['url'], 'status': p.get('status', 'new'),
                              'latency_ms': p.get('latency_ms'), 'source': p.get('source', ''),
-                             'fails': p.get('fails', 0)} for p in proxies[:200]],
+                             'fails': p.get('fails', 0), 'last_checked': p.get('last_checked')}
+                            for p in proxies[:200]],
                 'runs': runs.runs[::-1][:10]}
 
     def do_GET(self):

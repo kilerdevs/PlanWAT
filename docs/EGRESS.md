@@ -66,12 +66,19 @@ zapisywanym w przeglądarce) i odświeża się bez przeładowania co 4 s z `GET 
 
 - kartę „Odświeżanie planów”: pasek postępu, licznik sprawdzonych grup, tempo (grup/s), przewidywany koniec i wiersz na każdy
   wydział z jego stanem (w kolejce, sprawdza, czeka na odblokowanie, zablokowany, brak postępu, gotowe).
-- tryb ROTATING vs DIRECT, rozmiar, zdrowie i medianę opóźnienia puli, liczniki fallbacków i odmów;
-- wiersze ROTATING / DIRECT (lista) / DIRECT dla każdego hosta (`/api/status` `.hosts.<host>`: liczba `verified` i fallbacki;
-  `DIRECT (lista)` = host z `EGRESS_DIRECT_FACULTY`, 0 zweryfikowanych = wydział jedzie bezpośrednio);
-- tabelę proxy (adres, stan, opóźnienie, źródło);
-- ostatnie przebiegi odświeżania zgłoszone przez `refresh.py` (`started/ended/exit` + dla wydziału sprawdzone/zmienione/
-  pominięte/zablokowane, a przy masowym pomijaniu także `degraded`). Raporty są też zapisywane w `/data/runs.json`.
+- kartę „Egress”: czas działania, obsłużone żądania proxy, tunele w toku i odmowy (liczniki od startu kontenera) oraz tryb puli
+  (ROTATING vs DIRECT);
+- tabelę „Wydziały”: wiersz na host z trybem (ROTATING / DIRECT (lista) / DIRECT), liczbą potwierdzonych wyjść i połączeń
+  awaryjnych, z podpowiedziami w nagłówkach kolumn;
+- kartę „Pula proxy”: rozmiar, zdrowych, nowych i odrzuconych wychodów, mediana i p95 opóźnienia (w sekundach), liczniki
+  fallbacków, a w samej tabeli adres, stan, ping, „pudła” (nieudane próby per host) i źródło; wiersz ma podpowiedź z czasem
+  ostatniego sprawdzenia, a nagłówek tabeli zostaje na miejscu przy przewijaniu;
+- „Przebiegi odświeżania”: ostatnie 10 raportów z czasem trwania i liczbą sprawdzonych oraz pominiętych grup, kodem wyjścia
+  (raport bez kodu czyta się jako „nieznany”), a każdy wydział ma podpowiedź ze sprawdzonymi/zmienionymi/pominiętymi, przyczyną
+  blokady i czasem oczekiwania. Karta postępu w bezczynności pokazuje wynik ostatniego przebiegu i godzinę następnego (cron
+  `:23` co 2 h). Raporty są też zapisywane w `/data/runs.json`.
+
+Znaczniki czasu raportów są w UTC bez strefy — panel czyta je jako UTC i pokazuje w czasie lokalnym.
 
 Karta postępu jest zbudowana z grubych zdarzeń, które crawler wysyła najlepszym wysiłkiem na `POST /api/progress`
 (`PLANWAT_EGRESS_PROGRESS`, domyślnie `http://<egress-ip>:8080/api/progress`, puste wyłącza; `run_start`, `faculty_start`,
