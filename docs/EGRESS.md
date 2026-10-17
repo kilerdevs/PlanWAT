@@ -41,7 +41,8 @@ dotyczyła — a to wycofuje wyjście z ostatniego tunelu do tego hosta. Bez teg
 - `tools/egress/server.py`: proxy przekazujące `:8888` (CONNECT i zwykłe HTTP, tylko porty 443/80) z łączeniem łańcuchowym
   HTTP/SOCKS5/SOCKS4a, plus GUI monitoringu w sieci LAN `:8080` (na hoście `:18080`, bo `:8080` zajmuje cAdvisor na hoście runnera)
   (`/` panel, `GET /api/status`, `POST /api/run` skrzynka raportów, `POST /api/block` zgłoszenie blokady (wycofuje wyjście),
-  `POST /api/refresh` wymuszenie odświeżenia). Żądania POST
+  `POST /api/progress` postęp przebiegu na żywo, `GET /api/progress` jego podsumowanie dla GUI, `POST /api/refresh` wymuszenie
+  odświeżenia). Żądania POST
   niosą `Authorization: Bearer $EGRESS_API_TOKEN`, gdy ustawiono `EGRESS_API_TOKEN`.
 - `Dockerfile.egress`, `requirements.txt` (curl_cffi, ta sama wersja co w odświeżaniu), `compose.fragment.yml` (fragment usługi
   do pliku compose plebanii).
@@ -60,14 +61,26 @@ Host z listy pokazuje w GUI tryb `DIRECT (lista)`.
 ## GUI monitoringu
 
 Tylko LAN: `http://<host-egress>:18080/` (kontener `:8080`; zawęź bind, jeśli maszyna jest bardziej wystawiona niż domowa sieć LAN).
-Odświeża się automatycznie co 30 s. Pokazuje:
+Panel jest zbudowany w stylu resztę serwisu (te same tokeny motywu, ciemny oraz jasny z przełącznikiem Auto / Ciemny / Jasny
+zapisywanym w przeglądarce) i odświeża się bez przeładowania co 4 s z `GET /api/status`. Pokazuje:
 
+- kartę „Odświeżanie planów”: pasek postępu, licznik sprawdzonych grup, tempo (grup/s), przewidywany koniec i wiersz na każdy
+  wydział z jego stanem (w kolejce, sprawdza, czeka na odblokowanie, zablokowany, brak postępu, gotowe).
 - tryb ROTATING vs DIRECT, rozmiar, zdrowie i medianę opóźnienia puli, liczniki fallbacków i odmów;
 - wiersze ROTATING / DIRECT (lista) / DIRECT dla każdego hosta (`/api/status` `.hosts.<host>`: liczba `verified` i fallbacki;
   `DIRECT (lista)` = host z `EGRESS_DIRECT_FACULTY`, 0 zweryfikowanych = wydział jedzie bezpośrednio);
 - tabelę proxy (adres, stan, opóźnienie, źródło);
 - ostatnie przebiegi odświeżania zgłoszone przez `refresh.py` (`started/ended/exit` + dla wydziału sprawdzone/zmienione/
   pominięte/zablokowane, a przy masowym pomijaniu także `degraded`). Raporty są też zapisywane w `/data/runs.json`.
+
+Karta postępu jest zbudowana z grubych zdarzeń, które crawler wysyła najlepszym wysiłkiem na `POST /api/progress`
+(`PLANWAT_EGRESS_PROGRESS`, domyślnie `http://<egress-ip>:8080/api/progress`, puste wyłącza; `run_start`, `faculty_start`,
+przycinane `tick`, `faculty_done`, `wait_start`/`wait_end`, `run_done`). Egress stempluje każdą dostawę i liczy tempo każdego
+wydziału z jego własnych `tick`ów (okno 180 s, przy zbyt krótkiej historii — mediana tempa całego przebiegu), a przewidywany
+koniec to suma tego, co zostało w najwolniejszej ścieżce (pasach wydziałów) plus minuta na publikację kalendarzy. Wydział,
+który czeka na odblokowanie albo zamilkł, pokazuje „wstrzymane” zamiast wymyślonej godziny — jeden zgubiony `tick` psuje
+tylko dokładność, nigdy sensu, a przebieg bez zdarzeń przez 10 minut czyta się jako „bez wieści”. Stanu nie zapisuje się na
+dysku: raport końcowy wciąż ląduje w `/data/runs.json`.
 
 Sprawdzenie stanu: `GET /api/status` (200 = GUI działa; dodaj jako `healthcheck:` w compose, a samo „unhealthy” nigdy nie
 restartuje kontenera, więc połącz z mechanizmem w stylu autoheal).

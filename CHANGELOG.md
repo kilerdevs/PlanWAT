@@ -104,6 +104,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Odświeżanie:** zgłoszenia blokad z crawla do proxy wyjściowego (`POST /api/block`): proxy wycofuje wyjście puli, które
   przewiozło stronę blokady, a lista `EGRESS_DIRECT_FACULTY` prowadzi wybrane wydziały linią domową — jedno oznaczone wyjście
   nie psuje już całego wydziału (zob. docs/EGRESS.md).
+- **Egress:** panel monitoringu w stylu serwisu (te same tokeny, ciemny i jasny motyw z przełącznikiem Auto / Ciemny / Jasny,
+  odświeżanie bez przeładowania) z kartą postępu odświeżania na żywo: pasek, licznik sprawdzonych grup, tempo, przewidywany
+  koniec i wiersz stanu każdego wydziału (w kolejce, sprawdza, czeka na odblokowanie, brak postępu, gotowe). Crawler raportuje
+  postęp najlepszym wysiłkiem (`PLANWAT_EGRESS_PROGRESS`, `POST /api/progress`), a egress liczy ETA z własnych pomiarów tempa
+  i mówi „wstrzymane”, gdy wydział czeka na odblokowanie — zgubione zdarzenie psuje tylko dokładność, nigdy crawl.
 
 ### Zmieniono
 - **Plan:** ✓ przy każdych skończonych zajęciach, nie tylko dzisiejszych.

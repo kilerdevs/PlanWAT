@@ -21,7 +21,9 @@ reports (LAN). The runner POSTs a run summary to /api/run after each refresh and
 whenever a faculty answers with a block page through a pooled exit, a block notice
 to /api/block — the crawler sees what the CONNECT tunnel hides, so the proxy can
 demote that exit (see ProxyServer.demote_recent); the GUI shows pool health, mode,
-and the last runs side by side.
+and the last runs side by side. While a crawl runs it also streams coarse progress
+to /api/progress (see LiveRun), which the GUI turns into a progress bar with a
+finish estimate built from the crawl's own measured throughput.
 
 Threat model (unchanged from tinyproxy): job code on the runner is untrusted, so
 this proxy never fetches an arbitrary host on a job's behalf — routing above is
@@ -39,6 +41,7 @@ import urllib.parse
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from statistics import median
 
 from pool import ProxyPool
 
@@ -312,6 +315,251 @@ class RunLog:
             return report
 
 
+# -- live crawl progress ---------------------------------------------------
+class LiveRun:
+    """Live crawl progress for the GUI: fed by POST /api/progress, read by GET /api/progress.
+
+    The crawler sends coarse events (run_start, faculty_start, tick, faculty_done, wait_start/end,
+    run_done) and this handler stamps each arrival, so a slot's throughput below is measured from
+    its own ticks — pages per second over the last RATE_WINDOW seconds. The finish estimate adds
+    up what remains per slot at that rate (the run's median rate for a slot that has not spoken
+    yet, its group count estimated from its siblings' median), and a lane's total is its slots'
+    sum: lanes crawl side by side, so the run ends with the slowest lane plus a tail for
+    publishing. A slot that is waiting out a block or has gone quiet makes its lane's estimate
+    read 'wstrzymane' instead of a made-up hour. One run at a time, memory only: a run whose
+    events stopped for STALE_S reads stale, and a report in /api/run still lands in runs.json.
+    """
+
+    RATE_WINDOW = 180.0   # seconds of a slot's own history its throughput is measured over
+    MIN_SPAN = 15.0       # below this much history, trust the run's median rate instead
+    STALL_S = 150.0       # 'crawling' but no event for this long -> stalled (honest, not wrong)
+    STALE_S = 600.0       # no event at all for this long -> the whole run reads stale
+    TAIL_S = 60.0         # publishing the changed calendars after the last page
+    FALLBACK_TOTAL = 150  # groups assumed for a faculty that has not listed yet
+    SAMPLE_CAP = 90       # ticks kept per slot (a few minutes at the crawler's throttle)
+
+    def __init__(self, clock=time.time):
+        self.clock = clock
+        self.lock = threading.Lock()
+        self.state = None
+
+    # -- writes ------------------------------------------------------------
+    def _slot(self, key, faculty, lane, now, ahead=False, term=''):
+        return {'key': key, 'faculty': faculty, 'lane': lane, 'status': 'queued', 'total': None,
+                'done': 0, 'pass': 0, 'ahead': bool(ahead), 'term': term, 'changed': None,
+                'updated': now, 'samples': deque(maxlen=self.SAMPLE_CAP)}
+
+    def _start(self, rid, body, now):
+        slots, lanes = {}, []
+        for lane in body.get('lanes') or []:
+            if not isinstance(lane, dict):
+                continue
+            names = [str(f) for f in lane.get('faculties') or [] if f]
+            name = str(lane.get('lane') or (names[0] if names else '?'))
+            lanes.append({'lane': name, 'slots': list(names)})
+            for fac in names:
+                slots[fac] = self._slot(fac, fac, name, now)
+        self.state = {'run': rid, 'started': now, 'updated': now, 'finished': None, 'exit': None,
+                      'blocked': False, 'incomplete': False, 'degraded': False, 'changed': None,
+                      'profile': str(body.get('profile') or ''), 'parallel': bool(body.get('parallel')),
+                      'wait': None, 'lanes': lanes, 'slots': slots}
+
+    def _lane_add(self, lane, key):
+        for entry in self.state['lanes']:
+            if entry['lane'] == lane:
+                if key not in entry['slots']:
+                    entry['slots'].append(key)
+                return
+        self.state['lanes'].append({'lane': lane or '?', 'slots': [key]})
+
+    def _slot_of(self, body, now):
+        key = str(body.get('slot') or body.get('faculty') or '?')
+        slot = self.state['slots'].get(key)
+        if slot is None:  # a slot the run_start did not announce (an ahead pass, a lost event)
+            lane = str(body.get('lane') or '')
+            slot = self._slot(key, str(body.get('faculty') or key), lane, now,
+                              ahead=bool(body.get('ahead')), term=str(body.get('term') or ''))
+            self.state['slots'][key] = slot
+            self._lane_add(lane, key)
+        return slot
+
+    def _sample(self, slot, now):
+        slot['samples'].append((now, slot['done']))
+
+    def _apply(self, kind, body, now):
+        if kind == 'faculty_start':
+            slot = self._slot_of(body, now)
+            total = body.get('total')
+            slot['total'] = int(total) if isinstance(total, (int, float)) else None
+            slot['done'] = 0
+            slot['pass'] += 1
+            slot['status'] = 'crawling'
+            slot['ahead'] = bool(body.get('ahead'))
+            slot['term'] = str(body.get('term') or slot['term'])
+            slot['updated'] = now
+            slot['samples'].clear()  # a resumed pass measures from its own zero
+            self._sample(slot, now)
+        elif kind == 'tick':
+            slot = self._slot_of(body, now)
+            done, total = body.get('done'), body.get('total')
+            if isinstance(done, (int, float)):
+                slot['done'] = int(done)
+            if slot['total'] is None and isinstance(total, (int, float)):
+                slot['total'] = int(total)
+            if slot['status'] == 'queued':
+                slot['status'] = 'crawling'
+            slot['updated'] = now
+            self._sample(slot, now)
+        elif kind == 'faculty_done':
+            slot = self._slot_of(body, now)
+            blocked, complete = bool(body.get('blocked')), bool(body.get('complete'))
+            changed = body.get('changed')
+            slot['changed'] = int(changed) if isinstance(changed, (int, float)) else None
+            if complete and slot['total'] is not None:
+                slot['done'] = slot['total']
+            slot['status'] = 'blocked' if blocked else ('done' if complete else 'stopped')
+            slot['updated'] = now
+            self._sample(slot, now)
+        elif kind == 'wait_start':
+            faculties = [str(f) for f in body.get('faculties') or []]
+            self.state['wait'] = {'lane': str(body.get('lane') or ''), 'faculties': faculties,
+                                  'budget': body.get('budget'), 'since': now}
+            for fac in faculties:
+                slot = self.state['slots'].get(fac)
+                if slot is not None:
+                    slot['status'] = 'waiting'
+                    slot['updated'] = now
+        elif kind == 'wait_end':
+            self.state['wait'] = None
+            recovered = bool(body.get('recovered'))
+            for fac in body.get('faculties') or []:
+                slot = self.state['slots'].get(str(fac))
+                if slot is not None and not recovered:
+                    slot['status'] = 'blocked'  # the wall outlived its budget
+                    slot['updated'] = now
+        elif kind == 'run_done':
+            self.state['finished'] = now
+            if isinstance(body.get('exit'), (int, float)):
+                self.state['exit'] = int(body['exit'])
+            if isinstance(body.get('changed'), (int, float)):
+                self.state['changed'] = int(body['changed'])
+            self.state['blocked'] = bool(body.get('blocked'))
+            self.state['incomplete'] = bool(body.get('incomplete'))
+            self.state['degraded'] = bool(body.get('degraded'))
+
+    def event(self, body):
+        """Apply one crawler event; returns a small acknowledgement (None = ignored)."""
+        if not isinstance(body, dict):
+            return None
+        kind = str(body.get('event') or '')
+        rid = str(body.get('run') or '')
+        now = self.clock()
+        with self.lock:
+            if kind == 'run_start' or self.state is None:
+                self._start(rid, body, now)
+            elif rid and rid != self.state.get('run'):
+                if self.state.get('finished') is None:
+                    return None  # a straggler of an older run while this one is live
+                self._start(rid, {}, now)  # a new run whose run_start never made it
+            self._apply(kind, body, now)
+            self.state['updated'] = now
+            return {'ok': True, 'event': kind, 'run': self.state['run']}
+
+    # -- reads -------------------------------------------------------------
+    def _rate(self, slot):
+        samples = slot['samples']
+        if len(samples) < 2:
+            return None
+        t_end, d_end = samples[-1]
+        t_ref, d_ref = samples[0]
+        for t, d in samples:
+            if t_end - t <= self.RATE_WINDOW:
+                t_ref, d_ref = t, d
+                break
+        span = t_end - t_ref
+        if span < self.MIN_SPAN or d_end <= d_ref:
+            return None
+        return (d_end - d_ref) / span
+
+    def snapshot(self, now=None):
+        """The GUI's whole crawl card, ETAs included, computed from the arrival-stamped state."""
+        now = self.clock() if now is None else now
+        with self.lock:
+            st = self.state
+            if st is None:
+                return {'active': False, 'run': None}
+            rates, totals = {}, []
+            for key, slot in st['slots'].items():
+                rate = self._rate(slot)
+                if rate:
+                    rates[key] = rate
+                if slot['total']:
+                    totals.append(slot['total'])
+            med_rate = median(rates.values()) if rates else None
+            med_total = int(median(totals)) if totals else self.FALLBACK_TOTAL
+            finished = st.get('finished')
+            wait = st.get('wait')
+            views = {}
+            for key, slot in st['slots'].items():
+                status = slot['status']
+                ago = max(0.0, now - slot['updated'])
+                if finished is None and status == 'crawling' and ago > self.STALL_S:
+                    status = 'stalled'
+                total, est = slot['total'], False
+                if total is None:
+                    total, est = med_total, True  # not listed yet: siblings' median, flagged
+                done = slot['done']
+                rate = rates.get(key) or med_rate
+                if finished is not None or status in ('done', 'stopped'):
+                    eta = 0.0  # the run is over, or this slot will do no more work in it
+                elif status in ('waiting', 'blocked', 'stalled'):
+                    eta = None  # honesty over precision: unknown, not a guess
+                elif rate:
+                    eta = max(0.0, (total - done) / rate)
+                else:
+                    eta = None  # too early to measure a rate (or no median to borrow)
+                views[key] = {'slot': key, 'faculty': slot['faculty'], 'lane': slot['lane'],
+                              'status': status, 'done': done, 'total': total,
+                              'pct': round(100.0 * done / total, 1) if total else 0.0,
+                              'rate': round(rate, 3) if rate else None,
+                              'eta_s': None if eta is None else round(eta),
+                              'estimated': est, 'ahead': slot['ahead'], 'term': slot['term'],
+                              'pass': slot['pass'], 'changed': slot['changed'],
+                              'updated_ago': round(ago)}
+            lanes_out = []
+            for lane in st['lanes']:
+                members = [views[k] for k in lane['slots'] if k in views]
+                etas = [m['eta_s'] for m in members]
+                unknown = any(e is None for e in etas)
+                lanes_out.append({'lane': lane['lane'], 'slots': members, 'unknown': unknown,
+                                  'eta_s': None if unknown else round(sum(etas))})
+            known = [v for v in views.values()]
+            done_total = sum(v['done'] for v in known)
+            total_all = sum(v['total'] for v in known)
+            active = finished is None
+            if not active:
+                eta = 0.0
+            elif any(l['unknown'] for l in lanes_out):
+                eta = None
+            else:
+                eta = max([l['eta_s'] or 0.0 for l in lanes_out] or [0.0]) + self.TAIL_S
+            elapsed = (finished or now) - st['started']
+            return {'active': active, 'stale': active and (now - st['updated']) > self.STALE_S,
+                    'run': st['run'], 'started': st['started'], 'finished': finished,
+                    'elapsed_s': round(elapsed), 'exit': st['exit'], 'changed': st['changed'],
+                    'blocked': st['blocked'], 'incomplete': st['incomplete'],
+                    'degraded': st['degraded'], 'profile': st['profile'], 'parallel': st['parallel'],
+                    'waiting': bool(wait) and active, 'wait': wait,
+                    'done': done_total, 'total': total_all,
+                    'pct': round(100.0 * done_total / total_all, 1) if total_all else 0.0,
+                    'estimated': any(v['estimated'] for v in known),
+                    'rate': round(done_total / elapsed, 3) if done_total and elapsed > 0 else 0.0,
+                    'eta_s': None if eta is None else round(eta),
+                    'eta_at': None if eta is None else now + eta,
+                    'lanes': lanes_out, 'updated': st['updated'],
+                    'updated_ago': round(max(0.0, now - st['updated']))}
+
+
 # -- forward proxy ----------------------------------------------------------
 class ProxyHandler(BaseHTTPRequestHandler):
     server_version = 'PlanWAT-Egress/1'
@@ -516,27 +764,365 @@ class ProxyServer(ThreadingHTTPServer):
 # -- LAN GUI -----------------------------------------------------------------
 DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="30">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Crect x='13' y='16' width='38' height='35' rx='9' fill='none' stroke='%23f5f5f7' stroke-width='3.5'/%3E%3Cpath d='M13 27h38M24 11v9M40 11v9' stroke='%23f5f5f7' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='40' cy='39.5' r='4.5' fill='%230a84ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet">
 <title>PlanWAT egress</title>
-<style>body{font-family:system-ui,sans-serif;max-width:960px;margin:2em auto;padding:0 1em;color:#222}
-.mode{font-size:1.4em;font-weight:700}.rot{color:#0a7d2c}.dir{color:#b35400}
-table{border-collapse:collapse;width:100%;margin:1em 0}td,th{border:1px solid #ccc;padding:.35em .6em;text-align:left;font-size:.9em}
-.ok{color:#0a7d2c}.fail{color:#a00}.new{color:#666}.small{color:#666;font-size:.85em}
-.banner{background:#fff3cd;border:1px solid #e0c36a;padding:.6em 1em;margin:1em 0}</style>
+<style>
+  /* the site's tokens, dark first; light restates them (auto follows the system) */
+  :root {
+    --bg:#000000; --s1:#111113; --s2:#1c1c1e; --s3:#2c2c2e; --s4:#3a3a3c; --s2-hover:#232326;
+    --t1:#f5f5f7; --t2:#a1a1a6; --t3:#86868b; --t4:#6e6e73;
+    --hl:255,255,255;
+    --line:rgba(var(--hl),.08); --line-2:rgba(var(--hl),.14); --edge:inset 0 1px 0 rgba(var(--hl),.06);
+    --accent:#0a84ff; --accent-text:#4da3ff; --accent-soft:rgba(10,132,255,.14); --accent-line:rgba(10,132,255,.5);
+    --free:#32d74b; --busy:#ff6b63; --warn:#ffb340;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Inter",system-ui,sans-serif;
+    --fs-12:.75rem; --fs-13:.8125rem; --fs-15:.9375rem; --fs-17:1.0625rem; --fs-20:1.25rem; --fs-28:1.75rem;
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+    --r-card:16px; --r-ctl:12px; --r-pill:999px;
+    --ease-out:cubic-bezier(.22,1,.36,1); --dur-fast:150ms; --dur-base:300ms;
+    color-scheme:dark;
+  }
+  :root[data-theme="light"] {
+    --bg:#f2f2f7; --s1:#ffffff; --s2:#ffffff; --s3:#e9e9ee; --s4:#d8d8de; --s2-hover:#f6f6fa;
+    --t1:#1c1c1e; --t2:#55555a; --t3:#6c6c70; --t4:#8e8e93; --hl:0,0,0;
+    --line:rgba(0,0,0,.12); --line-2:rgba(0,0,0,.2); --edge:inset 0 1px 0 rgba(255,255,255,.8);
+    --accent:#0a84ff; --accent-text:#0060df; --accent-soft:rgba(10,132,255,.12); --accent-line:rgba(10,132,255,.4);
+    --warn:#a35200; --free:#1b8a35; --busy:#d2453d; color-scheme:light;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg:#f2f2f7; --s1:#ffffff; --s2:#ffffff; --s3:#e9e9ee; --s4:#d8d8de; --s2-hover:#f6f6fa;
+      --t1:#1c1c1e; --t2:#55555a; --t3:#6c6c70; --t4:#8e8e93; --hl:0,0,0;
+      --line:rgba(0,0,0,.12); --line-2:rgba(0,0,0,.2); --edge:inset 0 1px 0 rgba(255,255,255,.8);
+      --accent:#0a84ff; --accent-text:#0060df; --accent-soft:rgba(10,132,255,.12); --accent-line:rgba(10,132,255,.4);
+      --warn:#a35200; --free:#1b8a35; --busy:#d2453d; color-scheme:light;
+    }
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html { background:var(--bg); -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--t1); font-family:var(--font); line-height:1.45; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+  main { max-width:calc(960px + 32px); margin:0 auto; padding:40px max(16px,env(safe-area-inset-right)) 20px max(16px,env(safe-area-inset-left)); }
+  h1 { margin:0; font-size:1.75rem; font-weight:700; line-height:1.1; letter-spacing:-.035em; }
+  .sub { margin:2px 0 0; color:var(--t2); font-size:var(--fs-13); }
+  .head { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; }
+  .brand { display:flex; align-items:center; gap:12px; min-width:0; }
+  .brand svg { width:44px; height:44px; flex:none; border-radius:11px; }
+  .pill { display:inline-flex; align-items:center; gap:8px; padding:6px 14px; border-radius:var(--r-pill); background:var(--s2); box-shadow:var(--edge),inset 0 0 0 1px var(--line); font-size:var(--fs-13); font-weight:600; white-space:nowrap; }
+  .pill .dot { width:8px; height:8px; border-radius:50%; background:var(--t3); }
+  .pill.rot .dot { background:var(--free); }
+  .pill.dir .dot { background:var(--warn); }
+  .pill.empty .dot { background:var(--busy); }
+  .pill.sm { padding:2px 10px; font-size:var(--fs-12); box-shadow:none; background:var(--s3); }
+  .pill.sm.rot { color:var(--free); } .pill.sm.dir { color:var(--warn); } .pill.sm.empty { color:var(--busy); } .pill.sm.dim { color:var(--t3); }
+  .card { padding:var(--sp-4) var(--sp-5) var(--sp-5); border-radius:var(--r-card); background:var(--s2); box-shadow:var(--edge); margin-bottom:16px; }
+  .card h2 { margin:0; font-size:var(--fs-17); font-weight:600; letter-spacing:-.012em; }
+  .card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  .dim { color:var(--t3); } .small { font-size:var(--fs-12); }
+  .status { font-size:var(--fs-13); font-weight:600; color:var(--t2); }
+  .status.live { color:var(--accent-text); } .status.done { color:var(--free); } .status.blocked { color:var(--busy); }
+  .bigbar { height:12px; border-radius:6px; background:var(--s3); overflow:hidden; box-shadow:inset 0 0 0 1px var(--line); }
+  .bigbar i { display:block; height:100%; width:0; border-radius:6px; background:var(--accent); transition:width var(--dur-base) var(--ease-out); }
+  .bigbar.live i { background:linear-gradient(90deg,var(--accent),#4da3ff); }
+  .bigbar.blocked i { background:var(--busy); }
+  .bigbar.done i { background:var(--free); }
+  .crawl-line { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 14px; margin-top:10px; font-size:var(--fs-13); color:var(--t2); font-variant-numeric:tabular-nums; }
+  .crawl-line strong { font-size:var(--fs-15); font-weight:600; color:var(--t1); }
+  .grow { flex:1 1 auto; }
+  #crawl-eta { font-weight:600; color:var(--t1); }
+  #crawl-eta.blocked { color:var(--busy); }
+  #crawl-eta.done { color:var(--free); }
+  .lanes { list-style:none; margin:16px 0 0; padding:12px 0 0; border-top:1px solid var(--line); display:grid; gap:8px; }
+  .lane { display:grid; grid-template-columns:138px minmax(40px,1fr) minmax(0,auto); gap:12px; align-items:center; font-size:var(--fs-13); }
+  .lane .lbl { display:flex; align-items:center; gap:8px; min-width:0; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
+  .lane .dot { width:8px; height:8px; flex:none; border-radius:50%; background:var(--s4); }
+  .lane .dot.crawling { background:var(--accent); animation:pulse 1.8s ease-in-out infinite; }
+  .lane .dot.waiting { background:var(--warn); animation:pulse 1.8s ease-in-out infinite; }
+  .lane .dot.blocked, .lane .dot.stalled { background:var(--busy); }
+  .lane .dot.done { background:var(--free); }
+  .lane .track { height:8px; border-radius:4px; background:var(--s3); overflow:hidden; }
+  .lane .track i { display:block; height:100%; width:0; border-radius:4px; background:var(--t3); transition:width var(--dur-base) var(--ease-out); }
+  .lane .val { color:var(--t2); font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
+  .lane .val b { color:var(--t1); font-weight:600; }
+  @keyframes pulse { 50% { opacity:.35; } }
+  .grid2 { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:16px; align-items:start; }
+  @media (max-width:780px) { .grid2 { grid-template-columns:1fr; } .lane { grid-template-columns:112px minmax(40px,1fr) minmax(0,auto); } }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(92px,1fr)); gap:var(--sp-2); margin-bottom:12px; }
+  .tile { padding:10px 12px; border-radius:var(--r-ctl); background:var(--s3); }
+  .tile b { display:block; font-size:var(--fs-20); font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .tile span { font-size:var(--fs-12); color:var(--t2); }
+  table.data { width:100%; border-collapse:collapse; font-size:var(--fs-13); font-variant-numeric:tabular-nums; }
+  table.data th, table.data td { padding:6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+  table.data thead th { color:var(--t2); font-weight:500; }
+  table.data tbody tr:last-child td { border-bottom:0; }
+  .scroll { max-height:300px; overflow:auto; }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .tag { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:var(--r-pill); background:var(--s3); font-size:var(--fs-12); color:var(--t2); white-space:nowrap; }
+  .tag.chg { color:var(--accent-text); background:var(--accent-soft); }
+  .tag.bad { color:var(--busy); background:rgba(255,107,99,.14); }
+  .tag.warn { color:var(--warn); background:rgba(255,179,64,.14); }
+  .banner { margin-bottom:16px; padding:12px 16px; border-radius:var(--r-card); background:var(--accent-soft); box-shadow:inset 0 0 0 1px var(--accent-line); color:var(--accent-text); font-size:var(--fs-13); font-weight:600; }
+  footer { max-width:calc(960px + 32px); margin:0 auto; padding:0 max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left)); }
+  .themerow { display:flex; justify-content:center; padding:8px 0 12px; }
+  .themeswitch { display:inline-flex; gap:2px; padding:3px; border-radius:var(--r-pill); background:var(--s3); vertical-align:middle; }
+  .themeswitch button { font:inherit; font-size:var(--fs-13); font-weight:600; color:var(--t2); background:none; border:0; border-radius:var(--r-pill); padding:6px 14px; min-height:32px; cursor:pointer; }
+  .themeswitch button[aria-pressed="true"] { background:var(--t1); color:var(--bg); }
+  .themeswitch button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .stamp { margin:0; text-align:center; font-size:var(--fs-12); color:var(--t3); font-variant-numeric:tabular-nums; }
+</style>
 </head><body>
-<h1>PlanWAT egress</h1>
-%BANNER%
-<div class="mode %MODE_CLASS%">tryb: %MODE%</div>
-<p class="small">pool: %TOTAL% proxy (%OK% ok · %NEW% new · %FAIL% fail) · p50: %P50% ms · p95: %P95% ms · mediana ok: %MED% ms
-· ostatnie odświeżenie: %REFRESH% · bezpośrednich obejść: %FALLBACKS% · odrzuconych: %BLOCKS%</p>
-<h2>Wydziały (weryfikacja per host)</h2>
-<table><tr><th>host</th><th>tryb</th><th>zweryfikowane</th><th>obejścia</th></tr>%HOST_ROWS%</table>
-<h2>Proxy</h2>
-<table><tr><th>proxy</th><th>status</th><th>ping</th><th>źródło</th></tr>%PROXY_ROWS%</table>
-<h2>Przebiegi odświeżania</h2>
-<table><tr><th>odebrano</th><th>start</th><th>koniec</th><th>exit</th><th>wydziały</th></tr>%RUN_ROWS%</table>
-<p class="small">Odświeżenie co 30 s. POST /api/refresh wymusza odświeżenie puli.</p>
+<main>
+  <header class="head">
+    <div class="brand">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1c1c1e"/><rect x="13" y="16" width="38" height="35" rx="9" fill="none" stroke="#f5f5f7" stroke-width="3.5"/><path d="M13 27h38M24 11v9M40 11v9" stroke="#f5f5f7" stroke-width="3.5" stroke-linecap="round"/><circle cx="40" cy="39.5" r="4.5" fill="#0a84ff"/></svg>
+      <div><h1>Egress</h1><p class="sub">rotujący proxy odświeżania planów &middot; PlanWAT</p></div>
+    </div>
+    <span class="pill" id="mode-pill"><i class="dot"></i><span id="mode-text">&hellip;</span></span>
+  </header>
+
+  %BANNER%
+
+  <section class="card">
+    <div class="card-head"><h2>Odświeżanie planów</h2><span class="status" id="crawl-state">wczytywanie&hellip;</span></div>
+    <div class="bigbar" id="crawl-bar" role="progressbar" aria-label="postęp odświeżania" aria-valuemin="0" aria-valuemax="100"><i id="crawl-fill"></i></div>
+    <div class="crawl-line"><strong id="crawl-count">&ndash;</strong><span id="crawl-sub"></span><span class="grow"></span><span id="crawl-eta"></span></div>
+    <ul class="lanes" id="crawl-lanes"></ul>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <div class="card-head"><h2>Wydziały</h2><span class="dim small">weryfikacja per host</span></div>
+      <table class="data"><thead><tr><th>host</th><th>tryb</th><th>zweryf.</th><th>obejścia</th></tr></thead><tbody id="hosts-rows"></tbody></table>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Pula proxy</h2><span class="dim small" id="pool-meta"></span></div>
+      <div class="tiles" id="pool-tiles"></div>
+      <div class="scroll"><table class="data"><thead><tr><th>proxy</th><th>status</th><th>ping</th><th>źródło</th></tr></thead><tbody id="proxy-rows"></tbody></table></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>Przebiegi odświeżania</h2><span class="dim small">ostatnie 10</span></div>
+    <table class="data"><thead><tr><th>odebrano</th><th>start &ndash; koniec</th><th>exit</th><th>wydziały</th></tr></thead><tbody id="runs-rows"></tbody></table>
+  </section>
+</main>
+<footer>
+  <div class="themerow"><div class="themeswitch" role="group" aria-label="Motyw">
+    <button type="button" data-t="auto" aria-pressed="true">Auto</button><button type="button" data-t="dark" aria-pressed="false">Ciemny</button><button type="button" data-t="light" aria-pressed="false">Jasny</button>
+  </div></div>
+  <p class="stamp" id="stamp">dane wczytywane&hellip;</p>
+</footer>
+<script id="boot" type="application/json">%BOOT%</script>
+<script>
+(function () {
+  'use strict';
+  var boot = JSON.parse(document.getElementById('boot').textContent);
+  var POLL = 4000;
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function fmtNum(n) { return n == null ? '\u2013' : Number(n).toLocaleString('pl-PL'); }
+  function fmtDur(s) {
+    if (s == null || !isFinite(s)) return null;
+    s = Math.max(0, Math.round(s));
+    if (s < 90) return '1 min';
+    var m = Math.round(s / 60);
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60); m = m % 60;
+    return h + ' h' + (m ? ' ' + m + ' min' : '');
+  }
+  function clock(ep) { return ep == null ? '\u2013' : new Date(ep * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }); }
+  function isoClock(iso) { if (!iso) return '\u2013'; var d = new Date(iso); return isNaN(d) ? String(iso) : d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }); }
+  function modeClass(mode) { mode = String(mode); return mode.indexOf('ROTATING') === 0 ? 'rot' : (mode.indexOf('DIRECT (pula') === 0 ? 'empty' : 'dir'); }
+  function tile(v, l) { return '<div class="tile"><b>' + v + '</b><span>' + l + '</span></div>'; }
+  function exitPill(exit) {
+    var cls = exit === 0 ? 'rot' : (exit === 3 ? 'empty' : (exit === 4 ? 'dir' : 'dim'));
+    var label = exit === 0 ? 'ok' : (exit === 3 ? 'zablokowany' : (exit === 4 ? 'niekompletny' : String(exit)));
+    return '<span class="pill sm ' + cls + '">' + esc(label) + '</span>';
+  }
+  var SLOT = { queued: 'w kolejce', crawling: 'sprawdza', waiting: 'czeka na odblokowanie', blocked: 'zablokowany', stalled: 'brak postępu', stopped: 'przerwany', done: 'gotowe' };
+  var SLOTCOLOR = { crawling: 'var(--accent)', waiting: 'var(--warn)', blocked: 'var(--busy)', stalled: 'var(--busy)', stopped: 'var(--t4)', done: 'var(--free)', queued: 'var(--s4)' };
+
+  function renderMode(st) {
+    var mode = st.mode || '?';
+    $('mode-pill').className = 'pill ' + modeClass(mode);
+    var label = mode;
+    if (mode === 'ROTATING') label = 'tryb: rotujący';
+    else if (String(mode).indexOf('DIRECT') === 0) label = 'tryb: bezpośredni' + (String(mode).indexOf('pusta') > -1 ? ' \u00b7 pula pusta' : '');
+    $('mode-text').textContent = label;
+  }
+
+  function renderCrawl(p, st) {
+    var bar = $('crawl-bar'), fill = $('crawl-fill'), state = $('crawl-state');
+    var count = $('crawl-count'), sub = $('crawl-sub'), eta = $('crawl-eta'), lanes = $('crawl-lanes');
+    p = p || {};
+    if (!p.run) {
+      bar.className = 'bigbar'; fill.style.width = '0%'; bar.setAttribute('aria-valuenow', '0');
+      state.className = 'status'; state.textContent = 'bez przebiegu';
+      count.textContent = 'brak aktywnego przebiegu';
+      sub.textContent = 'harmonogram: co 2 h (cron 23 */2)';
+      var last = (st.runs || [])[0];
+      if (last) {
+        var changed = 0, blocked = 0, facs = last.faculties || {};
+        Object.keys(facs).forEach(function (k) { changed += facs[k].changed || 0; if (facs[k].blocked) blocked += 1; });
+        eta.className = '';
+        eta.textContent = 'ostatni: ' + isoClock(last.started) + ' \u00b7 exit ' + last.exit + ' \u00b7 zmiany: ' + changed + (blocked ? ' \u00b7 zablokowane: ' + blocked : '');
+      } else { eta.textContent = ''; }
+      lanes.innerHTML = '';
+      return;
+    }
+    var pct = Math.max(0, Math.min(100, p.pct || 0));
+    bar.className = 'bigbar' + (p.active ? (p.blocked ? ' blocked' : ' live') : ' done');
+    fill.style.width = pct + '%';
+    bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+    if (p.active) {
+      state.className = 'status' + (p.blocked ? ' blocked' : ' live');
+      state.textContent = p.stale ? 'przebieg bez wieści' : (p.waiting ? 'czekam na odblokowanie' : 'odświeżanie w toku');
+    } else {
+      state.className = 'status done';
+      state.textContent = 'zakończony';
+    }
+    count.innerHTML = '<b>' + fmtNum(p.done) + ' / ' + (p.estimated ? '~' : '') + fmtNum(p.total) + '</b> grup \u00b7 ' + Math.round(pct) + '%';
+    var bits = ['start ' + clock(p.started), fmtDur(p.elapsed_s) || '\u2013'];
+    if (p.rate) bits.push(p.rate.toFixed(1).replace('.', ',') + ' grup/s');
+    if (p.profile) bits.push(p.profile);
+    sub.textContent = bits.join(' \u00b7 ');
+    if (!p.active) {
+      var tail = ['exit ' + p.exit];
+      if (p.changed != null) tail.push('zmiany: ' + p.changed);
+      if (p.blocked) tail.push('zablokowane');
+      if (p.incomplete || p.degraded) tail.push('niekompletny');
+      eta.className = p.blocked ? 'blocked' : 'done';
+      eta.textContent = tail.join(' \u00b7 ');
+    } else if (p.waiting) {
+      var wf = (p.wait && p.wait.faculties) || [];
+      eta.className = 'blocked';
+      eta.textContent = 'wstrzymane \u2014 ' + (wf.length ? wf.map(function (f) { return f.toUpperCase(); }).join(', ') + ' czeka na odblokowanie' : 'czekam na odblokowanie');
+    } else if (p.eta_s != null) {
+      eta.className = '';
+      eta.textContent = 'koniec \u2248 ' + clock(p.eta_at) + ' \u00b7 za ' + fmtDur(p.eta_s);
+    } else if (p.stale) {
+      eta.className = 'blocked';
+      eta.textContent = 'brak danych od ' + fmtDur(p.updated_ago);
+    } else {
+      eta.className = '';
+      eta.textContent = 'liczę tempo\u2026';
+    }
+    var html = '';
+    (p.lanes || []).forEach(function (lane) {
+      (lane.slots || []).forEach(function (s) {
+        var label = String(s.faculty || s.slot).toUpperCase() + (s.ahead ? ' \u00b7 nadchodzący' : '');
+        var spct = s.total ? Math.round(100 * s.done / s.total) : 0;
+        var color = SLOTCOLOR[s.status] || 'var(--t3)';
+        var val;
+        if (s.status === 'queued') val = 'w kolejce';
+        else if (s.status === 'waiting' || s.status === 'blocked') val = SLOT[s.status] + (s.pass > 1 ? ' (podejście ' + s.pass + ')' : '');
+        else if (s.status === 'done') val = '<b>' + fmtNum(s.done) + ' / ' + fmtNum(s.total) + '</b> \u00b7 gotowe' + (s.changed ? ' \u00b7 +' + s.changed : '');
+        else if (s.status === 'stopped') val = fmtNum(s.done) + ' / ' + fmtNum(s.total) + ' \u00b7 przerwany';
+        else if (s.status === 'stalled') val = fmtNum(s.done) + ' / ' + fmtNum(s.total) + ' \u00b7 brak postępu od ' + fmtDur(s.updated_ago);
+        else val = '<b>' + fmtNum(s.done) + ' / ' + fmtNum(s.total) + '</b>' + (s.eta_s != null ? ' \u00b7 \u2248' + fmtDur(s.eta_s) : '');
+        html += '<li class="lane"><span class="lbl"><i class="dot ' + s.status + '"></i>' + esc(label) + '</span>'
+             + '<span class="track" title="' + esc(SLOT[s.status] || s.status) + '"><i style="width:' + spct + '%;background:' + color + '"></i></span>'
+             + '<span class="val">' + val + '</span></li>';
+      });
+    });
+    lanes.innerHTML = html;
+  }
+
+  function renderHosts(st) {
+    var rows = '';
+    var hosts = st.hosts || {};
+    Object.keys(hosts).forEach(function (h) {
+      var v = hosts[h] || {};
+      rows += '<tr><td>' + esc(h) + '</td><td><span class="pill sm ' + modeClass(v.mode) + '">' + esc(v.mode) + '</span></td><td>' + fmtNum(v.verified) + '</td><td>' + fmtNum(v.fallbacks) + '</td></tr>';
+    });
+    $('hosts-rows').innerHTML = rows || '<tr><td colspan="4" class="dim">brak hostów</td></tr>';
+  }
+
+  function renderPool(st) {
+    var pool = st.pool || {}, bs = pool.by_status || {};
+    $('pool-tiles').innerHTML = tile(fmtNum(pool.total), 'w puli') + tile(fmtNum(bs.ok || 0), 'zdrowych')
+      + tile(fmtNum(bs.new || 0), 'nowych') + tile(bs.fail ? fmtNum(bs.fail) : '0', 'odrzuconych')
+      + tile(pool.p95_ok_ms ? fmtNum(pool.p95_ok_ms) + ' ms' : '\u2013', 'p95');
+    $('pool-meta').textContent = 'mediana ' + (pool.median_ok_ms ? pool.median_ok_ms + ' ms' : '\u2013')
+      + ' \u00b7 odświeżono ' + (pool.last_refresh ? new Date(pool.last_refresh * 1000).toLocaleTimeString('pl-PL') : 'nigdy')
+      + ' \u00b7 obejścia ' + fmtNum(st.fallbacks_total) + ' \u00b7 odrzucone ' + fmtNum(st.denied);
+    var rows = '';
+    (st.proxies || []).slice(0, 100).forEach(function (p) {
+      var cls = p.status === 'ok' ? 'rot' : (p.status === 'fail' ? 'empty' : 'dim');
+      rows += '<tr><td>' + esc(p.url) + '</td><td><span class="pill sm ' + cls + '">' + esc(p.status) + (p.fails ? ' \u00d7' + p.fails : '') + '</span></td><td>' + (p.latency_ms ? fmtNum(p.latency_ms) : '\u2013') + '</td><td class="dim">' + esc(p.source || '') + '</td></tr>';
+    });
+    $('proxy-rows').innerHTML = rows || '<tr><td colspan="4" class="dim">pula jest pusta</td></tr>';
+  }
+
+  function renderRuns(st) {
+    var rows = '';
+    (st.runs || []).forEach(function (r) {
+      var tags = '';
+      var facs = r.faculties || {};
+      Object.keys(facs).forEach(function (k) {
+        var c = facs[k] || {};
+        var cls = c.blocked ? 'bad' : (c.degraded ? 'warn' : (c.changed ? 'chg' : ''));
+        tags += '<span class="tag ' + cls + '">' + esc(k.toUpperCase()) + (c.changed ? ' +' + c.changed : '') + (c.blocked ? ' \u26d4' : '') + (c.degraded ? ' \u26a0' : '') + '</span>';
+      });
+      rows += '<tr><td>' + esc(isoClock(r.received)) + '</td><td>' + esc(isoClock(r.started)) + ' \u2013 ' + esc(isoClock(r.ended)) + '</td><td>' + exitPill(r.exit) + '</td><td><span class="chips">' + (tags || '<span class="dim">\u2013</span>') + '</span></td></tr>';
+    });
+    $('runs-rows').innerHTML = rows || '<tr><td colspan="4" class="dim">brak przebiegów</td></tr>';
+  }
+
+  function render(st) {
+    renderMode(st);
+    renderCrawl(st.progress || {}, st);
+    renderHosts(st);
+    renderPool(st);
+    renderRuns(st);
+  }
+
+  render(boot);
+  function poll() {
+    fetch('/api/status', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (st) { $('stamp').textContent = 'aktualizacja ' + new Date().toLocaleTimeString('pl-PL'); render(st); })
+      .catch(function () { $('stamp').textContent = 'brak połączenia \u2014 ponawiam\u2026'; })
+      .then(function () { setTimeout(poll, POLL); });
+  }
+  setTimeout(poll, POLL);
+
+  (function () {
+    var root = document.documentElement;
+    function stored() { try { var t = window.localStorage.getItem('planwat:theme'); return (t === 'light' || t === 'dark') ? t : 'auto'; } catch (e) { return 'auto'; } }
+    function apply(t) {
+      if (t === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', t);
+      var btns = document.querySelectorAll('.themeswitch button');
+      for (var i = 0; i < btns.length; i++) btns[i].setAttribute('aria-pressed', String(btns[i].getAttribute('data-t') === t));
+    }
+    var btns = document.querySelectorAll('.themeswitch button');
+    for (var i = 0; i < btns.length; i++) {
+      (function (b) { b.addEventListener('click', function () { var t = b.getAttribute('data-t'); try { window.localStorage.setItem('planwat:theme', t); } catch (e) {} apply(t); }); })(btns[i]);
+    }
+    apply(stored());
+  })();
+})();
+</script>
 </body></html>'''
+
+
+def _live(server):
+    """The server's LiveRun, made on first use so every test harness works untouched."""
+    live = getattr(server, 'live', None)
+    if live is None:
+        live = server.live = LiveRun()
+    return live
+
+
+def dashboard(status):
+    """The GUI shell with the first snapshot baked in (instant paint) and the page escaping-safe."""
+    banner = ('<div class="banner">przebieg w toku — raport otwarty (bez postępu na żywo)</div>'
+              if status.get('open_runs') else '')
+    boot = json.dumps(status, ensure_ascii=False).replace('<', '\\u003c')
+    return DASHBOARD.replace('%BOOT%', boot).replace('%BANNER%', banner)
 
 
 def _wants_auth():
@@ -591,6 +1177,7 @@ class GuiHandler(BaseHTTPRequestHandler):
                 'hosts': host_modes,
                 'denied': self.server.proxy_server.blocks,
                 'open_runs': open_runs,
+                'progress': _live(self.server).snapshot(),
                 'proxies': [{'url': p['url'], 'status': p.get('status', 'new'),
                              'latency_ms': p.get('latency_ms'), 'source': p.get('source', ''),
                              'fails': p.get('fails', 0)} for p in proxies[:200]],
@@ -599,49 +1186,10 @@ class GuiHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/api/status':
             return self._send(json.dumps(self.status(), ensure_ascii=False))
+        if self.path == '/api/progress':
+            return self._send(json.dumps(_live(self.server).snapshot(), ensure_ascii=False))
         if self.path in ('/', '/index.html'):
-            st = self.status()
-            rows = ''.join(
-                '<tr><td>' + p['url'] + '</td><td class="' + p['status'] + '">' + p['status'] + '</td>'
-                '<td>' + str(p['latency_ms'] or '–') + '</td><td>' + p['source'] + '</td></tr>'
-                for p in st['proxies'][:100])
-            host_rows = ''.join(
-                '<tr><td>' + h + '</td><td>' + v['mode'] + '</td><td>' + str(v['verified'])
-                + '</td><td>' + str(v['fallbacks']) + '</td></tr>'
-                for h, v in st['hosts'].items())
-            cells = []
-            for r in st['runs'][:10]:
-                facs = []
-                for k, c in (r.get('faculties') or {}).items():
-                    mark = ' ⛔' if c.get('blocked') else ''
-                    facs.append(str(k) + ' Δ' + str(c.get('changed', 0)) + mark)
-                cells.append('<tr><td>' + str(r.get('received', '–')) + '</td><td>'
-                             + str(r.get('started', '–')) + '</td><td>' + str(r.get('ended', '–'))
-                             + '</td><td>' + str(r.get('exit', '–')) + '</td><td>' + ', '.join(facs)
-                             + '</td></tr>')
-            run_rows = ''.join(cells)
-            if st.get('open_runs'):
-                banner = '<div class="banner">run in progress: ' + str(len(st['open_runs'])) + '</div>'
-            else:
-                banner = ''
-            page = (DASHBOARD.replace('%BANNER%', banner)
-                    .replace('%MODE%', st['mode'])
-                    .replace('%MODE_CLASS%', 'rot' if st['mode'] == 'ROTATING' else 'dir')
-                    .replace('%TOTAL%', str(st['pool']['total']))
-                    .replace('%OK%', str(st['pool']['by_status'].get('ok', 0)))
-                    .replace('%NEW%', str(st['pool']['by_status'].get('new', 0)))
-                    .replace('%FAIL%', str(st['pool']['by_status'].get('fail', 0)))
-                    .replace('%P50%', str(st['pool'].get('p50_ok_ms') or '–'))
-                    .replace('%P95%', str(st['pool'].get('p95_ok_ms') or '–'))
-                    .replace('%MED%', str(st['pool']['median_ok_ms'] or '–'))
-                    .replace('%REFRESH%', time.strftime('%Y-%m-%d %H:%M:%S',
-                             time.gmtime(st['pool']['last_refresh'])) if st['pool']['last_refresh'] else 'nigdy')
-                    .replace('%FALLBACKS%', str(st['fallbacks_total']))
-                    .replace('%BLOCKS%', str(st['denied']))
-                    .replace('%HOST_ROWS%', host_rows or '<tr><td colspan="4">brak</td></tr>')
-                    .replace('%PROXY_ROWS%', rows or '<tr><td colspan="4">pusto</td></tr>')
-                    .replace('%RUN_ROWS%', run_rows or '<tr><td colspan="5">brak przebiegów</td></tr>'))
-            return self._send(page, 'text/html')
+            return self._send(dashboard(self.status()), 'text/html')
         return self._send('{"error":"not found"}', code=404)
 
     def do_POST(self):
@@ -657,6 +1205,17 @@ class GuiHandler(BaseHTTPRequestHandler):
             if not isinstance(report, dict):
                 return self._send('{"error":"bad json"}', code=400)
             return self._send(json.dumps(self.server.runs.add(report), ensure_ascii=False))
+        if self.path == '/api/progress':
+            if not self._check_token():
+                return self._send('{"error":"unauthorized"}', code=401)
+            try:
+                event = json.loads(body.decode('utf-8'))
+            except ValueError:
+                return self._send('{"error":"bad json"}', code=400)
+            ack = _live(self.server).event(event)
+            if ack is None:
+                return self._send('{"ok":false,"ignored":true}')  # a straggler of an older run
+            return self._send(json.dumps(ack))
         if self.path == '/api/block':
             if not self._check_token():
                 return self._send('{"error":"unauthorized"}', code=401)
@@ -768,6 +1327,7 @@ def main():
     proxy_server = ProxyServer(('0.0.0.0', proxy_port), pool)
     gui = GuiServer(('0.0.0.0', gui_port), GuiHandler)
     gui.pool, gui.runs, gui.proxy_server, gui.proxy_port = pool, runs, proxy_server, proxy_port
+    gui.live = LiveRun()
     threading.Thread(target=maintain, args=(pool,), daemon=True).start()
     threading.Thread(target=gui.serve_forever, daemon=True).start()
     print(f'egress proxy on :{proxy_port}, GUI on :{gui_port} (pool={len(pool.entries)} known)',
