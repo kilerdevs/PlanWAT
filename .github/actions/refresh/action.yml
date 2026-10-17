@@ -65,6 +65,9 @@ runs:
         # pooled exit, so the egress can demote that exit (see tools/egress/server.py). Best
         # effort: on a runner with no egress box the posts just fail and the crawl continues.
         PLANWAT_EGRESS_BLOCK: http://egress:8080/api/block
+        # The crawler also streams coarse live progress here (run/faculty/tick/done/wait, ticks
+        # throttled) for the egress GUI's crawl card. Also best effort.
+        PLANWAT_EGRESS_PROGRESS: http://egress:8080/api/progress
       run: |
         # Exit 3 (blocked) and 4 (incomplete) are results, not failures: they are reported through the outputs.
         set +e

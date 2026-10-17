@@ -53,6 +53,12 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   grupy. WLO i WEL dzielą jedną politykę Incapsula (`wat-edge`): jedno oczekiwanie obejmuje oba, potem każdy wznawia na własnej
   świeżej sesji. Wyuczony czas ochłodzenia zastąpił dawną stałą regułę 24–48 h (stan zachowuje przez ten czas ostatnie
   poprawne kalendarze).
+- **Postęp na żywo w panelu egressu.** Przebieg wysyła najlepszym wysiłkiem na `POST /api/progress` egressu
+  (`PLANWAT_EGRESS_PROGRESS`, ustawiany w akcji odświeżania; puste wyłącza) grube zdarzenia: start przebiegu z układem
+  ścieżek, start wydziału z liczbą grup, przycinane próbki postępu (≈4 s na wydział), koniec wydziału (z blokadą albo
+  niepełnością; przejście nadchodzącego semestru dostaje osobny slot „wydział~semestr”) oraz początek i koniec oczekiwania na
+  odblokowanie. Panel liczy z nich pasek postępu i przewidywany koniec (zob. docs/EGRESS.md). To dodatek: brak egressu albo
+  zgubione zdarzenie niczego nie psuje.
 - **Pogorszony przebieg mówi o tym głośno.** Pięć i więcej sprawdzeń z ponad 30% pominiętych albo grupa z listą mniejszą niż
   połowa poprzedniej (od 10 pozycji) oznacza wydział jako `degraded`: przebieg kończy się jako niepełny i eksportuje
   `degraded=true`.

@@ -1251,6 +1251,21 @@ class DegradedTest(unittest.TestCase):
         self.assertTrue(state.faculties['wlo']['run']['degraded'])
         self.assertEqual(state.faculties['wlo']['last_count'], 1)
 
+    def test_a_listing_failure_is_reported_fresh(self):
+        # A transient listing error (say, the egress proxy was restarting) must not resend the
+        # previous run's stats and degraded flag as this run's verdict: the faculty gets its
+        # own entry, with this run's timestamp and the cause named.
+        def boom(*a, **k):
+            raise ConnectionError('proxy CONNECT aborted')
+        original = refresh.discover_with_retry
+        refresh.discover_with_retry = boom
+        self.addCleanup(setattr, refresh, 'discover_with_retry', original)
+        (changed, blocked, complete), state = self.faculty({})
+        self.assertEqual((changed, blocked, complete), ([], False, False))
+        run = state.faculties['wlo']['run']
+        self.assertEqual((run['cause'], run['blocked'], run['degraded']), ('listing', False, True))
+        self.assertEqual((run['checked'], run['changed']), (0, 0))
+
     def test_a_stable_listing_stays_clean(self):
         index = ('<?xml version="1.0"?><index><period name="zima"/>'
                  '<gro href="WLO26AX1S1.htm"/></index>')
@@ -1544,6 +1559,156 @@ class ReconcileBounds(unittest.TestCase):
     def test_old_flipped_too_keeps_new(self):
         ics, patched = core.reconcile_term_bounds(self.NEW_FLIPPED, self.NEW_FLIPPED, '2026-27-zima')
         self.assertEqual((ics, patched), (self.NEW_FLIPPED, False))
+
+
+class ProgressTest(unittest.TestCase):
+    """The crawler's live progress stream: opt-in, throttled per slot, never fatal."""
+
+    def test_silent_without_a_url_keeps_tests_and_cli_runs_offline(self):
+        p = refresh.Progress(url='', run='r1')
+        calls = []
+        p.post = calls.append
+        self.assertFalse(p.send('run_start', lanes=[]))
+        self.assertFalse(p.tick('wlo', 1, 10))
+        self.assertEqual(calls, [])
+
+    def test_events_carry_the_run_and_ticks_are_throttled_per_slot(self):
+        now = [100.0]
+        posts = []
+        p = refresh.Progress(url='http://egress:8080/api/progress', run='r1',
+                             post=posts.append, clock=lambda: now[0])
+        self.assertTrue(p.send('run_start', lanes=[{'lane': 'wlo', 'faculties': ['wlo']}]))
+        self.assertTrue(p.tick('wlo', 1, 10))
+        self.assertFalse(p.tick('wlo', 2, 10))  # inside the window: dropped, not queued
+        self.assertTrue(p.tick('wel', 1, 4))  # every slot keeps its own window
+        now[0] += p.throttle
+        self.assertTrue(p.tick('wlo', 3, 10))
+        self.assertEqual([e['event'] for e in posts], ['run_start', 'tick', 'tick', 'tick'])
+        self.assertEqual([e['run'] for e in posts], ['r1'] * 4)
+        self.assertEqual(posts[1], {'event': 'tick', 'run': 'r1', 'slot': 'wlo', 'done': 1, 'total': 10})
+
+    def test_a_failed_delivery_is_logged_once_and_never_raises(self):
+        logs = []
+        self.addCleanup(setattr, refresh, 'log', refresh.log)
+        refresh.log = logs.append
+        calls = [0]
+
+        def post(_):
+            calls[0] += 1
+            if calls[0] != 3:
+                raise OSError('egress down')
+
+        p = refresh.Progress(url='http://egress:8080/api/progress', post=post)
+        self.assertFalse(p.send('tick', slot='wlo', done=1))
+        self.assertFalse(p.send('tick', slot='wlo', done=2))
+        self.assertTrue(p.send('tick', slot='wlo', done=3))  # delivered: the next spell is loud again
+        self.assertFalse(p.send('tick', slot='wlo', done=4))
+        self.assertEqual(len(logs), 2)
+
+
+class LiveProgressTest(unittest.TestCase):
+    """run_lane/main wire the reporter into a whole run: start, ticks, walls, the end."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        StubDriver.calls, StubDriver.fails = [], {}
+        StubDriver.dirty, StubDriver.counts = set(), {}
+        orig_load = refresh.drivers.load
+        refresh.drivers.load = lambda name, faculty, cfg, today: StubDriver(faculty, cfg, today)
+        self.addCleanup(setattr, refresh.drivers, 'load', orig_load)
+        orig_new_session = refresh.new_session
+        refresh.new_session = lambda: self._session()
+        self.addCleanup(setattr, refresh, 'new_session', orig_new_session)
+        orig_status = os.environ.get('PLANWAT_EGRESS_STATUS')
+        os.environ['PLANWAT_EGRESS_STATUS'] = ''
+        self.addCleanup(self._restore, 'PLANWAT_EGRESS_STATUS', orig_status)
+
+    def _session(self):
+        session = FakeSession({})
+        session.headers = {}
+        return session
+
+    def _restore(self, name, orig):
+        if orig is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = orig
+
+    def capture(self):
+        """Route the run's events into a list instead of an egress box."""
+        sent = []
+        orig_deliver = refresh.Progress._deliver
+        refresh.Progress._deliver = lambda self, payload: sent.append(payload)
+        self.addCleanup(setattr, refresh.Progress, '_deliver', orig_deliver)
+        orig = os.environ.get('PLANWAT_EGRESS_PROGRESS')
+        os.environ['PLANWAT_EGRESS_PROGRESS'] = 'http://egress:8080/api/progress'
+        self.addCleanup(self._restore, 'PLANWAT_EGRESS_PROGRESS', orig)
+        return sent
+
+    def main(self, argv, session, today):
+        clock = FakeClock()
+        return refresh.main(argv, session=session, today=today, sleep=clock.sleep, clock=clock)
+
+    def test_streams_run_start_ticks_and_done(self):
+        sent = self.capture()
+        StubDriver.counts = {'wlo': 3}
+        code = self.main(['--out', str(self.tmp), '--force', '--faculty', 'wlo'],
+                         self._session(), dt.date(2026, 10, 15))
+        self.assertEqual(code, 0)
+        self.assertEqual(sent[0]['event'], 'run_start')
+        self.assertEqual(sent[0]['lanes'], [{'lane': 'wat-edge', 'faculties': ['wlo']}])
+        self.assertEqual(sent[-1]['event'], 'run_done')
+        self.assertEqual(sent[-1]['exit'], 0)
+        self.assertEqual({e['run'] for e in sent}, {sent[0]['run']})
+        self.assertEqual([(e['slot'], e['lane'], e['total']) for e in sent
+                          if e['event'] == 'faculty_start'], [('wlo', 'wat-edge', 3)])
+        tick_events = [e for e in sent if e['event'] == 'tick']
+        self.assertTrue(tick_events)
+        # The throttle drops ticks that arrive inside its window, so the exact count depends on
+        # pacing; the first and the last iteration always carry one (the first starts the window,
+        # the last is preceded by a sleep at least as long as the profile's floor).
+        self.assertEqual([(e['slot'], e['done'], e['total']) for e in tick_events[:1]], [('wlo', 0, 3)])
+        self.assertEqual((tick_events[-1]['slot'], tick_events[-1]['done'], tick_events[-1]['total']),
+                         ('wlo', 2, 3))
+        self.assertEqual({(e['slot'], e['total']) for e in tick_events}, {('wlo', 3)})
+        done = [e for e in sent if e['event'] == 'faculty_done']
+        self.assertEqual(len(done), 1)
+        self.assertEqual((done[0]['slot'], done[0]['blocked'], done[0]['complete']),
+                         ('wlo', False, True))
+
+    def test_reports_the_wall_and_the_recovery(self):
+        sent = self.capture()
+        StubDriver.fails = {'wlo': {'main': 3}, 'wel': {'main': 3}}
+        StubDriver.dirty = {'wlo'}
+        code = self.main(['--out', str(self.tmp), '--force', '--faculty', 'wlo,wel'],
+                         self._session(), dt.date(2026, 10, 15))
+        self.assertEqual(code, 0)
+        blocked = [e for e in sent if e['event'] == 'faculty_done' and e['blocked']]
+        self.assertEqual({e['slot'] for e in blocked}, {'wlo', 'wel'})
+        wait = next(e for e in sent if e['event'] == 'wait_start')
+        self.assertEqual(wait['lane'], 'wat-edge')
+        self.assertEqual(sorted(wait['faculties']), ['wel', 'wlo'])
+        end = next(e for e in sent if e['event'] == 'wait_end')
+        self.assertTrue(end['recovered'])
+        resumed = [e for e in sent if e['event'] == 'faculty_start']
+        self.assertEqual([e['slot'] for e in resumed], ['wlo', 'wel'])
+        self.assertEqual(sorted(e['slot'] for e in sent
+                                if e['event'] == 'faculty_done' and not e['blocked']), ['wel', 'wlo'])
+
+    def test_the_ahead_pass_gets_its_own_slot(self):
+        sent = self.capture()
+        StubDriver.counts = {'wlo': 2}
+        today = dt.date(2026, 8, 20)
+        coming = core.upcoming_reference(today)
+        code = self.main(['--out', str(self.tmp), '--force', '--faculty', 'wlo'],
+                         self._session(), today)
+        self.assertEqual(code, 0)
+        starts = [e for e in sent if e['event'] == 'faculty_start']
+        self.assertEqual([e['slot'] for e in starts], ['wlo', f'wlo~{core.term_id(coming)}'])
+        self.assertTrue(starts[1]['ahead'])
+        ahead_done = [e for e in sent if e['event'] == 'faculty_done' and e.get('ahead')]
+        self.assertEqual([e['slot'] for e in ahead_done], [f'wlo~{core.term_id(coming)}'])
 
 
 if __name__ == '__main__':

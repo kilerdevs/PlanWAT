@@ -16,11 +16,13 @@ episodes count more than flaky ones), recovery is probed with cheap index fetche
 schedule (--block-probes), and the whole wait is capped (--max-block-wait-minutes). A block response is not
 taken at face value at once: it is reported to the egress (which demotes the exit that carried it, see
 PLANWAT_EGRESS_BLOCK) and retried on a fresh connection (--block-retries), so one flagged exit in the
-rotating pool no longer reads as a wall; only a sustained block is one. Nothing half-converted is published,
-the old calendars stay. A merely transient fetch (transport error, 408/425/429/500/502/503/504, an empty
-200) is retried a few times with exponential backoff first (--retries/--retry-backoff); exhaustion raises
-core.Blocked for HTTP transients (a wall) and the transport error itself for flakiness, so the run learns
-the cause.
+rotating pool no longer reads as a wall; only a sustained block is one. While it crawls, the run also streams
+coarse progress (run/faculty/tick/done/wait events, ticks throttled) to the egress GUI's crawl card — see
+PLANWAT_EGRESS_PROGRESS; the GUI turns them into a progress bar and a finish estimate. Nothing half-converted
+is published, the old calendars stay. A merely transient fetch (transport error, 408/425/429/500/502/503/504,
+an empty 200) is retried a few times with exponential backoff first (--retries/--retry-backoff); exhaustion
+raises core.Blocked for HTTP transients (a wall) and the transport error itself for flakiness, so the run
+learns the cause.
 Exit codes: 0 done, 3 blocked, 4 incomplete.
 With GITHUB_OUTPUT set, `blocked`, `incomplete` and `changed` are exported for the workflow.
 """
@@ -30,6 +32,7 @@ import json
 import os
 import random
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -132,6 +135,63 @@ def post_block_report(host, url=None, timeout=5):
         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout).read()
     except Exception:
         pass  # the demotion is a nice-to-have; the retry path works without it
+
+
+class Progress:
+    """Streams coarse crawl progress to the egress GUI (POST /api/progress), best effort.
+
+    Opt-in: PLANWAT_EGRESS_PROGRESS holds the endpoint (the refresh action sets it); without a
+    URL every call is a no-op, so offline tests and plain CLI runs stay silent. Events mirror
+    the crawl's structure — run, faculty_start, tick (throttled per slot), faculty_done, wait —
+    and each carries enough context (done/total per slot, lane membership, block waits) for the
+    GUI to re-derive progress and estimate the finish from its own arrival timestamps: a
+    delayed, reordered or lost event costs accuracy, never correctness. Like the block report
+    the call is proxy-less (the job's HTTP_PROXY answers 403 for the egress' own address).
+    """
+
+    THROTTLE = 4.0
+
+    def __init__(self, url=None, run='', throttle=None, timeout=3.0, post=None, clock=time.monotonic):
+        self.url = os.environ.get('PLANWAT_EGRESS_PROGRESS', '') if url is None else url
+        self.run = run
+        self.throttle = self.THROTTLE if throttle is None else throttle
+        self.timeout = timeout
+        self.clock = clock
+        self.post = post  # injectable for tests; None -> a real proxy-less POST
+        self.lock = threading.Lock()
+        self.last_sent = {}  # slot -> clock() of the last tick, the throttle's whole memory
+        self.quiet = False  # log the first delivery failure of a spell, then stay quiet
+
+    def _deliver(self, payload):
+        import urllib.request
+        req = urllib.request.Request(self.url, data=json.dumps(payload).encode('utf-8'),
+                                     headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=self.timeout).read()
+
+    def send(self, event, **fields):
+        """Deliver one event; returns whether it went out. Never raises, never blocks the crawl."""
+        if not self.url:
+            return False
+        try:
+            (self.post or self._deliver)({'event': event, 'run': self.run, **fields})
+            self.quiet = False
+            return True
+        except Exception as err:
+            if not self.quiet:
+                log(f'progress report not delivered ({err}); continuing')
+                self.quiet = True
+            return False
+
+    def tick(self, slot, done, total):
+        """A progress sample for `slot`, sent at most once per `throttle` seconds."""
+        if not self.url:
+            return False
+        now = self.clock()
+        with self.lock:
+            if now - self.last_sent.get(slot, float('-inf')) < self.throttle:
+                return False
+            self.last_sent[slot] = now
+        return self.send('tick', slot=slot, done=done, total=total)
 
 
 def wait_for_recovery(name, probe, model, budget, max_probes=5, sleep=time.sleep, clock=time.monotonic):
@@ -284,7 +344,8 @@ def remember_validators(entry, response):
         entry['etag'] = etag
 
 
-def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic, ahead=False):
+def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic,
+                    progress=None, ahead=False):
     """Returns (changed codes, blocked, complete). `today` is a date inside the semester to refresh; with `ahead`
     that is the coming semester, tracked under its own state keys so the running one keeps its dates."""
     driver = drivers.load(cfg['driver'], name, cfg, today)
@@ -314,6 +375,11 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         return [], True, False
     except Exception as err:
         log(f'[{name}] cannot list groups: {err}')
+        # The report reads fac['run']: leaving the previous entry here would resend the last
+        # run's numbers (and its degraded flag) as if they were this run's verdict.
+        fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0, 'changed': 0,
+                      'skipped': 0, 'not_ready': 0, 'blocked': False, 'ahead': ahead,
+                      'cause': 'listing', 'degraded': True}
         return [], False, False
     # The ahead pass must not clear a degraded flag the main pass already raised.
     degraded = fac.get('run', {}).get('degraded', False) if ahead else False
@@ -347,9 +413,15 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
     if args.limit:
         todo = todo[:args.limit]
     log(f'[{name}] {len(items)} groups, {len(items) - len(todo)} fresh, {len(todo)} to check (term {tid})')
+    slot = name if not ahead else f'{name}~{tid}'
+    if progress is not None:
+        progress.send('faculty_start', slot=slot, faculty=name, lane=group, total=len(todo),
+                      fresh=len(items) - len(todo), listed=len(items), ahead=ahead, term=tid)
     started, changed, failed, checked = clock(), [], 0, 0
     not_ready = 0
     for n, item in enumerate(todo, 1):
+        if progress is not None:
+            progress.tick(slot, n - 1, len(todo))
         if args.max_minutes and (clock() - started) / 60 > args.max_minutes:
             log(f'[{name}] time budget used up after {n - 1} groups')
             return changed, False, False
@@ -517,20 +589,24 @@ def parse(argv=None):
     return args
 
 
-def refresh_ahead(name, sources, args, state, today, session, coming, tallies, sleep, clock):
+def refresh_ahead(name, sources, args, state, today, session, coming, tallies, sleep, clock, progress=None):
     """The coming semester's pass for one faculty; folds its results into `tallies`."""
     # The next semester's plans may already be up. Whatever is not published yet is just not there:
     # that never makes the run incomplete, only a block stops it.
     log(f'[{name}] looking for the coming semester ({core.term_id(coming)})')
-    done, was_blocked, _ = refresh_faculty(name, sources[name], args, state, coming, session,
-                                           sleep=sleep, clock=clock, ahead=True)
+    done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, coming, session,
+                                                  sleep=sleep, clock=clock, progress=progress, ahead=True)
     tallies['changed'] += done
     tallies['blocked'] |= was_blocked
+    if progress is not None:
+        progress.send('faculty_done', slot=f'{name}~{core.term_id(coming)}', faculty=name,
+                      lane=core.group_of(name), changed=len(done), blocked=was_blocked,
+                      complete=complete, ahead=True)
     return was_blocked
 
 
 def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep, clock=time.monotonic,
-             session=None, wait_budget=None):
+             session=None, wait_budget=None, progress=None):
     """Refresh the faculties of one policy group, one after another, on a session of their own.
 
     Returns {'changed': [...], 'blocked': bool, 'incomplete': set(names), 'waited': seconds slept}. A blocked faculty no longer stops
@@ -545,7 +621,8 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
         saved_headers = dict(session.headers) if getattr(session, 'headers', None) is not None else None
         try:
             done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today,
-                                                           session, sleep=sleep, clock=clock)
+                                                           session, sleep=sleep, clock=clock,
+                                                           progress=progress)
         finally:
             if saved_headers is not None:
                 try:
@@ -559,12 +636,17 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
             tallies['incomplete'].discard(name)  # a clean rerun clears the earlier mark
         else:
             tallies['incomplete'].add(name)
+        if progress is not None:
+            # One done-event per faculty however its pass ended (a wall, a flaky fetch, no groups
+            # listed): the slot's ticks stay truthful, this closes them out.
+            progress.send('faculty_done', slot=name, faculty=name, lane=core.group_of(name),
+                          changed=len(done), blocked=was_blocked, complete=complete)
         if was_blocked:
             model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
             deferred.append((name, False))
             continue
         if coming and refresh_ahead(name, sources, args, state, today, session, coming,
-                                    tallies, sleep, clock):
+                                    tallies, sleep, clock, progress=progress):
             model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
             deferred.append((name, True))
     if wait_budget is None:
@@ -583,8 +665,14 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
         except Exception:
             return False
 
+    if progress is not None:
+        progress.send('wait_start', lane=group, faculties=[n for n, _ in deferred],
+                      budget=round(wait_budget))
     recovered, waited, probes = wait_for_recovery(group, probe, model, wait_budget,
                                                    args.block_probes, sleep, clock)
+    if progress is not None:
+        progress.send('wait_end', lane=group, faculties=[n for n, _ in deferred],
+                      waited=round(waited), probes=probes, recovered=recovered)
     tallies['waited'] = waited
     for name, main_ok in deferred:
         fac = state.faculties.setdefault(name, {})
@@ -595,20 +683,26 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
         resume = new_session()  # fresh cookies/jar: the old ones may be the blocked ones
         if main_ok and coming:
             # The main pass already finished: only the coming semester is still missing.
-            refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock)
+            refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock,
+                          progress=progress)
         else:
             done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today,
-                                                          resume, sleep=sleep, clock=clock)
+                                                          resume, sleep=sleep, clock=clock,
+                                                          progress=progress)
             tallies['changed'] += done
             if complete:
                 tallies['incomplete'].discard(name)
             else:
                 tallies['incomplete'].add(name)
+            if progress is not None:
+                progress.send('faculty_done', slot=name, faculty=name, lane=core.group_of(name),
+                              changed=len(done), blocked=was_blocked, complete=complete)
             if was_blocked:
                 model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
                 continue
             if coming:
-                refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock)
+                refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock,
+                              progress=progress)
     tallies['blocked'] = any(state.faculties.get(n, {}).get('blocked_at') for n, _ in deferred)
     return tallies
 
@@ -636,12 +730,19 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     model = core.BlockModel(state.data)
     coming = core.upcoming_reference(today)
     lanes = plan_lanes(wanted)
+    parallel = bool(args.lanes > 1 and len(lanes) > 1 and session is None)
+    progress = Progress(run=started, clock=clock)
+    if progress.url:
+        # The GUI seeds one queued slot per faculty from this layout, so an untouched lane still
+        # shows up (and an ETA covers it) long before its first faculty reports in.
+        progress.send('run_start', profile=args.profile, parallel=parallel,
+                      lanes=[{'lane': core.group_of(ns[0]), 'faculties': list(ns)} for ns in lanes])
 
     def lane(names, wait_budget=None):
         return run_lane(names, sources, args, state, model, today, coming, sleep, clock,
-                        session=session, wait_budget=wait_budget)
+                        session=session, wait_budget=wait_budget, progress=progress)
 
-    if args.lanes > 1 and len(lanes) > 1 and session is None:
+    if parallel:
         # Different policy groups are different walls, so they crawl side by side: the pause between pages
         # is per host and unchanged, only the wall-clock time of a full pass shrinks. Each lane waits out
         # its own wall concurrently, so each may spend the whole wait budget.
@@ -674,6 +775,9 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     export(blocked=blocked, incomplete=incomplete, changed=len(tallies['changed']),
            degraded=degraded_any)
     log(f'changed: {len(tallies["changed"])}; blocked: {blocked}; incomplete: {incomplete}')
+    if progress.url:
+        progress.send('run_done', exit=exit_code, blocked=blocked, incomplete=incomplete,
+                      degraded=degraded_any, changed=len(tallies['changed']))
     post_run_report({'started': started, 'ended': core.now_utc().isoformat(), 'exit': exit_code,
                      'profile': args.profile, 'dry_run': args.dry_run,
                      'faculties': {n: {**(state.faculties.get(n, {}).get('run', {})),

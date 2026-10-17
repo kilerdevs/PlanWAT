@@ -104,6 +104,14 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Odświeżanie:** zgłoszenia blokad z crawla do proxy wyjściowego (`POST /api/block`): proxy wycofuje wyjście puli, które
   przewiozło stronę blokady, a lista `EGRESS_DIRECT_FACULTY` prowadzi wybrane wydziały linią domową — jedno oznaczone wyjście
   nie psuje już całego wydziału (zob. docs/EGRESS.md).
+- **Egress:** panel monitoringu w stylu serwisu (te same tokeny, ciemny i jasny motyw z przełącznikiem Auto / Ciemny / Jasny,
+  odświeżanie bez przeładowania) z kartą postępu odświeżania na żywo: pasek, licznik sprawdzonych grup, tempo, przewidywany
+  koniec i wiersz stanu każdego wydziału (w kolejce, sprawdza, czeka na odblokowanie, brak postępu, gotowe). Crawler raportuje
+  postęp najlepszym wysiłkiem (`PLANWAT_EGRESS_PROGRESS`, `POST /api/progress`), a egress liczy ETA z własnych pomiarów tempa
+  i mówi „wstrzymane”, gdy wydział czeka na odblokowanie — zgubione zdarzenie psuje tylko dokładność, nigdy crawl.
+- **Egress:** karta postępu odlicza do następnego odświeżenia („następny ≈ 16:23 (za 1 h 59 min)”, także w trakcie przebiegu),
+  a kliknięcie wiersza przebiegu rozwija jego szczegóły: profil, czasy, kod wyjścia i tabelę wydziałów ze sprawdzonymi, zmianami,
+  pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
 - **Plan:** ✓ przy każdych skończonych zajęciach, nie tylko dzisiejszych.
@@ -121,6 +129,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - `CI`, `Egress` i `SAST` nie uruchamiają się już po pushu na `master`: pull request wydania zdążył je wykonać.
 
 ### Naprawiono
+- **Egress:** panel monitoringu znów mieści swoje dane: nagłówki kart się nie łamią, tabela wydziałów nie ucina ostatnich kolumn
+  (sztywny układ, liczby do prawej), wartości kafelków się nie zawijają (opóźnienia w sekundach, np. `5,7 s`), a raport bez kodu
+  wyjścia czyta się jako „nieznany” zamiast „undefined”. Godziny raportów są w końcu lokalne (były w UTC czytanym jak lokalny),
+  tabela wychodów ma kolumnę „pudła” (nieudane próby), przyklejony nagłówek i podpowiedź z ostatnim sprawdzeniem, a nowa karta
+  Egress pokazuje obsłużone żądania proxy, tunele w toku, odmowy i czas działania kontenera.
 - **Odświeżanie WTC:** indeks wydziału jest znów czytany poprawnie (płaski `/Plany/index.xml` w miejsce nieistniejącego
   `Plany/<semestr>/index.xml`), a PDF-y są plikowane tylko wtedy, gdy indeks nazywa odświeżany semestr — plany WTC są w końcu
   odświeżane automatycznie.
@@ -129,6 +142,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   urwany plan; teraz WCY publikuje właściwe, jednosemestralne kalendarze i nie degraduje przebiegu.
 - **Odświeżanie:** raporty przebiegu znów docierają do GUI proxy (proxy odpowiadało na nie 403, bo szły przez nie samo); raport
   leci teraz połączeniem omijającym proxy, przez sieć wewnętrzną.
+- **Odświeżanie:** wydział, któremu nie udało się wylistować grup (np. chwilowa awaria proxy egress w trakcie przebiegu), nie
+  przepisuje już do raportu zeszłego wpisu — dostaje świeży wpis z przyczyną `listing` i flagą zdegradowany, więc panel i
+  zgłoszenie mówią, co naprawdę się stało, a stara degradacja nie ciągnie się przez kolejne przebiegi.
 - **Prywatność:** aliasy prowadzących (inicjał i nazwisko sklejone w polu sali, np. `AKowalski`) nie trafiają już do planów.
   Konwerter je odrzuca, `build.py` odmawia zbudowania kalendarza z takim polem, a `tools/scrub_staff.py` czyści już opublikowane.
 - **iPhone:** przyciski nad planem są zwarte zamiast dużych owali, „Zainstaluj aplikację” pokazuje kroki dodania do

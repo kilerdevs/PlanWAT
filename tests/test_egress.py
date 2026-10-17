@@ -690,7 +690,8 @@ class Report(unittest.TestCase):
         try:
             with urllib.request.urlopen(base + '/', timeout=5) as r:
                 page = r.read().decode('utf-8')
-            self.assertIn('run in progress', page)
+            self.assertIn('przebieg w toku', page)
+            self.assertIn('"id": 7', page)
         finally:
             gui.shutdown()
 
@@ -822,6 +823,192 @@ class BlockDispatch(unittest.TestCase):
                 body = json.loads(r.read().decode('utf-8'))
             self.assertEqual(body['demoted'], 'http://a:1')
             self.assertEqual(calls, [self.HOST])
+        finally:
+            gui.shutdown()
+
+
+class FakeClock:
+    """A hand-cranked clock for the egress' arrival-stamped progress state."""
+
+    def __init__(self, now=1000.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class LiveRunTest(unittest.TestCase):
+    """LiveRun: coarse crawler events in, a percent and an honest ETA out."""
+
+    def start(self, clock, lanes=None, run='r1'):
+        live = server.LiveRun(clock=clock)
+        live.event({'event': 'run_start', 'run': run, 'profile': 'selfhosted',
+                    'lanes': lanes or [{'lane': 'wat-edge', 'faculties': ['wlo', 'wel']},
+                                       {'lane': 'wcy', 'faculties': ['wcy']}]})
+        return live
+
+    def test_snapshot_before_any_event_has_no_run(self):
+        self.assertEqual(server.LiveRun(clock=FakeClock()).snapshot(),
+                         {'active': False, 'run': None})
+
+    def test_percent_and_eta_come_from_the_run_s_own_ticks(self):
+        clock = FakeClock()
+        live = self.start(clock, lanes=[{'lane': 'wlo', 'faculties': ['wlo']}])
+        live.event({'event': 'faculty_start', 'run': 'r1', 'slot': 'wlo', 'faculty': 'wlo',
+                    'lane': 'wlo', 'total': 100})
+        for advance, done in ((60, 12), (60, 24)):
+            clock.advance(advance)
+            live.event({'event': 'tick', 'run': 'r1', 'slot': 'wlo', 'done': done, 'total': 100})
+        snap = live.snapshot()
+        self.assertTrue(snap['active'])
+        self.assertEqual((snap['done'], snap['total'], snap['pct']), (24, 100, 24.0))
+        slot = snap['lanes'][0]['slots'][0]
+        self.assertEqual((slot['status'], slot['rate']), ('crawling', 0.2))
+        self.assertEqual(slot['eta_s'], 380)  # 76 groups left at 0.2/s
+        self.assertEqual(snap['eta_s'], 440)  # the lane's 380 plus the publish tail
+        self.assertAlmostEqual(snap['eta_at'], clock.now + 440, places=3)
+
+    def test_a_queued_faculty_is_estimated_from_its_siblings(self):
+        clock = FakeClock()
+        live = self.start(clock)
+        live.event({'event': 'faculty_start', 'run': 'r1', 'slot': 'wlo', 'faculty': 'wlo',
+                    'lane': 'wat-edge', 'total': 50})
+        clock.advance(60)
+        live.event({'event': 'tick', 'run': 'r1', 'slot': 'wlo', 'done': 30, 'total': 50})
+        snap = live.snapshot()
+        self.assertTrue(snap['estimated'])
+        self.assertEqual(snap['pct'], 20.0)  # 30 of the three 50-group slots
+        wat = [l for l in snap['lanes'] if l['lane'] == 'wat-edge'][0]
+        wlo, wel = wat['slots']
+        self.assertEqual(wlo['eta_s'], 40)
+        self.assertTrue(wel['estimated'])
+        self.assertEqual((wel['status'], wel['total'], wel['rate'], wel['eta_s']),
+                         ('queued', 50, 0.5, 100))  # the sibling median, flagged
+        self.assertEqual(wat['eta_s'], 140)
+        self.assertEqual(snap['eta_s'], 200)  # the slower lane plus the publish tail
+
+    def test_waiting_suspends_the_estimate_until_the_wall_topples(self):
+        clock = FakeClock()
+        live = self.start(clock, lanes=[{'lane': 'wlo', 'faculties': ['wlo']}])
+        live.event({'event': 'faculty_start', 'run': 'r1', 'slot': 'wlo', 'faculty': 'wlo',
+                    'lane': 'wlo', 'total': 40})
+        clock.advance(30)
+        live.event({'event': 'tick', 'run': 'r1', 'slot': 'wlo', 'done': 10, 'total': 40})
+        clock.advance(10)
+        live.event({'event': 'wait_start', 'run': 'r1', 'lane': 'wlo', 'faculties': ['wlo'],
+                    'budget': 3600})
+        snap = live.snapshot()
+        self.assertTrue(snap['waiting'])
+        self.assertEqual(snap['lanes'][0]['slots'][0]['status'], 'waiting')
+        self.assertIsNone(snap['eta_s'])  # no number is better than a wrong one
+        self.assertIsNone(snap['lanes'][0]['slots'][0]['eta_s'])
+        clock.advance(3600)  # the budget runs out; the wall held
+        live.event({'event': 'wait_end', 'run': 'r1', 'lane': 'wlo', 'faculties': ['wlo'],
+                    'waited': 3600, 'probes': 5, 'recovered': False})
+        snap = live.snapshot()
+        self.assertFalse(snap['waiting'])
+        self.assertEqual(snap['lanes'][0]['slots'][0]['status'], 'blocked')
+        self.assertIsNone(snap['eta_s'])
+
+    def test_completion_closes_the_lane_and_the_run(self):
+        clock = FakeClock()
+        live = self.start(clock, lanes=[{'lane': 'wlo', 'faculties': ['wlo']}])
+        live.event({'event': 'faculty_start', 'run': 'r1', 'slot': 'wlo', 'faculty': 'wlo',
+                    'lane': 'wlo', 'total': 40})
+        clock.advance(60)
+        live.event({'event': 'tick', 'run': 'r1', 'slot': 'wlo', 'done': 37, 'total': 40})
+        clock.advance(20)
+        live.event({'event': 'faculty_done', 'run': 'r1', 'slot': 'wlo', 'faculty': 'wlo',
+                    'lane': 'wlo', 'changed': 3, 'blocked': False, 'complete': True})
+        snap = live.snapshot()
+        slot = snap['lanes'][0]['slots'][0]
+        self.assertEqual((slot['status'], slot['done'], slot['total']), ('done', 40, 40))
+        self.assertEqual(snap['pct'], 100.0)
+        self.assertEqual(snap['eta_s'], 60)  # only the publish tail is left
+        live.event({'event': 'run_done', 'run': 'r1', 'exit': 0, 'blocked': False,
+                    'incomplete': False, 'degraded': False, 'changed': 3})
+        snap = live.snapshot()
+        self.assertFalse(snap['active'])
+        self.assertEqual((snap['exit'], snap['changed']), (0, 3))
+        self.assertEqual(snap['eta_s'], 0)
+
+    def test_stalled_and_stale_are_honest_about_going_quiet(self):
+        clock = FakeClock()
+        live = self.start(clock, lanes=[{'lane': 'wlo', 'faculties': ['wlo']}])
+        live.event({'event': 'faculty_start', 'run': 'r1', 'slot': 'wlo', 'faculty': 'wlo',
+                    'lane': 'wlo', 'total': 40})
+        clock.advance(30)
+        live.event({'event': 'tick', 'run': 'r1', 'slot': 'wlo', 'done': 10, 'total': 40})
+        clock.advance(server.LiveRun.STALL_S + 5)
+        snap = live.snapshot()
+        self.assertEqual(snap['lanes'][0]['slots'][0]['status'], 'stalled')
+        self.assertIsNone(snap['eta_s'])
+        self.assertTrue(snap['active'])
+        self.assertFalse(snap['stale'])
+        clock.advance(server.LiveRun.STALE_S)
+        self.assertTrue(live.snapshot()['stale'])
+        # the slot recovers the moment its next tick lands
+        clock.advance(0)
+        live.event({'event': 'tick', 'run': 'r1', 'slot': 'wlo', 'done': 20, 'total': 40})
+        snap = live.snapshot()
+        self.assertEqual(snap['lanes'][0]['slots'][0]['status'], 'crawling')
+        self.assertFalse(snap['stale'])
+
+    def test_a_new_run_replaces_a_finished_one_and_stragglers_are_ignored(self):
+        clock = FakeClock()
+        live = self.start(clock, lanes=[{'lane': 'wlo', 'faculties': ['wlo']}])
+        live.event({'event': 'run_done', 'run': 'r1', 'exit': 0})
+        ack = live.event({'event': 'tick', 'run': 'r2', 'slot': 'wlo', 'done': 1, 'total': 2})
+        self.assertEqual(ack['run'], 'r2')
+        self.assertEqual(live.snapshot()['done'], 1)
+        # a straggler of the finished run never touches the live one
+        self.assertIsNone(live.event({'event': 'tick', 'run': 'r1', 'slot': 'wlo',
+                                      'done': 99, 'total': 2}))
+        self.assertEqual(live.snapshot()['done'], 1)
+
+    def test_dashboard_bakes_the_state_in_escaped(self):
+        page = server.dashboard({'open_runs': [], 'evil': '</script><script>alert(1)</script>'})
+        self.assertIn('\\u003c', page)
+        self.assertNotIn('</script><script>', page)
+
+    def test_progress_round_trips_through_the_gui(self):
+        import urllib.request
+        import json
+        from types import SimpleNamespace
+        tmp = Path(tempfile.mkdtemp())
+        test_pool = pool.ProxyPool(tmp / 'pool.json', R2)
+        live = server.LiveRun(clock=FakeClock())
+        gui = server.GuiServer(('127.0.0.1', 0), server.GuiHandler)
+        gui.pool, gui.runs, gui.proxy_port, gui.live = (test_pool, server.RunLog(tmp / 'runs.json'),
+                                                        8888, live)
+        gui.proxy_server = SimpleNamespace(fallbacks={}, blocks=0, fallbacks_lock=threading.Lock())
+        threading.Thread(target=gui.serve_forever, daemon=True).start()
+        base = f'http://127.0.0.1:{gui.server_address[1]}'
+        try:
+            for event in ({'event': 'run_start', 'run': 'R',
+                           'lanes': [{'lane': 'wcy', 'faculties': ['wcy']}]},
+                          {'event': 'faculty_start', 'run': 'R', 'slot': 'wcy', 'faculty': 'wcy',
+                           'lane': 'wcy', 'total': 8},
+                          {'event': 'tick', 'run': 'R', 'slot': 'wcy', 'done': 2, 'total': 8}):
+                req = urllib.request.Request(base + '/api/progress',
+                                             data=json.dumps(event).encode('utf-8'),
+                                             headers={'Content-Type': 'application/json'},
+                                             method='POST')
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    self.assertEqual(r.status, 200)
+            with urllib.request.urlopen(base + '/api/progress', timeout=5) as r:
+                snap = json.loads(r.read().decode('utf-8'))
+            self.assertEqual((snap['run'], snap['done'], snap['total']), ('R', 2, 8))
+            with urllib.request.urlopen(base + '/api/status', timeout=5) as r:
+                st = json.loads(r.read().decode('utf-8'))
+            self.assertEqual(st['progress']['run'], 'R')
+            with urllib.request.urlopen(base + '/', timeout=5) as r:
+                page = r.read().decode('utf-8')
+            self.assertIn('crawl-bar', page)
+            self.assertIn('"run": "R"', page)  # the first snapshot is baked in
         finally:
             gui.shutdown()
 
