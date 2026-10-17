@@ -76,9 +76,11 @@ zapisywanym w przeglądarce) i odświeża się bez przeładowania co 4 s z `GET 
 - „Przebiegi odświeżania”: ostatnie 10 raportów z czasem trwania i liczbą sprawdzonych oraz pominiętych grup, kodem wyjścia
   (raport bez kodu czyta się jako „nieznany”), a każdy wydział ma podpowiedź ze sprawdzonymi/zmienionymi/pominiętymi, przyczyną
   (blokady albo nieudanego wylistowania) i czasem oczekiwania. Kliknięcie wiersza rozwija szczegóły przebiegu — profil, czasy, kod wyjścia i tabelę wydziałów
-  (sprawdzone, zmiany, pominięte, stan, czas oczekiwania na odblokowanie) — a rozwinięcie przeżywa kolejne odświeżenia panelu.
+  (sprawdzone, zmiany, pominięte, stan, czas oczekiwania na odblokowanie, kiedy) — a rozwinięcie przeżywa kolejne odświeżenia panelu.
   Karta postępu pokazuje wynik ostatniego przebiegu i odlicza do następnego (cron `:23` co 2 h): w bezczynności „następny ≈ 16:23
-  (za 1 h 59 min)”, w trakcie przebiegu „następny za X”. Raporty są też zapisywane w `/data/runs.json`.
+  (za 1 h 59 min)”, w trakcie przebiegu „następny za X”. Raporty są też zapisywane w `/data/runs.json`. Na wąskich ekranach
+  (poniżej 640 px) wiersze przebiegów układają się w bloki, szczegóły przewijają się poziomo, a tabele wydziałów i puli chowają
+  najmniej istotne kolumny („obejścia”, „źródło”).
 
 Znaczniki czasu raportów są w UTC bez strefy — panel czyta je jako UTC i pokazuje w czasie lokalnym.
 
