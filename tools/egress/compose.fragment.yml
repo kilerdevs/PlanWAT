@@ -29,6 +29,17 @@ services:
       # Fall back to direct egress when the pool is empty (fail-open, operator choice).
       # Set to 0 for DeadDropMGMT-style fail-closed (crawl stops instead).
       PLANWAT_EGRESS_DIRECT_FALLBACK: "1"
+      # Faculty hosts that bypass the pool and go out from this box's own line. The pool's
+      # public exits answer them with WAF block pages (WTC the worst), while the home line
+      # serves them fine. Deliberately NOT listed: planzajec.wcy.wat.edu.pl — that one is
+      # blocked from the home line and can only be reached through the pool.
+      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl"
+    # Pin resolvers: Docker snapshots the host's /etc/resolv.conf when a container starts, so a
+    # container that starts before DHCP has written it can resolve nothing for the rest of its
+    # life (seen 2026-10-17: runner offline with proxy 502s after a host reboot).
+    dns:
+      - 1.1.1.1
+      - 9.9.9.9
     volumes:
       - egress-data:/data
     ports:
@@ -37,9 +48,9 @@ services:
       # e.g. "127.0.0.1:18080:8080" + an SSH tunnel.
       - "18080:8080"
     healthcheck:
-      # Quoteless on purpose: compose+shell layers eat quotes, so this TCP-checks the GUI
-      # listener with chr() instead of asserting /api/status (proven by a broken first version).
-      test: ["CMD", "python", "-c", "import socket;socket.create_connection((chr(49)+chr(50)+chr(55)+chr(46)+chr(48)+chr(46)+chr(48)+chr(46)+chr(49),8080),timeout=5)"]
+      # Quoteless on purpose: compose+shell layers eat quotes. DNS + TCP to GitHub is what the
+      # runner actually needs from this box; a listener-only check stays green through a DNS outage.
+      test: ["CMD", "python", "-c", "import socket;socket.create_connection((chr(103)+chr(105)+chr(116)+chr(104)+chr(117)+chr(98)+chr(46)+chr(99)+chr(111)+chr(109),443),timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3

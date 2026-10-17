@@ -6,7 +6,10 @@ per-destination policy instead of a static allowlist tunnel:
 
   * infra hosts (GitHub, PyPI, proxy lists, …)  -> direct egress, as today;
   * faculty hosts (*.wat.edu.pl)                -> chained through a rotating pool of
-    public proxies (tools/egress/pool.py), a different egress IP per connection;
+    public proxies (tools/egress/pool.py), a different egress IP per connection —
+    except those listed in EGRESS_DIRECT_FACULTY: they answer the pool's exits with
+    block pages while the operator's own line serves them fine (WTC is the canonical
+    case), so they go direct;
   * anything else                               -> 403, same default-deny as tinyproxy.
 
 When the pool has no healthy proxy, faculty traffic falls back to direct egress
@@ -14,8 +17,11 @@ When the pool has no healthy proxy, faculty traffic falls back to direct egress
 instead of ROTATING. Set it to 0 for DeadDropMGMT-style fail-closed.
 
 Ports: 8888 forward proxy (inner network only), 8080 read-only status GUI + run
-reports (LAN). The runner POSTs a run summary to /api/run after each refresh;
-the GUI shows pool health, mode, and the last runs side by side.
+reports (LAN). The runner POSTs a run summary to /api/run after each refresh and,
+whenever a faculty answers with a block page through a pooled exit, a block notice
+to /api/block — the crawler sees what the CONNECT tunnel hides, so the proxy can
+demote that exit (see ProxyServer.demote_recent); the GUI shows pool health, mode,
+and the last runs side by side.
 
 Threat model (unchanged from tinyproxy): job code on the runner is untrusted, so
 this proxy never fetches an arbitrary host on a job's behalf — routing above is
@@ -30,6 +36,7 @@ import struct
 import threading
 import time
 import urllib.parse
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -37,12 +44,20 @@ from pool import ProxyPool
 
 HERE = Path(__file__).resolve().parent
 
+
+def env(name, default):
+    return os.environ.get(name, default)
+
+
 # Parity with <runner dir>/allow.txt: everything here goes direct.
 DIRECT_SUFFIXES = ('github.com', 'githubusercontent.com', 'actions.githubusercontent.com',
                    'pypi.org', 'pythonhosted.org', 'codeload.github.com',
                    'blob.core.windows.net')
 DIRECT_EXACT = ('api.github.com',)
-# Faculty traffic rides the rotating pool.
+# Faculty traffic rides the rotating pool (CHAIN_SUFFIXES), except the hosts listed here (env,
+# comma or space separated): the pool's public exits are what their WAF blocks, while the
+# operator's own line serves them, so they go direct. wtc.wat.edu.pl is the canonical example.
+DIRECT_FACULTY = tuple(s.lower() for s in env('EGRESS_DIRECT_FACULTY', '').replace(',', ' ').split() if s)
 CHAIN_SUFFIXES = ('wat.edu.pl',)
 
 CONNECT_TIMEOUT = 10
@@ -53,10 +68,6 @@ RELAY_CAP_S = 600
 TUNNEL_SLOTS = threading.BoundedSemaphore(64)
 TUNNEL_COUNTER = itertools.count(1)
 CONNECT_STATUS_RE = re.compile(br'^HTTP/1\.[01] 200')
-
-
-def env(name, default):
-    return os.environ.get(name, default)
 
 
 def faculty_targets(season=None):
@@ -74,8 +85,14 @@ def faculty_targets(season=None):
         'ioe.wat.edu.pl': ('https://ioe.wat.edu.pl/plany/lato/index.xml', xml),
         'planzajec.wcy.wat.edu.pl': ('https://planzajec.wcy.wat.edu.pl/pl/rozklad', None),
         'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', None),
-        'wtc.wat.edu.pl': (f'https://wtc.wat.edu.pl/Plany/{season}/index.xml', xml),
+        'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', xml),
     }
+
+
+def host_is_direct(host):
+    """True when `host` is on the EGRESS_DIRECT_FACULTY list."""
+    h = (host or '').lower().rstrip('.')
+    return any(h == s or h.endswith('.' + s) for s in DIRECT_FACULTY)
 
 
 def route(host):
@@ -84,6 +101,8 @@ def route(host):
     if not h or h in ('localhost',) or h.startswith('127.') or h == '::1':
         return 'deny'
     if h in DIRECT_EXACT or any(h == s or h.endswith('.' + s) for s in DIRECT_SUFFIXES):
+        return 'direct'
+    if host_is_direct(h):
         return 'direct'
     if any(h == s or h.endswith('.' + s) for s in CHAIN_SUFFIXES):
         return 'chain'
@@ -352,6 +371,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self.server.pool.mark(proxy, host, True, ms, live=True)  # verified by real use
             except Exception as merr:
                 print(f'mark ok failed: {merr}', flush=True)
+            try:
+                self.server.remember_tunnel(host, proxy)
+            except Exception as merr:
+                print(f'remember tunnel failed: {merr}', flush=True)
             return sock, proxy
         return self._fallback(host, port)
 
@@ -458,6 +481,36 @@ class ProxyServer(ThreadingHTTPServer):
         self.blocks = 0
         self.fallbacks = {}  # host -> direct-fallback count
         self.fallbacks_lock = threading.Lock()
+        self.recent = deque(maxlen=200)  # (host, via, monotonic) of pooled tunnels, for block reports
+        self.recent_lock = threading.Lock()
+
+    def remember_tunnel(self, host, via):
+        with self.recent_lock:
+            self.recent.append((host, via, time.monotonic()))
+
+    def demote_recent(self, host, window=90.0):
+        """Withdraw the exit that carried the most recent tunnel to `host`, or None.
+
+        A WAF block page inside the tunnel is invisible to this proxy; the crawler reports
+        it (POST /api/block) right after reading the response, so the newest tunnel to that
+        host is almost always the one to blame. Direct tunnels have no exit to demote.
+        """
+        now = time.monotonic()
+        with self.recent_lock:
+            candidates = [(via, at) for h, via, at in reversed(self.recent) if h == host]
+        for via, at in candidates:
+            if now - at > window:
+                break
+            if via in ('direct', 'direct-fallback'):
+                return None
+            try:
+                self.pool.mark(via, host, False, live=False)  # host-failed: sits out its cooldown
+            except Exception as err:
+                print(f'block report: mark failed for {via}: {err}', flush=True)
+                return None
+            print(f'block report: demoted {via} for {host}', flush=True)
+            return via
+        return None
 
 
 # -- LAN GUI -----------------------------------------------------------------
@@ -527,8 +580,11 @@ class GuiHandler(BaseHTTPRequestHandler):
         host_modes = {}
         for h in self.server.pool.round2:
             n = stats['verified'].get(h, 0)
-            host_modes[h] = {'mode': 'ROTATING' if n else 'DIRECT',
-                             'verified': n, 'fallbacks': fallbacks.get(h, 0)}
+            if host_is_direct(h):
+                host_mode = 'DIRECT (lista)'
+            else:
+                host_mode = 'ROTATING' if n else 'DIRECT'
+            host_modes[h] = {'mode': host_mode, 'verified': n, 'fallbacks': fallbacks.get(h, 0)}
         open_runs = list(getattr(runs, 'open_runs', []))
         return {'mode': mode, 'proxy_port': self.server.proxy_port, 'pool': stats,
                 'fallbacks': fallbacks, 'fallbacks_total': sum(fallbacks.values()),
@@ -601,6 +657,18 @@ class GuiHandler(BaseHTTPRequestHandler):
             if not isinstance(report, dict):
                 return self._send('{"error":"bad json"}', code=400)
             return self._send(json.dumps(self.server.runs.add(report), ensure_ascii=False))
+        if self.path == '/api/block':
+            if not self._check_token():
+                return self._send('{"error":"unauthorized"}', code=401)
+            try:
+                report = json.loads(body.decode('utf-8'))
+            except ValueError:
+                return self._send('{"error":"bad json"}', code=400)
+            host = str(report.get('host') or '').lower().rstrip('.') if isinstance(report, dict) else ''
+            if not host:
+                return self._send('{"error":"bad json"}', code=400)
+            demoted = self.server.proxy_server.demote_recent(host)
+            return self._send(json.dumps({'demoted': demoted}))
         if self.path == '/api/refresh':
             if not self._check_token():
                 return self._send('{"error":"unauthorized"}', code=401)

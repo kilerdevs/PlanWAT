@@ -29,20 +29,26 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
 
 ## Jak zachowuje się przebieg
 
-- Jedna sesja, jedno żądanie naraz, losowa przerwa między stronami (2,5–6 s na własnym runnerze, 4–9 s z `--profile hosted`),
+- Jedna sesja, jedno żądanie naraz, losowa przerwa między stronami (1,5–4 s na własnym runnerze, 4–9 s z `--profile hosted`),
   honorowany `robots.txt`, warunkowa rewalidacja (`If-Modified-Since` / `ETag` zapamiętane dla każdej grupy, więc niezmienione
-  strony odpowiadają `304` bez treści) i pomijanie grup sprawdzonych mniej niż 90 minut temu (`--fresh-hours`). Wydziały za różnymi politykami Incapsula (`--lanes`, domyślnie 4) są przeglądane równolegle, każdy host we własnym tempie, więc pełny przebieg trwa krócej niż godzinę, a po zakończeniu przebiegu `pages.yml` od razu odbudowuje stronę (`workflow_run`).
+  strony odpowiadają `304` bez treści) i pomijanie grup sprawdzonych mniej niż 60 minut temu (`--fresh-hours`), więc każdy
+  dwugodzinny przebieg obejmuje wszystkie grupy. Wszystkie polityki Incapsula (`--lanes`, domyślnie 6) są przeglądane
+  równolegle, każdy host we własnym tempie, więc pełny przebieg trwa krócej niż godzinę, a po zakończeniu przebiegu
+  `pages.yml` od razu odbudowuje stronę (`workflow_run`).
 - **Blokada odkłada wydział, nie kończy przebiegu.** Każdy status inny niż 200 (z wyjątkiem 304 i 404) albo strona incydentu
-  Incapsula zawiesza dany wydział, podczas gdy pozostałe są obsługiwane, a potem odczekuje blokadę i wznawia od miejsca
+  Incapsula to najpierw odpowiedź blokady, nie wyrok: crawl zgłasza ją do proxy wyjściowego (które wycofuje wyjście, jakie ją
+  przewiozło — w tunelu CONNECT proxy nie widzi strony blokady), a potem ponawia na świeżym połączeniu, czyli na innym wyjściu
+  rotującej puli (`--block-retries`, domyślnie 2). Dopiero blokada, która przetrwa wszystkie próby, zawiesza wydział, podczas
+  gdy pozostałe są obsługiwane, a potem odczekuje blokadę i wznawia od miejsca
   przerwania. Długość snu jest wyuczona dla każdej grupy polityki z poprzednich odbudowań (mediana, 20 min – 12 h, 2 h bez historii;
   epizody „ściany” ważą więcej niż niestabilne), odblokowanie jest sprawdzane tanimi pobraniami indeksu w rzadko-potem-gęsto
   rozłożonym harmonogramie (`--block-probes`, domyślnie 5, zawsze w ramach pozostałego budżetu), a całe oczekiwanie jest
   ograniczone (`--max-block-wait-minutes`, domyślnie 30, przy równoległych wydziałach każdy czeka osobno, a przy kolejnych dzielone sprawiedliwie: każde czekanie dostaje swój udział, ale co
-  najmniej 15 min). Wyrok blokady nie jest ponawiany i nic niedokończonego nie jest publikowane. Ostatnie poprawne kalendarze
+  najmniej 15 min). Nic niedokończonego nie jest publikowane. Ostatnie poprawne kalendarze
   zostają, zgłoszenie GitHub otwiera się tylko wtedy, gdy przebieg kończy się wciąż zablokowany, a zadanie na własnym runnerze
   próbuje później ze stanu, który zapisał. (Znaczniki `_Incapsula_Resource` na dobrych stronach nie są blokadą.)
   Tylko przejściowe pobrania (błędy transportu, 408/425/429/500/502/503/504, pusty 200) są najpierw ponawiane z odczekaniem
-  (`--retries/--retry-backoff`), wszystko inne jest wyrokiem. Wyczerpanie odróżnia ścianę (`cause: wall`) od chwiejności
+  (`--retries/--retry-backoff`). Wyczerpanie odróżnia ścianę (`cause: wall`) od chwiejności
   (`cause: flaky`), a kolejka idzie od najdawniej sprawdzonych, więc przerwany przebieg zawsze obejmuje najdłużej niewidziane
   grupy. WLO i WEL dzielą jedną politykę Incapsula (`wat-edge`): jedno oczekiwanie obejmuje oba, potem każdy wznawia na własnej
   świeżej sesji. Wyuczony czas ochłodzenia zastąpił dawną stałą regułę 24–48 h (stan zachowuje przez ten czas ostatnie
@@ -67,8 +73,8 @@ Wydziały wymienia `tools/refresh/sources.json`. Każdy wskazuje sterownik w `to
 | WLO, WEL, WIM | `plansoft` | włączone |
 | IOE | `plansoft` (przypięta baza: zimowe plany leżą pod nieaktualnym katalogiem `lato/`, siatka jest transponowana, a jej komórki odczytywane jako PRZEDMIOT/rodzaj/sala/alias, konwertowane przez `wlo2ics --faculty ioe`) | włączone |
 | WML | `wml` (strony Plansoft, żywy `index.xml` rozpoznawany przez ramkę strony głównej, bo wydział publikuje ponownie w katalogach z rewizją) | włączone |
-| WCY | `wcy` | włączone: zwykłe HTTP działa (sprawdzono 14.10.2026), strony wciąż pokazujące poprzedni semestr są pomijane, więc stare kalendarze zostają do opublikowania nowego planu |
-| WTC | `wtc` | włączone: `index.xml` wymienia po jednym PDF-ie Plansoft na grupę, konwertowanym przez `pymupdf` (instalowany przez akcję odświeżania) |
+| WCY | `wcy` | włączone: zwykłe HTTP działa (sprawdzono 14.10.2026), a strony pokazujące inny semestr (lub pustą siatkę) są liczone jako „jeszcze nieopublikowane” — stare kalendarze zostają do publikacji nowego planu i nie oznaczają przebiegu jako pogorszony |
+| WTC | `wtc` | włączone: płaski `index.xml` (`/Plany/`) nazywa semestr, który wymienia (`<period>`), a sterownik publikuje PDF-y tylko dla odświeżanego semestru; konwersja przez `pymupdf` (instalowany przez akcję odświeżania) |
 
 Każda grupa ma dokładnie jednego kanonicznego właściciela, więc żaden plan nie jest publikowany dwa razy pod dwoma kodami: WEL
 pomija strony `IOE*` i `WME*`, które jego indeks też wymienia (należą do IOE i WIM), a IOE pomija wymienioną stronę `WME*`.
@@ -78,10 +84,14 @@ głównej były spójne. Strony niebędące kodami grup (kursy, np. `Kurs_-_…`
 wydziału (crawl obejmuje tylko strony `^WMT`) i są wyświetlane w sekcji WML. Grupy WIM zachowują swoje kody `WME` i są
 wyświetlane w sekcji WIM.
 
-Uwagi o WTC: serwis stoi za Incapsulą, więc PDF-y są pobierane z indeksem jako Referer na wspólnej sesji z ciasteczkami, po
-jednym naraz. Konwerter wymaga `pip install pymupdf` na każdej maszynie uruchamiającej crawl (codzienna akcja instaluje go do
-jednorazowego venv w `$RUNNER_TEMP`, bo wbudowany w runner `/opt/venv` jest w trakcie zadania tylko do odczytu). Skonwertowane
-kalendarze nie zawierają nazwisk kadry (zob. zasadę prywatności niżej).
+Uwagi o WTC: serwis stoi za Incapsulą, a publiczne wyjścia puli dostają od niego blokady, podczas gdy linia domowa odpowiada
+normalnie. Dlatego WTC — podobnie jak pozostałe wydziały poza WCY — jest na liście ruchu bezpośredniego proxy wyjściowego
+(`EGRESS_DIRECT_FACULTY`, zob. docs/EGRESS.md), a przez pulę musi iść wyłącznie WCY. Indeks wydziału jest płaski
+(`https://wtc.wat.edu.pl/Plany/index.xml`) i nazywa semestr, który wymienia; sterownik plikuje PDF-y tylko wtedy, gdy to
+odświeżany semestr, a pobiera je z indeksem jako Referer, po jednym naraz. Konwerter wymaga `pip install pymupdf` na każdej
+maszynie uruchamiającej crawl (codzienna akcja instaluje go do jednorazowego venv w `$RUNNER_TEMP`, bo wbudowany w runner
+`/opt/venv` jest w trakcie zadania tylko do odczytu). Skonwertowane kalendarze nie zawierają nazwisk kadry (zob. zasadę
+prywatności niżej).
 
 ## Bez nazwisk kadry w kalendarzach
 
