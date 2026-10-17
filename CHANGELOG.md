@@ -127,6 +127,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Odświeżanie:** strony WCY z planem innego semestru (albo pustą siatką) liczą się jako jeszcze nieopublikowane, bez
   oznaczania przebiegu jako pogorszony.
 - `CI`, `Egress` i `SAST` nie uruchamiają się już po pushu na `master`: pull request wydania zdążył je wykonać.
+- **Egress:** karta bezczynnego postępu mówi jedno: chip „bez przebiegu” plus wiersz harmonogramu z odliczaniem (zdublowane
+  „brak aktywnego przebiegu” zniknęło), kolumna czasu w szczegółach przebiegu nazywa się „kiedy” zamiast „o”, a liczebniki
+  odmieniają się po polsku: „1 sprawdzony”, „72 pominięte”, „2 próby”.
 
 ### Naprawiono
 - **Egress:** panel monitoringu znów mieści swoje dane: nagłówki kart się nie łamią, tabela wydziałów nie ucina ostatnich kolumn
@@ -145,6 +148,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Odświeżanie:** wydział, któremu nie udało się wylistować grup (np. chwilowa awaria proxy egress w trakcie przebiegu), nie
   przepisuje już do raportu zeszłego wpisu — dostaje świeży wpis z przyczyną `listing` i flagą zdegradowany, więc panel i
   zgłoszenie mówią, co naprawdę się stało, a stara degradacja nie ciągnie się przez kolejne przebiegi.
+- **Egress:** panel nie przelewa się na wąskich ekranach: wiersze przebiegów układają się w bloki, a szczegóły przewijają się
+  poziomo w swojej własnej tabeli (zamiast rozsypywać kolumny i wypychać kartę poza ekran), tabela wydziałów i pula chowają
+  najmniej istotne kolumny („obejścia”, „źródło”), a kafelki nie przycinają etykiet (np. „odrzuconych”). Panel znosi też
+  powiększoną czcionkę przeglądarki: nagłówki kolumn liczb mają zapas (w najgorszym razie kończą się wielokropkiem zamiast
+  nachodzić na siebie), długie etykiety kafelków dzielą się z myślnikiem, a licznik nowych wychodów przeniósł się do nagłówka
+  karty puli.
 - **Prywatność:** aliasy prowadzących (inicjał i nazwisko sklejone w polu sali, np. `AKowalski`) nie trafiają już do planów.
   Konwerter je odrzuca, `build.py` odmawia zbudowania kalendarza z takim polem, a `tools/scrub_staff.py` czyści już opublikowane.
 - **iPhone:** przyciski nad planem są zwarte zamiast dużych owali, „Zainstaluj aplikację” pokazuje kroki dodania do
