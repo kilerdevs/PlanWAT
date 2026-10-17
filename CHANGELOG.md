@@ -109,6 +109,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   koniec i wiersz stanu każdego wydziału (w kolejce, sprawdza, czeka na odblokowanie, brak postępu, gotowe). Crawler raportuje
   postęp najlepszym wysiłkiem (`PLANWAT_EGRESS_PROGRESS`, `POST /api/progress`), a egress liczy ETA z własnych pomiarów tempa
   i mówi „wstrzymane”, gdy wydział czeka na odblokowanie — zgubione zdarzenie psuje tylko dokładność, nigdy crawl.
+- **Egress:** karta postępu odlicza do następnego odświeżenia („następny ≈ 16:23 (za 1 h 59 min)”, także w trakcie przebiegu),
+  a kliknięcie wiersza przebiegu rozwija jego szczegóły: profil, czasy, kod wyjścia i tabelę wydziałów ze sprawdzonymi, zmianami,
+  pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
 - **Plan:** ✓ przy każdych skończonych zajęciach, nie tylko dzisiejszych.

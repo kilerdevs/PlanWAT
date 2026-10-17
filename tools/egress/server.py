@@ -876,6 +876,16 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   .scroll.more { -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent); mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent); }
   .scroll thead th { position:sticky; top:0; z-index:1; background:var(--s2); border-bottom:0; box-shadow:inset 0 -1px 0 var(--line); }
   .meta-warn { color:var(--warn); } .meta-bad { color:var(--busy); }
+  .runrow { cursor:pointer; }
+  .runrow:hover td, .runrow[aria-expanded="true"] td { background:var(--s2-hover); }
+  .runrow:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+  .chev { display:inline-block; width:0; height:0; margin-right:7px; border-left:5px solid var(--t3); border-top:4px solid transparent; border-bottom:4px solid transparent; transition:transform var(--dur-fast) var(--ease-out); vertical-align:1px; }
+  .runrow[aria-expanded="true"] .chev { transform:rotate(90deg); }
+  .rundet td { padding:0; background:var(--s3); }
+  .detbox { padding:10px 12px 12px; }
+  .det-meta { margin-bottom:8px; font-size:var(--fs-12); color:var(--t2); font-variant-numeric:tabular-nums; }
+  .detbox table.data { font-size:var(--fs-12); }
+  .detbox table.data th, .detbox table.data td { padding:4px 6px; }
   .chips { display:flex; flex-wrap:wrap; gap:4px; }
   .tag { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:var(--r-pill); background:var(--s3); font-size:var(--fs-12); color:var(--t2); white-space:nowrap; }
   .tag.chg { color:var(--accent-text); background:var(--accent-soft); }
@@ -927,7 +937,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   </div>
 
   <section class="card">
-    <div class="card-head"><h2>Przebiegi odświeżania</h2><span class="dim small">ostatnie 10</span></div>
+    <div class="card-head"><h2>Przebiegi odświeżania</h2><span class="dim small">ostatnie 10 &middot; kliknij wiersz</span></div>
     <table class="data"><thead><tr><th>odebrano</th><th>start &ndash; koniec</th><th>exit</th><th>wydziały</th></tr></thead><tbody id="runs-rows"></tbody></table>
   </section>
 </main>
@@ -1006,7 +1016,9 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
       bar.className = 'bigbar'; fill.style.width = '0%'; bar.setAttribute('aria-valuenow', '0');
       state.className = 'status'; state.textContent = 'bez przebiegu';
       count.textContent = 'brak aktywnego przebiegu';
-      sub.textContent = 'harmonogram: co 2 h \u00b7 nast\u0119pny \u2248 ' + clock(nextRunAt().getTime() / 1000);
+      var nx = nextRunAt();
+      sub.textContent = 'harmonogram: co 2 h \u00b7 nast\u0119pny \u2248 ' + clock(nx.getTime() / 1000)
+        + ' (za ' + fmtDur((nx.getTime() - Date.now()) / 1000) + ')';
       var last = (st.runs || [])[0];
       if (last) {
         var changed = 0, blocked = 0, checked = 0, degradedN = 0, facs = last.faculties || {};
@@ -1039,6 +1051,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     var bits = ['start ' + clock(p.started), fmtDur(p.elapsed_s) || '\u2013'];
     if (p.rate) bits.push(p.rate.toFixed(1).replace('.', ',') + ' grup/s');
     if (p.profile) bits.push(p.profile);
+    bits.push('nast\u0119pny za ' + fmtDur((nextRunAt().getTime() - Date.now()) / 1000));
     sub.textContent = bits.join(' \u00b7 ');
     if (!p.active) {
       var tail = ['exit ' + p.exit];
@@ -1129,9 +1142,42 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
       + ' \u00b7 liczniki od startu';
   }
 
+  var openRuns = {};
+  function runDetail(r) {
+    var facs = r.faculties || {}, keys = Object.keys(facs);
+    var meta = ['odebrano ' + isoClock(r.received), 'start ' + isoClock(r.started), 'koniec ' + isoClock(r.ended)];
+    var d1 = ts(r.started), d2 = ts(r.ended);
+    if (d1 && d2 && !isNaN(d1) && !isNaN(d2) && d2 > d1) { var dur = fmtDur((d2 - d1) / 1000); if (dur) meta.push(dur); }
+    if (r.profile) meta.push(String(r.profile));
+    if (r.dry_run) meta.push('pr\u00f3ba na sucho');
+    meta.push('exit ' + (r.exit == null ? 'nieznany' : String(r.exit)));
+    var h = '<div class="detbox"><div class="det-meta">' + esc(meta.join(' \u00b7 ')) + '</div>';
+    if (!keys.length) return h + '<span class="dim">brak szczeg\u00f3\u0142\u00f3w wydzia\u0142\u00f3w</span></div>';
+    h += '<table class="data"><thead><tr><th>wydzia\u0142</th><th>termin</th>'
+      + '<th class="num">sprawdzone</th><th class="num">zmiany</th><th class="num">pomini\u0119te</th><th class="num">niegotowe</th>'
+      + '<th>stan</th><th>czeka\u0142</th><th>o</th></tr></thead><tbody>';
+    keys.forEach(function (k) {
+      var c = facs[k] || {}, st2 = [];
+      if (c.blocked) st2.push('<span class="tag bad">zablokowany' + (c.cause ? ' (' + esc(c.cause) + ')' : '') + '</span>');
+      if (c.degraded) st2.push('<span class="tag warn">zdegradowany</span>');
+      if (c.ahead) st2.push('<span class="tag">nadchodz\u0105cy</span>');
+      if (!st2.length) st2.push('<span class="tag">ok</span>');
+      var wait = c.wait ? fmtDur(c.wait.waited) + ' (' + fmtNum(c.wait.probes) + ' pr\u00f3b' + (c.wait.recovered ? ', wr\u00f3ci\u0142' : '') + ')' : '\u2013';
+      h += '<tr><td><b>' + esc(k.toUpperCase()) + '</b></td><td class="dim">' + esc(c.term || '\u2013') + '</td>'
+        + '<td class="num">' + fmtNum(c.checked) + '</td>'
+        + '<td class="num">' + (c.changed ? '<b>' + fmtNum(c.changed) + '</b>' : '0') + '</td>'
+        + '<td class="num">' + (c.skipped ? fmtNum(c.skipped) : '0') + '</td>'
+        + '<td class="num">' + (c.not_ready ? fmtNum(c.not_ready) : '0') + '</td>'
+        + '<td>' + st2.join(' ') + '</td>'
+        + '<td>' + wait + '</td>'
+        + '<td class="dim">' + esc(isoClock(c.at)) + '</td></tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
   function renderRuns(st) {
     var rows = '';
-    (st.runs || []).forEach(function (r) {
+    (st.runs || []).forEach(function (r, i) {
       var tags = '', checked = 0, skipped = 0;
       var facs = r.faculties || {};
       Object.keys(facs).forEach(function (k) {
@@ -1157,9 +1203,12 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
       if (skipped) bits.push(fmtNum(skipped) + ' pomini\u0119tych');
       var span = esc(isoClock(r.started)) + ' \u2013 ' + esc(isoClock(r.ended))
         + (bits.length ? ' <span class="dim">\u00b7 ' + esc(bits.join(' \u00b7 ')) + '</span>' : '');
-      rows += '<tr><td>' + esc(isoClock(r.received)) + '</td><td>' + span + '</td><td>' + exitPill(r.exit) + '</td><td><span class="chips">' + (tags || '<span class="dim">\u2013</span>') + '</span></td></tr>';
+      var key = esc(r.received || 'i' + i);
+      var open = openRuns[key] ? ' aria-expanded="true"' : ' aria-expanded="false"';
+      rows += '<tr class="runrow" data-key="' + key + '" tabindex="0" role="button"' + open + ' title="kliknij, aby rozwin\u0105\u0107 szczeg\u00f3\u0142y"><td><span class="chev"></span>' + esc(isoClock(r.received)) + '</td><td>' + span + '</td><td>' + exitPill(r.exit) + '</td><td><span class="chips">' + (tags || '<span class="dim">\u2013</span>') + '</span></td></tr>'
+        + '<tr class="rundet" id="rundet-' + key + '"' + (openRuns[key] ? '' : ' hidden') + '><td colspan="4">' + runDetail(r) + '</td></tr>';
     });
-    $('runs-rows').innerHTML = rows || '<tr><td colspan="4" class="dim">brak przebiegów</td></tr>';
+    $('runs-rows').innerHTML = rows || '<tr><td colspan="4" class="dim">brak przebieg\u00f3w</td></tr>';
   }
 
   function render(st) {
@@ -1174,6 +1223,30 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   var poolScroll = $('pool-scroll');
   if (poolScroll) poolScroll.addEventListener('scroll', function () { fade(poolScroll); });
   if (window.addEventListener) window.addEventListener('resize', function () { fade(poolScroll); });
+
+  var runsBody = $('runs-rows');
+  function runRowOf(node) {
+    while (node && node !== runsBody) {
+      if (String(node.className || '').indexOf('runrow') > -1) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+  function toggleRun(tr) {
+    var key = tr.getAttribute('data-key'), det = $('rundet-' + key);
+    if (!det) return;
+    det.hidden = !det.hidden;
+    tr.setAttribute('aria-expanded', String(!det.hidden));
+    if (det.hidden) delete openRuns[key]; else openRuns[key] = true;
+  }
+  if (runsBody) {
+    runsBody.addEventListener('click', function (ev) { var tr = runRowOf(ev.target); if (tr) toggleRun(tr); });
+    runsBody.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      var tr = runRowOf(ev.target);
+      if (tr) { ev.preventDefault(); toggleRun(tr); }
+    });
+  }
 
   render(boot);
   function poll() {
