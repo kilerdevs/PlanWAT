@@ -12,7 +12,7 @@ COPY deploy/nginx.conf deploy/nginx.conf
 RUN python3 build.py --out /site --nginx deploy/nginx.conf
 
 # Stage 2: unprivileged, read-only nginx that serves only the built files.
-FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:15c994d10d6d78658721c3bcafff14cb281fba2a4bdf9d5ba92c416a472516e3
+FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:782bb89768cc87b7f95c18b95baa1af250e5d451f26794f59363540161147c01
 
 USER root
 RUN apk upgrade --no-cache \
