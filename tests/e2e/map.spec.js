@@ -136,6 +136,7 @@ test('a bad group in the day link is ignored', async ({ page }) => {
 });
 
 test('the map page passes an accessibility scan', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await open(page, '/mapa/');
   // Building markers sit where the buildings are, so neighbours overlap at campus zoom (WCAG 2.2 target size).
   // The search box and the legend reach every building too (the "equivalent control" exception), so only the
@@ -143,6 +144,8 @@ test('the map page passes an accessibility scan', async ({ page }) => {
   for (const name of await page.locator('.bldg').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))) {
     expect(name).toBeTruthy();
   }
+  // a panel still fading in reads as low contrast; wait for every finite animation to end
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .exclude('.maplibregl-canvas')

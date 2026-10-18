@@ -300,6 +300,8 @@ test('a calendar that cannot be loaded shows an error and disables navigation', 
 test('the group page has no serious or critical accessibility violations', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openGroup(page);
+  // a section still fading in reads as low contrast; wait for every finite animation to end
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .analyze();
