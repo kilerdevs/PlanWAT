@@ -87,8 +87,9 @@ docker compose up -d --build
 
 [`Dockerfile`](../Dockerfile) buduje w dwóch etapach:
 
-1. `python:3.13-alpine` uruchamia `build.py`, który zapisuje `site/` i wpisuje hashe CSP każdej strony do kopii
-   [`deploy/nginx.conf`](../deploy/nginx.conf) (CSP w nagłówku, razem z `frame-ancestors`).
+1. `python:3.13-alpine` uruchamia `build.py`, który zapisuje `site/` i wpisuje hashe CSP każdej strony (razem ze
+   źródłami wspólnych plików `assets/`) do kopii [`deploy/nginx.conf`](../deploy/nginx.conf) (CSP w nagłówku, razem
+   z `frame-ancestors`).
 2. `nginx-unprivileged` (przypięty digestem, po `apk upgrade`) serwuje wyłącznie te pliki.
 
 [`docker-compose.yml`](../docker-compose.yml) uruchamia go tylko do odczytu, jako użytkownik inny niż root, z odebranymi

@@ -21,7 +21,7 @@
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous" defer></script>
-<style>
+<style data-asset="map">
   :root {
     --bg: #000000;
     --s1: #111113;
@@ -302,10 +302,11 @@
 <div class="ctl status" id="status" role="status">Wczytywanie kampusu…</div>
 <div id="map" role="region" aria-label="Interaktywna mapa kampusu WAT"></div>
 
-<script>@@ICS_JS@@</script>
-<script>@@CAMPUS_JS@@</script>
-<script>@@PLACES_JS@@</script>
-<script>
+<script data-asset="map-support">
+@@ICS_JS@@
+@@CAMPUS_JS@@
+@@PLACES_JS@@</script>
+<script data-asset="map-app">
 (function () {
   'use strict';
   var C = window.Campus, P = window.Places;

@@ -130,6 +130,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
+- **Strony dzielą wspólne style i skrypty:** to, co dotąd każda strona niosła w swoim HTML-u, build zapisuje raz w plikach
+  `assets/` o nazwie z haszu treści; znacznik wczytuje je z sumą `integrity`, a bloki zostające w HTML nadal działają
+  wyłącznie z hashy CSP. Przeglądarka i Service Worker biorą je raz na wydanie, a całe wdrożenie repozytoryjnego zestawu
+  schudło z ~157 MB do ~55 MB — offline działa jak dotąd.
 - **CI w dwóch prędkościach:** push na `dev` uruchamia tylko szybkie konteksty (testy jednostkowe i budowa). Matryca
   przeglądarek i skan obrazu Dockera odpalają się wyłącznie w przeglądzie wydania `dev → master`, gdzie wymagane konteksty
   ochrony gałęzi `master` i tak ich szukają — ten sam commit nie jest już badany dwa razy za jednym pushem. Każdy przypadek

@@ -8,14 +8,17 @@ Output (default: site/):
     <GROUP>/plan-przypomnienia.ics   the same calendar with a reminder 15 minutes before each class
     mapa/index.html       campus map (MapLibre from unpkg, tiles from OpenFreeMap: the only page allowed them)
     prywatnosc/index.html privacy notice and terms of use
+    assets/               the styles and scripts the pages share (each name carries a hash of its bytes)
     sw.js, manifest.webmanifest, <GROUP>/manifest.webmanifest, icons/   offline worker and home-screen app
     robots.txt, .well-known/security.txt
     404.html
 
 Every page carries a hash-pinned Content-Security-Policy in a <meta> tag (GitHub Pages cannot send
-headers). For the Docker/nginx deployment, --nginx writes the union of those hashes (plus
-frame-ancestors, which only works as a header) into the given nginx.conf; the Dockerfile does this on
-its own copy of deploy/nginx.conf, so no tracked file is ever rewritten.
+headers): inline code by hash, the shared files under assets/ by origin — a meta hash cannot cover an
+external file, so each of those is instead pinned by the integrity attribute of the tag that loads it.
+For the Docker/nginx deployment, --nginx writes the union of those hashes (plus frame-ancestors, which
+only works as a header) into the given nginx.conf; the Dockerfile does this on its own copy of
+deploy/nginx.conf, so no tracked file is ever rewritten.
 
     python3 build.py                                  # site/, terms picked for today
     python3 build.py --base-path /PlanWAT --today 2026-10-15
@@ -69,6 +72,7 @@ APP_CSP = {
 MAP_APP_CSP = {'manifest-src': ["'self'"]}
 ICONS_DIR = 'icons'  # site/icons/: app icons named by the manifests
 PRIVACY_DIR = 'prywatnosc'  # site/prywatnosc/: privacy notice and terms of use
+ASSETS_DIR = 'assets'  # site/assets/: styles and scripts shared by the pages, named after their content hash
 REPO_URL = 'https://github.com/kilerdevs/PlanWAT'
 NOINDEX = '<meta name="robots" content="noindex, nofollow">'
 SW_FILE = 'sw.js'
@@ -556,6 +560,47 @@ def inline_hashes(page):
     return scripts, styles
 
 
+class AssetHub:
+    """The styles and scripts every page used to carry inline, written once per build under assets/.
+
+    A file's name carries a hash of its bytes, so one name never means two different files: browsers
+    and the service worker may cache it forever, and a rebuild that changes the code ships a new name.
+    build() hands the hub to the page renderers, then lists what was written for src/sw.js."""
+
+    def __init__(self, out):
+        self.dir = Path(out) / ASSETS_DIR
+        self.written = {}  # name -> None, in write order
+
+    def put(self, slug, ext, code, prefix=''):
+        """Store `code` as assets/<slug>-<hash8>.<ext>; return its url and the SRI digest of its bytes."""
+        digest = hashlib.sha256(code.encode('utf-8'))
+        name = f'{slug}-{digest.hexdigest()[:8]}.{ext}'
+        if name not in self.written:
+            self.dir.mkdir(parents=True, exist_ok=True)
+            (self.dir / name).write_bytes(code.encode('utf-8'))
+            self.written[name] = None
+        return f'{prefix}{ASSETS_DIR}/{name}', base64.b64encode(digest.digest()).decode()
+
+
+def externalize(page, assets, prefix):
+    """Replace the blocks marked data-asset with shared files under assets/, integrity-pinned in the tag."""
+    found = set()
+
+    def style(m):
+        url, digest = assets.put(m.group(1), 'css', m.group(2), prefix)
+        found.add('style')
+        return f'<link rel="stylesheet" href="{url}" integrity="sha256-{digest}">'
+
+    def script(m):
+        url, digest = assets.put(m.group(1), 'js', m.group(2), prefix)
+        found.add('script')
+        return f'<script src="{url}" integrity="sha256-{digest}" defer></script>'
+
+    page = re.sub(r'<style data-asset="([a-z0-9-]+)">(.*?)</style>', style, page, flags=re.S)
+    page = re.sub(r'<script data-asset="([a-z0-9-]+)">(.*?)</script>', script, page, flags=re.S)
+    return page, found
+
+
 def csp(scripts, styles, connect, frame_ancestors=False, extra=None):
     extra = extra or {}
     more = lambda name: extra.get(name, [])  # noqa: E731
@@ -593,12 +638,24 @@ def themed(page):
     return page.replace('@@THEME_HEAD@@', '<script>' + js + '</script>').replace('/*@@THEME_CSS@@*/', css)
 
 
-def finish(page, connect, extra=None):
-    """Pin the page's inline code into its meta CSP and sanity-check the result."""
+def finish(page, connect, extra=None, assets=None, asset_prefix=''):
+    """Pin the page's inline code into its meta CSP and sanity-check the result.
+
+    Blocks marked data-asset move out of the page into shared files under assets/ (see AssetHub).
+    Those are allowed by origin: a meta CSP hash cannot cover an external file, so each file is
+    instead pinned by the integrity attribute of the tag that loads it. Everything left inline is
+    pinned by hash, exactly as before."""
     page = themed(page)
     if 'style="' in page:
         raise BuildError('inline style attributes would be blocked by the CSP')
+    found = set()
+    if assets is not None:
+        page, found = externalize(page, assets, asset_prefix)
     scripts, styles = inline_hashes(page)
+    if 'script' in found:
+        scripts = ["'self'"] + scripts
+    if 'style' in found:
+        styles = ["'self'"] + styles
     policy = csp(scripts, styles, connect, extra=extra)
     page = page.replace('@@CSP@@', f'<meta http-equiv="Content-Security-Policy" content="{policy}">')
     left = re.findall(r'@@[A-Z_]+@@', page)
@@ -650,7 +707,7 @@ def term_switch(term, terms):
     return '<nav class="termswitch" id="termSwitch" aria-label="Semestr">' + ''.join(links) + '</nav>'
 
 
-def render_group(template, ics_js, term, refreshed=None, terms=()):
+def render_group(template, ics_js, term, refreshed=None, terms=(), assets=None):
     m = term.meta
     e = lambda v: html.escape(v, quote=True)  # noqa: E731
     description = f'Plan zajęć grupy {m["group"]}' + (f' — Wydział {m["faculty"]}' if m['faculty'] else '') + \
@@ -675,7 +732,7 @@ def render_group(template, ics_js, term, refreshed=None, terms=()):
     page = template.replace('@@ICS_JS@@', ics_js)  # first: the scripts' own text is never substituted into
     for key, value in values.items():
         page = page.replace(key, value)
-    return finish(page, connect=True, extra=APP_CSP)
+    return finish(page, connect=True, extra=APP_CSP, assets=assets, asset_prefix='../')
 
 
 def plural_wydzial(n):
@@ -692,7 +749,7 @@ STAR_SVG = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.
             'L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z"/></svg>')
 
 
-def render_index(template, current, ics_js=''):
+def render_index(template, current, ics_js='', assets=None):
     names = {code: pl for code, pl in FACULTIES}
     order = {code: i for i, (code, _) in enumerate(FACULTIES)}
     groups = sorted(current.items(), key=lambda kv: (order.get(faculty_of(kv[0]), len(order)), kv[0]))
@@ -760,12 +817,12 @@ def render_index(template, current, ics_js=''):
     page = page.replace('@@CHIPS@@', chips_html)
     page = page.replace('@@STATS@@', stats)
     page = page.replace('@@REDIRECT@@', redirect)
-    return finish(page, connect=True, extra=APP_CSP)
+    return finish(page, connect=True, extra=APP_CSP, assets=assets)
 
 
-def render_map(template, ics_js, campus_js, places_js):
+def render_map(template, ics_js, campus_js, places_js, assets=None):
     page = template.replace('@@ICS_JS@@', ics_js).replace('@@CAMPUS_JS@@', campus_js).replace('@@PLACES_JS@@', places_js)
-    return finish(page, connect=True, extra=merge_csp(MAP_APP_CSP, MAP_CSP))
+    return finish(page, connect=True, extra=merge_csp(MAP_APP_CSP, MAP_CSP), assets=assets, asset_prefix='../')
 
 
 def render_privacy(template):
@@ -816,8 +873,11 @@ def manifest(name, short_name, scope, up, shortcuts=()):
     return json.dumps(data, ensure_ascii=False, indent=1)
 
 
-def write_app(out, groups):
-    """Icons, manifests and the service worker; written last, so its version covers every other file."""
+def write_app(out, groups, assets=()):
+    """Icons, manifests and the service worker; written last, so its version covers every other file.
+
+    `assets` lists the shared files from AssetHub: the worker precaches them, so offline pages carry
+    their whole style and code with them like the inline versions used to."""
     (out / ICONS_DIR).mkdir()
     for f in sorted((SRC / 'icons').glob('*')):
         if f.suffix in ('.png', '.svg'):
@@ -833,9 +893,12 @@ def write_app(out, groups):
     for f in sorted(p for p in out.rglob('*') if p.is_file() and p.relative_to(out).parts[0] != '.well-known'):
         digest.update(f.relative_to(out).as_posix().encode() + b'\0' + f.read_bytes())
     sw = (SRC / SW_FILE).read_text(encoding='utf-8')
-    if sw.count('@@VERSION@@') != 1:
-        raise BuildError('src/sw.js must contain "@@VERSION@@" exactly once')
-    (out / SW_FILE).write_text(sw.replace('@@VERSION@@', digest.hexdigest()[:16]), encoding='utf-8')
+    left = ''.join(f", '{ASSETS_DIR}/{name}'" for name in assets)
+    for placeholder in ('@@VERSION@@', '@@ASSETS@@'):
+        if sw.count(placeholder) != 1:
+            raise BuildError(f'src/sw.js must contain "{placeholder}" exactly once')
+    sw = sw.replace('@@VERSION@@', digest.hexdigest()[:16]).replace('@@ASSETS@@', left)
+    (out / SW_FILE).write_text(sw, encoding='utf-8')
 
 
 # ---------------------------------------------------------------- build
@@ -869,7 +932,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     for path in files:
         group, term = load_term(path)
         by_group.setdefault(group, []).append(term)
-    clash = [g for g in by_group if g.lower() in (DATA_DIR, MAP_DIR, ICONS_DIR, PRIVACY_DIR)]
+    clash = [g for g in by_group if g.lower() in (DATA_DIR, MAP_DIR, ICONS_DIR, PRIVACY_DIR, ASSETS_DIR)]
     if clash:
         raise BuildError(f'group code "{clash[0]}" is reserved for the site\'s own pages and data files')
     current = {group: pick_term(terms, today) for group, terms in by_group.items()}
@@ -888,6 +951,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     out = Path(out)
     _prepare_out(out)
     all_scripts, all_styles = [], []
+    assets = AssetHub(out)
 
     def write(rel, page_scripts_styles):
         page, scripts, styles = page_scripts_styles
@@ -901,15 +965,15 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
 
     for group, term in sorted(current.items()):
         write(f'{group}/index.html', render_group(group_tpl, '\n'.join((ics_js, insights_js, campus_js)), term,
-                                                  refreshed.get(group), by_group[group]))
+                                                  refreshed.get(group), by_group[group], assets=assets))
         (out / group / 'plan.ics').write_bytes(term.data())
         (out / group / REMINDER_FILE).write_bytes(with_reminders(term.data()))
         for other in by_group[group]:  # the group's other terms: plan-<term>.ics, opened by the page's ?t=<term>
             if other.term_id != term.term_id:
                 (out / group / f'plan-{other.term_id}.ics').write_bytes(other.data())
                 (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.data()))
-    write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js))
-    write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js))
+    write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js, assets=assets))
+    write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8')))
     (out / 'robots.txt').write_text(robots_txt(base_path, noindex), encoding='utf-8')
     (out / '.well-known').mkdir()
@@ -920,7 +984,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
 
-    write_app(out, sorted(current))
+    write_app(out, sorted(current), assets.written)
     if nginx_conf:
         update_nginx(Path(nginx_conf), all_scripts, all_styles)
     return {group: term.term_id for group, term in current.items()}

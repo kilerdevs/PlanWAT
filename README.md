@@ -237,7 +237,7 @@ System wizualny („Apple, ale ciemny”) opisuje [DESIGN.md](DESIGN.md), a zał
 timetables/<semestr>/<GRUPA>.ics        źródło prawdy: jeden plik iCalendar na grupę i semestr
             │
             ▼  python3 build.py         waliduje każdy kalendarz, wybiera bieżący semestr grupy,
-            │                           zapisuje strony z Content-Security-Policy przypiętym hashami
+            │                           zapisuje strony i wspólne pliki assets/ z polityką Content-Security-Policy
             ▼
 site/index.html                         lista grup z wyszukiwarką (przekierowanie przy jednej grupie)
 site/<GRUPA>/index.html                 strona planu
@@ -347,9 +347,10 @@ Jak przenieść własną domenę na Pages i jak odtworzyć nagłówki, których 
 
 ## Bezpieczeństwo i prywatność
 
-- Każda strona ma **Content-Security-Policy z hashami**: uruchamia się tylko jej własny skrypt i styl, a pobierać może
-  jedynie własne pliki. Jedynym zewnętrznym źródłem jest Google Fonts. Strona mapy dodatkowo ładuje MapLibre GL JS z
-  `unpkg.com` (przypięty wersją i sumą SRI) oraz kafelki z `tiles.openfreemap.org`.
+- Każda strona ma **Content-Security-Policy przypiętą do kodu**: bloki wpisane w HTML działają tylko z hashów, a wspólne
+  pliki `assets/` mają nazwę z hashem treści i sumę `integrity` na znaczniku, który je wczytuje. Z zewnątrz pobierane są
+  wyłącznie Google Fonts; strona mapy dodatkowo MapLibre GL JS z `unpkg.com` (przypięty wersją i sumą SRI) i kafelki
+  z `tiles.openfreemap.org`.
 - Tekst z kalendarza trafia do strony wyłącznie przez `textContent`, a w budowie jest escapowany. Kolory przyjmowane są tylko
   jako `#rrggbb`.
 - Service Worker buforuje tylko strony, kalendarze i pliki aplikacji z własnej domeny oraz Google Fonts.
@@ -400,7 +401,7 @@ Konwencje i listę kontrolną pull requesta opisuje [CONTRIBUTING.md](CONTRIBUTI
 
 ```
 build.py                  generator strony (tylko biblioteka standardowa)
-src/group.html            szablon strony grupy: znaczniki, style i skrypt aplikacji (inline, z hashami CSP)
+src/group.html            szablon strony grupy: znaczniki oraz styl i skrypt wynoszone do wspólnych plików assets/
 src/index.html, 404.html  lista grup i strona błędu
 src/mapa.html             mapa kampusu (/mapa/)
 src/ics.js                czytnik iCalendar
