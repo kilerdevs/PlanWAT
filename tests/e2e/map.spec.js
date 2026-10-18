@@ -74,6 +74,30 @@ test('the faculty legend and the 2D/3D switch work', async ({ page }) => {
   await expect(t3d).toHaveAttribute('aria-label', 'Przełącz na mapę 3D');
 });
 
+test('places show opening hours and accessibility, and the filters keep unknown data out', async ({ page }) => {
+  await open(page, '/mapa/');
+  test.skip(await page.locator('#tools').isHidden(), 'map controls need the map engine');
+  await page.locator('#placesToggle').click();
+  await expect(page.locator('#placesBody')).toBeVisible();
+  await expect(page.locator('#openNowFilter')).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#openNowFilter').click();
+  await expect(page.locator('#openNowFilter')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#placesBody .filter-note').first()).toContainText('pominięte w filtrze');
+  await page.locator('#wheelchairFilter').click();
+  await expect(page.locator('#wheelchairFilter')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#placesBody .filter-note').first()).toContainText('Bez danych o dostępności');
+
+  await page.locator('#q').fill('Circle K');
+  const first = page.locator('#results .result').first();
+  await expect(first).toContainText('Circle K');
+  await expect(first).toContainText('Otwarte 24/7');
+  await first.click();
+  await expect(page.locator('#selection h1')).toHaveText('Circle K');
+  await expect(page.locator('#selection .place-meta')).toContainText('Otwarte 24/7');
+  await expect(page.locator('#selection .place-meta')).toContainText('Dostępne');
+  expect(await page.evaluate(() => window.__csp)).toEqual([]);
+});
+
 test('without the map engine a plain list still opens directions', async ({ page }) => {
   const problems = await open(page, '/mapa/', { engine: false });
   await expect(page.locator('#status')).toContainText('Mapa jest niedostępna');

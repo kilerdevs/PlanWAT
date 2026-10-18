@@ -261,6 +261,34 @@
   .clear:focus-visible { outline-color: var(--accent); }
   .clear svg, .star svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .resultline { margin: 12px 4px 0; font-size: 0.8125rem; color: var(--t3); font-variant-numeric: tabular-nums; }
+  .finder-cta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 56px;
+    margin-top: 8px;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: 16px;
+    background: var(--s2);
+    box-shadow: var(--edge);
+    color: var(--t1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    transition: background-color 150ms, outline-color 150ms;
+    touch-action: manipulation;
+  }
+  .finder-cta:focus-visible { outline-color: var(--accent); }
+  .finder-cta:active { background: var(--s3); }
+  .finder-cta > svg { flex: none; width: 20px; height: 20px; color: var(--t2); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .finder-cta-main { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+  .finder-cta-main strong { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.012em; }
+  .finder-cta-main span { margin-top: 2px; font-size: 0.8125rem; color: var(--t2); }
+  .finder-cta .chev { margin-left: 0; }
   .empty {
     margin-top: 12px;
     padding: 24px 20px;
@@ -393,6 +421,130 @@
     h1 { font-size: 4rem; letter-spacing: -0.04em; }
     .filters { margin: 12px 0 0; padding: 2px 0; flex-wrap: wrap; overflow: visible; }
   }
+  /* ---------- group finder: a bottom sheet on phones, a centred dialog from tablet up ---------- */
+  html:has(dialog.finder[open]) { overflow: hidden; }
+  dialog.finder {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: 560px;
+    max-height: min(86vh, 760px);
+    max-height: min(86dvh, 760px);
+    margin: 0 auto;
+    padding: 0 0 calc(12px + env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: 24px 24px 0 0;
+    background: var(--s2);
+    color: var(--t1);
+    box-shadow: var(--edge), 0 -24px 80px rgba(0, 0, 0, 0.55);
+    overflow: hidden;
+  }
+  dialog.finder[open] { display: flex; flex-direction: column; }
+  dialog.finder::backdrop { background: var(--scrim); }
+  .finder-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 22px 12px 6px 20px; }
+  .finder-kicker { margin: 0 0 4px; font-size: 0.8125rem; font-weight: 500; color: var(--t3); font-variant-numeric: tabular-nums; }
+  .finder-title { margin: 0; padding: 0; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }
+  .finder-close {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: -6px -2px 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--s3);
+    color: var(--t2);
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    transition: background-color 150ms, color 150ms, outline-color 150ms;
+    touch-action: manipulation;
+  }
+  .finder-close:focus-visible { outline-color: var(--accent); }
+  .finder-close:active { background: var(--s2); }
+  .finder-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+  .finder-lead { margin: 0; padding: 0 20px 10px; color: var(--t2); font-size: 0.9375rem; }
+  .finder-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 8px; }
+  .finder-q { margin: 0; padding: 2px 8px 10px; font-size: 0.9375rem; font-weight: 600; color: var(--t2); }
+  .finder-list { display: flex; flex-direction: column; gap: 2px; }
+  .finder-opt {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 56px;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--t1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    transition: background-color 150ms, outline-color 150ms;
+    touch-action: manipulation;
+  }
+  .finder-opt:focus-visible, .finder-group:focus-visible { outline-color: var(--accent); }
+  .finder-opt:active { background: var(--s3); }
+  .finder-opt-main { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+  .finder-opt-label { font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em; }
+  .finder-opt-meta { margin-top: 2px; font-size: 0.8125rem; color: var(--t2); font-variant-numeric: tabular-nums; }
+  .finder-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(144px, 1fr)); gap: 8px; padding: 2px 4px 4px; }
+  .finder-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 52px;
+    padding: 10px 14px;
+    border-radius: 16px;
+    background: var(--s3);
+    box-shadow: var(--edge);
+    color: var(--t1);
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    font-variant-numeric: tabular-nums;
+    text-decoration: none;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    transition: background-color 150ms, outline-color 150ms;
+    touch-action: manipulation;
+  }
+  .finder-group:active { background: var(--s2); }
+  .finder-empty { margin: 8px; padding: 16px; border-radius: 14px; background: var(--s3); color: var(--t2); font-size: 0.9375rem; text-align: center; }
+  .finder-foot { display: flex; align-items: center; min-height: 44px; padding: 4px 16px 0; }
+  .finder-foot .textbtn { min-height: 44px; }
+  @media (hover: hover) and (pointer: fine) {
+    .finder-cta:hover { background: var(--s3); }
+    .finder-opt:hover, .finder-group:hover { background: var(--s3); }
+    .finder-close:hover { color: var(--t1); }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    dialog.finder[open] { animation: finder-rise 360ms cubic-bezier(0.32, 0.72, 0, 1); }
+    dialog.finder[open]::backdrop { animation: finder-fade 200ms ease-out; }
+    @keyframes finder-rise { from { opacity: 0; transform: translateY(24px); } }
+    @keyframes finder-fade { from { opacity: 0; } }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .finder-cta, .finder-opt, .finder-group, .finder-close { transition: none; }
+  }
+  @media (min-width: 768px) {
+    dialog.finder {
+      inset: 0;
+      width: min(520px, calc(100% - 48px));
+      margin: auto;
+      border-radius: 24px;
+      padding-bottom: 8px;
+      box-shadow: var(--edge), 0 0 0 1px var(--line), 0 40px 120px rgba(0, 0, 0, 0.7);
+    }
+    .finder-head { padding-top: 20px; }
+  }
 /*@@THEME_CSS@@*/
 </style>
 </head>
@@ -423,6 +575,11 @@
     <span class="kbd" aria-hidden="true">/</span>
     <button class="clear" id="clearSearch" type="button" aria-label="Wyczyść wyszukiwanie" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
   </div>
+  <button class="finder-cta enter d5" id="findGroup" type="button" aria-haspopup="dialog" aria-controls="groupFinder">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    <span class="finder-cta-main"><strong>Nie znasz kodu grupy?</strong><span>Znajdź ją po wydziale i roku naboru</span></span>
+    <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+  </button>
   <div class="filters enter d6" id="filters" role="group" aria-label="Filtr wydziału">
 @@CHIPS@@
   </div>
@@ -445,6 +602,18 @@
     </div>
   </footer>
 </main>
+<dialog class="finder" id="groupFinder" aria-labelledby="finderTitle" aria-describedby="finderLead">
+  <div class="finder-head">
+    <div>
+      <p class="finder-kicker" id="finderStep" aria-live="polite">Krok 1 z 3 &middot; Wydział</p>
+      <h2 class="finder-title" id="finderTitle">Znajdź grupę</h2>
+    </div>
+    <button class="finder-close" id="finderClose" type="button" aria-label="Zamknij wyszukiwanie grupy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <p class="finder-lead" id="finderLead">Bez kodu grupy: wybierz wydział, rok naboru i swoją grupę.</p>
+  <div class="finder-body" id="finderBody"></div>
+  <div class="finder-foot"><button class="textbtn" id="finderBack" type="button" hidden>Wróć</button></div>
+</dialog>
 <script>@@ICS_JS@@</script>
 <script>
 (function () {
@@ -570,6 +739,156 @@
     if (preset) search.value = preset.slice(0, 40);
   } catch (e) { /* plain page */ }
   apply();
+
+  /* ---------- group finder: wydział -> rok naboru -> grupa (no field names: the plans carry none) ---------- */
+  var finder = $('groupFinder');
+  var finderBody = $('finderBody');
+  var finderStep = $('finderStep');
+  var finderBack = $('finderBack');
+  var finderOpen = $('findGroup');
+  var finderClose = $('finderClose');
+  var finderState = { step: 1, fac: '', year: '' };
+
+  function finderFaculties() {
+    var out = [];
+    sections.forEach(function (sec) {
+      var code = sec.getAttribute('data-fac-section');
+      var rows = Array.prototype.slice.call(sec.querySelectorAll('li[data-group]'));
+      if (!rows.length) return;
+      var title = sec.querySelector('.fac-title');
+      out.push({
+        code: code,
+        short: code === 'OTHER' ? 'Pozostałe' : code,
+        title: title ? title.textContent.trim() : 'Pozostałe grupy',
+        rows: rows
+      });
+    });
+    return out;
+  }
+  function finderYears(rows) {
+    var counts = {}, order = [];
+    rows.forEach(function (row) {
+      var y = row.getAttribute('data-year') || '';
+      if (!Object.prototype.hasOwnProperty.call(counts, y)) { counts[y] = 0; order.push(y); }
+      counts[y]++;
+    });
+    order.sort(function (a, b) {
+      if (a === '') return 1;
+      if (b === '') return -1;
+      return +b - +a;
+    });
+    return order.map(function (y) { return { year: y, n: counts[y] }; });
+  }
+  function finderChevron() {
+    var svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('class', 'chev');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    var path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', 'm9 18 6-6-6-6');
+    svg.appendChild(path);
+    return svg;
+  }
+  function finderOption(label, meta, attr, value) {
+    var button = el('button', 'finder-opt');
+    button.type = 'button';
+    button.setAttribute(attr, value);
+    var main = el('span', 'finder-opt-main');
+    main.appendChild(el('span', 'finder-opt-label', label));
+    main.appendChild(el('span', 'finder-opt-meta', meta));
+    button.appendChild(main);
+    button.appendChild(finderChevron());
+    return button;
+  }
+  function renderFinder(focusFirst) {
+    var facs = finderFaculties();
+    var current = facs.filter(function (f) { return f.code === finderState.fac; })[0] || null;
+    var years = current ? finderYears(current.rows) : [];
+    var groups = current && finderState.step > 2 ? current.rows.filter(function (li) {
+      return (li.getAttribute('data-year') || '') === finderState.year;
+    }) : [];
+
+    finderStep.textContent = 'Krok ' + finderState.step + ' z 3' +
+      (current && finderState.step > 1 ? ' · ' + current.short : '') +
+      (finderState.step > 2 && finderState.year ? ' · Rocznik ' + finderState.year : '');
+    finderBack.hidden = finderState.step === 1;
+    finderBack.setAttribute('aria-label', finderState.step === 2 ? 'Wróć do wyboru wydziału' : 'Wróć do wyboru roku naboru');
+    finderBody.textContent = '';
+
+    var prompt = el('p', 'finder-q');
+    prompt.id = 'finderPrompt';
+    prompt.textContent = finderState.step === 1 ? 'Wybierz wydział' :
+      finderState.step === 2 ? 'Wybierz rok naboru' : 'Wybierz grupę';
+    finderBody.appendChild(prompt);
+
+    if (finderState.step === 1) {
+      var facList = el('div', 'finder-list');
+      facs.forEach(function (f) {
+        facList.appendChild(finderOption(f.title, plural(f.rows.length), 'data-fac', f.code));
+      });
+      finderBody.appendChild(facList);
+    } else if (finderState.step === 2) {
+      var yearList = el('div', 'finder-list');
+      years.forEach(function (y) {
+        yearList.appendChild(finderOption(y.year ? 'Rocznik ' + y.year : 'Pozostałe', plural(y.n), 'data-year', y.year));
+      });
+      finderBody.appendChild(yearList);
+    } else {
+      var grid = el('div', 'finder-groups');
+      groups.forEach(function (li) {
+        var href = li.querySelector('a.group').getAttribute('href');
+        var a = el('a', 'finder-group');
+        a.href = href;
+        a.appendChild(el('span', 'finder-code', li.getAttribute('data-group')));
+        grid.appendChild(a);
+      });
+      finderBody.appendChild(grid);
+      if (!groups.length) finderBody.appendChild(el('p', 'finder-empty', 'Brak grup w tym roczniku.'));
+    }
+
+    if (focusFirst) {
+      var first = finderBody.querySelector('.finder-opt, .finder-group');
+      if (first) first.focus(); else finderClose.focus();
+    }
+  }
+  finderOpen.addEventListener('click', function () {
+    finderState = { step: 1, fac: '', year: '' };
+    if (!finder.open) finder.showModal();
+    renderFinder(true);
+  });
+  finderClose.addEventListener('click', function () { finder.close(); });
+  finder.addEventListener('close', function () { finderOpen.focus(); });
+  finder.addEventListener('cancel', function (e) { e.preventDefault(); finder.close(); });
+  finder.addEventListener('click', function (e) {
+    /* a click on the backdrop, not on the sheet itself, closes it */
+    if (e.target !== finder) return;
+    var r = finder.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) finder.close();
+  });
+  finderBack.addEventListener('click', function () {
+    if (finderState.step === 1) return;
+    finderState.step -= 1;
+    if (finderState.step === 1) finderState.fac = '';
+    if (finderState.step === 2) finderState.year = '';
+    renderFinder(true);
+  });
+  finderBody.addEventListener('click', function (e) {
+    if (!e.target.closest) return;
+    var option = e.target.closest('.finder-opt');
+    if (option) {
+      if (option.hasAttribute('data-fac')) {
+        finderState.fac = option.getAttribute('data-fac');
+        finderState.year = '';
+        finderState.step = 2;
+      } else {
+        finderState.year = option.getAttribute('data-year') || '';
+        finderState.step = 3;
+      }
+      renderFinder(true);
+      return;
+    }
+    if (e.target.closest('a.finder-group')) finder.close();
+  });
 
   /* ---------- favourites and recently opened groups ---------- */
   var known = {};

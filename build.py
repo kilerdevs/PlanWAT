@@ -738,7 +738,8 @@ def render_index(template, current, ics_js=''):
             flush()
             fac, rows, rows_src = faculty_of(code), [], []
         term_html = '' if uniform else f'<span class="term">{html.escape(labels[code])}</span>'
-        row = (f'    <li class="row" data-group="{code}" data-fac="{faculty_of(code)}">'
+        intake_year = intake(code)
+        row = (f'    <li class="row" data-group="{code}" data-fac="{faculty_of(code)}" data-year="{intake_year or ""}">'
                f'<a class="group" href="{code}/"><span><span class="code">{code}</span>{term_html}</span>'
                '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>'
                f'<button class="star" type="button" data-star="{code}" aria-pressed="false" '
@@ -793,17 +794,26 @@ def render_404(template, base_path):
     return finish(template.replace('@@BASE@@', html.escape(base_path.rstrip('/'), quote=True)), connect=False)
 
 
-def manifest(name, short_name, scope, up):
-    """A web app manifest; every URL is relative to the manifest so the site works under any base path."""
+def manifest(name, short_name, scope, up, shortcuts=()):
+    """A web app manifest; every URL is relative to the manifest so the site works under any base path.
+
+    `shortcuts` are (label, url) pairs; their urls are relative to the manifest and its scope, like every other url."""
     icon = lambda f, size, kind, purpose='any': {'src': f'{up}{ICONS_DIR}/{f}', 'sizes': size, 'type': kind, 'purpose': purpose}  # noqa: E731
-    return json.dumps({
+    data = {
         'id': './', 'name': name, 'short_name': short_name, 'lang': 'pl', 'dir': 'ltr',
         'description': 'Nieoficjalny, czytelny na telefonie plan zajęć grup WAT.',
         'start_url': './', 'scope': scope, 'display': 'standalone',
         'background_color': '#000000', 'theme_color': '#000000',
         'icons': [icon('icon-192.png', '192x192', 'image/png'), icon('icon-512.png', '512x512', 'image/png'),
                   icon('maskable-512.png', '512x512', 'image/png', 'maskable'), icon('icon.svg', 'any', 'image/svg+xml')],
-    }, ensure_ascii=False, indent=1)
+    }
+    if shortcuts:
+        data['shortcuts'] = [
+            {'name': label, 'short_name': label, 'url': url,
+             'icons': [icon('icon-192.png', '192x192', 'image/png')]}
+            for label, url in shortcuts
+        ]
+    return json.dumps(data, ensure_ascii=False, indent=1)
 
 
 def write_app(out, groups):
@@ -812,10 +822,12 @@ def write_app(out, groups):
     for f in sorted((SRC / 'icons').glob('*')):
         if f.suffix in ('.png', '.svg'):
             shutil.copyfile(f, out / ICONS_DIR / f.name)
-    (out / 'manifest.webmanifest').write_text(manifest('PlanWAT', 'PlanWAT', './', ''), encoding='utf-8')
+    (out / 'manifest.webmanifest').write_text(manifest('PlanWAT', 'PlanWAT', './', '', [
+        ('Wszystkie plany', './'), ('Mapa kampusu', f'{MAP_DIR}/')]), encoding='utf-8')
     for group in groups:
         # the app opens at the group; its scope is the whole site so the map and the front page stay inside it
-        (out / group / 'manifest.webmanifest').write_text(manifest(f'PlanWAT · {group}', group, '../', '../'), encoding='utf-8')
+        (out / group / 'manifest.webmanifest').write_text(manifest(f'PlanWAT · {group}', group, '../', '../', [
+            ('Mój plan', './'), ('Mapa kampusu', f'../{MAP_DIR}/')]), encoding='utf-8')
     digest = hashlib.sha256()
     # .well-known/security.txt changes its expiry date daily; it must not reset everyone's offline copy
     for f in sorted(p for p in out.rglob('*') if p.is_file() and p.relative_to(out).parts[0] != '.well-known'):

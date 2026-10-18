@@ -234,7 +234,7 @@ test('the week sheet closes with Escape and picks a week', async ({ page }) => {
   await sheet.locator('.opt[data-i="13"]').click();
   await expect(sheet).toBeHidden();
   await expect(weekLabel(page)).toHaveText('28.12–02.01');
-  await expect(page.locator('.session-banner')).toContainText('sesja egzaminacyjna');
+  await expect(page.locator('.session-banner')).toContainText('Brak zajęć w tym tygodniu');
 });
 
 test('the legend highlights one subject across the week', async ({ page }) => {
@@ -414,16 +414,23 @@ test('the calendar sheet offers subscription links and the file', async ({ page 
   await pressTool(page, '#calBtn');
   await expect(page.locator('#calApple')).toHaveAttribute('href', /^webcal:\/\/127\.0\.0\.1:\d+\/WCY26KY3S1\/plan\.ics$/);
   await expect(page.locator('#calGoogle')).toHaveAttribute('href', /^https:\/\/calendar\.google\.com\/calendar\/render\?cid=webcal%3A%2F%2F/);
-  await expect(tool(page).locator('a[download="plan-WCY26KY3S1.ics"]')).toHaveAttribute('href', 'plan.ics');
+  await expect(page.locator('#calFile')).toBeVisible();
 
-  // the reminder switch points every action at the calendar with alarms
+  // the reminder switch points the subscription actions at the calendar with alarms
   await page.locator('#calRemind').check();
   await expect(page.locator('#calApple')).toHaveAttribute('href', /^webcal:\/\/127\.0\.0\.1:\d+\/WCY26KY3S1\/plan-przypomnienia\.ics$/);
   await expect(page.locator('#calGoogle')).toHaveAttribute('href', /plan-przypomnienia\.ics$/);
-  await expect(page.locator('#calFile')).toHaveAttribute('href', 'plan-przypomnienia.ics');
-  await expect(page.locator('#calFile')).toHaveAttribute('download', 'plan-WCY26KY3S1-przypomnienia.ics');
   await page.locator('#calRemind').uncheck();
-  await expect(page.locator('#calFile')).toHaveAttribute('href', 'plan.ics');
+
+  // the downloaded file is generated in the browser with the chosen reminder
+  await page.locator('#calFileRemind .choice[data-value="30"]').click();
+  const first = page.waitForEvent('download');
+  await page.locator('#calFile').click();
+  expect((await first).suggestedFilename()).toBe('plan-WCY26KY3S1-przypomnienie-30min.ics');
+  await page.locator('#calFileRemind .choice[data-value="0"]').click();
+  const second = page.waitForEvent('download');
+  await page.locator('#calFile').click();
+  expect((await second).suggestedFilename()).toBe('plan-WCY26KY3S1.ics');
 });
 
 test('share hands the page link to the system share sheet', async ({ page }) => {
@@ -432,7 +439,78 @@ test('share hands the page link to the system share sheet', async ({ page }) => 
   });
   await openGroup(page);
   await pressTool(page, '#shareBtn');
+  await expect(page.locator('#sharePreview')).toContainText('Plan WCY26KY3S1');
+  await expect(page.locator('#sharePreview')).toContainText('Matematyka II');
+  const png = page.waitForEvent('download');
+  await page.locator('#shareImage').click();
+  expect((await png).suggestedFilename()).toBe('plan-WCY26KY3S1-2026-10-15.png');
+  await page.locator('#shareLink').click();
   await expect.poll(() => page.evaluate(() => window.__shared && window.__shared.url)).toMatch(/\/WCY26KY3S1\/$/);
+});
+
+test('a break is a banner, not a class, and the statistics separate it from teaching', async ({ page }) => {
+  const problems = [];
+  page.on('pageerror', (e) => problems.push(e.message));
+  await page.clock.setFixedTime(new Date('2027-02-10T10:00:00+01:00'));
+  await page.goto('/WME24BM1S1/');
+  const breakNote = page.locator('.week-note:not(.session)', { hasText: 'Przerwa' });
+  await expect(breakNote).toContainText('10.02');
+  await expect(page.locator('.week-note.session')).toContainText('Sesja');
+  await expect(page.locator('.day-note', { hasText: 'Przerwa' })).toHaveCount(5);
+
+  await pressTool(page, '#statsBtn');
+  await expect(tool(page).locator('.tile').nth(1)).toContainText('godzin dydaktycznych');
+  await expect(tool(page)).toContainText('Poza zajęciami');
+  await expect(tool(page)).toContainText('Rezerwacje sal');
+  await expect(tool(page)).toContainText('Bloki sesji');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#toolSheet')).toBeHidden();
+  expect(problems).toEqual([]);
+});
+
+test('the session sheet lists exams and credits, filters them and exports them', async ({ page }) => {
+  await openGroup(page);
+  await pressTool(page, '#sessionBtn');
+  await expect(page.locator('#toolTitle')).toHaveText('Sesja egzaminacyjna');
+  await expect(tool(page).locator('.session-row').first()).toContainText('Zaliczenie');
+  const file = page.waitForEvent('download');
+  await page.locator('#sessionDownload').click();
+  expect((await file).suggestedFilename()).toBe('egzaminy-i-zaliczenia-WCY26KY3S1.ics');
+  await page.locator('#sessionKind .choice[data-value="exam"]').click();
+  await expect(tool(page)).toContainText('Brak nadchodzących terminów');
+  await expect(page.locator('#sessionDownload')).toBeDisabled();
+  await page.keyboard.press('Escape');
+});
+
+test('my extra classes appear in the plan, survive a reload and stay out of the statistics', async ({ page }) => {
+  const problems = await openGroup(page);
+  await pressTool(page, '#extrasBtn');
+  await page.locator('#extraAdd').click();
+  await page.locator('#extraTitle').fill('SKS test');
+  await page.locator('#extraStart').fill('18:00');
+  await page.locator('#extraEnd').fill('19:30');
+  await page.locator('#extraSave').click();
+  await expect(page.locator('#extraList')).toContainText('SKS test');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#toolSheet')).toBeHidden();
+  await expect(page.locator('.lesson.is-extra')).toHaveCount(1);
+  await expect(page.locator('.lesson.is-extra')).toContainText('SKS test');
+
+  await pressTool(page, '#statsBtn');
+  await expect(tool(page).locator('.tile b').first()).toHaveText('216');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#toolSheet')).toBeHidden();
+
+  await page.reload();
+  await expect(page.locator('.lesson.is-extra')).toHaveCount(1);
+  page.on('dialog', (d) => d.accept());
+  await pressTool(page, '#extrasBtn');
+  await page.locator('#extraList .link', { hasText: 'Usuń' }).click();
+  await expect(page.locator('#extraList')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#toolSheet')).toBeHidden();
+  await expect(page.locator('.lesson.is-extra')).toHaveCount(0);
+  expect(problems).toEqual([]);
 });
 
 test('comparing groups shows both plans and the shared free time', async ({ page }) => {
@@ -536,6 +614,12 @@ test('free rooms lists rooms with no class at the chosen time, with a day bar on
   await expect(status).toContainText(/wolnych sal|wolne sale|wolna sala/);
   await expect(tool(page).locator('.fr-card').first().locator('.fr-bar')).toHaveCount(1);
   await expect(tool(page).locator('#frAsof')).toContainText('Według opublikowanych planów');
+  await page.locator('#frPresetTomorrow').click();
+  await expect(page.locator('#frDate')).toHaveValue('2026-10-16');
+  await expect(page.locator('#frTime')).toHaveValue('08:00');
+  await page.locator('#frPresetNow').click();
+  await expect(page.locator('#frDate')).toHaveValue('2026-10-15');
+  await expect(page.locator('#frTime')).toHaveValue('10:30');
   // 314 S hosts a class right now, so it is not free; asking for later rooms may list it with a later start
   await page.locator('#frQuery').fill('314 S');
   await expect(tool(page).locator('.fr-card.fr-card:not(.later) .fr-room', { hasText: /^314 S$/ })).toHaveCount(0);
@@ -593,7 +677,7 @@ test('a plan that changed since the last visit says what changed', async ({ page
 });
 
 test('the list view and the tool sheets have no serious or critical accessibility violations', async ({ page }) => {
-  test.slow(); // five full axe scans
+  test.slow(); // several full axe scans
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openGroup(page);
   const scan = async () => {
@@ -609,7 +693,7 @@ test('the list view and the tool sheets have no serious or critical accessibilit
   expect(await scan()).toEqual([]);
   await page.locator('#viewSeg button[data-view="month"]').click();
   expect(await scan()).toEqual([]);
-  for (const id of ['#statsBtn', '#roomsBtn', '#profileBtn', '#calBtn']) {
+  for (const id of ['#statsBtn', '#sessionBtn', '#roomsBtn', '#profileBtn', '#calBtn', '#extrasBtn', '#shareBtn']) {
     await pressTool(page, id);
     await expect(tool(page)).toBeVisible();
     await expect(tool(page).locator('.muted', { hasText: 'Wczytywanie' })).toHaveCount(0);
@@ -663,6 +747,33 @@ test('the front page search takes the "/" key and a ?q= link', async ({ page }) 
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('/');
   await expect(page.locator('#groupSearch')).toBeFocused();
+});
+
+test('the group finder walks from faculty and intake year to a group', async ({ page }) => {
+  await page.clock.setFixedTime(THURSDAY_1030);
+  await page.goto('/');
+  const opener = page.locator('#findGroup');
+  const dialog = page.locator('#groupFinder');
+  await opener.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('aria-labelledby', 'finderTitle');
+  await expect(page.locator('#finderStep')).toContainText('Krok 1 z 3');
+  await expect(dialog.locator('.finder-opt').first()).toBeFocused();
+  // Escape closes the sheet and hands focus back to the button that opened it
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await dialog.locator('.finder-opt[data-fac="WCY"]').click();
+  await expect(page.locator('#finderStep')).toContainText('Krok 2 z 3');
+  await dialog.locator('.finder-opt[data-year="2026"]').click();
+  await expect(page.locator('#finderStep')).toContainText('Krok 3 z 3');
+  const link = dialog.locator('a.finder-group[href="WCY26KY3S1/"]');
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect(page).toHaveURL(ON_GROUP);
+  await expect(page.locator('.lesson').first()).toBeVisible();
 });
 
 test('each class shows which meeting of its subject and type it is', async ({ page }) => {

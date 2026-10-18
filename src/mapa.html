@@ -118,12 +118,31 @@
   .legend-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fc); flex: none; }
   .legend-row .n { margin-left: auto; color: var(--t3); font-variant-numeric: tabular-nums; }
   .row-btns { display: flex; gap: 8px; }
-  .places-body { min-width: 236px; }
+  .places-body {
+    min-width: 236px; max-height: calc(100dvh - var(--top) - 68px);
+    overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  }
   .places-body .legend-row[aria-pressed="false"] { opacity: 0.45; }
   .places-body .legend-row[aria-pressed="false"] .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--fc); }
   .places-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px 6px; color: var(--t3); font-size: 0.75rem; }
   .places-head button { font: inherit; font-size: 0.75rem; color: var(--accent-text); background: none; border: 0; padding: 6px 4px; cursor: pointer; }
   .row-btns .ctl { min-width: 44px; font-weight: 600; }
+  .place-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 4px; }
+  .chip {
+    min-height: 32px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--r-pill);
+    background: var(--s2); color: var(--t2); font: inherit; font-size: 0.8125rem; cursor: pointer;
+  }
+  .chip:hover { background: var(--s3); }
+  .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--t1); }
+  .filter-note { padding: 0 10px 6px; margin: 0; color: var(--t3); font-size: 0.75rem; line-height: 1.4; }
+  .sheet .place-meta {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    margin: 2px 0 10px; color: var(--t2); font-size: 0.8125rem;
+  }
+  .compact .place-meta { margin-bottom: 6px; }
+  .place-meta .state-open { color: #30d158; }
+  .place-meta .state-closed { color: #ff6961; }
+  .place-meta .state-unknown { color: var(--t3); }
 
   /* the sheet: bottom on phones, a side panel on wide screens */
   .sheet {
@@ -318,9 +337,11 @@
   function dot(color, cls) { var d = el('span', cls || 'dot'); d.style.setProperty('--fc', color); return d; }
   function markerLabel(b) { return b.code === 'BIBL' ? 'B' : b.code || (/^Brama/.test(b.name) ? '↗' : ''); }
 
-  var map = null, pitched = true, markers = [], placesOn = {};
+  var map = null, pitched = true, markers = [], placesOn = {}, openOnly = false, wheelOnly = false;
   P.CATEGORIES.forEach(function (c) { placesOn[c.id] = true; });
-  var sheet = $('sheet'), selection = $('selection');
+  /* categories where opening hours are useful; stops and dormitories would only add "Godziny nieznane" noise */
+  var HOURS_RELEVANT = { shop: 1, rest: 1, bar: 1, canteen: 1, bufet: 1, parcel: 1, park: 1 };
+  var sheet = $('sheet'), selection = $('selection'), filterNote = null;
 
   function padding() {
     if (phone.matches) return { top: 110, bottom: sheet.open ? Math.min(innerHeight * 0.46, 360) : 70, left: 40, right: 60 };
@@ -375,6 +396,18 @@
     fac.appendChild(document.createTextNode(p.cat.label));
     selection.appendChild(fac);
     selection.appendChild(el('h1', null, p.name));
+    var state = P.openState(p, new Date());
+    var wheel = P.wheelchairLabel(p);
+    var meta = el('p', 'place-meta');
+    if (p.hours || HOURS_RELEVANT[p.cat.id]) meta.appendChild(el('span', 'state state-' + state.state, state.label));
+    if (wheel) {
+      if (meta.childNodes.length) meta.appendChild(el('span', 'meta-sep', '·'));
+      meta.appendChild(el('span', null, wheel));
+    }
+    if (meta.childNodes.length) {
+      if (p.hours) meta.title = 'OpenStreetMap: ' + p.hours;
+      selection.appendChild(meta);
+    }
     var go = el('a', 'navigate');
     go.href = P.directionsUrl(p);
     go.target = '_blank';
@@ -431,7 +464,9 @@
       btn.appendChild(dot(p.cat.color));
       var t = el('span');
       t.appendChild(el('b', null, p.name));
-      t.appendChild(el('small', null, p.cat.label));
+      var info = p.cat.label;
+      if (p.hours) info += ' · ' + P.openState(p, new Date()).label;
+      t.appendChild(el('small', null, info));
       btn.appendChild(t);
       btn.addEventListener('click', function () {
         q.value = p.name;
@@ -486,17 +521,62 @@
   legendToggle.addEventListener('click', function () { setLegend(legendBody.hidden); });
   placesToggle.addEventListener('click', function () { setPlacesPanel(placesBody.hidden); });
 
-  /* the places panel: one switch per category, applied to the map layers once they exist */
+  /* the places panel: category switches plus "open now" and accessibility filters, applied to the map layers */
   var placeRows = {};
+  function placeFeatures(now) {
+    return {
+      type: 'FeatureCollection',
+      features: P.PLACES.map(function (p) {
+        return {
+          type: 'Feature', id: p.id,
+          properties: {
+            id: p.id, cat: p.cat.id, name: p.name,
+            open: P.openState(p, now).state === 'open' ? 1 : 0,
+            wheel: p.wheelchair || ''
+          },
+          geometry: { type: 'Point', coordinates: [p.lng, p.lat] }
+        };
+      })
+    };
+  }
+  function placeFilter(catId) {
+    var f = ['==', ['get', 'cat'], catId];
+    if (openOnly) f = ['all', f, ['==', ['get', 'open'], 1]];
+    if (wheelOnly) f = ['all', f, ['==', ['get', 'wheel'], 'yes']];
+    return f;
+  }
+  function updatePlaceNote() {
+    if (!filterNote) return;
+    var now = new Date(), noHours = 0, noWheel = 0;
+    P.PLACES.forEach(function (p) {
+      if (!placesOn[p.cat.id]) return;
+      if (openOnly && P.openState(p, now).state === 'unknown') noHours++;
+      if (wheelOnly && !P.wheelchairLabel(p)) noWheel++;
+    });
+    var lines = [];
+    if (openOnly && noHours) lines.push('Bez znanych godzin: ' + noHours + ' (pominięte w filtrze).');
+    if (wheelOnly && noWheel) lines.push('Bez danych o dostępności: ' + noWheel + ' (pominięte w filtrze).');
+    filterNote.textContent = lines.join(' ');
+    filterNote.hidden = !lines.length;
+  }
   function applyPlaces() {
+    var now = new Date();
+    if (map && map.getSource && map.getSource('places')) map.getSource('places').setData(placeFeatures(now));
     P.CATEGORIES.forEach(function (c) {
       placeRows[c.id].setAttribute('aria-pressed', String(placesOn[c.id]));
-      if (map && map.getLayer && map.getLayer('places-' + c.id)) map.setLayoutProperty('places-' + c.id, 'visibility', placesOn[c.id] ? 'visible' : 'none');
+      if (map && map.getLayer && map.getLayer('places-' + c.id)) {
+        map.setLayoutProperty('places-' + c.id, 'visibility', placesOn[c.id] ? 'visible' : 'none');
+        map.setFilter('places-' + c.id, placeFilter(c.id));
+      }
     });
     if (map && map.getLayer && map.getLayer('places-label')) {
       var on = P.CATEGORIES.filter(function (c) { return placesOn[c.id]; }).map(function (c) { return c.id; });
-      map.setFilter('places-label', ['in', ['get', 'cat'], ['literal', on]]);
+      var labelFilter = ['in', ['get', 'cat'], ['literal', on]];
+      if (openOnly) labelFilter = ['all', labelFilter, ['==', ['get', 'open'], 1]];
+      if (wheelOnly) labelFilter = ['all', labelFilter, ['==', ['get', 'wheel'], 'yes']];
+      map.setFilter('places-label', labelFilter);
     }
+    updatePlaceNote();
   }
   (function () {
     var head = el('div', 'places-head');
@@ -511,6 +591,43 @@
     acts.appendChild(none);
     head.appendChild(acts);
     placesBody.appendChild(head);
+
+    var filters = el('div', 'place-filters');
+    var open = el('button', 'chip', 'Otwarte teraz');
+    open.type = 'button';
+    open.id = 'openNowFilter';
+    open.setAttribute('aria-pressed', 'false');
+    open.title = 'Pokaż tylko miejsca otwarte teraz';
+    open.addEventListener('click', function () {
+      openOnly = !openOnly;
+      open.setAttribute('aria-pressed', String(openOnly));
+      applyPlaces();
+    });
+    filters.appendChild(open);
+
+    var withWheelchair = P.PLACES.filter(function (p) { return P.wheelchairLabel(p); }).length;
+    if (withWheelchair) {
+      var wheel = el('button', 'chip', 'Dostępne');
+      wheel.type = 'button';
+      wheel.id = 'wheelchairFilter';
+      wheel.setAttribute('aria-pressed', 'false');
+      wheel.setAttribute('aria-label', 'Pokaż tylko miejsca w pełni dostępne dla wózków');
+      wheel.title = 'Pokaż tylko miejsca w pełni dostępne dla wózków (' + withWheelchair + ' z danymi)';
+      wheel.addEventListener('click', function () {
+        wheelOnly = !wheelOnly;
+        wheel.setAttribute('aria-pressed', String(wheelOnly));
+        applyPlaces();
+      });
+      filters.appendChild(wheel);
+    }
+    placesBody.appendChild(filters);
+    if (!withWheelchair) placesBody.appendChild(el('p', 'filter-note', 'Brak danych o dostępności w OpenStreetMap.'));
+    filterNote = el('p', 'filter-note');
+    filterNote.hidden = true;
+    filterNote.setAttribute('aria-live', 'polite');
+    placesBody.appendChild(filterNote);
+    placesBody.appendChild(el('p', 'filter-note', 'Godziny i dostępność: OpenStreetMap; mogą być nieaktualne.'));
+
     P.CATEGORIES.forEach(function (c) {
       var row = el('button', 'legend-row');
       row.type = 'button';
@@ -523,6 +640,9 @@
       placesBody.appendChild(row);
     });
   })();
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && (openOnly || wheelOnly)) applyPlaces();  // opening hours move on while the tab sleeps
+  });
 
   /* ---- "Twój dzień na kampusie": ?g=<GROUP>&d=YYYY-MM-DD ---- */
   var dayCodes = {};
@@ -710,10 +830,7 @@
     return x.getImageData(0, 0, cv.width, cv.height);
   }
   function addPlaces() {
-    var features = P.PLACES.map(function (p) {
-      return { type: 'Feature', id: p.id, properties: { id: p.id, cat: p.cat.id, name: p.name }, geometry: { type: 'Point', coordinates: [p.lng, p.lat] } };
-    });
-    map.addSource('places', { type: 'geojson', data: { type: 'FeatureCollection', features: features } });
+    map.addSource('places', { type: 'geojson', data: placeFeatures(new Date()) });
     map.addLayer({
       id: 'place-ring', type: 'circle', source: 'places', filter: ['==', ['get', 'id'], -1],
       paint: { 'circle-radius': 20, 'circle-color': 'rgba(10, 132, 255, 0.18)', 'circle-stroke-color': '#0a84ff', 'circle-stroke-width': 2.5, 'circle-pitch-alignment': 'viewport' }

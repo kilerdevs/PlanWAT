@@ -16,6 +16,22 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Sesja egzaminacyjna** na stronie grupy: osobny arkusz z egzaminami i zaliczeniami z planu (filtr rodzaju, licznik dni,
+  eksport samych terminów do `.ics` z wybranym przypomnieniem). Bloki „Sesja …” i przerwy nie są już pokazywane jako zajęcia:
+  tydzień dostaje czytelny baner z datą, a dzień tylko notkę.
+- **Uczciwe statystyki:** godziny dydaktyczne liczone bez rezerwacji sal, przerw, świąt i bloków sesji; te pozycje są pokazane
+  osobno, żeby nie zawyżały średniej tygodniowej ani wykresów.
+- **Udostępnianie dnia:** arkusz „Udostępnij” z wyborem dnia, podglądem tekstu i obrazu PNG 1080 × 1350; obok niego link do całego
+  planu.
+- **Szybki wybór w „Wolnych salach”:** „Teraz”, „Po zajęciach” i „Jutro rano” ustawiają datę, godzinę i długość okna jednym dotknięciem.
+- **Własne dodatkowe zajęcia:** SKS, konsultacje, projekt — dodawane lokalnie, widoczne tylko w tej przeglądarce, z kontrolą kolizji
+  i bez wpływu na oficjalne statystyki, porównania i pobierany plan.
+- **Wybór przypomnienia w kalendarzu:** pobierany `.ics` jest generowany w przeglądarce, więc można wybrać brak przypomnienia,
+  15 min, 30 min, 1 h albo 1 dzień; subskrypcje zachowują stałe 15 min.
+- **Skróty aplikacji:** manifest PWA dostaje skróty „Wszystkie plany” / „Mój plan” i „Mapa kampusu”.
+- **Szukanie grupy bez kodu:** na stronie głównej arkusz „Nie znasz kodu grupy?” prowadzi przez wydział i rok naboru do kodu grupy.
+- **Mapa:** filtry „Otwarte teraz” i „Dostępne” czytają tagi `opening_hours` i `wheelchair` z OpenStreetMap. Nieznane godziny i brak
+  danych o dostępności są pokazywane jako nieznane, wyłączone z filtrów i policzone w nocie pod filtrami.
 - **Mapa:** miejsca wokół kampusu jako opisane plakietki: przystanki tramwajowe i autobusowe, akademiki, Domki Radiowa,
   stołówki, bufety, restauracje, bary, sklepy, paczkomaty i parkingi. Panel „Miejsca” przełącza kategorie, wyszukiwarka
   znajduje miejsca, a karta miejsca daje trasę pieszo. Dane w `src/places.js`, odtwarzane przez `tools/places/make_places.py` z

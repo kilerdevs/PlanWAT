@@ -131,6 +131,45 @@ class BuildRealSiteTest(unittest.TestCase):
         index = (self.out / 'index.html').read_text(encoding='utf-8')
         self.assertIn("navigator.serviceWorker.register('sw.js', { scope: './' })", index)
 
+    def test_manifests_offer_shortcuts_to_the_plans_and_the_map(self):
+        root_dir = self.out
+        root = json.loads((root_dir / 'manifest.webmanifest').read_text(encoding='utf-8'))
+        self.assertEqual([s['name'] for s in root['shortcuts']], ['Wszystkie plany', 'Mapa kampusu'])
+        self.assertEqual([s['url'] for s in root['shortcuts']], ['./', 'mapa/'])
+        for shortcut in root['shortcuts']:
+            self.assertTrue((root_dir / shortcut['url']).resolve().is_dir(), shortcut['url'])
+            for icon in shortcut['icons']:
+                self.assertTrue(icon['src'].startswith('icons/'), icon['src'])
+                self.assertTrue((root_dir / icon['src']).resolve().is_file(), icon['src'])
+
+        group_dir = root_dir / 'WCY26KY3S1'
+        group = json.loads((group_dir / 'manifest.webmanifest').read_text(encoding='utf-8'))
+        self.assertEqual([s['name'] for s in group['shortcuts']], ['Mój plan', 'Mapa kampusu'])
+        self.assertEqual([s['url'] for s in group['shortcuts']], ['./', '../mapa/'])
+        for shortcut in group['shortcuts']:
+            self.assertTrue((group_dir / shortcut['url']).resolve().is_dir(), shortcut['url'])
+            for icon in shortcut['icons']:
+                self.assertTrue(icon['src'].startswith('../icons/'), icon['src'])
+                self.assertTrue((group_dir / icon['src']).resolve().is_file(), icon['src'])
+
+    def test_root_offers_a_faculty_year_group_finder(self):
+        html = (self.out / 'index.html').read_text(encoding='utf-8')
+        for marker in ('id="findGroup"', 'aria-controls="groupFinder"', 'id="groupFinder"',
+                       'aria-labelledby="finderTitle"', 'aria-describedby="finderLead"',
+                       'id="finderStep"', 'id="finderBack"', 'id="finderBody"'):
+            self.assertIn(marker, html)
+        self.assertIn('Nie znasz kodu grupy?', html)
+        self.assertIn('Znajdź ją po wydziale i roku naboru', html)
+        self.assertIn('Krok 1 z 3', html)
+        for group in self.groups():
+            row = re.search(r'<li class="row" data-group="' + re.escape(group) +
+                            r'" data-fac="([A-Z]+)" data-year="(\d{4}|)">', html)
+            self.assertIsNotNone(row, group)
+            prefix = build.year_of(group)
+            expected = str(2000 + int(prefix[3:5])) if prefix else ''
+            self.assertEqual(row.group(2), expected, group)
+            self.assertIn(f'<a class="group" href="{group}/">', html)
+
     def test_public_site_files(self):
         robots = (self.out / 'robots.txt').read_text(encoding='utf-8')
         self.assertIn('User-agent: *', robots)

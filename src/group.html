@@ -695,6 +695,28 @@
   .session-banner b { color: var(--t1); font-weight: 600; }
   .session-banner span { max-width: 42ch; }
 
+  /* breaks and exam periods come from the faculty calendar as "-" blocks: they are not classes */
+  .week-notes { display: grid; gap: var(--sp-2); margin: var(--sp-2) 0 var(--sp-4); }
+  .week-note {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 11px var(--sp-4);
+    border-radius: var(--r-card);
+    background: var(--s1);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--t2);
+    font-size: var(--fs-13);
+  }
+  .week-note .i { flex: none; width: 20px; height: 20px; color: var(--t3); }
+  .week-note .week-note-text { display: grid; gap: 1px; min-width: 0; }
+  .week-note b { color: var(--t1); font-weight: 600; }
+  .week-note.session { background: var(--accent-wash); box-shadow: inset 0 0 0 1px var(--accent-ring); }
+  .week-note.session .i { color: var(--accent); }
+  .week-note .link { margin-left: auto; flex: none; }
+  .week-empty { margin: var(--sp-2) 0 0; font-size: var(--fs-13); color: var(--t2); }
+  .day-note { padding: 1px 8px; border-radius: var(--r-pill); background: var(--s3); color: var(--t2); font-size: var(--fs-12); font-weight: 600; }
+
   /* ================= legend ================= */
   .legend { interpolate-size: allow-keywords; border-top: 1px solid var(--line); }
   .legend summary {
@@ -1102,6 +1124,7 @@
   .action .i { color: var(--t2); }
   .action small { display: block; font-size: var(--fs-13); font-weight: 400; color: var(--t2); }
   .field { display: grid; gap: 4px; font-size: var(--fs-13); color: var(--t2); }
+  .field[hidden] { display: none; }
   .field input {
     min-height: 44px;
     padding: 8px 12px;
@@ -1160,6 +1183,59 @@
   table.data { width: 100%; margin-top: var(--sp-2); border-collapse: collapse; font-size: var(--fs-13); font-variant-numeric: tabular-nums; }
   table.data th, table.data td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
   table.data th { color: var(--t2); font-weight: 500; }
+
+  /* personal extra classes */
+  .extra-list { display: grid; gap: var(--sp-2); margin: var(--sp-3) 0; padding: 0; list-style: none; }
+  .extra-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--sp-3); padding: 12px var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
+  .extra-item b { font-size: var(--fs-15); overflow-wrap: anywhere; }
+  .extra-item span { font-size: var(--fs-13); color: var(--t2); }
+  .extra-item .extra-info { display: grid; gap: 1px; min-width: 0; }
+  .extra-item .extra-actions { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 2px; align-self: center; }
+  .extra-item .extra-actions .link { min-height: 36px; }
+  .extra-form { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+  .extra-form .fields { margin-top: 0; }
+  .form-warn { margin-top: var(--sp-2); padding: 8px 10px; border-radius: var(--r-sm, 8px); background: var(--accent-soft); color: var(--t2); font-size: var(--fs-13); }
+  .form-warn.clash { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--warn); }
+
+  /* exam session */
+  .session-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .session-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 2px var(--sp-3);
+    align-items: center;
+    padding: 10px var(--sp-4);
+    border-radius: var(--r-card);
+    background: var(--s3);
+  }
+  .session-time { font-size: var(--fs-13); color: var(--t2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .session-main { display: grid; gap: 1px; min-width: 0; }
+  .session-main b { font-size: var(--fs-15); overflow-wrap: anywhere; }
+  .session-main span { font-size: var(--fs-13); color: var(--t2); }
+  .session-day { display: flex; align-items: baseline; gap: var(--sp-2); margin: var(--sp-5) 0 var(--sp-2); }
+  .session-day h3 { margin: 0; }
+  .session-day span { margin-left: auto; font-size: var(--fs-13); color: var(--t3); font-variant-numeric: tabular-nums; }
+  .session-tag { justify-self: end; }
+  .session-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+
+  /* sharing one day as text or an image */
+  .share-preview {
+    margin: var(--sp-3) 0;
+    padding: var(--sp-4);
+    border-radius: var(--r-card);
+    background: var(--s1);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--t1);
+    font: 500 var(--fs-13) / 1.55 var(--font);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .share-canvas { display: block; width: 100%; max-width: 300px; height: auto; margin: var(--sp-3) auto; border-radius: var(--r-card); box-shadow: var(--edge); }
+  .share-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
+  .share-grid .action { min-height: 48px; }
+  .fr-presets { margin-top: var(--sp-3); }
+  .fr-presets .choices { margin-top: 2px; }
+
   /* ================= tabs (the tools row, the plan map) ================= */
   .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border-radius: var(--r-ctl); background: var(--s2); box-shadow: var(--edge); }
   .tabs button { min-height: 36px; padding: 4px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--t2); font-size: var(--fs-13); font-weight: 600; cursor: pointer; touch-action: manipulation; transition: background-color var(--dur-fast), color var(--dur-fast); }
@@ -1547,6 +1623,8 @@
     }
     .week .day, .week .group { display: contents; }
     .week .session-banner { grid-column: 1 / -1; grid-row: 1; margin: 0 0 var(--sp-3); }
+    .week .week-notes { grid-column: 1 / -1; grid-row: 1; margin: 0 0 var(--sp-2); }
+    .week-note { padding: 10px var(--sp-4); }
     .week .colbg {
       display: block;
       grid-column: var(--col);
@@ -1818,6 +1896,7 @@
       <div class="toolpanel" id="tp-plan" role="tabpanel" aria-labelledby="tt-plan">
         <button class="dl" id="favBtn" type="button" aria-pressed="false"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-star"/></svg><span id="favText">Dodaj do ulubionych</span></button>
         <button class="dl" id="subjectsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-user"/></svg>Moje przedmioty</button>
+        <button class="dl" id="extrasBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-calendar-plus"/></svg>Moje dodatkowe zajęcia</button>
         <button class="dl" id="tourBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-help"/></svg>Jak korzystać</button>
         <span id="installRow" hidden><button class="dl" id="installBtn" type="button" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Zainstaluj aplikację</button><span id="installHint" class="muted"></span></span>
       </div>
@@ -1828,6 +1907,7 @@
         <button class="dl" id="printBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-printer"/></svg>Drukuj / PDF</button>
       </div>
       <div class="toolpanel" id="tp-analysis" role="tabpanel" aria-labelledby="tt-analysis" hidden>
+        <button class="dl" id="sessionBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Sesja egzaminacyjna</button>
         <button class="dl" id="statsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chart"/></svg>Statystyki</button>
         <button class="dl" id="compareBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-users"/></svg>Porównaj grupy</button>
         <button class="dl" id="roomsBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-door"/></svg>Wolne sale</button>
@@ -2089,7 +2169,7 @@
   var finePointer = mq('(hover: hover) and (pointer: fine)');
   var gridQuery = mql('(min-width: 1080px)');
   function isGrid() { return !!(gridQuery && gridQuery.matches); }
-  var state = { weekIndex: 0, currentIndex: 0, data: null, byDate: {}, dir: 0, focus: null, pending: null, booted: false, liveTarget: null, subjects: [], hidden: [], rawText: '', days: DAY_ORDER, view: 'week', showPast: false, month: null };
+  var state = { weekIndex: 0, currentIndex: 0, data: null, official: null, byDate: {}, officialByDate: {}, dir: 0, focus: null, pending: null, booted: false, liveTarget: null, subjects: [], hidden: [], rawText: '', days: DAY_ORDER, view: 'week', showPast: false, month: null, breaks: [], sessionRanges: [], extraItems: [], extraTitles: [] };
   var revealIO = null;
 
   function noop() {}
@@ -2172,7 +2252,9 @@
   }
   function weekLessonCount(week) {
     var n = 0;
-    Object.keys(week.days || {}).forEach(function (k) { n += (week.days[k] || []).length; });
+    Object.keys(week.days || {}).forEach(function (k) {
+      (week.days[k] || []).forEach(function (l) { if (isShownLesson(l)) n++; });
+    });
     return n;
   }
 
@@ -2187,12 +2269,27 @@
     parent.appendChild(a);
   }
 
-  /* the faculties mark a reserved slot with SUMMARY "-" and the type "Rezerwacja": it is not a subject,
-     so rows show the type instead of a lone dash and the "n of N" meeting counter only adds noise */
-  function isReservation(ev) { return ev.subject_full === '-' || ev.subject_full === '–'; }
-  function subjectLabel(ev) { return isReservation(ev) ? (ev.type_full || 'Rezerwacja') : ev.subject_full; }
+  /* The faculties mark a reserved slot, a break or a session block with SUMMARY "-". PlanInsights tells
+     them apart; until it is available the older, coarser rule is used. */
+  function isReservation(ev) {
+    if (PI && PI.isReservation) return PI.isReservation(ev);
+    return ev.subject_full === '-' || ev.subject_full === '–';
+  }
+  function isBreakLesson(ev) {
+    if (PI && PI.isBreak) return PI.isBreak(ev);
+    return (ev.subject_full === '-' || ev.subject_full === '–') && /przerwa|święt|wolne|ferie|urlop/i.test(ev.type_full || '');
+  }
+  function isSessionLesson(ev) {
+    if (PI && PI.isSessionBlock) return PI.isSessionBlock(ev);
+    return /^sesja\b/i.test(ev.type_full || '');
+  }
+  /* break and session markers are periods, not rows: the week shows a banner instead */
+  function isShownLesson(ev) { return !isBreakLesson(ev) && !isSessionLesson(ev); }
+  function isTeaching(ev) { return !isReservation(ev) && isShownLesson(ev); }
+  function subjectLabel(ev) { return ev.extra ? ev.subject_full : (isReservation(ev) ? (ev.type_full || 'Rezerwacja') : ev.subject_full); }
   /* "Wykład · 3/15": the class type and which meeting of its subject and type it is (no number for a one-off) */
   function typeLine(ev) {
+    if (ev.extra) return 'Moje zajęcia';
     if (isReservation(ev)) return '';
     var type = TYPE_SHORT[ev.type_full] || ev.type_full || '';
     var o = state.ord && state.ord[PI.lessonKey(ev)];
@@ -2208,6 +2305,10 @@
     row.setAttribute('data-start', ev.start);
     row.setAttribute('data-end', ev.end);
     row.setAttribute('data-subject', ev.subject_full);
+    if (ev.extra) {
+      row.classList.add('is-extra');
+      row.setAttribute('data-extra', ev.extra);
+    }
 
     var time = el('div', 'time');
     time.appendChild(el('b', null, ev.start));
@@ -2226,7 +2327,7 @@
     /* tapping the class finds where to make up this very meeting ("Gdzie odrobić?"); the subject is the
        keyboard-reachable button for it, and links inside the row (the room) keep their own job */
     var subj;
-    if (isReservation(ev)) {
+    if (isReservation(ev) || ev.extra) {
       subj = el('span', 'subj', subjectLabel(ev));
     } else {
       subj = el('button', 'subj', ev.subject_full);
@@ -2321,13 +2422,42 @@
     $('nextBtn').disabled = state.weekIndex === d.weeks.length - 1;
     $('todayBtn').classList.toggle('show', state.weekIndex !== state.currentIndex);
 
+    var weekStart = week.monday, weekEnd = isoOf(addDays(monday, 6));
+    var notes = [];
+    (state.breaks || []).forEach(function (r) {
+      if (r.from <= weekEnd && r.to >= weekStart) notes.push({ kind: 'break', range: r });
+    });
+    (state.sessionRanges || []).forEach(function (r) {
+      if (r.from <= weekEnd && r.to >= weekStart) notes.push({ kind: 'session', range: r });
+    });
+    notes.sort(function (a, b) { return a.range.from < b.range.from ? -1 : a.range.from > b.range.from ? 1 : 0; });
+
     var body = $('weekBody');
     body.replaceChildren();
     body.classList.remove('is-entering');
     body.setAttribute('data-dir', state.dir > 0 ? 'next' : state.dir < 0 ? 'prev' : 'none');
 
     var off = 0;
-    if (!total) {
+    if (notes.length) {
+      var notesBox = el('div', 'week-notes');
+      notes.forEach(function (n) {
+        var note = el('div', 'week-note' + (n.kind === 'session' ? ' session' : ''));
+        note.appendChild(icon(n.kind === 'session' ? 'clock' : 'calendar-x'));
+        var noteText = note.appendChild(el('span', 'week-note-text'));
+        noteText.appendChild(el('b', null, n.range.label));
+        noteText.appendChild(el('span', null, shortDate(n.range.from) + (n.range.from === n.range.to ? '' : ' – ' + shortDate(n.range.to))));
+        if (n.kind === 'session') {
+          var open = el('button', 'link', 'Terminy');
+          open.type = 'button';
+          open.addEventListener('click', function () { openSession(); });
+          note.appendChild(open);
+        }
+        notesBox.appendChild(note);
+      });
+      if (!total) notesBox.appendChild(el('p', 'week-empty', 'Brak zajęć w tym tygodniu.'));
+      body.appendChild(notesBox);
+      off = 1;
+    } else if (!total) {
       var banner = el('div', 'session-banner');
       banner.appendChild(icon('calendar-x'));
       var txt = el('span');
@@ -2335,9 +2465,9 @@
         txt.appendChild(el('b', null, 'Plan na ten semestr nie jest jeszcze opublikowany.'));
         txt.appendChild(document.createTextNode(' Aktualne zajęcia sprawdzisz w e-dziekanacie.'));
       } else {
-        txt.appendChild(document.createTextNode('Brak zajęć stałych w tym tygodniu — '));
-        txt.appendChild(el('b', null, 'sesja egzaminacyjna'));
-        txt.appendChild(document.createTextNode(' lub przerwa. Sprawdź terminy dodatkowe w e-dziekanacie.'));
+        txt.appendChild(document.createTextNode('Brak zajęć w tym tygodniu. '));
+        txt.appendChild(el('b', null, 'Sprawdź e-dziekanat'));
+        txt.appendChild(document.createTextNode(' na terminy dodatkowe i zmiany.'));
       }
       banner.appendChild(txt);
       body.appendChild(banner);
@@ -2357,7 +2487,9 @@
     state.days.forEach(function (dayKey) {
       var dt = addDays(monday, DAY_ORDER.indexOf(dayKey));
       var dtIso = isoOf(dt);
-      var lessons = (week.days && week.days[dayKey]) || [];
+      var raw = (week.days && week.days[dayKey]) || [];
+      var lessons = raw.filter(isShownLesson);
+      var marks = raw.filter(function (l) { return isBreakLesson(l) || isSessionLesson(l); });
       var dayDiv = el('div', 'day');
       col++;
       dayDiv.style.setProperty('--col', String(col));
@@ -2371,6 +2503,7 @@
       sub.appendChild(el('span', 'date', fmtDayDate(dt)));
       if (lessons.length) sub.appendChild(el('span', 'count', blocks(lessons.length)));
       else sub.appendChild(el('span', 'empty-day', 'Brak zajęć'));
+      if (marks.length) sub.appendChild(el('span', 'day-note', marks.some(isBreakLesson) ? 'Przerwa' : 'Sesja'));
       appendDayMap(sub, dtIso, lessons);
       head.appendChild(sub);
       if (dtIso === today) {
@@ -2475,7 +2608,7 @@
     for (var i = 0; i < weeks.length; i++) {
       var mon = isoToLocalDate(weeks[i].monday);
       for (var k = 0; k < DAY_ORDER.length; k++) {
-        if (isoOf(addDays(mon, k)) === iso) return (weeks[i].days && weeks[i].days[DAY_ORDER[k]]) || [];
+        if (isoOf(addDays(mon, k)) === iso) return ((weeks[i].days && weeks[i].days[DAY_ORDER[k]]) || []).filter(isShownLesson);
       }
     }
     return [];
@@ -2483,7 +2616,7 @@
 
   function updateLiveCard(today, mins) {
     var card = $('live');
-    var list = lessonsOn(today);
+    var list = lessonsOn(today).filter(function (l) { return !isReservation(l); });
     var cur = null, next = null;
     for (var i = 0; i < list.length; i++) {
       var s = toMin(list[i].start), e = toMin(list[i].end);
@@ -2535,7 +2668,10 @@
 
   function renderLegend() {
     var grid = $('legendGrid');
-    Object.keys(state.data.subjectColors).filter(function (name) { return name !== '-' && name !== '–'; }).sort().forEach(function (name, i) {
+    grid.replaceChildren();
+    Object.keys(state.data.subjectColors).filter(function (name) {
+      return name !== '-' && name !== '–' && state.extraTitles.indexOf(name) < 0;
+    }).sort().forEach(function (name, i) {
       var item = el('button', 'chip');
       item.type = 'button';
       item.setAttribute('data-subject', name);
@@ -2966,6 +3102,122 @@
     }
     return -1;
   }
+
+  /* ---------- personal extra classes (stored only in this browser, per group and term) ---------- */
+  var EXTRA_LIMIT = 30;
+  var EXTRA_COLORS = ['#bf5af2', '#ff9f0a', '#30d158', '#64d2ff', '#ff375f', '#5e5ce6'];
+  function extrasKey() { return 'extras:' + hideKey(); }
+  function validClock(s) { return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s || '')); }
+  function validExtra(x) {
+    if (!x || typeof x !== 'object') return false;
+    var title = String(x.title || '').replace(/\s+/g, ' ').trim();
+    if (!title || title.length > 80) return false;
+    if (!validClock(x.start) || !validClock(x.end) || x.start >= x.end) return false;
+    if (x.weekly) return Number(x.dow) >= 0 && Number(x.dow) <= 6 && Math.floor(Number(x.dow)) === Number(x.dow);
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(x.date || ''));
+  }
+  function loadExtras() {
+    var list = store.get(extrasKey(), []);
+    if (!Array.isArray(list)) return [];
+    return list.filter(validExtra).slice(0, EXTRA_LIMIT).map(function (x) {
+      return {
+        id: String(x.id || ('x' + Math.random().toString(36).slice(2, 9))),
+        title: String(x.title).replace(/\s+/g, ' ').trim(),
+        room: String(x.room || '').trim(),
+        start: x.start,
+        end: x.end,
+        weekly: !!x.weekly,
+        dow: x.weekly ? Number(x.dow) : null,
+        date: x.weekly ? null : x.date,
+        from: x.from || todayIso()
+      };
+    });
+  }
+  function extraColor(title) {
+    var h = 0;
+    for (var i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) | 0;
+    return EXTRA_COLORS[Math.abs(h) % EXTRA_COLORS.length];
+  }
+  function extraDates(item) {
+    if (!item.weekly) return [item.date];
+    var out = [], from = item.from || todayIso();
+    (state.official ? state.official.weeks : []).forEach(function (w) {
+      var iso = isoOf(addDays(isoToLocalDate(w.monday), item.dow));
+      if (iso >= from) out.push(iso);
+    });
+    return out;
+  }
+  function extraLesson(item, iso) {
+    return {
+      date: iso,
+      start: item.start,
+      end: item.end,
+      subject_full: item.title,
+      type_full: 'Moje zajęcia',
+      room: item.room || '-',
+      extra: item.id
+    };
+  }
+  /* the official plan plus the student's own classes, as a new plan object (the official one is never changed) */
+  function withExtras(base, items) {
+    var colors = {}, extraTitles = [], officialNames = base.subjectColors || {};
+    Object.keys(officialNames).forEach(function (k) { colors[k] = officialNames[k]; });
+    items.forEach(function (it) {
+      if (!colors[it.title]) colors[it.title] = extraColor(it.title);
+      if (!Object.prototype.hasOwnProperty.call(officialNames, it.title) && extraTitles.indexOf(it.title) < 0) extraTitles.push(it.title);
+    });
+    /* keep the shape of the official plan: an empty week must stay empty for the "not published" check,
+       and a day key is created only when the student actually adds something to that day */
+    var weeks = base.weeks.map(function (w) {
+      var days = {};
+      Object.keys(w.days || {}).forEach(function (k) { days[k] = w.days[k].slice(); });
+      return { monday: w.monday, label: w.label, days: days };
+    });
+    var byDate = {}, slots = {};
+    weeks.forEach(function (w) {
+      var mon = isoToLocalDate(w.monday);
+      DAY_ORDER.forEach(function (k, i) {
+        var iso = isoOf(addDays(mon, i));
+        slots[iso] = { week: w, key: k };
+        if (w.days[k]) byDate[iso] = w.days[k];
+      });
+    });
+    items.forEach(function (it) {
+      extraDates(it).forEach(function (iso) {
+        var slot = slots[iso];
+        if (!slot) return;
+        if (!byDate[iso]) {
+          slot.week.days[slot.key] = [];
+          byDate[iso] = slot.week.days[slot.key];
+        }
+        byDate[iso].push(extraLesson(it, iso));
+      });
+    });
+    weeks.forEach(function (w, wi) {
+      DAY_ORDER.forEach(function (k) {
+        var list = w.days[k];
+        if (!list) return;
+        list.sort(function (a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
+        /* a day key created only for an extra disappears again when that extra is deleted */
+        if (!list.length && !Object.prototype.hasOwnProperty.call((base.weeks[wi].days || {}), k)) delete w.days[k];
+      });
+    });
+    return { meta: base.meta, subjectColors: colors, weeks: weeks, extraTitles: extraTitles };
+  }
+  function applyExtras() {
+    state.data = withExtras(state.official, state.extraItems);
+    state.extraTitles = state.data.extraTitles || [];
+    state.byDate = PI.byDate(state.data);
+    state.days = DAY_ORDER.filter(function (k) {
+      return WEEKEND.indexOf(k) < 0 || state.data.weeks.some(function (w) { return ((w.days && w.days[k]) || []).length > 0; });
+    });
+    renderLegend();
+    render();
+    if (state.view === 'list') { renderList(); applyFocus(); }
+    if (state.view === 'month') renderMonth();
+    if ($('progress').open) renderProgress();
+  }
+
   /* other pages of this site, relative to this group page (works at the root and under /dev/) */
   function siteUrl(rel) { return new URL('../' + rel, location.href); }
   var jsonCache = {};
@@ -3076,6 +3328,9 @@
 
   function dayBlock(iso, lessons, label) {
     var today = todayIso();
+    var raw = lessons;
+    lessons = raw.filter(isShownLesson);
+    var marks = raw.filter(function (l) { return isBreakLesson(l) || isSessionLesson(l); });
     var dayDiv = el('div', 'day');
     if (iso === today) dayDiv.classList.add('is-today');
     else if (iso < today) dayDiv.classList.add('is-past');
@@ -3084,6 +3339,7 @@
     var sub = el('span', 'dsub');
     sub.appendChild(el('span', 'date', fmtDayDate(isoToLocalDate(iso))));
     sub.appendChild(el('span', 'count', blocks(lessons.length)));
+    if (marks.length) sub.appendChild(el('span', 'day-note', marks.some(isBreakLesson) ? 'Przerwa' : 'Sesja'));
     appendDayMap(sub, iso, lessons);
     head.appendChild(sub);
     dayDiv.appendChild(head);
@@ -3101,7 +3357,9 @@
     var box = $('listView');
     box.replaceChildren();
     var today = todayIso(), tomorrow = isoOf(addDays(isoToLocalDate(today), 1));
-    var dates = Object.keys(state.byDate).sort();
+    var dates = Object.keys(state.byDate).filter(function (d) {
+      return (state.byDate[d] || []).some(isShownLesson);
+    }).sort();
     var past = dates.filter(function (d) { return d < today; });
     if (past.length) {
       var t = el('button', 'link past-toggle', state.showPast ? 'Ukryj odbyte' : 'Pokaż odbyte (' + past.length + ' ' + PI.plural(past.length, 'dzień', 'dni', 'dni') + ')');
@@ -3156,7 +3414,7 @@
         cell.type = 'button';
         if (!iso) { cell.disabled = true; cell.setAttribute('aria-hidden', 'true'); cell.tabIndex = -1; grid.appendChild(cell); return; }
         var d = isoToLocalDate(iso);
-        var list = state.byDate[iso] || [];
+        var list = (state.byDate[iso] || []).filter(isShownLesson);
         cell.appendChild(el('span', 'mnum', String(d.getDate())));
         if (iso === today) cell.classList.add('is-today');
         else if (iso < today) cell.classList.add('is-past');
@@ -3197,7 +3455,7 @@
     var list = $('subjList');
     list.replaceChildren();
     var year = PI.yearOf(groupCode());
-    PI.subjectProgress(state.data, todayIso(), nowMinutes()).forEach(function (sp) {
+    PI.subjectProgress(state.official, todayIso(), nowMinutes()).forEach(function (sp) {
       var li = el('li', 'subj-row');
       var sw = el('span', 'sw');
       sw.style.setProperty('--sw', safeColor(state.data.subjectColors[sp.subject]));
@@ -3257,7 +3515,7 @@
   /* ---------- "the plan changed since your last visit" ---------- */
   function initChanges() {
     var key = 'seen:' + groupCode();
-    var now = PI.fingerprint(state.data);
+    var now = PI.fingerprint(state.official);
     var before = store.get(key, null);
     if (!before || !before.length) { store.set(key, now); return; }
     var d = PI.diff(before, now);
@@ -3293,8 +3551,42 @@
     copyText(url, 'Skopiowano link do planu');
   }
 
+  /* the downloaded calendar is built in the browser: that is what makes a chosen reminder (or none) possible */
+  function icsLessons(fromPlan) {
+    return PI.lessons(fromPlan || state.data).filter(function (l) {
+      return l.date && l.start && l.end && !isBreakLesson(l) && !isSessionLesson(l);
+    }).map(function (l) {
+      return {
+        date: l.date,
+        start: l.start,
+        end: l.end,
+        subject_full: isReservation(l) ? subjectLabel(l) : l.subject_full,
+        type_full: l.type_full,
+        room: l.room
+      };
+    });
+  }
+  function downloadIcs(lessons, filename, reminders) {
+    if (!window.PlanICS || !window.PlanICS.toIcs) { toast('Odśwież stronę, żeby pobrać plik .ics'); return; }
+    var text = window.PlanICS.toIcs(lessons, {
+      name: 'PlanWAT · ' + groupCode(),
+      reminders: reminders || [],
+      colors: state.data.subjectColors
+    });
+    var url = URL.createObjectURL(new Blob([text], { type: 'text/calendar;charset=utf-8' }));
+    var a = el('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    toast('Pobrano ' + filename);
+  }
+
   function openCalendar() {
     var feeds = { plain: planFile, remind: planFile.replace(/\.ics$/, '-przypomnienia.ics') };
+    var remind = 15;
     openTool('Dodaj do kalendarza', function (body) {
       para(body, 'Subskrypcja dodaje plan do aplikacji kalendarza i aktualizuje go sama, gdy plan się zmieni (zwykle w ciągu kilku godzin).');
       var chk = body.appendChild(el('label', 'check'));
@@ -3302,7 +3594,7 @@
       cb.type = 'checkbox';
       cb.id = 'calRemind';
       chk.appendChild(document.createTextNode('Przypomnienie 15 min przed zajęciami'));
-      var note = para(body, 'Kalendarz Apple zachowa przypomnienia, jeśli przy subskrypcji odznaczysz „Usuń: alerty”. Google Calendar pomija przypomnienia z subskrypcji, więc ustaw je tam w ustawieniach kalendarza. Pobrany plik .ics zachowuje je zawsze.', 'muted');
+      var note = para(body, 'Kalendarz Apple zachowa przypomnienia, jeśli przy subskrypcji odznaczysz „Usuń: alerty”. Google Calendar pomija przypomnienia z subskrypcji, więc ustaw je tam w ustawieniach kalendarza. Pobrany plik .ics zachowuje wybrane przypomnienie.', 'muted');
       note.hidden = true;
       var box = body.appendChild(el('div', 'actions'));
       var action = function (tag, title, sub, ic) {
@@ -3323,20 +3615,527 @@
       var cp = action('button', 'Kopiuj link subskrypcji', 'Outlook i inne aplikacje: „Dodaj kalendarz z adresu URL”', 'copy');
       cp.type = 'button';
       cp.id = 'calCopy';
-      var dl = action('a', 'Pobierz plik .ics', 'Jednorazowy import, bez późniejszych aktualizacji', 'download');
-      dl.id = 'calFile';
       var feed;
       function use(file) {
         feed = new URL(file, location.href).href;
         var webcal = feed.replace(/^https?:/, 'webcal:');
         g.href = 'https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(webcal);
         ap.href = webcal;
-        dl.href = file;
-        dl.setAttribute('download', $('icsLink').getAttribute('download').replace(/\.ics$/, file === feeds.remind ? '-przypomnienia.ics' : '.ics'));
       }
       cp.addEventListener('click', function () { copyText(feed, 'Skopiowano link subskrypcji'); });
       cb.addEventListener('change', function () { use(cb.checked ? feeds.remind : feeds.plain); note.hidden = !cb.checked; });
       use(feeds.plain);
+
+      h3(body, 'Pobierz plik .ics');
+      para(body, 'Jednorazowy import do dowolnego kalendarza. Plik zawiera przedmioty widoczne w planie (ukryte są pominięte) i wybrane przypomnienie. Subskrypcja powyżej ma stałe przypomnienie 15 min.', 'muted');
+      var remRow = body.appendChild(choices('Przypomnienie w pobranym pliku', 'calFileRemind',
+        [[0, 'Bez przypomnienia'], [15, '15 min'], [30, '30 min'], [60, '1 h'], [1440, '1 dzień']], remind,
+        function (v) {
+          remind = Number(v);
+          Array.prototype.forEach.call(remRow.querySelectorAll('.choice'), function (b) {
+            b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-value')) === remind));
+          });
+        }));
+      var dl = body.appendChild(el('button', 'dl', 'Pobierz plan (.ics)'));
+      dl.type = 'button';
+      dl.id = 'calFile';
+      dl.addEventListener('click', function () {
+        var base = ($('icsLink').getAttribute('download') || 'plan.ics').replace(/\.ics$/, '');
+        var suffix = remind ? '-przypomnienie-' + remind + 'min' : '';
+        downloadIcs(icsLessons(), base + suffix + '.ics', remind ? [remind] : []);
+      });
+    });
+  }
+
+  /* ---------- exam session: individual exams and credits, not the whole "Sesja ..." blocks ---------- */
+  function openSession() {
+    var kind = 'all', past = false, remind = 15;
+    var today = todayIso();
+    var semesterStart = (state.official.meta && state.official.meta.semesterStart) || state.official.weeks[0].monday;
+    var all = PI.session(state.official, today, { from: semesterStart });
+    function refocus(id) {
+      var row = $(id);
+      var on = row && row.querySelector('[aria-pressed="true"]');
+      if (on) on.focus({ preventScroll: true });
+    }
+    function draw() {
+      openTool('Sesja egzaminacyjna', function (body) {
+        if (state.sessionRanges.length) {
+          var ranges = state.sessionRanges.map(function (r) {
+            return r.label + ': ' + shortDate(r.from) + (r.from === r.to ? '' : ' – ' + shortDate(r.to));
+          });
+          para(body, 'Sesja w planie: ' + ranges.join(' · ') + '.', 'muted');
+        }
+        para(body, 'Terminy egzaminów i zaliczeń pochodzą z planu. Terminy dodatkowe, poprawkowe i ustne mogą być podane tylko w e-dziekanacie — sprawdź je przed sesją.');
+        body.appendChild(choices('Rodzaj', 'sessionKind',
+          [['all', 'Wszystkie'], ['exam', 'Egzaminy'], ['credit', 'Zaliczenia']], kind,
+          function (v) { kind = v; draw(); refocus('sessionKind'); }));
+
+        var pastLabel = body.appendChild(el('label', 'check'));
+        var pastCb = pastLabel.appendChild(el('input'));
+        pastCb.type = 'checkbox';
+        pastCb.id = 'sessionPast';
+        pastCb.checked = past;
+        pastLabel.appendChild(document.createTextNode('Pokaż minione terminy'));
+        pastCb.addEventListener('change', function () { past = pastCb.checked; draw(); var again = $('sessionPast'); if (again) again.focus(); });
+
+        var items = all.filter(function (x) {
+          if (!past && x.date < today) return false;
+          return kind === 'all' || x.kind === kind;
+        });
+
+        if (!items.length) {
+          var empty = para(body, past ? 'Brak terminów tego rodzaju w planie.' : 'Brak nadchodzących terminów tego rodzaju w planie. Zaznacz „Pokaż minione terminy”, żeby zobaczyć całą sesję.', 'muted');
+          empty.setAttribute('role', 'status');
+        } else {
+          var by = {};
+          items.forEach(function (x) { (by[x.date] = by[x.date] || []).push(x); });
+          Object.keys(by).sort().forEach(function (date) {
+            var diff = PI.dayNumber(date) - PI.dayNumber(today);
+            var rel = diff === 0 ? 'dziś' : diff === 1 ? 'jutro' : diff > 1 ? 'za ' + diff + ' ' + PI.plural(diff, 'dzień', 'dni', 'dni') : Math.abs(diff) + ' ' + PI.plural(Math.abs(diff), 'dzień', 'dni', 'dni') + ' temu';
+            var head = body.appendChild(el('div', 'session-day'));
+            head.appendChild(el('h3', null, DOW_PL[DAY_ORDER[dowIndex(date)]] + ' ' + fmtDayDate(isoToLocalDate(date))));
+            head.appendChild(el('span', null, rel));
+            var ul = body.appendChild(el('ul', 'session-list'));
+            by[date].forEach(function (x) {
+              var li = el('li', 'session-row');
+              li.appendChild(el('span', 'session-time', x.start + '–' + x.end));
+              var main = li.appendChild(el('span', 'session-main'));
+              main.appendChild(el('b', null, x.subject));
+              main.appendChild(el('span', null, (TYPE_SHORT[x.type] || x.type) + (x.room && x.room !== '-' ? ' · ' + x.room : '')));
+              li.appendChild(el('span', 'tag session-tag', x.kind === 'exam' ? 'Egzamin' : 'Zaliczenie'));
+              ul.appendChild(li);
+            });
+          });
+        }
+
+        h3(body, 'Kalendarz');
+        para(body, 'Pobierz tylko egzaminy i zaliczenia — bez zwykłych zajęć. Plik jest jednorazowy; wybierz przypomnienie.', 'muted');
+        var remRow = body.appendChild(choices('Przypomnienie', 'sessionRemind',
+          [[0, 'Bez przypomnienia'], [15, '15 min'], [30, '30 min'], [60, '1 h'], [1440, '1 dzień']], remind,
+          function (v) {
+            remind = Number(v);
+            Array.prototype.forEach.call(remRow.querySelectorAll('.choice'), function (b) {
+              b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-value')) === remind));
+            });
+          }));
+        var future = all.filter(function (x) {
+          return x.date >= today && (kind === 'all' || x.kind === kind);
+        });
+        var dl = body.appendChild(el('button', 'dl', 'Pobierz terminy (.ics)'));
+        dl.type = 'button';
+        dl.id = 'sessionDownload';
+        dl.disabled = !future.length;
+        dl.addEventListener('click', function () {
+          var lessons = future.map(function (x) {
+            return { date: x.date, start: x.start, end: x.end, subject_full: x.subject, type_full: x.type, room: x.room };
+          });
+          var suffix = kind === 'exam' ? 'egzaminy' : kind === 'credit' ? 'zaliczenia' : 'egzaminy-i-zaliczenia';
+          downloadIcs(lessons, suffix + '-' + groupCode().replace(/[^\w.-]+/g, '-') + '.ics', remind ? [remind] : []);
+        });
+      });
+    }
+    draw();
+  }
+
+  /* ---------- my own extra classes ---------- */
+  function openExtras() {
+    var editing = null;
+    function defaultTimes() {
+      var d = new Date(), m = d.getHours() * 60 + d.getMinutes();
+      var s = Math.ceil((m + 10) / 15) * 15;
+      if (s < 8 * 60 || s > 19 * 60) s = 16 * 60;
+      return { start: PI.hhmm(s), end: PI.hhmm(Math.min(23 * 60, s + 90)) };
+    }
+    function schedule(item) {
+      return item.weekly
+        ? DOW_PL[DAY_ORDER[item.dow]] + ', ' + item.start + '–' + item.end + ' · co tydzień'
+        : shortDate(item.date) + ', ' + item.start + '–' + item.end;
+    }
+    function conflictsOf(item) {
+      var out = [], dates = extraDates(item), seen = {};
+      dates.forEach(function (iso) {
+        (state.byDate[iso] || []).forEach(function (l) {
+          if (l.extra === item.id || isReservation(l) || !isShownLesson(l)) return;
+          if (toMin(l.start) < toMin(item.end) && toMin(l.end) > toMin(item.start) && !seen[l.date + l.start + l.subject_full]) {
+            seen[l.date + l.start + l.subject_full] = 1;
+            out.push({ date: iso, lesson: l });
+          }
+        });
+      });
+      return out;
+    }
+    function drawForm(body, draft) {
+      var weekly = !!draft.weekly;
+      var form = body.appendChild(el('div', 'extra-form'));
+      var title = el('input');
+      title.type = 'text';
+      title.id = 'extraTitle';
+      title.maxLength = 80;
+      title.value = draft.title || '';
+      title.placeholder = 'np. SKS, konsultacje, projekt';
+      title.autocomplete = 'off';
+      form.appendChild(field('Nazwa', title));
+      var room = el('input');
+      room.type = 'text';
+      room.id = 'extraRoom';
+      room.maxLength = 40;
+      room.value = draft.room || '';
+      room.placeholder = 'np. 314 S (opcjonalnie)';
+      room.autocomplete = 'off';
+      form.appendChild(field('Sala', room));
+
+      var weeklyLabel = form.appendChild(el('label', 'check'));
+      var weeklyCb = weeklyLabel.appendChild(el('input'));
+      weeklyCb.type = 'checkbox';
+      weeklyCb.id = 'extraWeekly';
+      weeklyCb.checked = weekly;
+      weeklyLabel.appendChild(document.createTextNode('Powtarza się co tydzień'));
+
+      var dateIn = el('input');
+      dateIn.type = 'date';
+      dateIn.id = 'extraDate';
+      dateIn.min = (state.official.meta && state.official.meta.semesterStart) || state.official.weeks[0].monday;
+      dateIn.max = (state.official.meta && state.official.meta.semesterEnd) || isoOf(addDays(isoToLocalDate(state.official.weeks[state.official.weeks.length - 1].monday), 6));
+      dateIn.value = draft.date || todayIso();
+      var dateField = field('Dzień', dateIn);
+      form.appendChild(dateField);
+      var dowWrap = choices('Dzień tygodnia', 'extraDow',
+        DAY_ORDER.map(function (k, i) { return [i, DOW_PL[k]]; }), draft.dow == null ? dowIndex(todayIso()) : draft.dow,
+        function (v) {
+          draft.dow = Number(v);
+          refresh();
+          var row = $('extraDow');
+          var on = row && row.querySelector('[aria-pressed="true"]');
+          if (on) on.focus({ preventScroll: true });
+        });
+      form.appendChild(dowWrap);
+      var times = form.appendChild(el('div', 'fields'));
+      var start = el('input');
+      start.type = 'time';
+      start.id = 'extraStart';
+      start.step = 300;
+      start.value = draft.start;
+      var end = el('input');
+      end.type = 'time';
+      end.id = 'extraEnd';
+      end.step = 300;
+      end.value = draft.end;
+      times.appendChild(field('Od', start));
+      times.appendChild(field('Do', end));
+      var warn = form.appendChild(el('p', 'form-warn'));
+      warn.id = 'extraWarn';
+      warn.setAttribute('role', 'status');
+
+      function current() {
+        return {
+          id: draft.id,
+          title: title.value.replace(/\s+/g, ' ').trim(),
+          room: room.value.replace(/\s+/g, ' ').trim(),
+          start: start.value,
+          end: end.value,
+          weekly: weeklyCb.checked,
+          dow: draft.dow == null ? dowIndex(todayIso()) : Number(draft.dow),
+          date: dateIn.value,
+          from: draft.from || todayIso()
+        };
+      }
+      function refresh() {
+        weekly = weeklyCb.checked;
+        dateField.hidden = weekly;
+        dowWrap.hidden = !weekly;
+        var item = current();
+        if (!item.title || !validClock(item.start) || !validClock(item.end) || item.start >= item.end) {
+          warn.className = 'form-warn';
+          warn.textContent = 'Uzupełnij nazwę i godziny (koniec po początku).';
+          return;
+        }
+        if (!item.weekly && (!item.date || item.date < dateIn.min || item.date > dateIn.max)) {
+          warn.className = 'form-warn clash';
+          warn.textContent = 'Wybierz dzień w semestrze.';
+          return;
+        }
+        var list = conflictsOf(item);
+        if (!list.length) {
+          warn.className = 'form-warn';
+          warn.textContent = item.weekly ? 'Brak kolizji z Twoimi zajęciami w tym semestrze.' : 'Brak kolizji z Twoimi zajęciami tego dnia.';
+        } else {
+          warn.className = 'form-warn clash';
+          var first = list[0];
+          warn.textContent = 'Koliduje z ' + list.length + ' ' + PI.plural(list.length, 'zajęciem', 'zajęciami', 'zajęciami') +
+            ': ' + subjectLabel(first.lesson) + ' (' + shortDate(first.date) + ', ' + first.lesson.start + '–' + first.lesson.end + ')' +
+            (list.length > 1 ? ' i innymi.' : '.');
+        }
+      }
+      weeklyCb.addEventListener('change', refresh);
+      [title, room, start, end].forEach(function (inp) { inp.addEventListener('input', refresh); });
+      dateIn.addEventListener('change', refresh);
+      var actions = form.appendChild(el('div', 'session-actions'));
+      var save = actions.appendChild(el('button', 'dl', editing ? 'Zapisz zmiany' : 'Dodaj zajęcia'));
+      save.type = 'button';
+      save.id = 'extraSave';
+      save.addEventListener('click', function () {
+        var item = current();
+        if (!item.title) { toast('Podaj nazwę zajęć'); title.focus(); return; }
+        if (!validClock(item.start) || !validClock(item.end) || item.start >= item.end) { toast('Godzina końca musi być późniejsza'); start.focus(); return; }
+        if (!item.weekly && (!item.date || item.date < dateIn.min || item.date > dateIn.max)) { toast('Wybierz dzień w semestrze'); dateIn.focus(); return; }
+        if (!editing && state.extraItems.length >= EXTRA_LIMIT) { toast('Możesz dodać do ' + EXTRA_LIMIT + ' zajęć'); return; }
+        if (!item.id) item.id = 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+        if (editing) {
+          var at = state.extraItems.map(function (x) { return x.id; }).indexOf(editing.id);
+          if (at >= 0) state.extraItems[at] = item; else state.extraItems.push(item);
+        } else state.extraItems.push(item);
+        store.set(extrasKey(), state.extraItems);
+        applyExtras();
+        toast(editing ? 'Zapisano zmiany' : 'Dodano zajęcia');
+        editing = null;
+        draw();
+        var back = $('extraList') ? $('extraList').querySelector('.link') : $('extraAdd');
+        if (back) back.focus({ preventScroll: true });
+      });
+      var cancel = actions.appendChild(el('button', 'link', 'Anuluj'));
+      cancel.type = 'button';
+      cancel.id = 'extraCancel';
+      cancel.addEventListener('click', function () {
+        editing = null;
+        draw();
+        var add = $('extraAdd');
+        if (add) add.focus({ preventScroll: true });
+      });
+      refresh();
+    }
+    function draw() {
+      openTool('Moje dodatkowe zajęcia', function (body) {
+        para(body, 'Dodaj własne zajęcia: SKS, konsultacje, projekt, korepetycje. Widzisz je tylko Ty w tej przeglądarce — nie trafiają do oficjalnych statystyk, porównań ani planu innych osób.', 'muted');
+        if (editing) {
+          var draft = JSON.parse(JSON.stringify(editing));
+          drawForm(body, draft);
+          return;
+        }
+        if (!state.extraItems.length) {
+          para(body, 'Nie masz jeszcze dodatkowych zajęć.', 'muted');
+        } else {
+          var ul = body.appendChild(el('ul', 'extra-list'));
+          ul.id = 'extraList';
+          state.extraItems.forEach(function (item) {
+            var li = el('li', 'extra-item');
+            var info = li.appendChild(el('span', 'extra-info'));
+            info.appendChild(el('b', null, item.title));
+            info.appendChild(el('span', null, schedule(item)));
+            if (item.room) info.appendChild(el('span', null, 'Sala ' + item.room));
+            var actions = li.appendChild(el('span', 'extra-actions'));
+            var edit = actions.appendChild(el('button', 'link', 'Edytuj'));
+            edit.type = 'button';
+            edit.setAttribute('aria-label', 'Edytuj ' + item.title);
+            edit.addEventListener('click', function () {
+              editing = JSON.parse(JSON.stringify(item));
+              draw();
+              var title = $('extraTitle');
+              if (title) title.focus({ preventScroll: true });
+            });
+            var del = actions.appendChild(el('button', 'link', 'Usuń'));
+            del.type = 'button';
+            del.setAttribute('aria-label', 'Usuń ' + item.title);
+            del.addEventListener('click', function () {
+              if (!window.confirm('Usunąć „' + item.title + '”?')) return;
+              state.extraItems = state.extraItems.filter(function (x) { return x.id !== item.id; });
+              store.set(extrasKey(), state.extraItems);
+              applyExtras();
+              toast('Usunięto zajęcia');
+              draw();
+              var next = $('extraList') ? $('extraList').querySelector('.link') : $('extraAdd');
+              if (next) next.focus({ preventScroll: true });
+            });
+            ul.appendChild(li);
+          });
+        }
+        var add = body.appendChild(el('button', 'dl', 'Dodaj zajęcia'));
+        add.type = 'button';
+        add.id = 'extraAdd';
+        add.addEventListener('click', function () {
+          var t = defaultTimes();
+          editing = { id: null, title: '', room: '', start: t.start, end: t.end, weekly: true, dow: dowIndex(todayIso()), date: todayIso(), from: todayIso() };
+          draw();
+          var title = $('extraTitle');
+          if (title) title.focus({ preventScroll: true });
+        });
+        para(body, 'Zajęcia cykliczne pokazujemy od dnia dodania do końca semestru. Możesz je później edytować albo usunąć.', 'muted');
+      });
+    }
+    draw();
+  }
+
+  /* ---------- share one day as text or a PNG card ---------- */
+  function shareDayText(iso) {
+    var text = PI.dayDigest(state.data, iso);
+    if (text !== 'Brak zajęć.') return text;
+    var d = isoToLocalDate(iso);
+    return 'Plan ' + groupCode() + ' · ' + DOW_PL[DAY_ORDER[dowIndex(iso)]].toLowerCase() + ' ' +
+      pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '\nBrak zajęć.';
+  }
+  function drawShareCard(canvas, iso) {
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    var cs = getComputedStyle(document.documentElement);
+    var token = function (name, fallback) { var v = cs.getPropertyValue(name).trim(); return v || fallback; };
+    var bg = token('--bg', '#0b0b0f'), fg = token('--t1', '#ffffff'), sub = token('--t2', '#a1a1aa');
+    var accent = token('--accent', '#0a84ff'), line = token('--line-2', 'rgba(255,255,255,.16)');
+    var W = canvas.width, H = canvas.height, pad = 76;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = accent;
+    ctx.fillRect(0, 0, W, 10);
+    var font = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = accent;
+    ctx.font = '700 26px ' + font;
+    ctx.fillText('PLANWAT', pad, pad);
+    ctx.fillStyle = fg;
+    ctx.font = '700 64px ' + font;
+    ctx.fillText(groupCode(), pad, pad + 42);
+    var dt = isoToLocalDate(iso);
+    ctx.fillStyle = sub;
+    ctx.font = '500 30px ' + font;
+    ctx.fillText(DOW_PL[DAY_ORDER[dowIndex(iso)]] + ', ' + dt.getDate() + '.' + pad2(dt.getMonth() + 1) + '.' + dt.getFullYear(), pad, pad + 124);
+    ctx.fillStyle = line;
+    ctx.fillRect(pad, pad + 192, W - pad * 2, 2);
+
+    var list = (state.byDate[iso] || []).filter(isShownLesson).slice().sort(function (a, b) {
+      return a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
+    });
+    var y = pad + 238;
+    if (!list.length) {
+      ctx.fillStyle = fg;
+      ctx.font = '600 40px ' + font;
+      ctx.fillText('Brak zajęć', pad, y);
+    } else {
+      var step = Math.min(112, Math.floor((H - y - 170) / list.length));
+      var timeW = 205;
+      list.forEach(function (l) {
+        ctx.fillStyle = sub;
+        ctx.font = '600 26px ' + font;
+        ctx.fillText(l.start + '–' + l.end, pad, y + 7);
+        var color = safeColor(state.data.subjectColors[l.subject_full]);
+        ctx.fillStyle = color;
+        ctx.fillRect(pad + timeW - 28, y + 10, 8, 38);
+        ctx.fillStyle = fg;
+        ctx.font = '600 31px ' + font;
+        var subject = subjectLabel(l);
+        ctx.fillText(subject.length > 34 ? subject.slice(0, 33) + '…' : subject, pad + timeW, y);
+        ctx.fillStyle = sub;
+        ctx.font = '400 22px ' + font;
+        var second = (isReservation(l) ? '' : (l.type_full || '')) + (l.room && l.room !== '-' ? (isReservation(l) ? '' : ' · ') + l.room : '');
+        ctx.fillText(second.length > 48 ? second.slice(0, 47) + '…' : second, pad + timeW, y + 42);
+        y += step;
+      });
+    }
+    ctx.fillStyle = sub;
+    ctx.font = '500 22px ' + font;
+    ctx.fillText('PlanWAT · plan na dziś', pad, H - 92);
+    ctx.fillStyle = line;
+    ctx.fillRect(pad, H - 122, W - pad * 2, 1);
+    ctx.fillStyle = accent;
+    ctx.fillRect(pad, H - 92, 42, 3);
+  }
+  function downloadShareCard(canvas, iso) {
+    var done = function (url) {
+      var a = el('a');
+      a.href = url;
+      a.download = 'plan-' + groupCode().replace(/[^\w.-]+/g, '-') + '-' + iso + '.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast('Pobrano obraz PNG');
+    };
+    if (canvas.toBlob) {
+      canvas.toBlob(function (blob) {
+        if (!blob) { toast('Nie udało się utworzyć obrazu'); return; }
+        var url = URL.createObjectURL(blob);
+        done(url);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      }, 'image/png');
+    } else done(canvas.toDataURL('image/png'));
+  }
+  function openShare() {
+    var iso = todayIso();
+    var min = (state.official.meta && state.official.meta.semesterStart) || state.official.weeks[0].monday;
+    var max = (state.official.meta && state.official.meta.semesterEnd) || isoOf(addDays(isoToLocalDate(state.official.weeks[state.official.weeks.length - 1].monday), 6));
+    if (iso < min || iso > max) iso = min;
+    openTool('Udostępnij', function (body) {
+      para(body, 'Wyślij koleżance lub koledze plan jednego dnia. Tekst wkleisz do wiadomości, obraz wrzucisz do stories albo na grupę.', 'muted');
+      var dateIn = el('input');
+      dateIn.type = 'date';
+      dateIn.id = 'shareDate';
+      dateIn.min = min;
+      dateIn.max = max;
+      dateIn.value = iso;
+      body.appendChild(field('Dzień', dateIn));
+      var quick = body.appendChild(el('div', 'choices'));
+      quick.id = 'shareQuick';
+      quick.setAttribute('role', 'group');
+      quick.setAttribute('aria-label', 'Szybki wybór dnia');
+      [['Dziś', todayIso()], ['Jutro', isoOf(addDays(isoToLocalDate(todayIso()), 1))]].forEach(function (x) {
+        var b = el('button', 'choice', x[0]);
+        b.type = 'button';
+        b.setAttribute('data-date', x[1]);
+        b.addEventListener('click', function () {
+          if (x[1] < min || x[1] > max) { toast('Ten dzień jest poza semestrem'); return; }
+          iso = x[1];
+          dateIn.value = iso;
+          refresh();
+        });
+        quick.appendChild(b);
+      });
+      var preview = body.appendChild(el('pre', 'share-preview'));
+      preview.id = 'sharePreview';
+      var canvas = el('canvas', 'share-canvas');
+      canvas.width = 1080;
+      canvas.height = 1350;
+      canvas.id = 'shareCanvas';
+      canvas.setAttribute('aria-hidden', 'true');
+      body.appendChild(canvas);
+      para(body, 'Podgląd obrazu. Pobrany plik ma 1080 × 1350 px.', 'muted');
+      var actions = body.appendChild(el('div', 'share-grid'));
+      var shareTextBtn = actions.appendChild(el('button', 'action'));
+      shareTextBtn.type = 'button';
+      shareTextBtn.id = 'shareText';
+      shareTextBtn.appendChild(icon('share'));
+      shareTextBtn.appendChild(document.createTextNode('Udostępnij tekst'));
+      var copyBtn = actions.appendChild(el('button', 'action'));
+      copyBtn.type = 'button';
+      copyBtn.id = 'shareCopy';
+      copyBtn.appendChild(icon('copy'));
+      copyBtn.appendChild(document.createTextNode('Kopiuj tekst'));
+      var imgBtn = actions.appendChild(el('button', 'action'));
+      imgBtn.type = 'button';
+      imgBtn.id = 'shareImage';
+      imgBtn.appendChild(icon('download'));
+      imgBtn.appendChild(document.createTextNode('Pobierz obraz PNG'));
+      var linkBtn = actions.appendChild(el('button', 'action'));
+      linkBtn.type = 'button';
+      linkBtn.id = 'shareLink';
+      linkBtn.appendChild(icon('external'));
+      linkBtn.appendChild(document.createTextNode('Udostępnij link do planu'));
+      var refresh = function () {
+        var text = shareDayText(iso);
+        preview.textContent = text;
+        drawShareCard(canvas, iso);
+        var pressed = quick.querySelectorAll('.choice');
+        for (var i = 0; i < pressed.length; i++) pressed[i].setAttribute('aria-pressed', String(pressed[i].getAttribute('data-date') === iso));
+      };
+      refresh();
+      dateIn.addEventListener('change', function () {
+        if (dateIn.value && dateIn.value >= min && dateIn.value <= max) { iso = dateIn.value; refresh(); }
+      });
+      shareTextBtn.addEventListener('click', function () {
+        var text = shareDayText(iso);
+        if (navigator.share) navigator.share({ title: 'Plan ' + groupCode(), text: text }).catch(noop);
+        else copyText(text, 'Skopiowano plan dnia');
+      });
+      copyBtn.addEventListener('click', function () { copyText(shareDayText(iso), 'Skopiowano plan dnia'); });
+      imgBtn.addEventListener('click', function () { downloadShareCard(canvas, iso); });
+      linkBtn.addEventListener('click', sharePlan);
     });
   }
 
@@ -3386,13 +4185,26 @@
       });
     });
   }
+  /* only classes: reservations, breaks and session blocks are periods, not teaching */
+  function teachingPlan(plan) {
+    var weeks = plan.weeks.map(function (w) {
+      var days = {};
+      DAY_ORDER.forEach(function (k) {
+        days[k] = ((w.days && w.days[k]) || []).filter(isTeaching);
+      });
+      return { monday: w.monday, label: w.label, days: days };
+    });
+    return { meta: plan.meta, subjectColors: plan.subjectColors, weeks: weeks };
+  }
   function openStats() {
-    var st = PI.stats(state.data);
+    var st = PI.stats(teachingPlan(state.official));
+    var all = PI.stats(state.official);
     var hours = function (min) { return PI.fmtDuration(min); };
     openTool('Statystyki planu', function (body) {
+      para(body, 'Liczby dotyczą zajęć dydaktycznych. Rezerwacje sal, przerwy i bloki sesji pokazujemy osobno, żeby nie zawyżały godzin.', 'muted');
       var tiles = body.appendChild(el('div', 'tiles'));
       [[String(st.lessons), PI.plural(st.lessons, 'zajęcia', 'zajęcia', 'zajęć') + ' w semestrze'],
-       [String(Math.round(st.minutes / 60)), 'godzin łącznie'],
+       [String(Math.round(st.minutes / 60)), 'godzin dydaktycznych'],
        [String(Math.round(st.avgWeekMinutes / 6) / 10).replace('.', ',') + ' h', 'średnio na tydzień z zajęciami'],
        [String(st.subjects), PI.plural(st.subjects, 'przedmiot', 'przedmioty', 'przedmiotów')]].forEach(function (t) {
         var d = el('div', 'tile');
@@ -3471,6 +4283,17 @@
       fact('Tygodnie z zajęciami', st.activeWeeks + ' z ' + st.weekly.length);
       fact('Okienka (od 30 min)', st.gapCount ? st.gapCount + ', łącznie ' + hours(st.gapMinutes) : 'brak');
       if (st.topRoom) fact('Najczęstsza sala', st.topRoom.room + ' (' + st.topRoom.count + ' ×)');
+      var other = all.minutes - st.minutes;
+      if (other > 0) {
+        h3(body, 'Poza zajęciami');
+        var od = body.appendChild(el('dl', 'facts-list'));
+        var ofact = function (k, v) { var d = el('div'); d.appendChild(el('dt', null, k)); d.appendChild(el('dd', null, v)); od.appendChild(d); };
+        if (all.reservationMinutes) ofact('Rezerwacje sal', hours(all.reservationMinutes));
+        if (all.breakMinutes) ofact('Przerwy i święta', hours(all.breakMinutes));
+        if (all.sessionMinutes) ofact('Bloki sesji', hours(all.sessionMinutes));
+        ofact('Razem poza zajęciami', hours(other));
+        para(body, 'Te pozycje zostają w planie i w kalendarzu, ale nie liczą się do godzin dydaktycznych ani do średniej tygodniowej.', 'muted');
+      }
     });
   }
 
@@ -3485,7 +4308,7 @@
     var me = groupCode();
     if (!cmp) {
       cmp = { groups: store.get('compare:' + me, []).slice(0, MAX_COMPARE), plans: {}, week: state.weekIndex, all: null };
-      cmp.plans[me] = state.byDate;
+      cmp.plans[me] = state.officialByDate;
     }
     cmp.week = state.weekIndex;
     var render = function () { openTool('Porównaj grupy', drawCompare); };
@@ -3609,10 +4432,10 @@
   /* ---------- "Odrabianie": the same class in another group of the year ---------- */
   /* "Gdzie odrobić?" for one class: the same subject, type and meeting number in the other groups */
   function openMeeting(ev) {
-    if (isReservation(ev)) return;
+    if (isReservation(ev) || ev.extra) return;
     var o = state.ord && state.ord[PI.lessonKey(ev)];
     var types = {};
-    PI.lessons(state.data).forEach(function (l) { if (l.subject_full === ev.subject_full) types[l.type_full || 'Inne'] = 1; });
+    PI.lessons(state.official).forEach(function (l) { if (l.subject_full === ev.subject_full) types[l.type_full || 'Inne'] = 1; });
     openCatchUp(ev.subject_full, Object.keys(types), o ? { type: ev.type_full || '', n: o.n, of: o.of, date: ev.date } : null);
   }
 
@@ -3681,9 +4504,11 @@
     /* subject progress is built when its panel is first opened */
     $('progress').addEventListener('toggle', function () { if ($('progress').open) renderProgress(); });
     $('calBtn').addEventListener('click', openCalendar);
-    $('shareBtn').addEventListener('click', sharePlan);
+    $('shareBtn').addEventListener('click', openShare);
     $('statsBtn').addEventListener('click', openStats);
+    $('sessionBtn').addEventListener('click', openSession);
     $('subjectsBtn').addEventListener('click', openSubjects);
+    $('extrasBtn').addEventListener('click', openExtras);
     $('hiddenEdit').addEventListener('click', openSubjects);
     initHidden();
     $('compareBtn').addEventListener('click', openCompare);
@@ -3699,13 +4524,21 @@
   }
 
   function boot(data) {
+    state.official = data;
+    state.officialByDate = window.PlanInsights.byDate(data);
+    state.breaks = window.PlanInsights.breaks ? window.PlanInsights.breaks(data) : [];
+    state.sessionRanges = window.PlanInsights.sessionRanges ? window.PlanInsights.sessionRanges(data) : [];
+    state.extraItems = loadExtras();
+    data = withExtras(data, state.extraItems);
     state.data = data;
-    state.ord = window.PlanInsights.ordinals(data);
+    state.extraTitles = data.extraTitles || [];
+    state.ord = window.PlanInsights.ordinals(state.official);
     state.byDate = window.PlanInsights.byDate(data);
     state.days = DAY_ORDER.filter(function (k) {
       return WEEKEND.indexOf(k) < 0 || data.weeks.some(function (w) { return ((w.days && w.days[k]) || []).length > 0; });
     });
-    applyMeta(data);
+    /* the "faculty has not published it" check is about the official calendar, never the student's additions */
+    applyMeta(state.official);
     state.currentIndex = findCurrentWeekIndex(data);
     state.weekIndex = state.currentIndex;
 
@@ -3827,7 +4660,7 @@
     b.appendChild(icon('alert'));
     b.appendChild(el('span', null, 'Nie udało się wczytać danych planu (' + err + ').'));
     $('weekBody').replaceChildren(b);
-    ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'compareBtn', 'roomsBtn', 'profileBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
+    ['prevBtn', 'nextBtn', 'weekBtn', 'calBtn', 'shareBtn', 'statsBtn', 'sessionBtn', 'compareBtn', 'roomsBtn', 'profileBtn', 'extrasBtn', 'favBtn'].forEach(function (id) { $(id).disabled = true; });
   }
 
   /* ---------- free rooms ---------- */
@@ -3969,15 +4802,6 @@
       var bf = body.appendChild(el('div', 'field fr-bf'));
       bf.appendChild(el('span', null, 'Budynek'));
       bf.appendChild(bldRow);
-      var nowBtn = body.appendChild(el('button', 'choice fr-now', 'Ustaw na teraz'));
-      nowBtn.type = 'button';
-      nowBtn.addEventListener('click', function () {
-        opts.date = todayIso();
-        opts.time = nowTime();
-        dateIn.value = opts.date;
-        timeIn.value = opts.time;
-        update();
-      });
       durRow = choices('Potrzebuję', 'frDur', DURS, opts.dur, function (v) {
         opts.dur = v;
         Array.prototype.forEach.call(durRow.querySelectorAll('.choice'), function (b) {
@@ -3986,6 +4810,49 @@
         update();
       });
       body.appendChild(durRow);
+      function syncDur() {
+        Array.prototype.forEach.call(durRow.querySelectorAll('.choice'), function (b) {
+          b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-value')) === Number(opts.dur)));
+        });
+      }
+      function setWhen(date, time, dur) {
+        opts.date = date;
+        opts.time = time;
+        opts.dur = dur;
+        dateIn.value = date;
+        timeIn.value = time;
+        syncDur();
+        update();
+      }
+      var presetField = body.appendChild(el('div', 'field fr-presets'));
+      presetField.appendChild(el('span', null, 'Szybki wybór'));
+      var presets = presetField.appendChild(el('div', 'choices'));
+      presets.id = 'frPresets';
+      presets.setAttribute('role', 'group');
+      presets.setAttribute('aria-label', 'Szybki wybór terminu');
+      [
+        ['Teraz', 'frPresetNow', function () {
+          setWhen(todayIso(), nowTime(), 60);
+        }],
+        ['Po zajęciach', 'frPresetAfter', function () {
+          var end = 0;
+          (state.byDate[todayIso()] || []).forEach(function (l) {
+            if (isShownLesson(l) && !isReservation(l)) end = Math.max(end, toMin(l.end));
+          });
+          setWhen(todayIso(), end ? PI.hhmm(Math.min(20 * 60, end + 10)) : nowTime(), 60);
+        }],
+        ['Jutro rano', 'frPresetTomorrow', function () {
+          var tomorrow = isoOf(addDays(isoToLocalDate(todayIso()), 1));
+          if (dateIn.max && tomorrow > dateIn.max) tomorrow = todayIso();
+          setWhen(tomorrow, '08:00', 60);
+        }]
+      ].forEach(function (p) {
+        var b = el('button', 'choice', p[0]);
+        b.type = 'button';
+        b.id = p[1];
+        b.addEventListener('click', function () { p[2](); syncDur(); });
+        presets.appendChild(b);
+      });
       var laterLabel = body.appendChild(el('label', 'fr-later'));
       var later = el('input');
       later.type = 'checkbox';

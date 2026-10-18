@@ -1,4 +1,4 @@
-// Tests for src/ics.js (the in-browser iCalendar reader).
+// Tests for src/ics.js (the in-browser iCalendar reader/writer).
 // Run: docker run --rm -v "$PWD":/w:ro -w /w node:22-alpine node --test tests/ics.test.js
 process.env.TZ = 'Europe/Warsaw';
 
@@ -300,4 +300,110 @@ test('physical education without a room is held at the SWF', () => {
   const lessons = plan.weeks.flatMap((w) => Object.values(w.days).flat());
   assert.equal(lessons.find((l) => l.subject_full === 'Wychowanie fizyczne').room, 'SWF');
   assert.equal(lessons.find((l) => l.subject_full === 'Analiza').room, '314 S');
+});
+
+/* ---------- writer ---------- */
+const NOW = new Date('2026-10-18T12:34:56Z');
+
+function makeLesson(overrides = {}) {
+  return Object.assign({
+    date: '2026-10-15', start: '08:00', end: '09:35',
+    subject_full: 'Matematyka I', type_full: 'Wykład', room: '314 S',
+  }, overrides);
+}
+
+test('toIcs writes a minimal CRLF calendar with a TZID event and stable output', () => {
+  const opts = { name: 'Plan WCY26KY3S1', reminders: [15], colors: { 'Matematyka I': '#2563a8' }, now: NOW };
+  const ics = PlanICS.toIcs([makeLesson()], opts);
+  assert.ok(ics.startsWith('BEGIN:VCALENDAR\r\n'));
+  assert.ok(ics.includes('VERSION:2.0\r\n'));
+  assert.ok(ics.includes('PRODID:-//PlanWAT//PlanWAT//PL\r\n'));
+  assert.ok(ics.includes('CALSCALE:GREGORIAN\r\n'));
+  assert.ok(ics.includes('X-WR-CALNAME:Plan WCY26KY3S1\r\n'));
+  assert.match(ics, /DTSTART;TZID=Europe\/Warsaw:20261015T080000\r\n/);
+  assert.match(ics, /DTEND;TZID=Europe\/Warsaw:20261015T093500\r\n/);
+  assert.ok(ics.includes('DTSTAMP:20261018T123456Z\r\n'));
+  assert.ok(ics.includes('SUMMARY:Matematyka I\r\n'));
+  assert.ok(ics.includes('CATEGORIES:Wykład\r\n'));
+  assert.ok(ics.includes('LOCATION:314 S\r\n'));
+  assert.ok(ics.includes('X-PLAN-COLOR:#2563a8\r\n'));
+  assert.match(ics, /UID:[^\r\n]+@planwat\r\n/);
+  assert.ok(ics.endsWith('END:VCALENDAR\r\n'));
+  assert.equal(ics.replace(/\r\n/g, '').includes('\n'), false);
+  assert.equal(ics.replace(/\r\n/g, '').includes('\r'), false);
+
+  assert.equal(PlanICS.toIcs([makeLesson()], opts), ics);
+  const uid = /UID:([^\r\n]+)/.exec(ics)[1];
+  const other = PlanICS.toIcs([makeLesson({ date: '2026-10-16' })], opts);
+  assert.notEqual(/UID:([^\r\n]+)/.exec(other)[1], uid);
+});
+
+test('toIcs escapes text values', () => {
+  const summary = 'A; B, C\\D\nlinia druga';
+  const room = 'Sala 12, bud. B; piętro 2';
+  const type = 'Ćwiczenia, lab.';
+  const ics = PlanICS.toIcs([makeLesson({ subject_full: summary, type_full: type, room })],
+    { name: 'Plan; grupa, 1', now: NOW });
+  assert.ok(ics.includes('X-WR-CALNAME:Plan\\; grupa\\, 1\r\n'));
+  assert.ok(ics.includes('SUMMARY:A\\; B\\, C\\\\D\\nlinia druga\r\n'));
+  assert.ok(ics.includes('LOCATION:Sala 12\\, bud. B\\; piętro 2\r\n'));
+  assert.ok(ics.includes('CATEGORIES:Ćwiczenia\\, lab.\r\n'));
+
+  const [l] = allLessons(PlanICS.toPlan(PlanICS.parse(ics)));
+  assert.equal(l.subject_full, summary);
+  assert.equal(l.type_full, type);
+  assert.equal(l.room, room);
+});
+
+test('toIcs folds long Polish lines at 75 octets and round-trips through parse', () => {
+  const summary = 'Zaawansowane przetwarzanie sygnałów i uczenie maszynowe w systemach wbudowanych — laboratorium specjalistyczne';
+  const ics = PlanICS.toIcs([makeLesson({ subject_full: summary })], { name: 'Plan', now: NOW });
+  const lines = ics.split('\r\n');
+  lines.forEach((line) => assert.ok(Buffer.byteLength(line, 'utf8') <= 75, line));
+  assert.ok(lines.some((line) => line.startsWith(' ')));
+  const [l] = allLessons(PlanICS.toPlan(PlanICS.parse(ics)));
+  assert.equal(l.subject_full, summary);
+});
+
+test('toIcs writes one DISPLAY VALARM per reminder', () => {
+  const ics = PlanICS.toIcs([makeLesson()], { name: 'Plan', reminders: [15, 60], now: NOW });
+  assert.equal((ics.match(/BEGIN:VALARM/g) || []).length, 2);
+  assert.equal((ics.match(/ACTION:DISPLAY/g) || []).length, 2);
+  assert.ok(ics.includes('TRIGGER:-PT15M\r\n'));
+  assert.ok(ics.includes('TRIGGER:-PT60M\r\n'));
+
+  const none = PlanICS.toIcs([makeLesson()], { name: 'Plan', reminders: [], now: NOW });
+  assert.ok(!none.includes('BEGIN:VALARM'));
+
+  const invalid = PlanICS.toIcs([makeLesson()], { name: 'Plan', reminders: [-15, 'x', NaN, 30], now: NOW });
+  assert.equal((invalid.match(/BEGIN:VALARM/g) || []).length, 1);
+  assert.ok(invalid.includes('TRIGGER:-PT30M\r\n'));
+});
+
+test('toIcs skips breaks and lessons without a valid date or time', () => {
+  const ics = PlanICS.toIcs([
+    makeLesson({ subject_full: '-' }),
+    makeLesson({ subject_full: '–', start: '10:00', end: '11:30' }),
+    makeLesson({ date: '2026-02-30' }),
+    makeLesson({ date: '2026-13-01' }),
+    makeLesson({ start: '24:00', end: '25:00' }),
+    makeLesson({ start: '10:00', end: '09:00' }),
+    makeLesson({ date: '', start: '', end: '' }),
+    makeLesson({ subject_full: 'OK', date: '2026-10-16', start: '10:00', end: '11:30' }),
+  ], { name: 'Plan', reminders: [15], now: NOW });
+  const parsed = PlanICS.parse(ics);
+  assert.equal(parsed.events.length, 1);
+  assert.equal(parsed.events[0].SUMMARY[0].value, 'OK');
+  assert.equal((ics.match(/BEGIN:VALARM/g) || []).length, 1);
+});
+
+test('toIcs includes a minimal Europe/Warsaw VTIMEZONE', () => {
+  const ics = PlanICS.toIcs([], { name: 'Plan', now: NOW });
+  assert.ok(ics.includes('BEGIN:VTIMEZONE\r\nTZID:Europe/Warsaw\r\n'));
+  assert.ok(ics.includes('BEGIN:STANDARD\r\n'));
+  assert.ok(ics.includes('BEGIN:DAYLIGHT\r\n'));
+  assert.ok(ics.includes('TZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\n'));
+  assert.ok(ics.includes('TZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\n'));
+  assert.ok(ics.includes('RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\n'));
+  assert.ok(ics.includes('RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\r\n'));
 });

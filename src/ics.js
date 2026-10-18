@@ -1,5 +1,6 @@
-/* iCalendar (RFC 5545) reader for the timetable page.
-   decode(bytes) -> text, parse(text) -> { calendar, events }, toPlan(parsed) -> { meta, subjectColors, weeks }.
+/* iCalendar (RFC 5545) reader/writer for the timetable page.
+   decode(bytes) -> text, parse(text) -> { calendar, events }, toPlan(parsed) -> { meta, subjectColors, weeks },
+   toIcs(lessons, opts) -> text.
    Runs in the browser (window.PlanICS) and in Node (module.exports) for tests. */
 (function (root) {
   'use strict';
@@ -316,7 +317,167 @@
     });
   }
 
-  var PlanICS = { decode: decode, parse: parse, toPlan: toPlan, initialWeekIndex: initialWeekIndex,
+  /* ---------- writer: lessons -> an RFC 5545 calendar with a Warsaw VTIMEZONE ---------- */
+  var WARSAW_TZ = [
+    'BEGIN:VTIMEZONE',
+    'TZID:Europe/Warsaw',
+    'BEGIN:STANDARD',
+    'DTSTART:19701025T030000',
+    'TZOFFSETFROM:+0200',
+    'TZOFFSETTO:+0100',
+    'TZNAME:CET',
+    'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU',
+    'END:STANDARD',
+    'BEGIN:DAYLIGHT',
+    'DTSTART:19700329T020000',
+    'TZOFFSETFROM:+0100',
+    'TZOFFSETTO:+0200',
+    'TZNAME:CEST',
+    'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU',
+    'END:DAYLIGHT',
+    'END:VTIMEZONE'
+  ];
+  var SLUG_MAP = { 'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z' };
+  var MAX_MINUTES = 40319;  /* RFC 5545 limits a TRIGGER duration to less than four weeks */
+
+  function escapeText(v) {
+    return String(v == null ? '' : v)
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\r\n|\n\r|\r|\n/g, '\\n');
+  }
+
+  function utf8LengthAt(s, i) {
+    var c = s.charCodeAt(i);
+    if (c < 0x80) return 1;
+    if (c < 0x800) return 2;
+    if (c >= 0xD800 && c <= 0xDBFF && i + 1 < s.length) {
+      var d = s.charCodeAt(i + 1);
+      if (d >= 0xDC00 && d <= 0xDFFF) return 4;
+    }
+    return 3;
+  }
+
+  /* fold at 75 octets without splitting a UTF-8 sequence; continuation lines start with one space */
+  function foldLine(line) {
+    var out = [], cur = '', bytes = 0, max = 75, i = 0;
+    while (i < line.length) {
+      var size = utf8LengthAt(line, i);
+      var step = size === 4 ? 2 : 1;
+      var piece = line.slice(i, i + step);
+      if (bytes + size > max) {
+        out.push(cur);
+        cur = piece;
+        bytes = size;
+        max = 74;
+      } else {
+        cur += piece;
+        bytes += size;
+      }
+      i += step;
+    }
+    out.push(cur);
+    return out.join('\r\n ');
+  }
+
+  function contentLine(name, value) { return foldLine(name + ':' + value); }
+
+  function validIsoDate(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (!m) return false;
+    var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+  }
+  function validTime(s) { return /^([01]\d|2[0-3]):[0-5]\d$/.test(s); }
+  function textOf(v) { return v == null ? '' : String(v).trim(); }
+
+  function lessonOf(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    var l = {
+      date: textOf(raw.date), start: textOf(raw.start), end: textOf(raw.end),
+      subject_full: textOf(raw.subject_full), type_full: textOf(raw.type_full), room: textOf(raw.room)
+    };
+    if (!validIsoDate(l.date) || !validTime(l.start) || !validTime(l.end)) return null;
+    if (l.end <= l.start) return null;
+    if (!l.subject_full || l.subject_full === '-' || l.subject_full === '–') return null;
+    return l;
+  }
+
+  function slugOf(s) {
+    var v = String(s).toLowerCase().replace(/[ąćęłńóśźż]/g, function (c) { return SLUG_MAP[c]; });
+    return v.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32) || 'zajecia';
+  }
+  function hashOf(s) {
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return ('00000000' + (h >>> 0).toString(16)).slice(-8);
+  }
+  function uidOf(l) {
+    var key = [l.date, l.start, l.end, l.subject_full, l.type_full, l.room].join('|');
+    return wallClock(l.date, l.start) + '-' + slugOf(l.subject_full) + '-' + hashOf(key) + '@planwat';
+  }
+
+  function utcStamp(d) {
+    return d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate()) + 'T' +
+      pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + pad2(d.getUTCSeconds()) + 'Z';
+  }
+  function wallClock(date, time) { return date.replace(/-/g, '') + 'T' + time.replace(/:/g, '') + '00'; }
+
+  function toIcs(lessons, opts) {
+    opts = opts || {};
+    var now = opts.now == null ? new Date() : new Date(opts.now);
+    if (isNaN(now.getTime())) now = new Date();
+    var stamp = utcStamp(now);
+    var colors = opts.colors || {};
+    var reminders = [];
+    if (Array.isArray(opts.reminders)) {
+      for (var i = 0; i < opts.reminders.length; i++) {
+        var n = opts.reminders[i];
+        if (n == null || n === '') continue;
+        n = Number(n);
+        if (!isFinite(n) || n < 0) continue;
+        n = Math.floor(n);
+        reminders.push(n > MAX_MINUTES ? MAX_MINUTES : n);
+      }
+    }
+
+    var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PlanWAT//PlanWAT//PL', 'CALSCALE:GREGORIAN',
+      contentLine('X-WR-CALNAME', escapeText(opts.name))];
+    lines = lines.concat(WARSAW_TZ);
+
+    (Array.isArray(lessons) ? lessons : []).forEach(function (raw) {
+      var l = lessonOf(raw);
+      if (!l) return;
+      var color = Object.prototype.hasOwnProperty.call(colors, l.subject_full) ? colors[l.subject_full] : '';
+      lines.push('BEGIN:VEVENT');
+      lines.push(contentLine('UID', uidOf(l)));
+      lines.push(contentLine('DTSTAMP', stamp));
+      lines.push(contentLine('DTSTART;TZID=Europe/Warsaw', wallClock(l.date, l.start)));
+      lines.push(contentLine('DTEND;TZID=Europe/Warsaw', wallClock(l.date, l.end)));
+      lines.push(contentLine('SUMMARY', escapeText(l.subject_full)));
+      if (l.type_full && l.type_full !== '-' && l.type_full !== '–') {
+        lines.push(contentLine('CATEGORIES', escapeText(l.type_full)));
+      }
+      if (l.room && l.room !== '-' && l.room !== '–') {
+        lines.push(contentLine('LOCATION', escapeText(l.room)));
+      }
+      if (HEX.test(color)) lines.push(contentLine('X-PLAN-COLOR', color));
+      reminders.forEach(function (m) {
+        lines.push('BEGIN:VALARM');
+        lines.push('ACTION:DISPLAY');
+        lines.push(contentLine('DESCRIPTION', escapeText('Przypomnienie: ' + l.subject_full)));
+        lines.push(contentLine('TRIGGER', '-PT' + m + 'M'));
+        lines.push('END:VALARM');
+      });
+      lines.push('END:VEVENT');
+    });
+
+    lines.push('END:VCALENDAR');
+    return lines.join('\r\n') + '\r\n';
+  }
+
+  var PlanICS = { decode: decode, parse: parse, toPlan: toPlan, toIcs: toIcs, initialWeekIndex: initialWeekIndex,
     subjectsOf: subjectsOf, withoutSubjects: withoutSubjects, filterText: filterText };
   if (typeof module === 'object' && module.exports) module.exports = PlanICS;
   else root.PlanICS = PlanICS;

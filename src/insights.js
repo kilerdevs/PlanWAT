@@ -52,7 +52,107 @@
     return out;
   }
 
-  function isExam(type) { return EXAM_TYPES.indexOf(type) >= 0; }
+  /* ---------- what a lesson is: class, reservation, break, session block, exam, credit ---------- */
+  var BREAK_RE = /przerwa|święt|wolne|ferie|urlop/i;
+  var SESSION_RE = /^sesja\b/i;
+
+  function subjectText(l) { return String((l && l.subject_full) || '').trim(); }
+  function hasSubject(l) { var s = subjectText(l); return !!s && s !== '-' && s !== '–'; }
+  function isDash(l) { var s = subjectText(l); return s === '-' || s === '–'; }
+  function isSessionBlock(l) { return SESSION_RE.test(norm(l && l.type_full)); }
+  /* a reservation is any "-" block that is neither a break/holiday nor a session period */
+  function isReservation(l) { return isDash(l) && !isBreak(l) && !isSessionBlock(l); }
+  function isBreak(l) {
+    return isDash(l) && BREAK_RE.test(norm(l && l.type_full)) && !isSessionBlock(l);
+  }
+  /* a string keeps the old isExam('Egzamin') API; a lesson needs a real subject and an exam type */
+  function isExam(l) {
+    if (typeof l === 'string') return EXAM_TYPES.indexOf(l) >= 0;
+    return hasSubject(l) && /egzamin/i.test(norm(l && l.type_full)) && !isSessionBlock(l);
+  }
+  function isCredit(l) {
+    return hasSubject(l) && /zaliczeni/i.test(norm(l && l.type_full));
+  }
+
+  /* "przerwa  świąteczna" -> "Przerwa świąteczna" */
+  function capitalise(s) {
+    var x = String(s || '').replace(/\s+/g, ' ').trim();
+    return x ? x.charAt(0).toUpperCase() + x.slice(1) : '';
+  }
+
+  /* consecutive dates of blocks with the same label -> [{from, to, label, type?}], sorted by from */
+  function mergedRanges(plan, keep, withType) {
+    var byDate = {}, out = [], cur = null;
+    lessons(plan).forEach(function (l) {
+      if (!keep(l) || byDate[l.date]) return;
+      byDate[l.date] = { label: capitalise(l.type_full), type: norm(l.type_full) };
+    });
+    Object.keys(byDate).sort().forEach(function (date) {
+      var r = byDate[date];
+      if (cur && cur.label === r.label && dayNumber(date) === dayNumber(cur.to) + 1) {
+        cur.to = date;
+        return;
+      }
+      cur = { from: date, to: date, label: r.label };
+      if (withType) cur.type = r.type;
+      out.push(cur);
+    });
+    return out;
+  }
+  /* breaks and holidays of the plan, one range per run of consecutive dates */
+  function breaks(plan) { return mergedRanges(plan, isBreak, true); }
+  /* session periods ("Sesja egz. zasadnicza", ...), one range per run of consecutive dates */
+  function sessionRanges(plan) { return mergedRanges(plan, isSessionBlock, false); }
+  function breaksOn(list, iso) {
+    if (!list || !iso) return null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].from <= iso && iso <= list[i].to) return list[i];
+    }
+    return null;
+  }
+
+  /* exams and credits from today (or opts.from) to the semester end (or opts.to), in date and time order */
+  function session(plan, todayIso, opts) {
+    opts = opts || {};
+    var meta = plan.meta || {};
+    var from = opts.from || todayIso;
+    var to = opts.to || meta.semesterEnd || null;
+    var today = dayNumber(todayIso), out = [];
+    lessons(plan).forEach(function (l) {
+      if (l.date < from || (to && l.date > to)) return;
+      var kind = isExam(l) ? 'exam' : isCredit(l) ? 'credit' : null;
+      if (!kind) return;
+      out.push({ date: l.date, start: l.start, end: l.end, subject: l.subject_full, type: l.type_full,
+        room: l.room, kind: kind, daysUntil: dayNumber(l.date) - today });
+    });
+    out.sort(function (a, b) {
+      return a.date < b.date ? -1 : a.date > b.date ? 1 :
+        a.start < b.start ? -1 : a.start > b.start ? 1 :
+        a.end < b.end ? -1 : a.end > b.end ? 1 : 0;
+    });
+    return out;
+  }
+
+  var WEEKDAY_NAMES = ['niedziela', 'poniedziałek', 'wtorek', 'środa', 'czwartek', 'piątek', 'sobota'];
+  /* a short text digest of one day for sharing: header, then a line per class, reservation or exam;
+     breaks and session blocks are left out. No trailing newline. */
+  function dayDigest(plan, iso) {
+    var meta = plan.meta || {};
+    var rows = (byDate(plan)[iso] || []).slice().sort(function (a, b) {
+      return a.start < b.start ? -1 : a.start > b.start ? 1 : a.end < b.end ? -1 : a.end > b.end ? 1 : 0;
+    }).map(function (l) {
+      if (isBreak(l) || isSessionBlock(l)) return null;
+      var label = isReservation(l) ? (String(l.type_full || '').replace(/\s+/g, ' ').trim() || 'Rezerwacja')
+        : String(l.subject_full || '').trim();
+      var room = String(l.room || '').trim();
+      return l.start + '–' + l.end + ' ' + label + (room && room !== '-' ? ' · ' + room : '');
+    }).filter(function (row) { return row !== null; });
+    if (!rows.length) return 'Brak zajęć.';
+    var date = fromIso(iso);
+    var head = 'Plan ' + (meta.group || '') + ' · ' + WEEKDAY_NAMES[date.getDay()] + ' ' +
+      pad2(date.getDate()) + '.' + pad2(date.getMonth() + 1);
+    return head + '\n' + rows.join('\n');
+  }
 
   /* per subject: how many of its classes are over, by type, and the next one */
   function subjectProgress(plan, todayIso, nowMin) {
@@ -88,11 +188,16 @@
   /* numbers for the statistics sheet */
   function stats(plan) {
     var all = lessons(plan);
-    var minutes = 0, byType = {}, byDow = [0, 0, 0, 0, 0, 0, 0], rooms = {}, subjects = {}, days = {};
+    var minutes = 0, teachingMinutes = 0, reservationMinutes = 0, breakMinutes = 0, sessionMinutes = 0;
+    var byType = {}, byDow = [0, 0, 0, 0, 0, 0, 0], rooms = {}, subjects = {}, days = {};
     var earliest = null, latest = null;
     all.forEach(function (l) {
       var s = toMin(l.start), e = toMin(l.end), len = e - s;
       minutes += len;
+      if (isSessionBlock(l)) sessionMinutes += len;
+      else if (isBreak(l)) breakMinutes += len;
+      else if (isReservation(l)) reservationMinutes += len;
+      else teachingMinutes += len;
       var t = l.type_full || 'Inne';
       byType[t] = byType[t] || { type: t, count: 0, minutes: 0 };
       byType[t].count++;
@@ -124,6 +229,10 @@
     return {
       lessons: all.length,
       minutes: minutes,
+      teachingMinutes: teachingMinutes,
+      reservationMinutes: reservationMinutes,
+      breakMinutes: breakMinutes,
+      sessionMinutes: sessionMinutes,
       subjects: Object.keys(subjects).length,
       days: dayList.length,
       activeWeeks: active.length,
@@ -423,7 +532,9 @@
 
   var PlanInsights = {
     toMin: toMin, hhmm: hhmm, fmtDuration: fmtDuration, plural: plural, norm: norm,
-    lessons: lessons, gaps: gaps, isExam: isExam, subjectProgress: subjectProgress, ordinals: ordinals, stats: stats,
+    lessons: lessons, gaps: gaps, isExam: isExam, isCredit: isCredit, isReservation: isReservation, isBreak: isBreak,
+    isSessionBlock: isSessionBlock, breaks: breaks, breaksOn: breaksOn, sessionRanges: sessionRanges, session: session,
+    dayDigest: dayDigest, subjectProgress: subjectProgress, ordinals: ordinals, stats: stats,
     lessonKey: lessonKey, fingerprint: fingerprint, diff: diff,
     freeWindows: freeWindows, intervals: intervals, overlaps: overlaps, byDate: byDate,
     yearOf: yearOf, peersOf: peersOf, catchUp: catchUp,
