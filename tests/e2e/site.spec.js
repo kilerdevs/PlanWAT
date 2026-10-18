@@ -93,8 +93,11 @@ test('the root searches groups in faculty sections collapsed by default', async 
 });
 
 test('the root page has no serious or critical accessibility violations', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.setFixedTime(THURSDAY_1030);
   await page.goto('/');
+  // a section still fading in reads as low contrast; wait for every finite animation to end
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .analyze();
@@ -106,6 +109,7 @@ test('the root page has no serious or critical accessibility violations', async 
 
 test('the privacy page is linked from the footer, accessible and runs no script', async ({ page }) => {
   const csp = [];
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.addInitScript(() => {
     document.addEventListener('securitypolicyviolation', (e) => { window.__csp = (window.__csp || []).concat(e.violatedDirective); });
   });
@@ -114,6 +118,8 @@ test('the privacy page is linked from the footer, accessible and runs no script'
   await page.locator('footer a[href="prywatnosc/"]').click();
   await expect(page).toHaveURL(/\/prywatnosc\/$/);
   await expect(page.locator('h1')).toHaveText('Prywatność i zasady');
+  // a section still fading in reads as low contrast; wait for every finite animation to end
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
   // read before the scan: axe-core fetches stylesheets itself, which this page's connect-src 'none' blocks
   csp.push(...(await page.evaluate(() => window.__csp || [])));
   expect(csp).toEqual([]);
