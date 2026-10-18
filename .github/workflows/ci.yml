@@ -5,8 +5,11 @@ on:
     branches: [dev]  # not master: the release PR already ran these checks, so a merge does not run them again
   pull_request:
 
-# The same commit runs as push:dev and as the release PR; one group per ref
-# stops the pile-up. master always runs to completion.
+# Two speeds on purpose: unit + build run on every push to dev, while the
+# multi-minute browser matrix and the Docker/Grype scan are the merge gate and
+# run where a merge is decided -- the dev -> master PR. The same commit runs as
+# push:dev and as that PR; one group per ref below stops the pile-up. master
+# always runs to completion.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
@@ -22,6 +25,7 @@ jobs:
   unit:
     name: unit tests (Node ${{ matrix.node }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -33,6 +37,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
+      - name: Dev dependencies are audited once per run (here, not in every browser job)
+        if: matrix.node == '24'
+        run: npm audit --audit-level=high
       - name: Parser tests with coverage floors
         run: >-
           node --test --experimental-test-coverage
@@ -46,6 +53,7 @@ jobs:
   build:
     name: build (Python ${{ matrix.python }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -71,9 +79,16 @@ jobs:
   # CSP is what the browser enforces). Chromium, Firefox and WebKit (iPhone
   # Safari) at desktop and phone sizes; the clock is frozen inside the tests,
   # so live states (now / next) are deterministic. Includes an axe WCAG scan.
+  #
+  # These ~15 min of browser minutes are the price of the merge gate, so they run
+  # on pull requests only: a direct push to dev already runs the fast checks
+  # above, its preview site is the test version, and the next dev -> master PR
+  # (the branch is nearly always open) cannot pass without them.
   e2e:
     name: browser tests (${{ matrix.browser }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -89,9 +104,13 @@ jobs:
           python-version: '3.13'
       - name: Install test tooling
         run: npm ci
-      # Dev dependencies are still dependencies: audit them on every build.
-      - name: Audit dev dependencies
-        run: npm audit --audit-level=high
+      # Playwright browsers only change with the lockfile: the ~100 MB download
+      # per job happens once per bump, not once per run.
+      - name: Restore Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('package-lock.json') }}
       - name: Install ${{ matrix.browser }}
         run: npx playwright install --with-deps ${{ matrix.browser }}
       # --today matches the frozen browser clock, so the term pick agrees with it.
@@ -117,9 +136,14 @@ jobs:
   # fails the build on HIGH/CRITICAL findings that have a fix: bumping the
   # digest-pinned base image is the fix. The smoke test runs the image with the
   # same hardening as docker-compose.yml and checks routing and headers.
+  #
+  # The image is only ever published from master, so this ~2 min scan rides the
+  # release PR instead of every push to dev.
   docker:
     name: docker image (Grype + smoke)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

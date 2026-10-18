@@ -144,6 +144,23 @@ def effective_fresh_hours(base, today):
     return base
 
 
+def quiet_interval(entry, base_hours, cap_hours):
+    """Hours a group that keeps coming back unchanged may go unchecked.
+
+    Every completed check that found the same plan raises the gap before the
+    next one twofold (base) and the `cap_hours` fence stops it (<=0 disables
+    the stretching); a change (streak reset to 0) puts the group back on the
+    full cadence at once. The result never drops below `base_hours`, so a
+    faculty's own --fresh-hours always dominates a too-low cap. An entry
+    without a recognised `streak` (a state file written before this existed,
+    a hand-edited one) counts as a first check: the old behaviour exactly.
+    """
+    streak = entry.get('streak') if isinstance(entry, dict) else None
+    if cap_hours <= 0 or not isinstance(streak, int) or streak < 0:
+        return base_hours
+    return max(base_hours, min(cap_hours, base_hours * 2 ** streak))
+
+
 def upcoming_reference(today):
     """A date inside the semester that is about to start, while the faculties publish its plans ahead of time.
 

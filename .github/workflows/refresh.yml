@@ -45,8 +45,29 @@ jobs:
         with:
           path: src
       - uses: ./src/.github/actions/refresh
+        id: refresh
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           profile: selfhosted
           faculty: ${{ inputs.faculty }}
           max-minutes: '90'
+      # pages.yml's gate reads this instead of rebuilding an identical site after every quiet
+      # pass: pushed=false (a quiet pass, a block, a crash) means the data branch is unchanged.
+      # A missing or damaged artifact fails the gate open, i.e. it still rebuilds.
+      - name: Write the outcome for the Pages gate
+        if: always()
+        env:
+          PUSHED: ${{ steps.refresh.outputs.pushed || 'false' }}
+          CHANGED: ${{ steps.refresh.outputs.changed || '0' }}
+          BLOCKED: ${{ steps.refresh.outputs.blocked || 'false' }}
+        run: |
+          printf '{"pushed": "%s", "changed": "%s", "blocked": "%s"}\n' \
+            "$PUSHED" "$CHANGED" "$BLOCKED" > refresh-outcome.json
+      - name: Upload the outcome
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: refresh-outcome
+          path: refresh-outcome.json
+          retention-days: 2

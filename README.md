@@ -365,7 +365,7 @@ Podatności zgłaszaj prywatnie. Zasady i terminy opisuje [SECURITY.md](SECURITY
 
 ## Testy
 
-<img src="docs/diagrams/pipeline-testow.svg" alt="Commit na dev uruchamia testy Node, testy Python, Playwright z axe, skan obrazu Docker i CodeQL. Wszystkie bramy muszą przejść przed pull requestem do master." width="760">
+<img src="docs/diagrams/pipeline-testow.svg" alt="Push na dev uruchamia szybkie bramy (testy Node i testy Python), a przegląd wydania (pull request do master) uruchamia wszystkie pięć bram: dołącza Playwright z axe, skan obrazu Docker i CodeQL. Wszystkie bramy muszą przejść, by włożyć commit do master." width="760">
 
 | Warstwa | Narzędzie | Co sprawdza |
 |---|---|---|

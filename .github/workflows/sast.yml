@@ -5,12 +5,13 @@ name: SAST
 # workflows themselves. A weekly sweep lets new queries catch old code.
 
 on:
-  push:
-    branches: [dev]  # not master: the release PR already ran these checks, so a merge does not run them again
   pull_request:
     branches: [master, dev]
   schedule:
     - cron: '41 4 * * 1'
+  # No push trigger on purpose: the dev -> master PR re-runs the same commit,
+  # so a push shakeout would double the ~8 min CodeQL bill for nothing. Direct
+  # pushes to dev stay covered by the Monday cron sweep.
 
 # Same dedup reasoning as CI: one group per ref, never cancel master.
 concurrency:
@@ -24,6 +25,7 @@ jobs:
   codeql:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     permissions:
       contents: read
       security-events: write

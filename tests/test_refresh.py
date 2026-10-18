@@ -1711,5 +1711,96 @@ class LiveProgressTest(unittest.TestCase):
         self.assertEqual([e['slot'] for e in ahead_done], [f'wlo~{core.term_id(coming)}'])
 
 
+class QuietStretch(unittest.TestCase):
+    """Adaptive freshness: a group checked again and again unchanged waits longer the next
+    time, a change puts it back onto the full cadence, and the off switch restores the old
+    round-robin. A published plan resets the streak; a repeated 200 with the same digest
+    raises it, like a 304."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    ROUTES = {
+        'https://example.test/plan/zima/index.xml': Resp(200, INDEX.encode()),
+        'https://example.test/plan/zima/WLO26AX1S1.htm': Resp(200, page('WLO26AX1S1.htm')),
+    }
+
+    def entry(self, streak, age_hours):
+        return {'WLO26AX1S1': {'checked': (core.now_utc() - dt.timedelta(hours=age_hours)).isoformat(),
+                               'hash': 'x', 'term': '2026-27-zima', 'streak': streak}}
+
+    def run_faculty(self, groups, adaptive, routes=None):
+        args = refresh.parse(['--out', str(self.tmp), '--adaptive-hours', str(adaptive)])
+        state = core.State(self.tmp / core.STATE_FILE)
+        state.data['groups'].update(groups)
+        session = SequenceSession(dict(routes if routes is not None else self.ROUTES))
+        result = refresh.refresh_faculty('wlo', WLO_CFG, args, state, TODAY, session, sleep=lambda s: None)
+        state.save()
+        return result, state, session
+
+    def test_interval_doubles_per_quiet_check_and_caps_at_the_fence(self):
+        self.assertEqual(core.quiet_interval({}, 1.0, 4.0), 1.0)  # untracked entry: first check's wisdom
+        self.assertEqual(core.quiet_interval({'streak': 0}, 1.0, 4.0), 1.0)
+        self.assertEqual(core.quiet_interval({'streak': 1}, 1.0, 4.0), 2.0)
+        self.assertEqual(core.quiet_interval({'streak': 2}, 1.0, 4.0), 4.0)
+        self.assertEqual(core.quiet_interval({'streak': 9}, 1.0, 4.0), 4.0)
+        self.assertEqual(core.quiet_interval({'streak': 9}, 2.0, 0), 2.0)  # the off switch
+        self.assertEqual(core.quiet_interval({'streak': 9}, 3.0, 2.0), 3.0)  # a low cap loses to the base
+        self.assertEqual(core.quiet_interval('torn', 1.0, 4.0), 1.0)
+        self.assertEqual(core.quiet_interval({'streak': 'x'}, 1.0, 4.0), 1.0)
+        self.assertEqual(core.quiet_interval({'streak': -1}, 1.0, 4.0), 1.0)
+
+    def test_a_group_inside_its_stretched_gap_is_not_fetched_at_all(self):
+        # Two quiet checks sit behind this one (streak 2 = a 4 h gap); the last check is
+        # 3 h old, so the faculty lists its groups but the group page stays untouched.
+        (changed, blocked, complete), state, session = self.run_faculty(self.entry(2, age_hours=3.0), adaptive=4.0)
+        self.assertEqual((changed, blocked, complete), ([], False, True))
+        self.assertEqual([u for u in session.seen if 'WLO26AX1S1' in u], [])
+        self.assertEqual(state.groups['WLO26AX1S1']['streak'], 2)
+
+    def test_the_off_switch_rechecks_what_stretching_would_skip(self):
+        # The same entry that stretching keeps out of the network (above), with the switch
+        # off: the page is asked for, the plan repeats itself, and the quiet raise still
+        # happens -- so switching adaptive freshness back on later finds this streak saved.
+        first, _, _ = self.run_faculty(self.entry(0, age_hours=3.0), adaptive=0)
+        self.assertEqual(first, (['WLO26AX1S1'], False, True))  # seeds the calendar
+        entry = {'checked': (core.now_utc() - dt.timedelta(hours=3)).isoformat(),
+                 'hash': self.digest(), 'term': '2026-27-zima', 'streak': 2}
+        (changed, blocked, complete), state, session = self.run_faculty({'WLO26AX1S1': entry}, adaptive=0)
+        self.assertEqual((changed, blocked, complete), ([], False, True))
+        self.assertIn('https://example.test/plan/zima/WLO26AX1S1.htm', session.seen)
+        self.assertEqual(state.groups['WLO26AX1S1']['streak'], 3)
+
+    def digest(self):
+        path = self.tmp / 'timetables' / '2026-27-zima' / 'WLO26AX1S1.ics'
+        return core.sha256(path.read_bytes())
+
+    def test_older_than_its_gap_the_group_is_back_to_work_and_a_new_plan_makes_it_hot(self):
+        # Past the 4 h fence the group is fetched; nothing is filed yet, so the plan counts
+        # as new: published, and the streak lands on 0 again.
+        groups = self.entry(2, age_hours=5.0)
+        groups['WLO26AX1S1'].pop('hash')
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        (changed, blocked, complete), state, session = self.run_faculty(groups, adaptive=4.0)
+        self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
+        self.assertEqual(state.groups['WLO26AX1S1']['streak'], 0)
+
+    def test_a_changed_digest_with_the_same_plan_only_counts_as_quiet(self):
+        # First pass: the group files its calendar and leaves hot (streak 0). Then the digest
+        # is pointed at a page difference that is only a generated stamp: the hash no longer
+        # short-circuits, the plans compare equal after all, so the check counts as quiet
+        # and the doubled gap starts.
+        first, state, _ = self.run_faculty(self.entry(0, age_hours=3.0), adaptive=0)
+        self.assertEqual(first, (['WLO26AX1S1'], False, True))
+        self.assertEqual(state.groups['WLO26AX1S1']['streak'], 0)
+        state.groups['WLO26AX1S1']['hash'] = 'stale-from-the-previous-page'
+        state.groups['WLO26AX1S1']['checked'] = (core.now_utc() - dt.timedelta(hours=3)).isoformat()
+        state.save()
+        second, state, session = self.run_faculty({}, adaptive=0)
+        self.assertEqual(second, ([], False, True))
+        self.assertEqual(state.groups['WLO26AX1S1']['streak'], 1)
+
+
 if __name__ == '__main__':
     unittest.main()

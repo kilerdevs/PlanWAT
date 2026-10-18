@@ -130,6 +130,26 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
+- **CI w dwóch prędkościach:** push na `dev` uruchamia tylko szybkie konteksty (testy jednostkowe i budowa). Matryca
+  przeglądarek i skan obrazu Dockera odpalają się wyłącznie w przeglądzie wydania `dev → master`, gdzie wymagane konteksty
+  ochrony gałęzi `master` i tak ich szukają — ten sam commit nie jest już badany dwa razy za jednym pushem. Każdy przypadek
+  dostaje limit czasu, żeby zawieszony test nie pochłaniał godzin. Konteksty przeglądarkowe czytają przeglądarki Playwright
+  z pamięci podręcznej (pliki pobierane raz na podbicie zależności, nie raz na przebieg) i biegną na czterech wątkach
+  runnera GitHub (4 vCPU), który domyślnie zostawiał połowę rdzeni bezczynnymi. Audyt zależności developerskich wykonuje się
+  raz na przebieg (w testach jednostkowych), nie osobno w każdej przeglądarce.
+- `SAST` (CodeQL) nie odpala się już po pushu: kod pokrywają przeglądy wydania i poniedziałkowy przebieg zaplanowany,
+  a CodeQL z pusha powielał tylko wynik przeglądu wydania.
+- **Pages** pomija budowę i wdrożenie po cichym przebiegu odświeżania: przebieg bez nowych kalendarzy nie zmienia strony,
+  więc identyczne wdrożenie nic nie dodaje, a zaplanowana codzienna przebudowa i tak dogoni przełomy semestru. Bramka czyta
+  plik wyniku, który przebieg odświeżania wysyła jako artefakt.
+- Skany dostępności (axe) w testach czekają na koniec animacji wejścia: Firefox i WebKit potrafiły skanować sekcję jeszcze
+  w połowie pojawiania się — jej wtedy półprzezroczyste kolory czytane były jako niski kontrast, co dawało fałszywe
+  czerwone w CI. Skany teraz emulują `prefers-reduced-motion` i czekają, aż animacje przestaną biegać — jak robiły to już
+  skany arkusza grupy.
+- **Odświeżanie rozciąga przerwy cichym grupom:** każdy zakończony check z tym samym planem (również `304`) podwaja przerwę
+  tej grupy przed następnym sprawdzeniem, do sufitu `--adaptive-hours` (w akcji 4 h), więc spokojny semestr kosztuje mniej
+  więcej połowę zapytań do Incapsuli. Zmiana planu zeruje przerwę i grupa wraca na pełne tempo natychmiast.
+- **Obraz self-hosted kompresuje mocniej:** `gzip_comp_level 5` i `gzip_vary on` zamiast poziomu 1 z domyślnym.
 - **Strony dla studentów:** spokojniejsze wejście (nagłówek, wyszukiwarka i karty wydziałów na stronie głównej; panel mapy i
   znaczniki budynków na mapie; nagłówek 404 i prywatności) — jedna krótka animacja, wyłączona przy `prefers-reduced-motion`.
   Strona 404 jest wyśrodkowana, ma ikonę kalendarza i dwa wyjścia (lista planów, mapa kampusu). Wiersze przewijane w bok
