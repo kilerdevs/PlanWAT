@@ -225,6 +225,18 @@
     .tools { left: calc(var(--gl) + 372px); }
     .search { max-width: 360px; left: calc(var(--gl) + 96px); }
   }
+  @media (prefers-reduced-motion: no-preference) {
+    /* entrance: the chrome settles in, building markers pop as they land on the map */
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+    @keyframes fade { from { opacity: 0; } }
+    @keyframes pop { from { opacity: 0; transform: scale(0.45); } }
+    .back { animation: rise 460ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+    .search { animation: rise 460ms 40ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+    .tools { animation: rise 460ms 80ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+    .sheet { animation: rise 520ms 120ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+    .maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { animation: fade 600ms 160ms backwards; }
+    .bldg { animation: pop 240ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .sheet > summary .hint .i { transition: none; }
   }

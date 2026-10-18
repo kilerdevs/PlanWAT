@@ -58,6 +58,8 @@
   function subjectProgress(plan, todayIso, nowMin) {
     var by = {};
     lessons(plan).forEach(function (l) {
+      /* a reservation is not a subject: its "-" summary would otherwise sit in the progress list */
+      if (l.subject_full === '-' || l.subject_full === '–') return;
       var s = by[l.subject_full] = by[l.subject_full] || { subject: l.subject_full, total: 0, done: 0, byType: {}, next: null, last: null };
       s.total++;
       s.byType[l.type_full || 'Inne'] = (s.byType[l.type_full || 'Inne'] || 0) + 1;
@@ -97,7 +99,7 @@
       byType[t].minutes += len;
       byDow[(fromIso(l.date).getDay() + 6) % 7] += len;
       if (l.room && l.room !== '-') rooms[l.room] = (rooms[l.room] || 0) + 1;
-      subjects[l.subject_full] = 1;
+      if (l.subject_full !== '-' && l.subject_full !== '–') subjects[l.subject_full] = 1;
       var d = days[l.date] = days[l.date] || { date: l.date, start: s, end: e, minutes: 0, lessons: [] };
       d.start = Math.min(d.start, s);
       d.end = Math.max(d.end, e);

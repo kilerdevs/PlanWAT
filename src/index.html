@@ -149,6 +149,8 @@
     -webkit-overflow-scrolling: touch;
   }
   .filters::-webkit-scrollbar { display: none; }
+  /* a sideways scroller fades its half-cut last chip while there is more to swipe to */
+  .fade-end[data-more="1"] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); }
   .chip {
     flex: none;
     display: inline-flex;
@@ -374,6 +376,18 @@
     .dot { animation: none; }
     .now-card, .star, .fac-sec summary .chev { transition: none; }
   }
+  /* entrance: the header settles in once, the list sections follow a beat later */
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+    .enter { animation: rise 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: calc(var(--d, 0) * 55ms); }
+    .d1 { --d: 1; } .d2 { --d: 2; } .d3 { --d: 3; } .d4 { --d: 4; } .d5 { --d: 5; } .d6 { --d: 6; }
+    #groupList > .fac-sec { animation: rise 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+    #groupList > .fac-sec:nth-of-type(1) { animation-delay: 180ms; }
+    #groupList > .fac-sec:nth-of-type(2) { animation-delay: 240ms; }
+    #groupList > .fac-sec:nth-of-type(3) { animation-delay: 300ms; }
+    #groupList > .fac-sec:nth-of-type(4) { animation-delay: 360ms; }
+    .fac-sec[open] ul { animation: rise 360ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+  }
   @media (min-width: 768px) {
     main { padding-top: calc(env(safe-area-inset-top) + 96px); }
     h1 { font-size: 4rem; letter-spacing: -0.04em; }
@@ -384,11 +398,11 @@
 </head>
 <body>
 <main>
-  <h1>Plany zajęć</h1>
-  <p class="lead">Znajdź swoją grupę.</p>
-  <p class="stats">@@STATS@@</p>
-  <a class="maplink" href="mapa/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15M9 3.236v15"/></svg>Mapa kampusu</a>
-  <div class="devnote" role="note">
+  <h1 class="enter">Plany zajęć</h1>
+  <p class="lead enter d1">Znajdź swoją grupę.</p>
+  <p class="stats enter d2">@@STATS@@</p>
+  <a class="maplink enter d3" href="mapa/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15M9 3.236v15"/></svg>Mapa kampusu</a>
+  <div class="devnote enter d3" role="note">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
     <p><strong>Serwis jest w trakcie rozwoju</strong>Dane planów mogą być błędne. Korzystaj z ostrożnością do odwołania i sprawdzaj ważne terminy w e-dziekanacie.</p>
   </div>
@@ -403,13 +417,13 @@
       <div class="picks" id="recentList"></div>
     </div>
   </section>
-  <div class="bar"><label class="step" for="groupSearch">Szukaj grupy</label><button class="textbtn" id="toggleAll" type="button">Rozwiń wszystkie</button></div>
-  <div class="search-wrap">
+  <div class="bar enter d4"><label class="step" for="groupSearch">Szukaj grupy</label><button class="textbtn" id="toggleAll" type="button">Rozwiń wszystkie</button></div>
+  <div class="search-wrap enter d5">
     <input class="search" id="groupSearch" type="search" placeholder="np. WCY26KY3S1" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="resultCount" aria-keyshortcuts="/">
     <span class="kbd" aria-hidden="true">/</span>
     <button class="clear" id="clearSearch" type="button" aria-label="Wyczyść wyszukiwanie" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
   </div>
-  <div class="filters" id="filters" role="group" aria-label="Filtr wydziału">
+  <div class="filters enter d6" id="filters" role="group" aria-label="Filtr wydziału">
 @@CHIPS@@
   </div>
   <p class="resultline" id="resultCount" aria-live="polite"></p>
@@ -687,11 +701,12 @@
     }
     top.appendChild(state);
     body.appendChild(top);
-    body.appendChild(el('span', 'now-subject', l ? l.subject_full : 'Brak nadchodzących zajęć'));
+    var res = l && (l.subject_full === '-' || l.subject_full === '–');
+    body.appendChild(el('span', 'now-subject', l ? (res ? (l.type_full || 'Rezerwacja') : l.subject_full) : 'Brak nadchodzących zajęć'));
     if (l) {
       var meta = [l.start + '–' + l.end];
-      if (l.room) meta.push(l.room);
-      if (l.type_full) meta.push(l.type_full);
+      if (l.room && l.room !== '-') meta.push(l.room);
+      if (l.type_full && !res) meta.push(l.type_full);
       body.appendChild(el('span', 'now-meta', meta.join(' · ')));
     }
     a.appendChild(cap);
@@ -721,6 +736,18 @@
   /* keep "now" honest while the page stays open */
   setInterval(function () { if (!document.hidden) renderLive(); }, 60000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) renderLive(); });
+  /* sideways chip row: fade the half-cut last chip while there is more to swipe */
+  (function () {
+    var f = $('filters');
+    if (!f) return;
+    var refresh = function () {
+      f.setAttribute('data-more', f.scrollWidth - f.clientWidth - f.scrollLeft > 2 ? '1' : '0');
+    };
+    f.classList.add('fade-end');
+    f.addEventListener('scroll', refresh, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(refresh).observe(f);
+    refresh();
+  })();
 })();
 </script>
 </body>

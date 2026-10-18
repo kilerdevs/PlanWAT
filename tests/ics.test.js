@@ -108,9 +108,18 @@ test('maps CATEGORIES, LOCATION and X-PLAN-COLOR onto lesson fields, and never r
   ]));
   const [l] = allLessons(p);
   assert.equal(l.type_full, 'Laboratorium');
-  assert.equal(l.room, '108/ 54');
+  /* the faculties write room codes with a stray space after the slash; both forms are the same room */
+  assert.equal(l.room, '108/54');
   assert.equal(l.teachers_full, undefined);
   assert.equal(p.subjectColors['Podstawy grafiki inżynierskiej'], '#6f5ed1');
+});
+
+test('normalises the space after a slash in room codes without joining separate rooms', () => {
+  const rooms = allLessons(plan([].concat(
+    event(['UID:r1@test', 'DTSTART:20261005T080000', 'DTEND:20261005T093500', 'SUMMARY:A', 'LOCATION:54/ 62']),
+    event(['UID:r2@test', 'DTSTART:20261005T095000', 'DTEND:20261005T112500', 'SUMMARY:B', 'LOCATION:29/ 54 30/ 54'])
+  ))).map((l) => l.room);
+  assert.deepEqual(rooms, ['54/62', '29/54 30/54']);
 });
 
 test('falls back to a palette colour when X-PLAN-COLOR is missing or not a hex colour', () => {

@@ -618,6 +618,7 @@
   .is-now .st .dot { display: block; }
   .is-next .st .st-clock { display: block; }
   .subj {
+    display: block;
     font-size: var(--fs-17);
     font-weight: 600;
     line-height: 1.28;
@@ -757,7 +758,7 @@
   /* ================= footer hint ================= */
   .hint {
     padding-top: var(--sp-2);
-    padding-bottom: calc(112px + env(safe-area-inset-bottom));
+    padding-bottom: var(--sp-2);
     text-align: center;
     font-size: var(--fs-13);
     line-height: 2;
@@ -777,6 +778,9 @@
   }
   @media (hover: none) { .hint .kb { display: none; } }
   @media (hover: hover) { .hint .touch { display: none; } }
+  .hint.pledge { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  /* only the very last line has to clear the floating "current week" pill */
+  body[data-view="week"] .hint.pledge { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 
   /* ================= floating "current week" pill ================= */
   .todaypill {
@@ -902,6 +906,8 @@
   .tools .tabs { max-width: 420px; }
   .toolpanel { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
   .toolpanel[hidden] { display: none; }
+  /* sideways scrollers fade the half-cut last element, so it reads as "swipe for more" */
+  .fade-end[data-more="1"] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); }
   .tools .dl { margin-top: 0; border: 0; cursor: pointer; white-space: nowrap; }
   /* phones: one row that scrolls sideways, so the Live card stays on the first screen */
   @media (max-width: 767px) {
@@ -1136,9 +1142,10 @@
   .tile b { display: block; font-size: var(--fs-28); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
   .tile span { font-size: var(--fs-13); color: var(--t2); }
   .bars { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-  .bars li { display: grid; grid-template-columns: minmax(84px, 9em) minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); font-size: var(--fs-13); }
-  .bars .lbl { color: var(--t2); overflow-wrap: anywhere; }
-  .bars .val { color: var(--t1); font-variant-numeric: tabular-nums; }
+  .bars li { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "lbl val" "bar bar"; row-gap: 6px; font-size: var(--fs-13); }
+  .bars .lbl { grid-area: lbl; color: var(--t2); overflow-wrap: anywhere; }
+  .bars .val { grid-area: val; text-align: right; color: var(--t1); font-variant-numeric: tabular-nums; }
+  .bars .bar-track { grid-area: bar; }
   .bar-track, .bar-fill { display: block; }
   .bar-track { height: 10px; border-radius: 4px; background: var(--s3); overflow: hidden; }
   .bar-fill { height: 100%; width: calc(var(--w, 0) * 1%); border-radius: 4px; background: var(--t3); }
@@ -1276,7 +1283,7 @@
   .tag { display: inline-block; padding: 1px 8px; border-radius: var(--r-pill); background: var(--s4); color: var(--t1); font-size: var(--fs-12); font-weight: 600; }
   .tag.warn { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--t2); }
   .gchips { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
-  .gchips .chip { cursor: default; }
+  .gchips .chip { cursor: default; background: var(--s3); }
   .gchips .chip button { display: grid; place-items: center; width: 24px; height: 24px; margin-right: -8px; padding: 0; border: 0; border-radius: 50%; background: var(--s4); color: var(--t1); cursor: pointer; }
   .gchips .chip button .i { width: 14px; height: 14px; stroke-width: 2; }
   .cmp-nav { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: var(--sp-2); align-items: center; margin-top: var(--sp-4); text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -1287,7 +1294,8 @@
   .muted { color: var(--t2); font-size: var(--fs-13); }
   .install-steps { margin: var(--sp-3) 0; padding-left: 1.3em; display: grid; gap: var(--sp-2); }
   .row-add { display: flex; gap: var(--sp-2); align-items: end; margin-top: var(--sp-2); }
-  .row-add .field { flex: 1; }
+  .row-add .field { flex: 1; min-width: 0; }
+  .row-add input { width: 100%; }
   .row-add .link { min-height: 44px; padding-inline: 16px; }
 
   /* ================= toast ================= */
@@ -1649,12 +1657,14 @@
   /* ================= scroll-linked header depth (compositor-driven) ================= */
   @supports (animation-timeline: scroll()) {
     @media (prefers-reduced-motion: no-preference) {
-      .hero-main {
+      .hero-intro {
+        transform-origin: 50% 100%;
         animation: hero-depth linear both;
         animation-timeline: scroll(root);
         animation-range: 0 420px;
       }
-      @keyframes hero-depth { to { transform: translateY(56px) scale(0.97); opacity: 0.25; } }
+      /* shrink towards the bottom edge (which never moves) so the intro recedes without sliding into the tool row */
+      @keyframes hero-depth { to { transform: scale(0.96); opacity: 0.2; } }
     }
   }
 
@@ -1690,7 +1700,7 @@
     html, body { background: #fff !important; }
     body { padding: 10mm 14mm 8mm; font-size: 9.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     *, *::before, *::after { animation: none !important; transition: none !important; box-shadow: none !important; text-shadow: none !important; }
-    .rv, .enter, .hero-main { transform: none !important; opacity: 1 !important; }
+    .rv, .enter, .hero-intro { transform: none !important; opacity: 1 !important; }
 
     /* what a sheet of paper does not need */
     .page::before, .backlink, .semprog, .tools, .notice, .viewbar, .live, .skel, .hint, .themeswitch, .toast, .todaypill,
@@ -1783,20 +1793,22 @@
 <main class="page">
   <header class="hero wrap" id="hero">
     <div class="hero-main">
-      <a class="backlink enter" id="backLink" href="../"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chevron-left"/></svg>Wszystkie grupy</a>
-      <h1 class="title enter" id="groupName">@@GROUP@@</h1>
-      <p class="sub enter d1" id="termLine">@@TERM_LINE@@</p>
-      @@TERM_SWITCH@@
-      <div class="semprog enter d2" id="semProg">
-        <div class="semprog-top"><span>Postęp semestru</span><span class="num" id="semPct">0%</span></div>
-        <div class="track" role="progressbar" aria-label="Postęp semestru" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="semTrack"><div class="fill" id="semFill"></div></div>
+      <div class="hero-intro">
+        <a class="backlink enter" id="backLink" href="../"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-chevron-left"/></svg>Wszystkie grupy</a>
+        <h1 class="title enter" id="groupName">@@GROUP@@</h1>
+        <p class="sub enter d1" id="termLine">@@TERM_LINE@@</p>
+        @@TERM_SWITCH@@
+        <div class="semprog enter d2" id="semProg">
+          <div class="semprog-top"><span>Postęp semestru</span><span class="num" id="semPct">0%</span></div>
+          <div class="track" role="progressbar" aria-label="Postęp semestru" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="semTrack"><div class="fill" id="semFill"></div></div>
+        </div>
+        <dl class="facts enter d3">
+          <div id="factFaculty"@@HIDE_FACULTY@@><dt>Wydział</dt><dd>@@FACULTY@@</dd></div>
+          <div id="factSemester"><dt>Semestr</dt><dd>@@SEMESTER@@</dd></div>
+          <div id="factUpdated"@@HIDE_UPDATED@@><dt>Zaktualizowano</dt><dd>@@UPDATED@@</dd></div>
+          <div id="factChecked"@@HIDE_CHECKED@@><dt>Sprawdzono</dt><dd>@@CHECKED@@</dd></div>
+        </dl>
       </div>
-      <dl class="facts enter d3">
-        <div id="factFaculty"@@HIDE_FACULTY@@><dt>Wydział</dt><dd>@@FACULTY@@</dd></div>
-        <div id="factSemester"><dt>Semestr</dt><dd>@@SEMESTER@@</dd></div>
-        <div id="factUpdated"@@HIDE_UPDATED@@><dt>Zaktualizowano</dt><dd>@@UPDATED@@</dd></div>
-        <div id="factChecked"@@HIDE_CHECKED@@><dt>Sprawdzono</dt><dd>@@CHECKED@@</dd></div>
-      </dl>
       <div class="tools enter d3" id="tools">
       <div class="tabs" id="toolTabs" role="tablist" aria-label="Narzędzia planu">
         <button type="button" role="tab" id="tt-plan" data-tab="plan" aria-controls="tp-plan" aria-selected="true">Plan</button>
@@ -2088,6 +2100,19 @@
     if (text != null) e.textContent = text;
     return e;
   }
+  /* a sideways scroller gets a soft fade on its right edge while there is something to swipe to */
+  function refreshEdge(el) {
+    if (!el) return;
+    var more = el.scrollWidth - el.clientWidth - el.scrollLeft > 2;
+    el.setAttribute('data-more', more ? '1' : '0');
+  }
+  function edgeFade(el) {
+    if (!el) return;
+    el.classList.add('fade-end');
+    refreshEdge(el);
+    el.addEventListener('scroll', function () { refreshEdge(el); }, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(function () { refreshEdge(el); }).observe(el);
+  }
   function icon(name, cls) {
     var s = document.createElementNS(SVGNS, 'svg');
     s.setAttribute('class', 'i' + (cls ? ' ' + cls : ''));
@@ -2162,8 +2187,13 @@
     parent.appendChild(a);
   }
 
+  /* the faculties mark a reserved slot with SUMMARY "-" and the type "Rezerwacja": it is not a subject,
+     so rows show the type instead of a lone dash and the "n of N" meeting counter only adds noise */
+  function isReservation(ev) { return ev.subject_full === '-' || ev.subject_full === '–'; }
+  function subjectLabel(ev) { return isReservation(ev) ? (ev.type_full || 'Rezerwacja') : ev.subject_full; }
   /* "Wykład · 3/15": the class type and which meeting of its subject and type it is (no number for a one-off) */
   function typeLine(ev) {
+    if (isReservation(ev)) return '';
     var type = TYPE_SHORT[ev.type_full] || ev.type_full || '';
     var o = state.ord && state.ord[PI.lessonKey(ev)];
     if (!o || o.of < 2) return type;
@@ -2195,15 +2225,20 @@
     info.appendChild(st);
     /* tapping the class finds where to make up this very meeting ("Gdzie odrobić?"); the subject is the
        keyboard-reachable button for it, and links inside the row (the room) keep their own job */
-    var subj = el('button', 'subj', ev.subject_full);
-    subj.type = 'button';
-    subj.title = 'Gdzie odrobić to spotkanie?';
+    var subj;
+    if (isReservation(ev)) {
+      subj = el('span', 'subj', subjectLabel(ev));
+    } else {
+      subj = el('button', 'subj', ev.subject_full);
+      subj.type = 'button';
+      subj.title = 'Gdzie odrobić to spotkanie?';
+      row.setAttribute('data-catchup', '');
+      row.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('a')) return;
+        openMeeting(ev);
+      });
+    }
     info.appendChild(subj);
-    row.setAttribute('data-catchup', '');
-    row.addEventListener('click', function (e) {
-      if (e.target.closest && e.target.closest('a')) return;
-      openMeeting(ev);
-    });
     info.appendChild(el('div', 'type', typeLine(ev)));
 
     var metaRow = el('div', 'meta');
@@ -2465,7 +2500,7 @@
     if (cur) cap.style.setProperty('--prog', String((mins - toMin(cur.start)) / (toMin(cur.end) - toMin(cur.start))));
     else cap.style.setProperty('--prog', '0');
     $('liveStatus').textContent = cur ? 'Teraz · do ' + cur.end : 'Następne · ' + fmtCountdown(toMin(next.start) - mins);
-    $('liveSubj').textContent = main.subject_full;
+    $('liveSubj').textContent = subjectLabel(main);
     var hasRoom = main.room && main.room !== '-';
     $('liveRoomWrap').hidden = !hasRoom;
     $('liveRoom').textContent = hasRoom ? main.room : '';
@@ -2476,7 +2511,7 @@
       var nextRoom = next.room && next.room !== '-' ? ' · ' + next.room : '';
       var walk = Campus.transfer(cur.room, next.room);
       if (walk) nextRoom += ' (~' + walk.minutes + ' min pieszo)';
-      nx.textContent = 'Następne · ' + fmtCountdown(toMin(next.start) - mins) + ' · ' + next.subject_full + nextRoom;
+      nx.textContent = 'Następne · ' + fmtCountdown(toMin(next.start) - mins) + ' · ' + subjectLabel(next) + nextRoom;
       nx.hidden = false;
     } else {
       nx.hidden = true;
@@ -2500,7 +2535,7 @@
 
   function renderLegend() {
     var grid = $('legendGrid');
-    Object.keys(state.data.subjectColors).sort().forEach(function (name, i) {
+    Object.keys(state.data.subjectColors).filter(function (name) { return name !== '-' && name !== '–'; }).sort().forEach(function (name, i) {
       var item = el('button', 'chip');
       item.type = 'button';
       item.setAttribute('data-subject', name);
@@ -3240,7 +3275,7 @@
           h3(body, sec[0] + ' (' + sec[1].length + ')');
           var ul = body.appendChild(el('ul', 'rows'));
           sec[1].forEach(function (l) {
-            ul.appendChild(rowItem(shortDate(l.date), l.start + '–' + l.end + ' · ' + l.subject_full + (l.type_full ? ' · ' + l.type_full : ''), l.room && l.room !== '-' ? l.room : ''));
+            ul.appendChild(rowItem(shortDate(l.date), l.start + '–' + l.end + ' · ' + subjectLabel(l) + (l.type_full && !isReservation(l) ? ' · ' + l.type_full : ''), l.room && l.room !== '-' ? l.room : ''));
           });
         });
         para(body, 'Zajęcia, którym zmieniła się sala lub godzina, są na obu listach. „OK” pod komunikatem zapisuje obecny plan jako przejrzany.', 'muted');
@@ -3565,7 +3600,7 @@
       all.sort(function (a, b) { return a.l.start < b.l.start ? -1 : a.l.start > b.l.start ? 1 : groups.indexOf(a.g) - groups.indexOf(b.g); });
       var ul = day.appendChild(el('ul', 'rows'));
       all.forEach(function (x) {
-        ul.appendChild(rowItem(x.l.start + '–' + x.l.end, x.l.subject_full + (x.l.type_full ? ' · ' + (TYPE_SHORT[x.l.type_full] || x.l.type_full) : '') +
+        ul.appendChild(rowItem(x.l.start + '–' + x.l.end, subjectLabel(x.l) + (x.l.type_full && !isReservation(x.l) ? ' · ' + (TYPE_SHORT[x.l.type_full] || x.l.type_full) : '') +
           (x.l.room && x.l.room !== '-' ? ' · ' + x.l.room : ''), x.g));
       });
     }
@@ -3574,6 +3609,7 @@
   /* ---------- "Odrabianie": the same class in another group of the year ---------- */
   /* "Gdzie odrobić?" for one class: the same subject, type and meeting number in the other groups */
   function openMeeting(ev) {
+    if (isReservation(ev)) return;
     var o = state.ord && state.ord[PI.lessonKey(ev)];
     var types = {};
     PI.lessons(state.data).forEach(function (l) { if (l.subject_full === ev.subject_full) types[l.type_full || 'Inne'] = 1; });
@@ -3658,6 +3694,8 @@
     }
     $('monthPrev').addEventListener('click', function () { state.month--; renderMonth(); });
     $('monthNext').addEventListener('click', function () { state.month++; renderMonth(); });
+    /* the tool rows scroll sideways on phones: mark them so the cut edge fades instead of looking broken */
+    ['tp-plan', 'tp-export', 'tp-analysis'].forEach(function (id) { edgeFade($(id)); });
   }
 
   function boot(data) {
@@ -3863,6 +3901,7 @@
         return counts[b] - counts[a] || a.localeCompare(b, 'pl', { numeric: true });
       }).forEach(function (k) { add(k, (k === '?' ? 'Inne' : 'Budynek ' + k) + ' (' + counts[k] + ')'); });
       if (refocus) { var on = bldRow.querySelector('[aria-pressed="true"]'); if (on) on.focus(); }
+      refreshEdge(bldRow);
     }
     function render() {
       out.replaceChildren();
@@ -3926,6 +3965,7 @@
       bldRow.id = 'frBuilding';
       bldRow.setAttribute('role', 'group');
       bldRow.setAttribute('aria-label', 'Budynek');
+      edgeFade(bldRow);
       var bf = body.appendChild(el('div', 'field fr-bf'));
       bf.appendChild(el('span', null, 'Budynek'));
       bf.appendChild(bldRow);

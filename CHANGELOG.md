@@ -114,6 +114,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
+- **Strony dla studentów:** spokojniejsze wejście (nagłówek, wyszukiwarka i karty wydziałów na stronie głównej; panel mapy i
+  znaczniki budynków na mapie; nagłówek 404 i prywatności) — jedna krótka animacja, wyłączona przy `prefers-reduced-motion`.
+  Strona 404 jest wyśrodkowana, ma ikonę kalendarza i dwa wyjścia (lista planów, mapa kampusu). Wiersze przewijane w bok
+  (filtry wydziałów, narzędzia planu, budynki w „Wolnych salach”) bledną na uciętej krawędzi, dopóki jest co przesunąć, a tabela
+  porównawcza na telefonie dostaje podpis „Przesuń tabelę w bok” (strona prywatności nadal nie ma ani linijki JavaScriptu).
 - **Plan:** ✓ przy każdych skończonych zajęciach, nie tylko dzisiejszych.
 - **Mapa:** w widoku dnia pozostałe budynki cofają się, karta budynku jest zwarta, więc dotknięte zajęcia zostają widoczne,
   zwinięcie arkusza ponownie ustawia mapę, dotknięcie mapy zamyka legendę, a podpowiedź wyszukiwarki nie jest już ucięta w
@@ -132,6 +137,14 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   odmieniają się po polsku: „1 sprawdzony”, „72 pominięte”, „2 próby”.
 
 ### Naprawiono
+- **Rezerwacje:** bloki zarezerwowanych godzin nie pokazują już samotnego „-” ani licznika spotkań („Rezerwacja · 22/114”);
+  w planie, pasku „teraz / następne”, porównaniu i zmianach widnieją jako „Rezerwacja”, nie otwierają „Gdzie odrobić?” i nie
+  trafiają do legendy, postępu przedmiotów, liczby przedmiotów w statystykach ani „Moich przedmiotów”.
+- **Sale:** kody z ukośnikiem są zapisywane bez spacji (`54/ 62` → `54/62`, `29/ 54 30/ 54` → `29/54 30/54`) w planie,
+  na stronie głównej i w porównaniu.
+- **Strona grupy:** przewijany nagłówek nie wjeżdża już na przyciski narzędzi i przełącznik widoku (skaluje się do dolnej
+  krawędzi zamiast przesuwać w dół), etykiety słupków w statystykach nie łamią słów w środku („międzysemestraln / a”), wiersz
+  „Dodaj grupę” w porównaniu mieści się na 360 px, a stopka nie zostawia podwójnego odstępu na unoszący się przycisk tygodnia.
 - **Egress:** panel monitoringu znów mieści swoje dane: nagłówki kart się nie łamią, tabela wydziałów nie ucina ostatnich kolumn
   (sztywny układ, liczby do prawej), wartości kafelków się nie zawijają (opóźnienia w sekundach, np. `5,7 s`), a raport bez kodu
   wyjścia czyta się jako „nieznany” zamiast „undefined”. Godziny raportów są w końcu lokalne (były w UTC czytanym jak lokalny),

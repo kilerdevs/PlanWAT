@@ -218,6 +218,8 @@
       if (!subject) return;
       var type = ev.CATEGORIES ? (splitList(ev.CATEGORIES[0].value)[0] || '') : '';
       var room = text(ev, 'LOCATION');
+      /* the faculties write "54/ 62" and "29/ 54 30/ 54": the space after the slash is noise in a room code */
+      if (room) room = room.replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ').trim();
       /* physical education (WF) is held at the sports centre, but the faculties list no room for it */
       if (!room && /wychowanie fizyczne/i.test(subject)) room = SPORTS_CENTRE;
       var color = text(ev, 'X-PLAN-COLOR');
@@ -288,7 +290,7 @@
     var by = {};
     (parsed.events || []).forEach(function (ev) {
       var name = text(ev, 'SUMMARY');
-      if (!name || text(ev, 'STATUS').toUpperCase() === 'CANCELLED') return;
+      if (!name || name === '-' || name === '–' || text(ev, 'STATUS').toUpperCase() === 'CANCELLED') return;
       var s = by[name] || (by[name] = { name: name, count: 0, color: '' });
       s.count++;
       var color = text(ev, 'X-PLAN-COLOR');
