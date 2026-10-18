@@ -130,6 +130,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
+- **Wykres pokrycia wydziałów już się nie zestarzeje:** `build.py` rysuje `pokrycie-wydzialow.svg` przy każdej budowie
+  z tych samych grup, które publikuje, a README pokazuje plik z wdrożonej strony zamiast kopii w repozytorium. Ręcznie
+  robiony `docs/diagrams/pokrycie-wydzialow.svg` i kolumna liczb w tabeli wydziałów znikają — liczby widać na wykresie.
 - **Strony dzielą wspólne style i skrypty:** to, co dotąd każda strona niosła w swoim HTML-u, build zapisuje raz w plikach
   `assets/` o nazwie z haszu treści; znacznik wczytuje je z sumą `integrity`, a bloki zostające w HTML nadal działają
   wyłącznie z hashy CSP. Przeglądarka i Service Worker biorą je raz na wydanie, a całe wdrożenie repozytoryjnego zestawu

@@ -9,6 +9,7 @@ Output (default: site/):
     mapa/index.html       campus map (MapLibre from unpkg, tiles from OpenFreeMap: the only page allowed them)
     prywatnosc/index.html privacy notice and terms of use
     assets/               the styles and scripts the pages share (each name carries a hash of its bytes)
+    pokrycie-wydzialow.svg  faculty coverage chart for README.md, drawn from the groups of this build
     sw.js, manifest.webmanifest, <GROUP>/manifest.webmanifest, icons/   offline worker and home-screen app
     robots.txt, .well-known/security.txt
     404.html
@@ -117,6 +118,15 @@ def plural_grup(n):
     if 2 <= m10 <= 4 and not 12 <= m100 <= 14:
         return f'{n} grupy'
     return f'{n} grup'
+
+
+def plural_wydzialy(n):
+    if n == 1:
+        return '1 wydział'
+    m10, m100 = n % 10, n % 100
+    if 2 <= m10 <= 4 and not 12 <= m100 <= 14:
+        return f'{n} wydziały'
+    return f'{n} wydziałów'
 
 
 class BuildError(Exception):
@@ -851,6 +861,81 @@ def render_404(template, base_path):
     return finish(template.replace('@@BASE@@', html.escape(base_path.rstrip('/'), quote=True)), connect=False)
 
 
+# one colour per faculty, taken from the hand-drawn chart this file replaced, so a bar keeps its colour as counts move
+COVERAGE_COLORS = {
+    'WML': '#0aa5aa', 'WCY': '#ff9f0a', 'WEL': '#b565a7', 'WLO': '#a2845e',
+    'WIM': '#68ab40', 'WTC': '#3a6ea5', 'IOE': '#f07a64', 'WIG': '#e5484d',
+}
+
+
+def render_coverage(current):
+    """Draw the faculty coverage chart that README.md shows from the deployed site.
+
+    README.md embeds site/pokrycie-wydzialow.svg, so the bars follow every refresh without a hand
+    edit; inside the build the file counts as another page asset and joins the worker's version, and
+    with no clock in it a quiet rebuild leaves that version (and everyone's offline copy) alone."""
+    order = {code: i for i, (code, _) in enumerate(FACULTIES)}
+    counts = {}
+    for group in current:
+        code = faculty_of(group)
+        counts[code] = counts.get(code, 0) + 1
+    rows = sorted(counts.items(), key=lambda row: (-row[1], order.get(row[0], len(order))))
+    total = sum(counts.values())
+    top = rows[0][1] if rows else 0
+    # a round axis wide enough for the longest bar: 200 maps to 2.2 px per group, like the old drawing
+    axis = next((step for step in (50, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000, 3000) if step >= top),
+                (top + 499) // 500 * 500)
+    scale = 440 / axis
+    height = 100 + len(rows) * 40
+
+    def num(value):
+        return f'{value:.1f}'.rstrip('0').rstrip('.')
+
+    def label(code):
+        return 'Pozostałe' if code == 'OTHER' else code
+
+    ticks = 0, axis // 2, axis
+    grid = ''.join(f'<path d="M{num(120 + t * scale)} 64V{height - 42}"/>' for t in ticks)
+    axis_line = ''.join(f'<text x="{num(120 + t * scale)}" y="{height - 22}">{t}{" grup" if t == axis else ""}</text>'
+                        for t in ticks)
+    labels = '\n'.join(f'  <text x="104" y="{88 + i * 40}">{label(code)}</text>' for i, (code, _) in enumerate(rows))
+    bars, values = [], []
+    for i, (code, n) in enumerate(rows):
+        width = n * scale
+        y = 70 + i * 40
+        bars.append(f'  <rect x="120" y="{y}" width="{num(width)}" height="24" rx="{4 if width < 16 else 7}" '
+                    f'fill="{COVERAGE_COLORS.get(code, "#86868b")}"/>')
+        values.append(f'    <text x="{num(130 + width)}" y="{y + 18}">{n}</text>')
+    faculties = len(rows) - (1 if 'OTHER' in counts else 0)
+    listed = ', '.join(f'{label(code)} {n} grup' if i == 0 else f'{label(code)} {n}'
+                       for i, (code, n) in enumerate(rows))
+    desc = (f'Wykres słupkowy: {listed}. Razem {total} grup.' if rows
+            else 'Wykres słupkowy: brak opublikowanych grup.')
+    bars_svg, values_svg = '\n'.join(bars), '\n'.join(values)
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 {height}" role="img" aria-labelledby="t d" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif">
+  <title id="t">Grupy według wydziału</title>
+  <desc id="d">{desc}</desc>
+  <rect width="800" height="{height}" rx="18" fill="#0b0f17"/>
+  <text x="40" y="42" fill="#f5f5f7" font-size="18" font-weight="700">{plural_grup(total)}, {plural_wydzialy(faculties)}</text>
+
+  <g stroke="#1c1c1e" stroke-width="1">{grid}</g>
+  <g fill="#86868b" font-size="11" text-anchor="middle">{axis_line}</g>
+
+  <g font-size="14" font-weight="600" fill="#f5f5f7" text-anchor="end">
+{labels}
+  </g>
+
+  <g>
+{bars_svg}
+  </g>
+
+  <g fill="#f5f5f7" font-size="13" font-weight="600">
+{values_svg}
+  </g>
+</svg>
+'''
+
+
 def manifest(name, short_name, scope, up, shortcuts=()):
     """A web app manifest; every URL is relative to the manifest so the site works under any base path.
 
@@ -983,6 +1068,9 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
         target = out / DATA_DIR / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
+
+    # the README chart lives among the deployed files: it can never drift from what the build published
+    (out / 'pokrycie-wydzialow.svg').write_text(render_coverage(current), encoding='utf-8')
 
     write_app(out, sorted(current), assets.written)
     if nginx_conf:

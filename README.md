@@ -262,20 +262,21 @@ statystyki, postęp, zmiany planu, wspólny wolny czas i zajęcia do odrobienia,
 
 ## Pokrycie wydziałów
 
-Plany ze stron wydziałów są odświeżane automatycznie. Obecnie opublikowanych jest **781 grup**.
+Plany ze stron wydziałów są odświeżane automatycznie. Wykres powstaje przy każdej publikacji strony, więc pokazuje
+liczbę udostępnionych grup na bieżąco.
 
-<img src="docs/diagrams/pokrycie-wydzialow.svg" alt="Wykres słupkowy grup według wydziału: WML 178, WCY 170, WEL 165, WLO 132, WIM 94, WTC 23, IOE 15, WIG 4, razem 781." width="760">
+<img src="https://kilerdevs.github.io/PlanWAT/pokrycie-wydzialow.svg" alt="Wykres słupkowy liczby udostępnionych grup według wydziału." width="760">
 
-| Wydział | Grup | Sterownik | Uwagi |
-|---|---:|---|---|
-| WML | 178 | `wml` | strony Plansoft, aktualny `index.xml` odnajdywany przez ramkę strony głównej |
-| WCY | 170 | `wcy` | lista grup z menu skoku; strony z planem poprzedniego semestru są pomijane |
-| WEL | 165 | `plansoft` | wspólna polityka dostępu z WLO |
-| WLO | 132 | `plansoft` | |
-| WIM | 94 | `plansoft` | |
-| WTC | 23 | `wtc` | plany w PDF konwertowane przez `pymupdf` |
-| IOE | 15 | `plansoft` | zimowe plany leżą pod katalogiem `lato/`, siatka jest transponowana |
-| WIG | 4 | ręcznie | pliki dodane do repozytorium |
+| Wydział | Sterownik | Uwagi |
+|---|---|---|
+| WML | `wml` | strony Plansoft, aktualny `index.xml` odnajdywany przez ramkę strony głównej |
+| WCY | `wcy` | lista grup z menu skoku; strony z planem poprzedniego semestru są pomijane |
+| WEL | `plansoft` | wspólna polityka dostępu z WLO |
+| WLO | `plansoft` | |
+| WIM | `plansoft` | |
+| WTC | `wtc` | plany w PDF konwertowane przez `pymupdf` |
+| IOE | `plansoft` | zimowe plany leżą pod katalogiem `lato/`, siatka jest transponowana |
+| WIG | ręcznie | pliki dodane do repozytorium |
 
 Brakuje swojej grupy? Zgłoś [prośbę o plan](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) z kodem
 grupy i linkiem do oficjalnego planu.

@@ -320,6 +320,23 @@ class BuildRealSiteTest(unittest.TestCase):
         for page in ('prywatnosc/index.html', '404.html'):
             self.assertNotIn('assets/', (self.out / page).read_text(encoding='utf-8'), page)
 
+    def test_coverage_chart_counts_exactly_the_groups_the_build_publishes(self):
+        published = [p.parent.name for p in self.out.glob('*/index.html')
+                     if p.parent.name not in (build.MAP_DIR, build.PRIVACY_DIR)]
+        counts = {}
+        for group in published:
+            counts[build.faculty_of(group)] = counts.get(build.faculty_of(group), 0) + 1
+        svg = (self.out / 'pokrycie-wydzialow.svg').read_text(encoding='utf-8')
+        self.assertIn(build.plural_grup(sum(counts.values())), svg)
+        for code, n in counts.items():
+            self.assertIn(f'>{code if code != "OTHER" else "Pozostałe"}<', svg)
+            self.assertRegex(svg, rf'{code} {n}\b')
+        self.assertNotIn('@@', svg)
+        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+        self.assertIn('https://kilerdevs.github.io/PlanWAT/pokrycie-wydzialow.svg', readme)
+        self.assertNotIn('docs/diagrams/pokrycie-wydzialow.svg', readme)
+        self.assertFalse((ROOT / 'docs' / 'diagrams' / 'pokrycie-wydzialow.svg').exists())  # never a stale copy again
+
     def test_group_page_first_paint_shows_the_calendar_metadata(self):
         html = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
         self.assertIn('<title>Plan zajęć WCY26KY3S1</title>', html)
