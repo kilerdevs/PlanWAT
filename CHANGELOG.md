@@ -16,6 +16,22 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Sesja egzaminacyjna** na stronie grupy: osobny arkusz z egzaminami i zaliczeniami z planu (filtr rodzaju, licznik dni,
+  eksport samych terminów do `.ics` z wybranym przypomnieniem). Bloki „Sesja …” i przerwy nie są już pokazywane jako zajęcia:
+  tydzień dostaje czytelny baner z datą, a dzień tylko notkę.
+- **Uczciwe statystyki:** godziny dydaktyczne liczone bez rezerwacji sal, przerw, świąt i bloków sesji; te pozycje są pokazane
+  osobno, żeby nie zawyżały średniej tygodniowej ani wykresów.
+- **Udostępnianie dnia:** arkusz „Udostępnij” z wyborem dnia, podglądem tekstu i obrazu PNG 1080 × 1350; obok niego link do całego
+  planu.
+- **Szybki wybór w „Wolnych salach”:** „Teraz”, „Po zajęciach” i „Jutro rano” ustawiają datę, godzinę i długość okna jednym dotknięciem.
+- **Własne dodatkowe zajęcia:** SKS, konsultacje, projekt — dodawane lokalnie, widoczne tylko w tej przeglądarce, z kontrolą kolizji
+  i bez wpływu na oficjalne statystyki, porównania i pobierany plan.
+- **Wybór przypomnienia w kalendarzu:** pobierany `.ics` jest generowany w przeglądarce, więc można wybrać brak przypomnienia,
+  15 min, 30 min, 1 h albo 1 dzień; subskrypcje zachowują stałe 15 min.
+- **Skróty aplikacji:** manifest PWA dostaje skróty „Wszystkie plany” / „Mój plan” i „Mapa kampusu”.
+- **Szukanie grupy bez kodu:** na stronie głównej arkusz „Nie znasz kodu grupy?” prowadzi przez wydział i rok naboru do kodu grupy.
+- **Mapa:** filtry „Otwarte teraz” i „Dostępne” czytają tagi `opening_hours` i `wheelchair` z OpenStreetMap. Nieznane godziny i brak
+  danych o dostępności są pokazywane jako nieznane, wyłączone z filtrów i policzone w nocie pod filtrami.
 - **Mapa:** miejsca wokół kampusu jako opisane plakietki: przystanki tramwajowe i autobusowe, akademiki, Domki Radiowa,
   stołówki, bufety, restauracje, bary, sklepy, paczkomaty i parkingi. Panel „Miejsca” przełącza kategorie, wyszukiwarka
   znajduje miejsca, a karta miejsca daje trasę pieszo. Dane w `src/places.js`, odtwarzane przez `tools/places/make_places.py` z
@@ -114,6 +130,38 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
+- **Wykres pokrycia wydziałów już się nie zestarzeje:** `build.py` rysuje `pokrycie-wydzialow.svg` przy każdej budowie
+  z tych samych grup, które publikuje, a README pokazuje plik z wdrożonej strony zamiast kopii w repozytorium. Ręcznie
+  robiony `docs/diagrams/pokrycie-wydzialow.svg` i kolumna liczb w tabeli wydziałów znikają — liczby widać na wykresie.
+- **Strony dzielą wspólne style i skrypty:** to, co dotąd każda strona niosła w swoim HTML-u, build zapisuje raz w plikach
+  `assets/` o nazwie z haszu treści; znacznik wczytuje je z sumą `integrity`, a bloki zostające w HTML nadal działają
+  wyłącznie z hashy CSP. Przeglądarka i Service Worker biorą je raz na wydanie, a całe wdrożenie repozytoryjnego zestawu
+  schudło z ~157 MB do ~55 MB — offline działa jak dotąd.
+- **CI w dwóch prędkościach:** push na `dev` uruchamia tylko szybkie konteksty (testy jednostkowe i budowa). Matryca
+  przeglądarek i skan obrazu Dockera odpalają się wyłącznie w przeglądzie wydania `dev → master`, gdzie wymagane konteksty
+  ochrony gałęzi `master` i tak ich szukają — ten sam commit nie jest już badany dwa razy za jednym pushem. Każdy przypadek
+  dostaje limit czasu, żeby zawieszony test nie pochłaniał godzin. Konteksty przeglądarkowe czytają przeglądarki Playwright
+  z pamięci podręcznej (pliki pobierane raz na podbicie zależności, nie raz na przebieg) i biegną na czterech wątkach
+  runnera GitHub (4 vCPU), który domyślnie zostawiał połowę rdzeni bezczynnymi. Audyt zależności developerskich wykonuje się
+  raz na przebieg (w testach jednostkowych), nie osobno w każdej przeglądarce.
+- `SAST` (CodeQL) nie odpala się już po pushu: kod pokrywają przeglądy wydania i poniedziałkowy przebieg zaplanowany,
+  a CodeQL z pusha powielał tylko wynik przeglądu wydania.
+- **Pages** pomija budowę i wdrożenie po cichym przebiegu odświeżania: przebieg bez nowych kalendarzy nie zmienia strony,
+  więc identyczne wdrożenie nic nie dodaje, a zaplanowana codzienna przebudowa i tak dogoni przełomy semestru. Bramka czyta
+  plik wyniku, który przebieg odświeżania wysyła jako artefakt.
+- Skany dostępności (axe) w testach czekają na koniec animacji wejścia: Firefox i WebKit potrafiły skanować sekcję jeszcze
+  w połowie pojawiania się — jej wtedy półprzezroczyste kolory czytane były jako niski kontrast, co dawało fałszywe
+  czerwone w CI. Skany teraz emulują `prefers-reduced-motion` i czekają, aż animacje przestaną biegać — jak robiły to już
+  skany arkusza grupy.
+- **Odświeżanie rozciąga przerwy cichym grupom:** każdy zakończony check z tym samym planem (również `304`) podwaja przerwę
+  tej grupy przed następnym sprawdzeniem, do sufitu `--adaptive-hours` (w akcji 4 h), więc spokojny semestr kosztuje mniej
+  więcej połowę zapytań do Incapsuli. Zmiana planu zeruje przerwę i grupa wraca na pełne tempo natychmiast.
+- **Obraz self-hosted kompresuje mocniej:** `gzip_comp_level 5` i `gzip_vary on` zamiast poziomu 1 z domyślnym.
+- **Strony dla studentów:** spokojniejsze wejście (nagłówek, wyszukiwarka i karty wydziałów na stronie głównej; panel mapy i
+  znaczniki budynków na mapie; nagłówek 404 i prywatności) — jedna krótka animacja, wyłączona przy `prefers-reduced-motion`.
+  Strona 404 jest wyśrodkowana, ma ikonę kalendarza i dwa wyjścia (lista planów, mapa kampusu). Wiersze przewijane w bok
+  (filtry wydziałów, narzędzia planu, budynki w „Wolnych salach”) bledną na uciętej krawędzi, dopóki jest co przesunąć, a tabela
+  porównawcza na telefonie dostaje podpis „Przesuń tabelę w bok” (strona prywatności nadal nie ma ani linijki JavaScriptu).
 - **Plan:** ✓ przy każdych skończonych zajęciach, nie tylko dzisiejszych.
 - **Mapa:** w widoku dnia pozostałe budynki cofają się, karta budynku jest zwarta, więc dotknięte zajęcia zostają widoczne,
   zwinięcie arkusza ponownie ustawia mapę, dotknięcie mapy zamyka legendę, a podpowiedź wyszukiwarki nie jest już ucięta w
@@ -127,8 +175,19 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Odświeżanie:** strony WCY z planem innego semestru (albo pustą siatką) liczą się jako jeszcze nieopublikowane, bez
   oznaczania przebiegu jako pogorszony.
 - `CI`, `Egress` i `SAST` nie uruchamiają się już po pushu na `master`: pull request wydania zdążył je wykonać.
+- **Egress:** karta bezczynnego postępu mówi jedno: chip „bez przebiegu” plus wiersz harmonogramu z odliczaniem (zdublowane
+  „brak aktywnego przebiegu” zniknęło), kolumna czasu w szczegółach przebiegu nazywa się „kiedy” zamiast „o”, a liczebniki
+  odmieniają się po polsku: „1 sprawdzony”, „72 pominięte”, „2 próby”.
 
 ### Naprawiono
+- **Rezerwacje:** bloki zarezerwowanych godzin nie pokazują już samotnego „-” ani licznika spotkań („Rezerwacja · 22/114”);
+  w planie, pasku „teraz / następne”, porównaniu i zmianach widnieją jako „Rezerwacja”, nie otwierają „Gdzie odrobić?” i nie
+  trafiają do legendy, postępu przedmiotów, liczby przedmiotów w statystykach ani „Moich przedmiotów”.
+- **Sale:** kody z ukośnikiem są zapisywane bez spacji (`54/ 62` → `54/62`, `29/ 54 30/ 54` → `29/54 30/54`) w planie,
+  na stronie głównej i w porównaniu.
+- **Strona grupy:** przewijany nagłówek nie wjeżdża już na przyciski narzędzi i przełącznik widoku (skaluje się do dolnej
+  krawędzi zamiast przesuwać w dół), etykiety słupków w statystykach nie łamią słów w środku („międzysemestraln / a”), wiersz
+  „Dodaj grupę” w porównaniu mieści się na 360 px, a stopka nie zostawia podwójnego odstępu na unoszący się przycisk tygodnia.
 - **Egress:** panel monitoringu znów mieści swoje dane: nagłówki kart się nie łamią, tabela wydziałów nie ucina ostatnich kolumn
   (sztywny układ, liczby do prawej), wartości kafelków się nie zawijają (opóźnienia w sekundach, np. `5,7 s`), a raport bez kodu
   wyjścia czyta się jako „nieznany” zamiast „undefined”. Godziny raportów są w końcu lokalne (były w UTC czytanym jak lokalny),
@@ -145,6 +204,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Odświeżanie:** wydział, któremu nie udało się wylistować grup (np. chwilowa awaria proxy egress w trakcie przebiegu), nie
   przepisuje już do raportu zeszłego wpisu — dostaje świeży wpis z przyczyną `listing` i flagą zdegradowany, więc panel i
   zgłoszenie mówią, co naprawdę się stało, a stara degradacja nie ciągnie się przez kolejne przebiegi.
+- **Egress:** panel nie przelewa się na wąskich ekranach: wiersze przebiegów układają się w bloki, a szczegóły przewijają się
+  poziomo w swojej własnej tabeli (zamiast rozsypywać kolumny i wypychać kartę poza ekran), tabela wydziałów i pula chowają
+  najmniej istotne kolumny („obejścia”, „źródło”), a kafelki nie przycinają etykiet (np. „odrzuconych”). Panel znosi też
+  powiększoną czcionkę przeglądarki: nagłówki kolumn liczb mają zapas (w najgorszym razie kończą się wielokropkiem zamiast
+  nachodzić na siebie), długie etykiety kafelków dzielą się z myślnikiem, a licznik nowych wychodów przeniósł się do nagłówka
+  karty puli.
 - **Prywatność:** aliasy prowadzących (inicjał i nazwisko sklejone w polu sali, np. `AKowalski`) nie trafiają już do planów.
   Konwerter je odrzuca, `build.py` odmawia zbudowania kalendarza z takim polem, a `tools/scrub_staff.py` czyści już opublikowane.
 - **iPhone:** przyciski nad planem są zwarte zamiast dużych owali, „Zainstaluj aplikację” pokazuje kroki dodania do

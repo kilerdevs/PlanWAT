@@ -9,6 +9,10 @@ conditional revalidation so unchanged pages answer 304), converts pages that cha
 way the site's build does, and writes <out>/timetables/<term>/<GROUP>.ics only when the plan really changed.
 Progress lives in <out>/refresh-state.json, so a stopped run resumes where it stopped.
 
+A group whose plan keeps coming back unchanged stretches its revalidation gap (doubles per quiet check up to
+--adaptive-hours, off with 0), so a quiet semester costs a fraction of the requests; the moment a plan moves,
+the group is hot again and rides every pass.
+
 A block (any status but 200/304/404, an Incapsula incident page) no longer ends the run: that faculty is
 deferred while the others are covered, then the run sleeps out the block and resumes. How long to sleep is
 learned per policy group from past recoveries (median, 20 min .. 12 h, 2 h without history; wall-caused
@@ -344,6 +348,23 @@ def remember_validators(entry, response):
         entry['etag'] = etag
 
 
+def noted_quiet(entry):
+    """A check finished with the same plan: the group's next revalidation gap doubles.
+
+    core.quiet_interval turns the streak into hours; a change resets it (noted_change),
+    so a plan that just moved stays on the full cadence.
+    """
+    try:
+        entry['streak'] = int(entry.get('streak', 0)) + 1
+    except (TypeError, ValueError):
+        entry['streak'] = 1
+
+
+def noted_change(entry):
+    """The plan really moved: the group is hot again and is checked every pass."""
+    entry['streak'] = 0
+
+
 def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic,
                     progress=None, ahead=False):
     """Returns (changed codes, blocked, complete). `today` is a date inside the semester to refresh; with `ahead`
@@ -403,9 +424,13 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
     now = core.now_utc()
     key = (lambda code: f'{code}@{tid}') if ahead else (lambda code: code)
     # Twice the cadence while the faculties publish the coming semester; a per-faculty
-    # override wins over the default but never drops below one hour.
+    # override wins over the default but never drops below one hour. On top of that,
+    # a group that keeps coming back unchanged stretches its gap (--adaptive-hours),
+    # so a quiet semester costs about half of yesterday's requests.
     fresh_hours = core.effective_fresh_hours(max(1, cfg.get('fresh_hours', args.fresh_hours)), today)
-    todo = [i for i in items if args.force or not state.fresh(key(i.code), now, fresh_hours, tid)]
+    todo = [i for i in items if args.force or not state.fresh(
+        key(i.code), now, core.quiet_interval(state.groups.get(key(i.code), {}),
+                                              fresh_hours, args.adaptive_hours), tid)]
     # Stalest first: a run cut short by --max-minutes, --limit or a block refreshes the groups
     # unseen the longest. Never-checked ('') sorts before any ISO timestamp; the code breaks ties
     # so the order is deterministic. The limit slices after the sort, keeping the stalest N.
@@ -476,6 +501,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             # The server says the page is byte-identical: no download, no conversion, just a fresh check mark.
             remember_validators(entry, r)
             entry['checked'] = core.now_utc().isoformat()
+            noted_quiet(entry)
             continue
         raw = r.content
         text = raw.decode('utf-8', errors='replace')
@@ -497,6 +523,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         old = path.read_text(encoding='utf-8') if path.is_file() else None
         if old is not None and entry.get('hash') == digest:
             entry['checked'] = core.now_utc().isoformat()
+            noted_quiet(entry)
             continue
         try:
             ics = core.to_crlf(driver.convert(item, raw))
@@ -527,8 +554,10 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             continue
         entry.update(hash=digest, checked=core.now_utc().isoformat(), term=tid)
         if core.same_plan(old, ics):
+            noted_quiet(entry)
             continue
         entry['changed'] = entry['checked']
+        entry['streak'] = 0
         changed.append(item.code)
         log(f'[{name}] {item.code}: {"new" if old is None else "changed"}')
         if not args.dry_run:
@@ -569,6 +598,9 @@ def parse(argv=None):
     ap.add_argument('--limit', type=int, default=0, help='check at most N groups per faculty')
     ap.add_argument('--max-minutes', type=float, default=0, help='stop gracefully after this long (0 = no limit)')
     ap.add_argument('--fresh-hours', type=float, default=1.0, help='skip groups checked more recently than this')
+    ap.add_argument('--adaptive-hours', type=float, default=4.0,
+                    help='a group answering unchanged doubles its revalidation gap (1 h, 2 h, 4 h, ...) '
+                         'up to this many hours; 0 disables the stretching')
     ap.add_argument('--force', action='store_true', help='ignore --fresh-hours')
     ap.add_argument('--dry-run', action='store_true', help='fetch and convert, write nothing')
     ap.add_argument('--retries', type=int, default=3,

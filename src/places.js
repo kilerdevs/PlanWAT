@@ -19,7 +19,7 @@
     {"id": "park", "label": "Parkingi", "color": "#5e86e8", "zoom": 16}
   ];
 
-  /* [category, longitude, latitude, name] */
+  /* [category, longitude, latitude, name] plus, only when OpenStreetMap has them, opening_hours and wheelchair */
   var ROWS = [
     ["tram",20.89784,52.25562,"Archimedesa"],
     ["tram",20.89984,52.26344,"Boernerowo"],
@@ -35,18 +35,18 @@
     ["tram",20.89821,52.25251,"WAT"],
     ["tram",20.91962,52.25686,"Wrocławska"],
     ["bus",20.89797,52.25626,"Archimedesa"],
-    ["bus",20.91108,52.24717,"Dywizjonu 303"],
-    ["bus",20.89752,52.246,"Fort Blizne"],
+    ["bus",20.91108,52.24717,"Dywizjonu 303",null,"yes"],
+    ["bus",20.89752,52.246,"Fort Blizne",null,"yes"],
     ["bus",20.89811,52.24782,"Fort Blizne"],
-    ["bus",20.89415,52.24982,"Kartezjusza"],
-    ["bus",20.89793,52.24881,"Kocjana"],
-    ["bus",20.88595,52.25119,"Kocjana-Bocznica"],
-    ["bus",20.88936,52.25064,"Kocjana-Sądy"],
-    ["bus",20.91709,52.25526,"Pirenejska"],
-    ["bus",20.9127,52.25271,"Radiowa"],
-    ["bus",20.91448,52.25156,"Radiowa"],
-    ["bus",20.90608,52.25528,"Radiowa-WAT"],
-    ["bus",20.89849,52.25836,"Stare Bemowo"],
+    ["bus",20.89415,52.24982,"Kartezjusza",null,"yes"],
+    ["bus",20.89793,52.24881,"Kocjana",null,"yes"],
+    ["bus",20.88595,52.25119,"Kocjana-Bocznica",null,"yes"],
+    ["bus",20.88936,52.25064,"Kocjana-Sądy",null,"yes"],
+    ["bus",20.91709,52.25526,"Pirenejska",null,"yes"],
+    ["bus",20.9127,52.25271,"Radiowa",null,"yes"],
+    ["bus",20.91448,52.25156,"Radiowa",null,"yes"],
+    ["bus",20.90608,52.25528,"Radiowa-WAT",null,"yes"],
+    ["bus",20.89849,52.25836,"Stare Bemowo",null,"yes"],
     ["bus",20.89835,52.25158,"WAT"],
     ["dorm",20.89719,52.25214,"Akademik Wojskowy nr 1"],
     ["dorm",20.89686,52.25653,"Akademik Wojskowy nr 2"],
@@ -61,69 +61,74 @@
     ["canteen",20.89574,52.25133,"Stołówka Wojskowa nr 3"],
     ["canteen",20.89452,52.25446,"Stołówka wojskowa nr 1"],
     ["bufet",20.8953,52.25063,"Bufet w Przychodni WAT"],
-    ["rest",20.91499,52.25191,"Costa"],
-    ["rest",20.91611,52.253,"Dobra Buła"],
-    ["rest",20.91204,52.24747,"Domino's"],
+    ["rest",20.91499,52.25191,"Costa","Mo-Fr 07:30-21:00; Sa 08:30-21:00; Su 09:00-21:00"],
+    ["rest",20.91611,52.253,"Dobra Buła","Mo-Th, Su 12:00-21:00; Fr, Sa 12:00-21:30"],
+    ["rest",20.91204,52.24747,"Domino's","Su-Th 10:00-23:00; Fr-Sa 10:00-24:00"],
     ["rest",20.89768,52.25552,"Imperium"],
-    ["rest",20.91207,52.24757,"Kebab King"],
+    ["rest",20.91207,52.24757,"Kebab King","Mo-Su 09:00-24:00"],
     ["rest",20.89027,52.2501,"Loft Kocjana"],
     ["rest",20.89855,52.25885,"Pan Mniam"],
-    ["rest",20.89642,52.26009,"Sąsiedzi"],
+    ["rest",20.89642,52.26009,"Sąsiedzi","08:00-22:00; Fr,Sa 08:00-23:00"],
     ["rest",20.89637,52.25184,"TaPizzeria"],
     ["rest",20.91399,52.25117,"Thai Viet Food"],
     ["rest",20.89809,52.25957,"Łośka"],
     ["bar",20.91401,52.25119,"Bar, pub, piwo, jedzenie, ogródek"],
-    ["shop",20.89639,52.25166,""],
-    ["shop",20.89681,52.25793,""],
-    ["shop",20.89684,52.25989,""],
+    ["shop",20.89639,52.25166,"","Mo-Fr 10:30-18:30; Sa 10:00-14:00"],
+    ["shop",20.89681,52.25793,"","Mo-Fr 06:00-19:00; Sa 06:00-13:00","no"],
+    ["shop",20.89684,52.25989,"","Mo-Fr 08:00-19:00; Sa 08:00-15:00"],
     ["shop",20.89737,52.25976,""],
-    ["shop",20.89843,52.24615,""],
-    ["shop",20.89857,52.25229,""],
+    ["shop",20.89843,52.24615,"",null,"yes"],
+    ["shop",20.89857,52.25229,"","Mo-Fr 06:00-18:00; Sa 07:30-12:00; Su off"],
     ["shop",20.91206,52.24739,""],
     ["shop",20.9135,52.25315,""],
     ["shop",20.91403,52.25329,""],
-    ["shop",20.89458,52.25563,"Archimedes"],
-    ["shop",20.89927,52.26086,"Auto Serwis"],
-    ["shop",20.91458,52.25077,"Biedronka"],
-    ["shop",20.91231,52.24847,"Break&Wash"],
-    ["shop",20.91237,52.24831,"Circle K"],
+    ["shop",20.89458,52.25563,"Archimedes","Mo-Fr 07:00-21:00; Sa-Su 09:00-17:00"],
+    ["shop",20.89927,52.26086,"Auto Serwis Tomasz Kinkel"],
+    ["shop",20.91458,52.25077,"Biedronka","Mo-Sa 06:00-23:30"],
+    ["shop",20.91231,52.24847,"Break&Wash","24/7"],
+    ["shop",20.91237,52.24831,"Circle K","24/7","yes"],
     ["shop",20.89906,52.25128,"Copy Right"],
-    ["shop",20.8973,52.247,"Delikatesy Patryk"],
-    ["shop",20.89739,52.25889,"Donat"],
+    ["shop",20.8973,52.247,"Delikatesy Patryk","Mo-Fr 06:00-21:30; Sa 07:00-19:00; Su 08:00-16:00"],
+    ["shop",20.89739,52.25889,"Donat","24/7","yes"],
     ["shop",20.9143,52.25113,"Dorabianie kluczy"],
-    ["shop",20.91343,52.2531,"Drukarnia cyfrowa"],
+    ["shop",20.91343,52.2531,"Drukarnia cyfrowa","Mo-Fr 10:00-18:00; Sa-Sa off","no"],
     ["shop",20.91225,52.25344,"Galeria alkoholi"],
-    ["shop",20.91588,52.25147,"Hermes"],
-    ["shop",20.89395,52.2496,"Lewiatan"],
+    ["shop",20.91588,52.25147,"Hermes","Mo-Fr 09:00-17:00"],
+    ["shop",20.89395,52.2496,"Lewiatan","Mo-Sa 06:00-22:00; Su 08:00-20:00"],
     ["shop",20.90471,52.24642,"Lewiatan"],
     ["shop",20.90775,52.24648,"Mechanika, silniki, podwozia"],
-    ["shop",20.8937,52.24961,"Mini Delikatesy"],
-    ["shop",20.89855,52.24615,"Oskroba"],
-    ["shop",20.89637,52.25178,"Putka"],
+    ["shop",20.8937,52.24961,"Mini Delikatesy","Mo-Fr 07:00-22:00; Sa 08:00-22:00; Su 09:00-20:00"],
+    ["shop",20.89855,52.24615,"Oskroba","Mo-Fr 07:00-19:00; Sa 07:00-14:00","yes"],
+    ["shop",20.89637,52.25178,"Putka","Mo-Fr 06:00-20:00; Sa 07:00-14:00"],
     ["shop",20.91508,52.25185,"Quality Missala"],
-    ["shop",20.91336,52.253,"Rossmann"],
+    ["shop",20.91336,52.253,"Rossmann","Mo-Fr 09:30-20:30; Sa 09:00-18:30; Su 10:00-16:00","yes"],
     ["shop",20.91447,52.25137,"Serwis AGD"],
-    ["shop",20.89733,52.25964,"Społem Wola"],
-    ["shop",20.91311,52.2529,"Stokrotka"],
-    ["shop",20.89799,52.25924,"Strelicja"],
-    ["shop",20.89869,52.24614,"Żabka"],
-    ["shop",20.91261,52.25219,"Żabka"],
-    ["shop",20.89801,52.25254,"Żabka Nano"],
-    ["parcel",20.914,52.25127,"Allegro One Box"],
-    ["parcel",20.89629,52.25241,"Appkomat InPost"],
+    ["shop",20.89733,52.25964,"Społem Wola","Mo-Fr 06:30-21:00; Sa 07:00-19:00; Su 09:00-15:00"],
+    ["shop",20.91311,52.2529,"Stokrotka","Mo-Fr 06:30-22:30; Sa 06:30-22:30; Su 08:00-21:30","yes"],
+    ["shop",20.89799,52.25924,"Strelicja","Mo-Fr 10:00-19:00; Sa 09:00-18:00; Su 10:00-15:00"],
+    ["shop",20.89869,52.24614,"Żabka","Mo-Sa 06:00-23:00; Su 10:00-21:00","yes"],
+    ["shop",20.91261,52.25219,"Żabka","Mo-Sa 06:00-23:00; Su 10:00-21:00"],
+    ["shop",20.89801,52.25254,"Żabka Nano","24/7","yes"],
+    ["parcel",20.90671,52.24439,"Allegro One Box","24/7"],
+    ["parcel",20.914,52.25127,"Allegro One Box","24/7"],
+    ["parcel",20.89629,52.25241,"Appkomat InPost","24/7"],
+    ["parcel",20.90677,52.2435,"DHL"],
+    ["parcel",20.90672,52.24433,"DPD"],
     ["parcel",20.91341,52.25289,"DPD Pickup Station"],
-    ["parcel",20.89729,52.25987,"Orlen Paczka"],
-    ["parcel",20.89404,52.25567,"Paczkomat InPost"],
-    ["parcel",20.89532,52.25573,"Paczkomat InPost"],
-    ["parcel",20.90262,52.25753,"Paczkomat InPost"],
-    ["parcel",20.90443,52.25539,"Paczkomat InPost"],
-    ["parcel",20.90577,52.2457,"Paczkomat InPost"],
-    ["parcel",20.90766,52.24647,"Paczkomat InPost"],
-    ["parcel",20.91235,52.25218,"Paczkomat InPost"],
-    ["parcel",20.9125,52.24826,"Paczkomat InPost"],
-    ["parcel",20.91435,52.24918,"Paczkomat InPost"],
-    ["parcel",20.91503,52.25201,"Paczkomat InPost"],
-    ["parcel",20.91823,52.25098,"Paczkomat InPost"],
+    ["parcel",20.89729,52.25987,"Orlen Paczka","24/7"],
+    ["parcel",20.90674,52.24426,"Orlen Paczka"],
+    ["parcel",20.89404,52.25567,"Paczkomat InPost","24/7"],
+    ["parcel",20.89532,52.25573,"Paczkomat InPost","24/7"],
+    ["parcel",20.90262,52.25753,"Paczkomat InPost","24/7"],
+    ["parcel",20.90443,52.25539,"Paczkomat InPost","24/7"],
+    ["parcel",20.90577,52.2457,"Paczkomat InPost","24/7"],
+    ["parcel",20.90654,52.24419,"Paczkomat InPost","24/7"],
+    ["parcel",20.90766,52.24647,"Paczkomat InPost","24/7"],
+    ["parcel",20.91235,52.25218,"Paczkomat InPost","24/7"],
+    ["parcel",20.9125,52.24826,"Paczkomat InPost","24/7"],
+    ["parcel",20.91435,52.24918,"Paczkomat InPost","24/7"],
+    ["parcel",20.91503,52.25201,"Paczkomat InPost","24/7"],
+    ["parcel",20.91823,52.25098,"Paczkomat InPost","24/7"],
     ["park",20.88745,52.2496,""],
     ["park",20.88764,52.25092,""],
     ["park",20.889,52.24945,""],
@@ -212,7 +217,12 @@
   var byId = {};
   CATEGORIES.forEach(function (c) { byId[c.id] = c; });
   var PLACES = ROWS.map(function (r, i) {
-    return { id: i, cat: byId[r[0]], lng: r[1], lat: r[2], name: r[3] || byId[r[0]].label };
+    var wheel = r[5];
+    if (wheel !== 'yes' && wheel !== 'limited' && wheel !== 'no') wheel = null;
+    return {
+      id: i, cat: byId[r[0]], lng: r[1], lat: r[2], name: r[3] || byId[r[0]].label,
+      hours: typeof r[4] === 'string' && r[4] ? r[4] : null, wheelchair: wheel
+    };
   });
 
   function fold(s) {
@@ -237,7 +247,193 @@
     return 'https://www.google.com/maps/dir/?api=1&destination=' + p.lat + ',' + p.lng + '&travelmode=walking';
   }
 
-  var Places = { CATEGORIES: CATEGORIES, PLACES: PLACES, search: search, count: count, directionsUrl: directionsUrl };
+  /* ---- opening hours: a deliberately small, conservative reading of OpenStreetMap's opening_hours ----
+     Supported: 24/7, day sets (Mo, Mo-Fr, Mo,We,Fr, Sa-Su), several rules separated by ";",
+     time ranges (07:00-18:00), several ranges per rule, "off" and "PH off". Overnight ranges such as
+     22:00-02:00 are understood. Anything else (seasons, sunrise/sunset, "by appointment", month rules)
+     is reported as unknown instead of guessed. */
+  var DAY_INDEX = { mo: 0, tu: 1, we: 2, th: 3, fr: 4, sa: 5, su: 6 };
+  var DAY_PREFIX = /^((?:[A-Za-z]{2})(?:\s*-\s*[A-Za-z]{2})?(?:\s*,\s*[A-Za-z]{2}(?:\s*-\s*[A-Za-z]{2})?)*)\s+(.+)$/;
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function clock(mins) { return pad2(Math.floor(mins / 60)) + ':' + pad2(mins % 60); }
+
+  function parseClock(text) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(text);
+    if (!m) return null;
+    var h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+    if (min > 59 || h > 24 || (h === 24 && min !== 0)) return null;
+    return h * 60 + min;
+  }
+
+  function parseDays(text) {
+    var out = [];
+    var parts = text.split(',');
+    for (var i = 0; i < parts.length; i++) {
+      var m = /^([A-Za-z]{2})(?:\s*-\s*([A-Za-z]{2}))?$/.exec(parts[i].replace(/^\s+|\s+$/g, ''));
+      if (!m) return null;
+      var a = DAY_INDEX[m[1].toLowerCase()], b = m[2] ? DAY_INDEX[m[2].toLowerCase()] : a;
+      if (a == null || b == null) return null;
+      /* OSM allows a range that wraps around the week, e.g. "Su-Th" (Sunday through Thursday) */
+      for (var d = a; ; d = (d + 1) % 7) {
+        if (out.indexOf(d) < 0) out.push(d);
+        if (d === b) break;
+      }
+    }
+    return out.length ? out : null;
+  }
+
+  function parseRanges(text) {
+    var out = [];
+    var parts = text.split(',');
+    for (var i = 0; i < parts.length; i++) {
+      var m = /^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(parts[i].replace(/^\s+|\s+$/g, ''));
+      if (!m) return null;
+      var a = parseClock(m[1]), b = parseClock(m[2]);
+      if (a == null || b == null || a === b || a >= 1440) return null;
+      out.push([a, b]);
+    }
+    return out.length ? out : null;
+  }
+
+  function parseHours(raw) {
+    var spec = String(raw == null ? '' : raw).replace(/^\s+|\s+$/g, '');
+    if (!spec) return null;
+    var rules = [], phOff = false, always = false;
+    var parts = spec.split(';');
+    for (var i = 0; i < parts.length; i++) {
+      var rule = parts[i].replace(/^\s+|\s+$/g, '');
+      if (!rule) continue;
+      if (/^24\s*\/\s*7$/i.test(rule)) {
+        if (rules.length) return null;
+        always = true;
+        continue;
+      }
+      if (/^PH\s+off$/i.test(rule)) { phOff = true; continue; }
+      if (/^PH\b/i.test(rule)) return null;  // other public-holiday rules are outside the subset
+      var m = DAY_PREFIX.exec(rule);
+      var days, rest;
+      if (m) {
+        days = parseDays(m[1]);
+        rest = m[2].replace(/^\s+|\s+$/g, '');
+        if (!days) return null;
+      } else {
+        days = [0, 1, 2, 3, 4, 5, 6];
+        rest = rule;
+      }
+      if (/^off$/i.test(rest)) {
+        if (always) return null;
+        rules.push({ days: days, off: true });
+        continue;
+      }
+      var ranges = parseRanges(rest);
+      if (!ranges || always) return null;
+      rules.push({ days: days, off: false, ranges: ranges });
+    }
+    if (always) return { always: true, phOff: phOff, byDay: null };
+    if (!rules.length) return null;  // "PH off" alone does not say when the place is open
+    var byDay = [null, null, null, null, null, null, null];
+    for (i = 0; i < rules.length; i++) {
+      for (var j = 0; j < rules[i].days.length; j++) {
+        byDay[rules[i].days[j]] = rules[i].off ? [] : rules[i].ranges;  // later rules override earlier ones
+      }
+    }
+    return { always: false, phOff: phOff, byDay: byDay };
+  }
+
+  /* Polish public holidays, so "PH off" is not a guess: fixed dates plus Easter, Pentecost and Corpus Christi. */
+  function easterSunday(year) {
+    var a = year % 19, b = Math.floor(year / 100), c = year % 100;
+    var d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+    var g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+    var i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+    var m = Math.floor((a + 11 * h + 22 * l) / 451);
+    var month = Math.floor((h + l - 7 * m + 114) / 31);
+    var day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day, 12);
+  }
+
+  function sameDate(a, month, day) {
+    return a.getMonth() + 1 === month && a.getDate() === day;
+  }
+
+  function isPolishHoliday(date) {
+    var fixed = [[1, 1], [1, 6], [5, 1], [5, 3], [8, 15], [11, 1], [11, 11], [12, 25], [12, 26]];
+    var month = date.getMonth() + 1, day = date.getDate();
+    for (var i = 0; i < fixed.length; i++) {
+      if (fixed[i][0] === month && fixed[i][1] === day) return true;
+    }
+    var easter = easterSunday(date.getFullYear());
+    var offsets = [0, 1, 49, 60];  // Easter Sunday, Easter Monday, Pentecost, Corpus Christi
+    for (i = 0; i < offsets.length; i++) {
+      var holiday = new Date(easter.getFullYear(), easter.getMonth(), easter.getDate() + offsets[i], 12);
+      if (sameDate(holiday, month, day)) return true;
+    }
+    return false;
+  }
+
+  function unknownState() { return { state: 'unknown', label: 'Godziny nieznane' }; }
+  function openLabel(end) {
+    return { state: 'open', label: 'Otwarte do ' + clock(end) };
+  }
+  function sameRanges(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+    }
+    return true;
+  }
+
+  function openState(p, date) {
+    var now = date instanceof Date ? date : new Date();
+    if (isNaN(now.getTime())) return unknownState();
+    if (!p || !p.hours) return unknownState();
+    var schedule = parseHours(p.hours);
+    if (!schedule) return unknownState();
+    if (schedule.phOff && isPolishHoliday(now)) return { state: 'closed', label: 'Zamknięte · święto' };
+    if (schedule.always) return { state: 'open', label: 'Otwarte 24/7' };
+
+    var day = (now.getDay() + 6) % 7;  // Monday = 0
+    var mins = now.getHours() * 60 + now.getMinutes();
+    var today = schedule.byDay[day] || [];
+    var yesterday = schedule.byDay[(day + 6) % 7] || [];
+    var i, r;
+
+    /* an overnight rule that started yesterday is still open early today. A normal rule for today replaces
+       earlier rules for the whole day (so "Sa 16:00-03:00; Su 16:00-23:00" is closed early on Sunday), but
+       a schedule that repeats the same overnight range every day still covers the early hours. */
+    var todaySame = today.length > 0 && yesterday.length > 0 && sameRanges(today, yesterday);
+    if (schedule.byDay[day] === null || todaySame) {
+      for (i = 0; i < yesterday.length; i++) {
+        r = yesterday[i];
+        if (r[1] < r[0] && mins < r[1]) return openLabel(r[1]);
+      }
+    }
+    for (i = 0; i < today.length; i++) {
+      r = today[i];
+      if (r[1] > r[0]) {
+        if (mins >= r[0] && mins < r[1]) return openLabel(r[1]);
+      } else if (mins >= r[0]) {
+        return openLabel(r[1]);
+      }
+    }
+    return { state: 'closed', label: 'Zamknięte' };
+  }
+
+  function isOpenNow(p, now) { return openState(p, now).state === 'open'; }
+
+  function wheelchairLabel(p) {
+    var w = p && p.wheelchair;
+    if (w === 'yes') return 'Dostępne';
+    if (w === 'limited') return 'Częściowo dostępne';
+    if (w === 'no') return 'Niedostępne';
+    return null;
+  }
+
+  var Places = {
+    CATEGORIES: CATEGORIES, PLACES: PLACES, search: search, count: count, directionsUrl: directionsUrl,
+    parseHours: parseHours, openState: openState, isOpenNow: isOpenNow, wheelchairLabel: wheelchairLabel
+  };
   if (typeof module === 'object' && module.exports) module.exports = Places;
   else root.Places = Places;
 })(this);

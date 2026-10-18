@@ -36,19 +36,25 @@
     line-height: 1.45;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
   }
   main {
+    width: 100%;
     max-width: calc(560px + 32px);
     margin: 0 auto;
     padding: calc(env(safe-area-inset-top) + 56px) max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left));
   }
+  .mark { display: block; width: 52px; height: 52px; margin-bottom: 20px; color: var(--t2); }
+  .mark .x { stroke: var(--accent); }
   h1 { margin: 0; font-size: 2.5rem; font-weight: 700; line-height: 1.04; letter-spacing: -0.035em; }
   p { margin: 12px 0 0; font-size: 1.0625rem; color: var(--t2); }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
   a {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
-    margin-top: 24px;
     padding: 0 20px;
     border-radius: 999px;
     background: var(--s2);
@@ -61,18 +67,32 @@
     outline-offset: 6px;
     transition: background-color 150ms, outline-color 150ms, outline-offset 300ms cubic-bezier(0.22, 1, 0.36, 1);
   }
+  a.ghost { background: transparent; box-shadow: inset 0 0 0 1px rgba(var(--hl), 0.14); }
   a:focus-visible { outline-color: var(--accent); outline-offset: 2px; }
   a:active { background: var(--s3); }
-  @media (hover: hover) and (pointer: fine) { a:hover { background: var(--s3); } }
-  @media (min-width: 768px) { main { padding-top: 96px; } h1 { font-size: 4rem; letter-spacing: -0.04em; } }
+  @media (hover: hover) and (pointer: fine) { a:hover { background: var(--s3); } a.ghost:hover { background: var(--s2); } }
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+    .enter { animation: rise 600ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: calc(var(--d, 0) * 55ms); }
+    .d1 { --d: 1; } .d2 { --d: 2; } .d3 { --d: 3; }
+  }
+  @media (min-width: 768px) { main { padding-top: 96px; } h1 { font-size: 4rem; letter-spacing: -0.04em; } .mark { width: 64px; height: 64px; } }
 /*@@THEME_CSS@@*/
 </style>
 </head>
 <body>
 <main>
-  <h1>Nie znaleziono strony</h1>
-  <p>Pod tym adresem nie ma planu zajęć. Sprawdź kod grupy albo wybierz ją z listy.</p>
-  <a href="@@BASE@@/">Wszystkie plany</a>
+  <svg class="mark enter" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+    <rect x="9" y="13" width="46" height="42" rx="11" fill="none" stroke="currentColor" stroke-width="3.5"/>
+    <path d="M9 26h46M22 7v10M42 7v10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+    <path class="x" d="m25 36 14 14M39 36 25 50" fill="none" stroke-width="4" stroke-linecap="round"/>
+  </svg>
+  <h1 class="enter d1">Nie znaleziono strony</h1>
+  <p class="enter d2">Pod tym adresem nie ma planu zajęć. Sprawdź kod grupy albo wybierz ją z listy.</p>
+  <div class="actions enter d3">
+    <a href="@@BASE@@/">Wszystkie plany</a>
+    <a class="ghost" href="@@BASE@@/mapa/">Mapa kampusu</a>
+  </div>
 </main>
 </body>
 </html>

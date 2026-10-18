@@ -11,6 +11,7 @@ const I = require('../src/insights.js');
 
 const ROOT = path.join(__dirname, '..');
 const REAL = PlanICS.toPlan(PlanICS.parse(fs.readFileSync(path.join(ROOT, 'timetables', '2026-27-zima', 'WCY26KY3S1.ics'), 'utf8')));
+const WME = PlanICS.toPlan(PlanICS.parse(fs.readFileSync(path.join(ROOT, 'timetables', '2026-27-zima', 'WME24BM1S1.ics'), 'utf8')));
 
 function L(date, start, end, subject, type = 'Wykład', room = '100 S') {
   return { date, start, end, subject_full: subject, type_full: type, room };
@@ -29,6 +30,33 @@ function planOf(list) {
   });
   return { meta: {}, subjectColors: {}, weeks: Object.keys(weeks).sort().map((k) => weeks[k]) };
 }
+
+/* one plan with every kind of block: classes, reservations, breaks, a session period and exams */
+const MIX = planOf([
+  L('2026-10-20', '08:00', '09:35', 'Fizyka 2', 'Wykład', '108/54'),
+  L('2026-10-20', '09:50', '11:25', 'Analiza matematyczna', 'Ćwiczenia', '108/54'),
+  L('2026-10-20', '11:40', '13:15', '-', 'Rezerwacja', '-'),
+  L('2026-10-20', '13:30', '15:05', 'Biologia', 'Laboratorium', ''),
+  L('2026-10-21', '08:00', '09:35', 'Chemia', 'Wykład', '-'),
+  L('2026-10-21', '09:50', '11:25', '–', 'Czas do dyspozycji dowódcy', ''),
+  L('2026-12-24', '08:00', '09:35', '-', 'przerwa   świąteczna', ''),
+  L('2026-12-25', '09:50', '11:25', '-', 'przerwa świąteczna', ''),
+  L('2026-12-26', '08:00', '09:35', '-', 'święto', ''),
+  L('2027-02-01', '08:00', '09:35', '-', 'Sesja egz. zasadnicza', ''),
+  L('2027-02-02', '08:00', '09:35', '-', 'Sesja egz. zasadnicza', ''),
+  L('2027-02-15', '08:00', '09:35', '-', 'Sesja egz. poprawkowa', ''),
+  L('2026-09-10', '09:50', '11:25', 'Wytrzymałość materiałów', 'Egzamin poprawkowy', '8/62'),
+  L('2027-02-01', '09:50', '11:25', 'Systemy wbudowane', 'Egzamin', '15/23A'),
+  L('2027-02-02', '11:40', '13:15', 'Grafika w inżynierii biomedycznej', 'Zaliczenie poprawkowe  lab.', '9/54 18/54'),
+  L('2027-02-03', '08:00', '09:35', 'Algebra', 'Zaliczenie', '1/1'),
+  L('2027-02-03', '10:00', '11:35', 'Fizyka 2', 'Egzamin', '2/2'),
+  L('2027-02-04', '08:00', '09:35', '-', 'Egzamin oficerski', ''),
+  L('2027-02-04', '09:50', '11:25', 'Ochrona środowiska', 'zaliczenie poprawkowe lab.', '3/3'),
+  L('2027-02-10', '08:00', '09:35', '-', 'przerwa międzysemestralna', ''),
+  L('2027-02-11', '09:50', '11:25', '-', 'przerwa międzysemestralna', ''),
+  L('2027-03-01', '09:50', '11:25', 'Późny przedmiot', 'Egzamin', '9/9'),
+]);
+MIX.meta = { group: 'WME24BM1S1', semesterStart: '2026-09-28', semesterEnd: '2027-02-22' };
 
 test('formats durations and Polish plurals', () => {
   assert.equal(I.fmtDuration(45), '45 min');
@@ -77,6 +105,104 @@ test('statistics of the real timetable', () => {
   assert.equal(empty.avgWeekMinutes, 0);
   assert.equal(empty.topRoom, null);
   assert.equal(empty.longest, null);
+});
+
+test('classifies reservations, breaks, session blocks, exams and credits', () => {
+  const lesson = (subject, type) => L('2026-10-20', '08:00', '09:35', subject, type, '100 S');
+  const reservation = lesson('-', 'Rezerwacja');
+  const officerBlock = lesson('–', 'Czas do dyspozycji dowódcy');
+  const breakDay = lesson('-', 'przerwa świąteczna');
+  const holiday = lesson('-', 'święto');
+  const free = lesson('-', 'Wolne');
+  const sessionBlock = lesson('-', 'Sesja egz. zasadnicza');
+  const exam = lesson('Systemy wbudowane', 'Egzamin poprawkowy');
+  const credit = lesson('Grafika w inżynierii biomedycznej', 'Zaliczenie poprawkowe  lab.');
+  const officerExam = lesson('-', 'Egzamin oficerski');
+
+  assert.ok(I.isReservation(reservation) && I.isReservation(officerBlock) && I.isReservation(officerExam));
+  assert.ok(!I.isReservation(breakDay) && !I.isReservation(sessionBlock) && !I.isReservation(exam));
+  assert.ok(I.isBreak(breakDay) && I.isBreak(holiday) && I.isBreak(free));
+  assert.ok(!I.isBreak(reservation) && !I.isBreak(sessionBlock));
+  assert.ok(I.isSessionBlock(sessionBlock) && !I.isSessionBlock(exam));
+  assert.ok(I.isExam(exam) && !I.isExam(credit) && !I.isExam(sessionBlock) && !I.isExam(officerExam));
+  assert.ok(I.isCredit(credit) && !I.isCredit(exam) && !I.isCredit(reservation));
+  assert.ok(I.isExam('Zaliczenie') && !I.isExam('Wykład'));  // the old string API still works
+});
+
+test('merges consecutive break and session dates by label', () => {
+  const br = I.breaks(MIX);
+  assert.deepEqual(br, [
+    { from: '2026-12-24', to: '2026-12-25', label: 'Przerwa świąteczna', type: 'przerwa świąteczna' },
+    { from: '2026-12-26', to: '2026-12-26', label: 'Święto', type: 'święto' },
+    { from: '2027-02-10', to: '2027-02-11', label: 'Przerwa międzysemestralna', type: 'przerwa międzysemestralna' },
+  ]);
+  assert.equal(I.breaksOn(br, '2026-12-25'), br[0]);
+  assert.equal(I.breaksOn(br, '2026-12-27'), null);
+  assert.equal(I.breaksOn(br, '2027-02-10'), br[2]);
+  assert.equal(I.breaksOn(br, '2027-02-12'), null);
+  assert.deepEqual(I.sessionRanges(MIX), [
+    { from: '2027-02-01', to: '2027-02-02', label: 'Sesja egz. zasadnicza' },
+    { from: '2027-02-15', to: '2027-02-15', label: 'Sesja egz. poprawkowa' },
+  ]);
+});
+
+test('session lists upcoming exams and credits from today, in date and time order', () => {
+  const list = I.session(MIX, '2027-02-01');
+  assert.deepEqual(list, [
+    { date: '2027-02-01', start: '09:50', end: '11:25', subject: 'Systemy wbudowane', type: 'Egzamin', room: '15/23A', kind: 'exam', daysUntil: 0 },
+    { date: '2027-02-02', start: '11:40', end: '13:15', subject: 'Grafika w inżynierii biomedycznej', type: 'Zaliczenie poprawkowe  lab.', room: '9/54 18/54', kind: 'credit', daysUntil: 1 },
+    { date: '2027-02-03', start: '08:00', end: '09:35', subject: 'Algebra', type: 'Zaliczenie', room: '1/1', kind: 'credit', daysUntil: 2 },
+    { date: '2027-02-03', start: '10:00', end: '11:35', subject: 'Fizyka 2', type: 'Egzamin', room: '2/2', kind: 'exam', daysUntil: 2 },
+    { date: '2027-02-04', start: '09:50', end: '11:25', subject: 'Ochrona środowiska', type: 'zaliczenie poprawkowe lab.', room: '3/3', kind: 'credit', daysUntil: 3 },
+  ]);
+  assert.deepEqual(I.session(MIX, '2027-02-01', { from: '2027-02-03', to: '2027-02-03' }).map((x) => x.subject),
+    ['Algebra', 'Fizyka 2']);
+  assert.deepEqual(I.session(MIX, '2027-02-05'), []);  // the past exam and the blocks are not events
+  const later = I.session(MIX, '2027-02-01', { to: '2027-03-31' });
+  assert.equal(later.length, 6);
+  assert.deepEqual([later[5].subject, later[5].daysUntil], ['Późny przedmiot', 28]);
+});
+
+test('statistics split the minutes into teaching, reservations, breaks and sessions', () => {
+  const s = I.stats(MIX);
+  assert.equal(s.minutes, 22 * 95);
+  assert.equal(s.teachingMinutes, 11 * 95);
+  assert.equal(s.reservationMinutes, 3 * 95);
+  assert.equal(s.breakMinutes, 5 * 95);
+  assert.equal(s.sessionMinutes, 3 * 95);
+  assert.equal(s.teachingMinutes + s.reservationMinutes + s.breakMinutes + s.sessionMinutes, s.minutes);
+  assert.equal(s.subjects, 10);  // "-" reservations are still not subjects
+});
+
+test('dayDigest prints the header and one line per class, without breaks or session blocks', () => {
+  assert.equal(I.dayDigest(MIX, '2026-10-20'), [
+    'Plan WME24BM1S1 · wtorek 20.10',
+    '08:00–09:35 Fizyka 2 · 108/54',
+    '09:50–11:25 Analiza matematyczna · 108/54',
+    '11:40–13:15 Rezerwacja',
+    '13:30–15:05 Biologia',
+  ].join('\n'));
+  const sessionDay = I.dayDigest(MIX, '2027-02-01');
+  assert.equal(sessionDay, 'Plan WME24BM1S1 · poniedziałek 01.02\n09:50–11:25 Systemy wbudowane · 15/23A');
+  assert.ok(!sessionDay.includes('Sesja egz.'));
+  assert.equal(I.dayDigest(MIX, '2026-12-24'), 'Brak zajęć.');
+  assert.ok(!I.dayDigest(MIX, '2026-10-20').endsWith('\n'));
+});
+
+test('real WME plan: holiday breaks, session ranges and the minute partition', () => {
+  assert.deepEqual(I.breaks(WME), [
+    { from: '2027-02-10', to: '2027-02-14', label: 'Przerwa międzysemestralna', type: 'przerwa międzysemestralna' },
+  ]);
+  assert.deepEqual(I.sessionRanges(WME), [
+    { from: '2027-02-01', to: '2027-02-04', label: 'Sesja egz. zasadnicza' },
+    { from: '2027-02-06', to: '2027-02-09', label: 'Sesja egz. zasadnicza' },
+    { from: '2027-02-15', to: '2027-02-21', label: 'Sesja egz. poprawkowa' },
+  ]);
+  const s = I.stats(WME);
+  assert.equal(s.teachingMinutes + s.reservationMinutes + s.breakMinutes + s.sessionMinutes, s.minutes);
+  assert.ok(s.teachingMinutes > 0 && s.reservationMinutes > 0 && s.breakMinutes > 0 && s.sessionMinutes > 0);
+  const exams = I.session(WME, '2027-02-01');
+  assert.ok(exams.length > 0 && exams.every((x) => x.date >= '2027-02-01' && !/^sesja/i.test(x.type)));
 });
 
 test('diff reports added and removed classes; a moved class shows as both', () => {

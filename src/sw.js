@@ -1,5 +1,7 @@
 /* PlanWAT offline support. build.py copies this file to site/sw.js and fills in the version.
    Pages and calendars: network first (fresh when online), the last copy when the network fails or is slow.
+   Shared styles and scripts (assets/): cache first — their names carry a hash of their bytes, so a name
+   never changes meaning — and they are precached with the worker.
    Fonts: cache first. Anything else (map tiles, the map engine) is left to the browser.
    The production site and the dev preview share an origin: each worker names its caches after its own scope,
    cleans up only those, and the root worker leaves dev/ to the preview's own worker. */
@@ -8,8 +10,9 @@ var VERSION = '@@VERSION@@';
 var SCOPE = self.registration.scope; /* ends with "/" */
 var PREFIX = 'planwat:' + SCOPE + ':';
 var CACHE = PREFIX + VERSION;
-var PRECACHE = ['./', 'mapa/'];
+var PRECACHE = ['./', 'mapa/'@@ASSETS@@];
 var FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
+var SHARED = /^assets\/.*\.(js|css)$/;
 var FRESH = /\.(ics|json|webmanifest|png|svg)$/;
 var TIMEOUT = 4000; /* ms before a slow network gives way to the saved copy */
 
@@ -63,5 +66,6 @@ self.addEventListener('fetch', function (e) {
   var rel = url.pathname.slice(new URL(SCOPE).pathname.length);
   if (rel.indexOf('dev/') === 0) return; /* the dev preview has its own worker */
   if (req.mode === 'navigate') e.respondWith(networkFirst(req, true));
+  else if (SHARED.test(rel)) e.respondWith(cacheFirst(req));
   else if (FRESH.test(rel)) e.respondWith(networkFirst(req));
 });

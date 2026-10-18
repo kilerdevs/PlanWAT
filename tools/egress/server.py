@@ -860,10 +860,28 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   @keyframes pulse { 50% { opacity:.35; } }
   .grid2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.05fr); gap:16px; align-items:start; }
   @media (max-width:780px) { .grid2 { grid-template-columns:1fr; } .lane { grid-template-columns:112px minmax(40px,1fr) minmax(0,auto); } }
+  @media (max-width:640px) {
+    table.runs > thead { display:none; }
+    table.runs { display:block; }
+    table.runs > tbody, table.runs > tbody > tr, table.runs > tbody > tr > td { display:block; }
+    table.runs > tbody > tr[hidden] { display:none; }
+    table.runs > tbody > tr.runrow { padding:8px 0; border-bottom:1px solid var(--line); }
+    table.runs > tbody > tr.runrow > td { border:0; padding:0; }
+    table.runs > tbody > tr.runrow > td:nth-child(1) { font-size:var(--fs-12); color:var(--t2); }
+    table.runs > tbody > tr.runrow > td:nth-child(2) { margin:2px 0; }
+    table.runs > tbody > tr.runrow > td:nth-child(3) { margin:6px 0 2px; }
+    table.runs > tbody > tr.runrow:nth-last-child(2) { border-bottom:0; }
+    table.runs > tbody > tr.runrow:hover > td, table.runs > tbody > tr.runrow[aria-expanded="true"] > td { background:none; }
+    table.runs > tbody > tr.runrow:hover, table.runs > tbody > tr.runrow[aria-expanded="true"] { background:var(--s2-hover); }
+    .detbox { overflow-x:auto; }
+    .detbox table.data { min-width:540px; }
+    table.hosts col.c4, table.hosts tr > *:nth-child(4) { display:none; }
+    table.pool col.c5, table.pool tr > *:nth-child(5) { display:none; }
+  }
   .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(78px,1fr)); gap:var(--sp-2); margin-bottom:12px; }
-  .tile { min-width:0; padding:10px; border-radius:var(--r-ctl); background:var(--s3); }
+  .tile { min-width:0; padding:10px 8px; border-radius:var(--r-ctl); background:var(--s3); }
   .tile b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-20); font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
-  .tile span { font-size:var(--fs-12); color:var(--t2); }
+  .tile span { display:block; font-size:var(--fs-12); color:var(--t2); hyphens:auto; -webkit-hyphens:auto; overflow-wrap:break-word; }
   table.data { width:100%; border-collapse:collapse; font-size:var(--fs-13); font-variant-numeric:tabular-nums; }
   table.data th, table.data td { padding:6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
   table.data thead th { color:var(--t2); font-weight:500; }
@@ -872,6 +890,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   table.data .num { text-align:right; }
   table.data .ell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   table.data th[title], table.data td[title] { cursor:help; }
+  table.data.fixed th { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .scroll { max-height:300px; overflow:auto; scrollbar-gutter:stable; }
   .scroll.more { -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent); mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent); }
   .scroll thead th { position:sticky; top:0; z-index:1; background:var(--s2); border-bottom:0; box-shadow:inset 0 -1px 0 var(--line); }
@@ -927,18 +946,18 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   <div class="grid2">
     <section class="card">
       <div class="card-head"><h2>Wydziały</h2><span class="dim small">weryfikacja per host</span></div>
-      <table class="data fixed"><colgroup><col><col style="width:118px"><col style="width:52px"><col style="width:58px"></colgroup><thead><tr><th>host</th><th>tryb</th><th class="num" title="wyjścia potwierdzone dla tego hosta">zweryf.</th><th class="num" title="połączenia awaryjne z łącza domowego">obejścia</th></tr></thead><tbody id="hosts-rows"></tbody></table>
+      <table class="data fixed hosts"><colgroup><col><col style="width:132px"><col style="width:68px"><col class="c4" style="width:78px"></colgroup><thead><tr><th>host</th><th>tryb</th><th class="num" title="wyjścia potwierdzone dla tego hosta">zweryf.</th><th class="num" title="połączenia awaryjne z łącza domowego">obejścia</th></tr></thead><tbody id="hosts-rows"></tbody></table>
     </section>
     <section class="card">
       <div class="card-head"><h2>Pula proxy</h2><span class="dim small" id="pool-meta"></span></div>
       <div class="tiles" id="pool-tiles"></div>
-      <div class="scroll" id="pool-scroll"><table class="data fixed"><colgroup><col><col style="width:60px"><col style="width:48px"><col style="width:52px"><col style="width:88px"></colgroup><thead><tr><th>proxy</th><th>status</th><th class="num">ping</th><th class="num" title="nieudane próby dla hostów obsługiwanych przez ten wychód">pudła</th><th>źródło</th></tr></thead><tbody id="proxy-rows"></tbody></table></div>
+      <div class="scroll" id="pool-scroll"><table class="data fixed pool"><colgroup><col><col style="width:64px"><col style="width:52px"><col style="width:60px"><col class="c5" style="width:92px"></colgroup><thead><tr><th>proxy</th><th>status</th><th class="num">ping</th><th class="num" title="nieudane próby dla hostów obsługiwanych przez ten wychód">pudła</th><th>źródło</th></tr></thead><tbody id="proxy-rows"></tbody></table></div>
     </section>
   </div>
 
   <section class="card">
     <div class="card-head"><h2>Przebiegi odświeżania</h2><span class="dim small">ostatnie 10 &middot; kliknij wiersz</span></div>
-    <table class="data"><thead><tr><th>odebrano</th><th>start &ndash; koniec</th><th>exit</th><th>wydziały</th></tr></thead><tbody id="runs-rows"></tbody></table>
+    <table class="data runs"><thead><tr><th>odebrano</th><th>start &ndash; koniec</th><th>exit</th><th>wydziały</th></tr></thead><tbody id="runs-rows"></tbody></table>
   </section>
 </main>
 <footer>
@@ -1015,7 +1034,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     if (!p.run) {
       bar.className = 'bigbar'; fill.style.width = '0%'; bar.setAttribute('aria-valuenow', '0');
       state.className = 'status'; state.textContent = 'bez przebiegu';
-      count.textContent = 'brak aktywnego przebiegu';
+      count.textContent = '';
       var nx = nextRunAt();
       sub.textContent = 'harmonogram: co 2 h \u00b7 nast\u0119pny \u2248 ' + clock(nx.getTime() / 1000)
         + ' (za ' + fmtDur((nx.getTime() - Date.now()) / 1000) + ')';
@@ -1107,10 +1126,9 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
 
   function renderPool(st) {
     var pool = st.pool || {}, bs = pool.by_status || {};
-    $('pool-tiles').innerHTML = tile(fmtNum(pool.total), 'w puli') + tile(fmtNum(bs.ok || 0), 'zdrowych')
-      + tile(fmtNum(bs.new || 0), 'nowych') + tile(bs.fail ? fmtNum(bs.fail) : '0', 'odrzuconych')
-      + tile(fmtMs(pool.p95_ok_ms), 'p95');
-    var meta = 'mediana ' + fmtMs(pool.median_ok_ms)
+    $('pool-tiles').innerHTML = tile(fmtNum(pool.total), 'w puli') + tile(fmtNum(bs.ok || 0), 'zdro\u00adwych')
+      + tile(fmtNum(bs.fail || 0), 'odrzu\u00adconych') + tile(fmtMs(pool.p95_ok_ms), 'p95');
+    var meta = 'mediana ' + fmtMs(pool.median_ok_ms) + ' \u00b7 nowych ' + fmtNum(bs.new || 0)
       + ' \u00b7 od\u015bwie\u017cono ' + (pool.last_refresh ? new Date(pool.last_refresh * 1000).toLocaleTimeString('pl-PL') : 'nigdy')
       + ' \u00b7 obej\u015bcia ' + fmtNum(st.fallbacks_total);
     if (pool.tripped) meta += ' \u00b7 <span class="meta-bad" title="pula wstrzyma\u0142a rotacj\u0119 po serii niepowodze\u0144">przerwa</span>';
@@ -1142,6 +1160,13 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
       + ' \u00b7 liczniki od startu';
   }
 
+  function pl(n, one, few, many) {
+    n = Math.abs(n || 0);
+    if (n === 1) return one;
+    var d = n % 10, h = n % 100;
+    if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return few;
+    return many;
+  }
   var openRuns = {};
   function runDetail(r) {
     var facs = r.faculties || {}, keys = Object.keys(facs);
@@ -1155,14 +1180,14 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     if (!keys.length) return h + '<span class="dim">brak szczeg\u00f3\u0142\u00f3w wydzia\u0142\u00f3w</span></div>';
     h += '<table class="data"><thead><tr><th>wydzia\u0142</th><th>termin</th>'
       + '<th class="num">sprawdzone</th><th class="num">zmiany</th><th class="num">pomini\u0119te</th><th class="num">niegotowe</th>'
-      + '<th>stan</th><th>czeka\u0142</th><th>o</th></tr></thead><tbody>';
+      + '<th>stan</th><th>czeka\u0142</th><th>kiedy</th></tr></thead><tbody>';
     keys.forEach(function (k) {
       var c = facs[k] || {}, st2 = [];
       if (c.blocked) st2.push('<span class="tag bad">zablokowany' + (c.cause ? ' (' + esc(c.cause) + ')' : '') + '</span>');
       if (c.degraded) st2.push('<span class="tag warn">zdegradowany' + (c.cause && !c.blocked ? ' (' + esc(c.cause) + ')' : '') + '</span>');
       if (c.ahead) st2.push('<span class="tag">nadchodz\u0105cy</span>');
       if (!st2.length) st2.push('<span class="tag">ok</span>');
-      var wait = c.wait ? fmtDur(c.wait.waited) + ' (' + fmtNum(c.wait.probes) + ' pr\u00f3b' + (c.wait.recovered ? ', wr\u00f3ci\u0142' : '') + ')' : '\u2013';
+      var wait = c.wait ? fmtDur(c.wait.waited) + ' (' + fmtNum(c.wait.probes) + ' ' + pl(c.wait.probes, 'pr\u00f3ba', 'pr\u00f3by', 'pr\u00f3b') + (c.wait.recovered ? ', wr\u00f3ci\u0142' : '') + ')' : '\u2013';
       h += '<tr><td><b>' + esc(k.toUpperCase()) + '</b></td><td class="dim">' + esc(c.term || '\u2013') + '</td>'
         + '<td class="num">' + fmtNum(c.checked) + '</td>'
         + '<td class="num">' + (c.changed ? '<b>' + fmtNum(c.changed) + '</b>' : '0') + '</td>'
@@ -1199,8 +1224,8 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
       var d1 = ts(r.started), d2 = ts(r.ended);
       var bits = [];
       if (d1 && d2 && !isNaN(d1) && !isNaN(d2) && d2 > d1) { var dur = fmtDur((d2 - d1) / 1000); if (dur) bits.push(dur); }
-      if (checked) bits.push(fmtNum(checked) + ' sprawdzonych');
-      if (skipped) bits.push(fmtNum(skipped) + ' pomini\u0119tych');
+      if (checked) bits.push(fmtNum(checked) + ' ' + pl(checked, 'sprawdzony', 'sprawdzone', 'sprawdzonych'));
+      if (skipped) bits.push(fmtNum(skipped) + ' ' + pl(skipped, 'pomini\u0119ty', 'pomini\u0119te', 'pomini\u0119tych'));
       var span = esc(isoClock(r.started)) + ' \u2013 ' + esc(isoClock(r.ended))
         + (bits.length ? ' <span class="dim">\u00b7 ' + esc(bits.join(' \u00b7 ')) + '</span>' : '');
       var key = esc(r.received || 'i' + i);

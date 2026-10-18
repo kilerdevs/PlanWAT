@@ -32,8 +32,49 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  # A refresh pass that did not publish any new calendar would rebuild and redeploy a
+  # byte-identical site (twelve scheduled passes a day). This reads the pass's outcome
+  # (refresh.yml uploads an artifact) and lets the build job skip those. Anything the gate
+  # cannot prove -- another event, an older refresh version, a missing or damaged
+  # artifact -- fails open and rebuilds.
+  gate:
+    name: rebuild needed?
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      # Reading the triggering run's artifact; nothing else on the workflow.
+      actions: read
+    steps:
+      - id: outcome
+        if: github.event_name == 'workflow_run'
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: refresh-outcome
+          path: outcome
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - id: decision
+        run: |
+          rebuild=true
+          if [ "${{ github.event_name }}" = 'workflow_run' ] && [ "${{ steps.outcome.outcome }}" = 'success' ]; then
+            value=$(jq -r '.pushed // ""' outcome/refresh-outcome.json 2>/dev/null || true)
+            if [ "$value" = 'false' ]; then
+              echo 'A quiet refresh pass changed nothing on the data branch; skipping the rebuild.'
+              rebuild=false
+            fi
+          fi
+          echo "rebuild=$rebuild" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build + upload
+    needs: gate
+    # !cancelled(): a failed gate (network glitch reading the artifact) must fail open and
+    # rebuild -- missing one real update is worse than a spare build -- but a cancelled run
+    # stays cancelled.
+    if: ${{ !cancelled() && needs.gate.outputs.rebuild != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

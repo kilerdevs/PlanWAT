@@ -16,6 +16,9 @@ inputs:
   max-minutes:
     description: Stop gracefully after this many minutes.
     default: '100'
+  adaptive-hours:
+    description: Cap (hours) for how far an unchanged group may stretch its revalidation gap (0 rechecks every pass).
+    default: '4'
   source:
     description: Workspace path of the checked-out repository that holds tools/refresh.
     default: src
@@ -33,6 +36,9 @@ outputs:
   changed:
     description: Number of calendars that changed
     value: ${{ steps.run.outputs.changed }}
+  pushed:
+    description: 'true when the data branch received a commit this run'
+    value: ${{ steps.push.outputs.pushed }}
 
 runs:
   using: composite
@@ -60,6 +66,7 @@ runs:
         PROFILE: ${{ inputs.profile }}
         FACULTY: ${{ inputs.faculty }}
         MAX_MINUTES: ${{ inputs.max-minutes }}
+        ADAPTIVE_HOURS: ${{ inputs.adaptive-hours }}
         SOURCE: ${{ inputs.source }}
         # The crawler posts a block notice here whenever a faculty answered a block page via a
         # pooled exit, so the egress can demote that exit (see tools/egress/server.py). Best
@@ -71,7 +78,7 @@ runs:
       run: |
         # Exit 3 (blocked) and 4 (incomplete) are results, not failures: they are reported through the outputs.
         set +e
-        args=(--out data --profile "$PROFILE" --max-minutes "$MAX_MINUTES")
+        args=(--out data --profile "$PROFILE" --max-minutes "$MAX_MINUTES" --adaptive-hours "$ADAPTIVE_HOURS")
         if [ -n "$FACULTY" ]; then args+=(--faculty "$FACULTY"); fi
         "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}"
         code=$?

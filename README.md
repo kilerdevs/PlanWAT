@@ -237,7 +237,7 @@ System wizualny („Apple, ale ciemny”) opisuje [DESIGN.md](DESIGN.md), a zał
 timetables/<semestr>/<GRUPA>.ics        źródło prawdy: jeden plik iCalendar na grupę i semestr
             │
             ▼  python3 build.py         waliduje każdy kalendarz, wybiera bieżący semestr grupy,
-            │                           zapisuje strony z Content-Security-Policy przypiętym hashami
+            │                           zapisuje strony i wspólne pliki assets/ z polityką Content-Security-Policy
             ▼
 site/index.html                         lista grup z wyszukiwarką (przekierowanie przy jednej grupie)
 site/<GRUPA>/index.html                 strona planu
@@ -262,20 +262,21 @@ statystyki, postęp, zmiany planu, wspólny wolny czas i zajęcia do odrobienia,
 
 ## Pokrycie wydziałów
 
-Plany ze stron wydziałów są odświeżane automatycznie. Obecnie opublikowanych jest **781 grup**.
+Plany ze stron wydziałów są odświeżane automatycznie. Wykres powstaje przy każdej publikacji strony, więc pokazuje
+liczbę udostępnionych grup na bieżąco.
 
-<img src="docs/diagrams/pokrycie-wydzialow.svg" alt="Wykres słupkowy grup według wydziału: WML 178, WCY 170, WEL 165, WLO 132, WIM 94, WTC 23, IOE 15, WIG 4, razem 781." width="760">
+<img src="https://kilerdevs.github.io/PlanWAT/pokrycie-wydzialow.svg" alt="Wykres słupkowy liczby udostępnionych grup według wydziału." width="760">
 
-| Wydział | Grup | Sterownik | Uwagi |
-|---|---:|---|---|
-| WML | 178 | `wml` | strony Plansoft, aktualny `index.xml` odnajdywany przez ramkę strony głównej |
-| WCY | 170 | `wcy` | lista grup z menu skoku; strony z planem poprzedniego semestru są pomijane |
-| WEL | 165 | `plansoft` | wspólna polityka dostępu z WLO |
-| WLO | 132 | `plansoft` | |
-| WIM | 94 | `plansoft` | |
-| WTC | 23 | `wtc` | plany w PDF konwertowane przez `pymupdf` |
-| IOE | 15 | `plansoft` | zimowe plany leżą pod katalogiem `lato/`, siatka jest transponowana |
-| WIG | 4 | ręcznie | pliki dodane do repozytorium |
+| Wydział | Sterownik | Uwagi |
+|---|---|---|
+| WML | `wml` | strony Plansoft, aktualny `index.xml` odnajdywany przez ramkę strony głównej |
+| WCY | `wcy` | lista grup z menu skoku; strony z planem poprzedniego semestru są pomijane |
+| WEL | `plansoft` | wspólna polityka dostępu z WLO |
+| WLO | `plansoft` | |
+| WIM | `plansoft` | |
+| WTC | `wtc` | plany w PDF konwertowane przez `pymupdf` |
+| IOE | `plansoft` | zimowe plany leżą pod katalogiem `lato/`, siatka jest transponowana |
+| WIG | ręcznie | pliki dodane do repozytorium |
 
 Brakuje swojej grupy? Zgłoś [prośbę o plan](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) z kodem
 grupy i linkiem do oficjalnego planu.
@@ -347,9 +348,10 @@ Jak przenieść własną domenę na Pages i jak odtworzyć nagłówki, których 
 
 ## Bezpieczeństwo i prywatność
 
-- Każda strona ma **Content-Security-Policy z hashami**: uruchamia się tylko jej własny skrypt i styl, a pobierać może
-  jedynie własne pliki. Jedynym zewnętrznym źródłem jest Google Fonts. Strona mapy dodatkowo ładuje MapLibre GL JS z
-  `unpkg.com` (przypięty wersją i sumą SRI) oraz kafelki z `tiles.openfreemap.org`.
+- Każda strona ma **Content-Security-Policy przypiętą do kodu**: bloki wpisane w HTML działają tylko z hashów, a wspólne
+  pliki `assets/` mają nazwę z hashem treści i sumę `integrity` na znaczniku, który je wczytuje. Z zewnątrz pobierane są
+  wyłącznie Google Fonts; strona mapy dodatkowo MapLibre GL JS z `unpkg.com` (przypięty wersją i sumą SRI) i kafelki
+  z `tiles.openfreemap.org`.
 - Tekst z kalendarza trafia do strony wyłącznie przez `textContent`, a w budowie jest escapowany. Kolory przyjmowane są tylko
   jako `#rrggbb`.
 - Service Worker buforuje tylko strony, kalendarze i pliki aplikacji z własnej domeny oraz Google Fonts.
@@ -365,7 +367,7 @@ Podatności zgłaszaj prywatnie. Zasady i terminy opisuje [SECURITY.md](SECURITY
 
 ## Testy
 
-<img src="docs/diagrams/pipeline-testow.svg" alt="Commit na dev uruchamia testy Node, testy Python, Playwright z axe, skan obrazu Docker i CodeQL. Wszystkie bramy muszą przejść przed pull requestem do master." width="760">
+<img src="docs/diagrams/pipeline-testow.svg" alt="Push na dev uruchamia szybkie bramy (testy Node i testy Python), a przegląd wydania (pull request do master) uruchamia wszystkie pięć bram: dołącza Playwright z axe, skan obrazu Docker i CodeQL. Wszystkie bramy muszą przejść, by włożyć commit do master." width="760">
 
 | Warstwa | Narzędzie | Co sprawdza |
 |---|---|---|
@@ -400,7 +402,7 @@ Konwencje i listę kontrolną pull requesta opisuje [CONTRIBUTING.md](CONTRIBUTI
 
 ```
 build.py                  generator strony (tylko biblioteka standardowa)
-src/group.html            szablon strony grupy: znaczniki, style i skrypt aplikacji (inline, z hashami CSP)
+src/group.html            szablon strony grupy: znaczniki oraz styl i skrypt wynoszone do wspólnych plików assets/
 src/index.html, 404.html  lista grup i strona błędu
 src/mapa.html             mapa kampusu (/mapa/)
 src/ics.js                czytnik iCalendar

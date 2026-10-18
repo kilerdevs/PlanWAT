@@ -103,6 +103,13 @@ class BuildRealSiteTest(unittest.TestCase):
     def pages(self):
         return sorted(self.out.rglob('*.html'))
 
+    def page_code(self, rel):
+        """The page plus everything it loads from assets/: the parts that used to sit inline in every page."""
+        text = (self.out / rel).read_text(encoding='utf-8')
+        for url in re.findall(r'(?:\bsrc|href)="((?:\.\./)?assets/[^"]+)"', text):
+            text += (self.out / url.replace('../', '', 1)).read_text(encoding='utf-8')
+        return text
+
     def test_writes_group_page_calendar_index_and_404(self):
         for rel in ('index.html', '404.html', 'mapa/index.html', 'WCY26KY3S1/index.html', 'WCY26KY3S1/plan.ics'):
             self.assertTrue((self.out / rel).is_file(), rel)
@@ -125,11 +132,50 @@ class BuildRealSiteTest(unittest.TestCase):
             self.assertTrue(icon['src'].startswith('../icons/'), icon)
             self.assertTrue((self.out / 'WCY26KY3S1' / icon['src']).resolve().is_file(), icon)
         self.assertIn({'maskable'}, [{i['purpose']} for i in group['icons']])
-        page = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        page = self.page_code('WCY26KY3S1/index.html')
         self.assertIn('<link rel="manifest" href="manifest.webmanifest">', page)
         self.assertIn("navigator.serviceWorker.register('../sw.js', { scope: '../' })", page)
-        index = (self.out / 'index.html').read_text(encoding='utf-8')
+        index = self.page_code('index.html')
         self.assertIn("navigator.serviceWorker.register('sw.js', { scope: './' })", index)
+
+    def test_manifests_offer_shortcuts_to_the_plans_and_the_map(self):
+        root_dir = self.out
+        root = json.loads((root_dir / 'manifest.webmanifest').read_text(encoding='utf-8'))
+        self.assertEqual([s['name'] for s in root['shortcuts']], ['Wszystkie plany', 'Mapa kampusu'])
+        self.assertEqual([s['url'] for s in root['shortcuts']], ['./', 'mapa/'])
+        for shortcut in root['shortcuts']:
+            self.assertTrue((root_dir / shortcut['url']).resolve().is_dir(), shortcut['url'])
+            for icon in shortcut['icons']:
+                self.assertTrue(icon['src'].startswith('icons/'), icon['src'])
+                self.assertTrue((root_dir / icon['src']).resolve().is_file(), icon['src'])
+
+        group_dir = root_dir / 'WCY26KY3S1'
+        group = json.loads((group_dir / 'manifest.webmanifest').read_text(encoding='utf-8'))
+        self.assertEqual([s['name'] for s in group['shortcuts']], ['Mój plan', 'Mapa kampusu'])
+        self.assertEqual([s['url'] for s in group['shortcuts']], ['./', '../mapa/'])
+        for shortcut in group['shortcuts']:
+            self.assertTrue((group_dir / shortcut['url']).resolve().is_dir(), shortcut['url'])
+            for icon in shortcut['icons']:
+                self.assertTrue(icon['src'].startswith('../icons/'), icon['src'])
+                self.assertTrue((group_dir / icon['src']).resolve().is_file(), icon['src'])
+
+    def test_root_offers_a_faculty_year_group_finder(self):
+        html = (self.out / 'index.html').read_text(encoding='utf-8')
+        for marker in ('id="findGroup"', 'aria-controls="groupFinder"', 'id="groupFinder"',
+                       'aria-labelledby="finderTitle"', 'aria-describedby="finderLead"',
+                       'id="finderStep"', 'id="finderBack"', 'id="finderBody"'):
+            self.assertIn(marker, html)
+        self.assertIn('Nie znasz kodu grupy?', html)
+        self.assertIn('Znajdź ją po wydziale i roku naboru', html)
+        self.assertIn('Krok 1 z 3', html)
+        for group in self.groups():
+            row = re.search(r'<li class="row" data-group="' + re.escape(group) +
+                            r'" data-fac="([A-Z]+)" data-year="(\d{4}|)">', html)
+            self.assertIsNotNone(row, group)
+            prefix = build.year_of(group)
+            expected = str(2000 + int(prefix[3:5])) if prefix else ''
+            self.assertEqual(row.group(2), expected, group)
+            self.assertIn(f'<a class="group" href="{group}/">', html)
 
     def test_public_site_files(self):
         robots = (self.out / 'robots.txt').read_text(encoding='utf-8')
@@ -188,7 +234,7 @@ class BuildRealSiteTest(unittest.TestCase):
             self.assertNotIn('http-equiv="refresh"', html)
 
     def test_root_has_faculty_filters_stars_and_live_cards_support(self):
-        html = (self.out / 'index.html').read_text(encoding='utf-8')
+        html = self.page_code('index.html')
         self.assertIn('data-fac="WCY"', html)
         self.assertIn('data-star="WCY26KY3S1"', html)
         self.assertIn('id="liveCards"', html)
@@ -233,10 +279,63 @@ class BuildRealSiteTest(unittest.TestCase):
             self.assertNotIn('@@', html, page)
 
     def test_group_page_uses_relative_urls_for_its_calendar(self):
-        html = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        html = self.page_code('WCY26KY3S1/index.html')
         self.assertIn('href="plan.ics"', html)
         self.assertIn("fetch(planFile", html)
         self.assertNotIn('/plan.ics', html)
+
+    def test_shared_assets_are_content_addressed_sri_pinned_and_allowed_by_origin(self):
+        for rel in ('index.html', 'WCY26KY3S1/index.html', 'mapa/index.html'):
+            html = (self.out / rel).read_text(encoding='utf-8')
+            tags = re.findall(r'<(?:link|script)\b[^>]*\b(?:href|src)="([^"]*assets/[^"]+)"[^>]*\bintegrity="sha256-([A-Za-z0-9+/=]+)"', html)
+            self.assertEqual(len(tags), 3, rel)  # the stylesheet and the two scripts, nothing else
+            csp = self.meta_csp(rel)
+            self.assertRegex(csp, r"script-src 'self' ")
+            self.assertRegex(csp, r"style-src 'self' ")
+            for url, digest in tags:
+                self.assertTrue(url.startswith(('assets/', '../assets/')), url)  # relative: any base path works
+                body = (self.out / url.replace('../', '', 1)).read_bytes()
+                self.assertEqual(base64.b64encode(hashlib.sha256(body).digest()).decode(), digest, url)
+                name_hash = re.search(r'-([0-9a-f]{8})\.(?:js|css)$', url).group(1)
+                self.assertTrue(hashlib.sha256(body).hexdigest().startswith(name_hash), url)
+
+    def test_group_pages_share_one_copy_of_the_style_and_scripts(self):
+        reference = None
+        for group in self.groups():
+            html = (self.out / group / 'index.html').read_text(encoding='utf-8')
+            urls = set(re.findall(r'(?:\bhref|\bsrc)="((?:\.\./)?assets/[^"]+)"', html))
+            if reference is None:
+                reference = urls
+            self.assertEqual(reference, urls, group)  # every group page loads the same three files
+        self.assertEqual(len(reference), 3, reference)
+        on_disk = {f'assets/{p.name}' for p in (self.out / 'assets').iterdir()}
+        referenced = {url.replace('../', '', 1) for url in reference}
+        for page in self.pages():
+            referenced |= set(re.findall(r'"((?:\.\./)?assets/[^"]+)"', page.read_text(encoding='utf-8')))
+            referenced = {url.replace('../', '', 1) for url in referenced}
+        self.assertEqual(on_disk, referenced)  # nothing is written that no page loads, and nothing is missing
+        sw = (self.out / 'sw.js').read_text(encoding='utf-8')
+        for name in on_disk:
+            self.assertIn(f"'{name}'", sw)  # the worker precaches them for offline
+        for page in ('prywatnosc/index.html', '404.html'):
+            self.assertNotIn('assets/', (self.out / page).read_text(encoding='utf-8'), page)
+
+    def test_coverage_chart_counts_exactly_the_groups_the_build_publishes(self):
+        published = [p.parent.name for p in self.out.glob('*/index.html')
+                     if p.parent.name not in (build.MAP_DIR, build.PRIVACY_DIR)]
+        counts = {}
+        for group in published:
+            counts[build.faculty_of(group)] = counts.get(build.faculty_of(group), 0) + 1
+        svg = (self.out / 'pokrycie-wydzialow.svg').read_text(encoding='utf-8')
+        self.assertIn(build.plural_grup(sum(counts.values())), svg)
+        for code, n in counts.items():
+            self.assertIn(f'>{code if code != "OTHER" else "Pozostałe"}<', svg)
+            self.assertRegex(svg, rf'{code} {n}\b')
+        self.assertNotIn('@@', svg)
+        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+        self.assertIn('https://kilerdevs.github.io/PlanWAT/pokrycie-wydzialow.svg', readme)
+        self.assertNotIn('docs/diagrams/pokrycie-wydzialow.svg', readme)
+        self.assertFalse((ROOT / 'docs' / 'diagrams' / 'pokrycie-wydzialow.svg').exists())  # never a stale copy again
 
     def test_group_page_first_paint_shows_the_calendar_metadata(self):
         html = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
@@ -282,11 +381,11 @@ class BuildRealSiteTest(unittest.TestCase):
             self.assertIn('@4.7.1/', tag)
 
     def test_map_links_use_relative_urls(self):
-        html = (self.out / 'mapa' / 'index.html').read_text(encoding='utf-8')
+        html = self.page_code('mapa/index.html')
         self.assertIn('href="../"', html)
         self.assertIn("'../' + encodeURIComponent(group) + '/plan.ics'", html)
         self.assertIn('href="mapa/"', (self.out / 'index.html').read_text(encoding='utf-8'))
-        group = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        group = self.page_code('WCY26KY3S1/index.html')
         self.assertIn("'../mapa/?b='", group)
         self.assertIn("'../mapa/?g='", group)
 
@@ -298,6 +397,10 @@ class BuildRealSiteTest(unittest.TestCase):
         header = re.search(r'add_header Content-Security-Policy "([^"]+)"', conf).group(1)
         self.assertIn("frame-ancestors 'none'", header)
         self.assertIn('upgrade-insecure-requests', header)
+        # pages that share their styles and scripts load them by origin (a meta hash cannot cover a file),
+        # so the header of the self-hosted deployment has to allow the same
+        self.assertIn("script-src 'self'", header)
+        self.assertIn("style-src 'self'", header)
         for page in self.pages():
             html = page.read_text(encoding='utf-8')
             for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S | re.I):
@@ -466,7 +569,7 @@ class BuildManyGroupsTest(unittest.TestCase):
                 self.assertIn(sha(block), csp, page)  # the extra meta tag leaves the hashes valid
 
     def test_rejects_groups_named_like_the_site_folders(self):
-        for name in ('icons', 'prywatnosc'):
+        for name in ('icons', 'prywatnosc', 'assets'):
             self.add('2026-27-zima', name, calendar(name, '2026-09-28', '2027-02-22', '2026-10-05'))
             with self.assertRaisesRegex(build.BuildError, 'reserved'):
                 build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)

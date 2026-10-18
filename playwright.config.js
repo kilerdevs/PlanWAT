@@ -14,6 +14,9 @@ module.exports = defineConfig({
   timeout: 30000,
   expect: { timeout: 7000 },
   fullyParallel: true,
+  // GitHub's runners hand out 4 vCPUs, whose default of half the cores would idle two.
+  // Locally the default (half the cores, again) stays.
+  workers: process.env.CI ? 4 : undefined,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',

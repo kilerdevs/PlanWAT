@@ -28,12 +28,16 @@ jobs:
   egress:
     name: egress tests + image build
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       # Third-party actions are pinned to commit SHAs, not moving tags (as in ci.yml).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
+          # The dependency fetch (the curl_cffi wheel) is cached by hash.
+          cache: pip
+          cache-dependency-path: tools/egress/requirements.txt
       - name: Install egress dependencies
         run: python -m pip install --disable-pip-version-check -r tools/egress/requirements.txt
       # Cross-platform unittest entrypoint (py -3 launcher exists only on Windows).
