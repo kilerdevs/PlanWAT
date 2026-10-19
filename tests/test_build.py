@@ -339,7 +339,7 @@ class BuildRealSiteTest(unittest.TestCase):
 
     def test_group_page_first_paint_shows_the_calendar_metadata(self):
         html = (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
-        self.assertIn('<title>Plan zajęć WCY26KY3S1</title>', html)
+        self.assertIn('<title>Plan zajęć WCY26KY3S1 – Wydział Cybernetyki, WAT | PlanWAT</title>', html)
         self.assertIn('>WCY26KY3S1</h1>', html)
         self.assertIn('Plan zajęć &middot; semestr zimowy 2026/27', html)
         self.assertIn('<dd>28.09.2026 &ndash; 22.02.2027</dd>', html)
@@ -409,6 +409,114 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn("worker-src 'self' blob:", header)
         self.assertIn("manifest-src 'self'", header)
         self.assertIn("connect-src 'self' https://tiles.openfreemap.org", header)
+
+
+    def test_indexable_pages_have_their_own_title_description_and_social_card(self):
+        pages = [self.out / 'index.html', self.out / build.MAP_DIR / 'index.html', self.out / build.PRIVACY_DIR / 'index.html']
+        pages += sorted(self.out.glob('*/plan.ics'))
+        titles, descriptions = set(), set()
+        for page in pages:
+            html = (page.parent / 'index.html' if page.name == 'plan.ics' else page).read_text(encoding='utf-8')
+            title = re.search(r'<title>([^<]+)</title>', html).group(1)
+            description = re.search(r'<meta name="description" content="([^"]+)">', html).group(1)
+            self.assertIn('PlanWAT', title, page)
+            self.assertGreater(len(description), 60, page)
+            self.assertIn(f'<meta property="og:title" content="{title}">', html, page)
+            self.assertIn('<meta property="og:locale" content="pl_PL">', html, page)
+            titles.add(title)
+            descriptions.add(description)
+        self.assertEqual(len(titles), len(pages), 'every indexable page has its own title')
+        self.assertEqual(len(descriptions), len(pages), 'and its own description')
+
+    def test_front_page_names_the_site_and_the_university(self):
+        html = (self.out / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('<title>Plan zajęć WAT', html)
+        self.assertIn('Wojskowej Akademii Technicznej', html)
+        ld = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1))
+        self.assertEqual((ld['@type'], ld['name']), ('WebSite', 'PlanWAT'))
+        self.assertIn('Plan zajęć WAT', ld['alternateName'])
+        self.assertNotIn('url', ld)  # no --site-url: nothing absolute is guessed
+        self.assertNotIn('rel="canonical"', html)
+        self.assertFalse((self.out / 'sitemap.xml').exists())
+        # a real favicon file (search engines do not take a data: URL) that the page's CSP allows
+        self.assertIn('<link rel="icon" href="icons/icon.svg" type="image/svg+xml">', html)
+        self.assertTrue((self.out / 'icons' / 'icon.svg').is_file())
+        self.assertIn("img-src data: 'self'", self.meta_csp('index.html'))
+
+    def test_the_group_page_script_keeps_the_built_title(self):
+        # search engines index the title after scripts run: the page must not shorten it again
+        self.assertNotIn('document.title =', (self.out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8'))
+
+
+class SearchEngineTest(unittest.TestCase):
+    """--site-url: canonical URLs, absolute social cards, structured data and the sitemap."""
+    SITE = 'https://kilerdevs.github.io/PlanWAT'
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.tt = self.tmp / 'timetables'
+        for group, faculty in (('WCY26KY3S1', 'Cybernetyki'), ('ABC26X1', 'Chemii')):
+            (self.tt / '2026-27-zima').mkdir(parents=True, exist_ok=True)
+            text = calendar(group, '2026-09-28', '2027-02-22', '2026-10-05').replace(
+                'X-PLAN-FACULTY:Cybernetyki', f'X-PLAN-GENERATED:20261011\r\nX-PLAN-FACULTY:{faculty}')
+            (self.tt / '2026-27-zima' / f'{group}.ics').write_text(text, encoding='utf-8', newline='')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def make(self, **kw):
+        out = self.tmp / 'site'
+        build.build(self.tt, out, today=D(2026, 10, 15), base_path='/PlanWAT', nginx_conf=None,
+                    state_path=self.tmp / 'no-state.json', **kw)
+        return out
+
+    def test_pages_carry_canonical_urls_absolute_cards_and_breadcrumbs(self):
+        out = self.make(site_url=self.SITE + '/')  # a trailing slash is tolerated
+        html = (out / 'WCY26KY3S1' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn(f'<link rel="canonical" href="{self.SITE}/WCY26KY3S1/">', html)
+        self.assertIn(f'<meta property="og:url" content="{self.SITE}/WCY26KY3S1/">', html)
+        self.assertIn(f'<meta property="og:image" content="{self.SITE}/icons/icon-512.png">', html)
+        ld = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1))
+        self.assertEqual(ld['@type'], 'BreadcrumbList')
+        self.assertEqual([i['item'] for i in ld['itemListElement']], [f'{self.SITE}/', f'{self.SITE}/WCY26KY3S1/'])
+        for rel, url in (('index.html', ''), (f'{build.MAP_DIR}/index.html', f'{build.MAP_DIR}/'),
+                         (f'{build.PRIVACY_DIR}/index.html', f'{build.PRIVACY_DIR}/')):
+            self.assertIn(f'<link rel="canonical" href="{self.SITE}/{url}">', (out / rel).read_text(encoding='utf-8'))
+        # the structured data and social cards add no executable inline code: every page keeps its pinned CSP
+        for page in out.rglob('index.html'):
+            text = page.read_text(encoding='utf-8')
+            csp = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', text).group(1)
+            for block in re.findall(r'<script>(.*?)</script>', text, re.S):
+                self.assertIn(sha(block), csp, page)
+
+    def test_a_group_of_an_unlisted_faculty_is_named_from_its_calendar(self):
+        out = self.make(site_url=self.SITE)
+        html = (out / 'ABC26X1' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('<title>Plan zajęć ABC26X1 – Wydział Chemii, WAT | PlanWAT</title>', html)
+        self.assertIn('(Wydział Chemii WAT), term 2026-09-28: zajęcia na dziś', html)
+
+    def test_the_sitemap_lists_every_page_and_robots_points_at_it(self):
+        out = self.make(site_url=self.SITE)
+        sitemap = (out / 'sitemap.xml').read_text(encoding='utf-8')
+        locs = re.findall(r'<loc>([^<]+)</loc>', sitemap)
+        self.assertEqual(locs, [f'{self.SITE}/', f'{self.SITE}/{build.MAP_DIR}/', f'{self.SITE}/{build.PRIVACY_DIR}/',
+                                f'{self.SITE}/ABC26X1/', f'{self.SITE}/WCY26KY3S1/'])
+        self.assertIn(f'<loc>{self.SITE}/WCY26KY3S1/</loc><lastmod>2026-10-11</lastmod>', sitemap)
+        self.assertIn(f'<loc>{self.SITE}/</loc><lastmod>2026-10-11</lastmod>', sitemap)
+        self.assertTrue(sitemap.startswith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset'))
+        self.assertIn(f'Sitemap: {self.SITE}/sitemap.xml', (out / 'robots.txt').read_text(encoding='utf-8'))
+
+    def test_the_dev_preview_gets_no_sitemap(self):
+        out = self.make(site_url=self.SITE + '/dev', noindex=True)
+        self.assertFalse((out / 'sitemap.xml').exists())
+        self.assertEqual((out / 'robots.txt').read_text(encoding='utf-8'), 'User-agent: *\nDisallow: /\n')
+
+    def test_rejects_a_site_url_that_is_not_absolute(self):
+        with self.assertRaisesRegex(build.BuildError, 'site-url'):
+            self.make(site_url='kilerdevs.github.io/PlanWAT')
+
+    def test_structured_data_cannot_close_its_script_block(self):
+        self.assertEqual(build._json_ld({'name': '</script><script>x'}), '{"name":"\\u003c/script>\\u003cscript>x"}')
 
 
 class RemindersTest(unittest.TestCase):
