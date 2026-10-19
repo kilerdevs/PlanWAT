@@ -130,6 +130,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
+- **Obraz do udostępniania mówi więcej:** karta PNG (1080 × 1350) mieści teraz całe nazwy zajęć i sale (zawija zamiast ucinać),
+  rodzaj i numer spotkania, datę wygenerowania planu, wydział, semestr i numer tygodnia. Doszły kafelki podsumowania (liczba zajęć,
+  pierwsze i ostatnie zajęcia, czas w planie, okienka), etykiety okienek z czasem dojścia między budynkami oraz pasek całego tygodnia
+  z liczbą zajęć każdego dnia i wyróżnionym wybranym dniem. Stopka podaje adres strony, z której pochodzi plan.
 - **Wykres pokrycia wydziałów już się nie zestarzeje:** `build.py` rysuje `pokrycie-wydzialow.svg` przy każdej budowie
   z tych samych grup, które publikuje, a README pokazuje plik z wdrożonej strony zamiast kopii w repozytorium. Ręcznie
   robiony `docs/diagrams/pokrycie-wydzialow.svg` i kolumna liczb w tabeli wydziałów znikają — liczby widać na wykresie.
@@ -180,6 +184,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   odmieniają się po polsku: „1 sprawdzony”, „72 pominięte”, „2 próby”.
 
 ### Naprawiono
+- **Odstępy w arkuszach:** wiersz szybkich wyborów nie klei się już do pola powyżej (data w „Udostępnij”), przycisk pobierania
+  `.ics` ma powietrze po wyborze przypomnienia, a lista „Podobne plany” nie dotyka rzędu filtrów na mapie. Reguły są punktowe,
+  więc inne arkusze zachowują dotychczasowy rytm.
 - **Rezerwacje:** bloki zarezerwowanych godzin nie pokazują już samotnego „-” ani licznika spotkań („Rezerwacja · 22/114”);
   w planie, pasku „teraz / następne”, porównaniu i zmianach widnieją jako „Rezerwacja”, nie otwierają „Gdzie odrobić?” i nie
   trafiają do legendy, postępu przedmiotów, liczby przedmiotów w statystykach ani „Moich przedmiotów”.

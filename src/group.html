@@ -1152,10 +1152,14 @@
   }
   .choice[aria-pressed="true"] { background: var(--t1); color: var(--bg); }
   .sheet-body > .field { margin-top: var(--sp-3); }
+  /* the quick-date row belongs to the field above it, but still needs air before it */
+  #toolBody > .field + #shareQuick { margin-top: var(--sp-4); }
   .mysubjects { display: grid; gap: 2px; margin: var(--sp-3) 0; }
   .mysubjects .check { align-items: flex-start; padding: 6px 0; }
   .mysubjects .check input { flex: none; margin-top: 1px; }
   #toolBody > .dl { margin: 0 var(--sp-2) var(--sp-2) 0; }
+  /* the calendar download button gets the same breathing room as the choice row's label */
+  #toolBody > .field + #calFile { margin-top: var(--sp-4); }
   /* the sheet is as light as a pill is, so the buttons inside it take the chips' fill */
   #toolBody .dl { background: var(--s3); }
   .check { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; font-size: var(--fs-13); color: var(--t2); }
@@ -1291,6 +1295,7 @@
   .pm-scale { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); font-size: 12px; color: var(--t2); }
   .pm-scale i { flex: 1; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #0a84ff, #8e8e93, #ff453a); }
   .pm-card { margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
+  .pm-list { margin-top: var(--sp-4); }
   .pm-cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
   .pm-cardhead strong { font-size: var(--fs-17); font-variant-numeric: tabular-nums; }
   .pm-coef { font-size: var(--fs-13); font-weight: 600; color: var(--t2); white-space: nowrap; }
@@ -3979,65 +3984,286 @@
     var cs = getComputedStyle(document.documentElement);
     var token = function (name, fallback) { var v = cs.getPropertyValue(name).trim(); return v || fallback; };
     var bg = token('--bg', '#0b0b0f'), fg = token('--t1', '#ffffff'), sub = token('--t2', '#a1a1aa');
+    var t3 = token('--t3', '#8e8e93'), s2 = token('--s2', '#1c1c1e');
     var accent = token('--accent', '#0a84ff'), line = token('--line-2', 'rgba(255,255,255,.16)');
-    var W = canvas.width, H = canvas.height, pad = 76;
+    var font = token('--font', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+    var W = canvas.width, H = canvas.height, pad = 76, contentW = W - pad * 2, right = W - pad;
+    var meta = state.data.meta || {};
+    var list = (state.byDate[iso] || []).filter(isShownLesson).slice().sort(function (a, b) {
+      return a.start < b.start ? -1 : a.start > b.start ? 1 : a.end < b.end ? -1 : a.end > b.end ? 1 : 0;
+    });
+    var gaps = PI.gaps(list, GAP_MIN), gapAt = {};
+    gaps.forEach(function (g) { gapAt[g.index] = g; });
+    var plannedMin = 0, gapMin = 0;
+    list.forEach(function (l) { plannedMin += Math.max(0, toMin(l.end) - toMin(l.start)); });
+    gaps.forEach(function (g) { gapMin += g.minutes; });
+
     ctx.clearRect(0, 0, W, H);
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = accent;
     ctx.fillRect(0, 0, W, 10);
-    var font = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textBaseline = 'top';
+
+    /* header: who, when, which week, and how fresh the data is */
     ctx.fillStyle = accent;
     ctx.font = '700 26px ' + font;
-    ctx.fillText('PLANWAT', pad, pad);
+    ctx.fillText('PLANWAT', pad, 56);
+    if (meta.generated) {
+      ctx.fillStyle = sub;
+      ctx.font = '500 20px ' + font;
+      ctx.textAlign = 'right';
+      ctx.fillText('plan z ' + fmtFullDate(meta.generated), right, 62);
+      ctx.textAlign = 'left';
+    }
     ctx.fillStyle = fg;
     ctx.font = '700 64px ' + font;
-    ctx.fillText(groupCode(), pad, pad + 42);
-    var dt = isoToLocalDate(iso);
+    ctx.fillText(cardClip(ctx, groupCode(), contentW), pad, 88);
+    var wi = weekIndexOf(iso);
+    var dateLine = DOW_PL[DAY_ORDER[dowIndex(iso)]] + ', ' + fmtFullDate(iso);
+    if (wi >= 0) dateLine += ' · tydzień ' + (wi + 1) + ' z ' + state.data.weeks.length;
     ctx.fillStyle = sub;
     ctx.font = '500 30px ' + font;
-    ctx.fillText(DOW_PL[DAY_ORDER[dowIndex(iso)]] + ', ' + dt.getDate() + '.' + pad2(dt.getMonth() + 1) + '.' + dt.getFullYear(), pad, pad + 124);
+    ctx.fillText(cardClip(ctx, dateLine, contentW), pad, 178);
+    var faculty = String(meta.faculty || '').trim();
+    if (faculty && !/^wydzia[łl]/i.test(faculty)) faculty = 'Wydział ' + faculty;
+    var detail = [faculty, String(meta.term || '').trim()].filter(Boolean).join(' · ');
+    if (detail) {
+      ctx.fillStyle = t3;
+      ctx.font = '400 22px ' + font;
+      ctx.fillText(cardClip(ctx, detail, contentW), pad, 220);
+    }
+    var dividerY = detail ? 268 : 238;
     ctx.fillStyle = line;
-    ctx.fillRect(pad, pad + 192, W - pad * 2, 2);
+    ctx.fillRect(pad, dividerY, contentW, 2);
 
-    var list = (state.byDate[iso] || []).filter(isShownLesson).slice().sort(function (a, b) {
-      return a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
+    /* the day in numbers */
+    var summaryTop = dividerY + 28, tileH = 96, tileGap = 10;
+    var tiles = [
+      [list.length === 1 ? 'ZAJĘCIE' : 'ZAJĘCIA', String(list.length)],
+      ['PIERWSZE', list.length ? list[0].start : '—'],
+      ['OSTATNIE', list.length ? list[list.length - 1].end : '—'],
+      ['W PLANIE', list.length ? PI.fmtDuration(plannedMin) : '—'],
+      ['OKIENKA', gaps.length ? PI.fmtDuration(gapMin) : (list.length ? 'brak' : '—')]
+    ];
+    var tileW = (contentW - tileGap * (tiles.length - 1)) / tiles.length;
+    tiles.forEach(function (tile, i) {
+      var x = pad + i * (tileW + tileGap);
+      ctx.fillStyle = s2;
+      cardRoundRect(ctx, x, summaryTop, tileW, tileH, 18);
+      ctx.fill();
+      ctx.strokeStyle = line;
+      ctx.lineWidth = 1;
+      cardRoundRect(ctx, x + 0.5, summaryTop + 0.5, tileW - 1, tileH - 1, 18);
+      ctx.stroke();
+      ctx.fillStyle = t3;
+      ctx.font = '600 15px ' + font;
+      ctx.fillText(tile[0], x + 16, summaryTop + 14);
+      ctx.fillStyle = fg;
+      ctx.font = '700 28px ' + font;
+      ctx.fillText(cardClip(ctx, tile[1], tileW - 32), x + 16, summaryTop + 42);
     });
-    var y = pad + 238;
+    var listTop = summaryTop + tileH + 32;
+
+    /* the week at a glance fades away when a busy day needs the room */
+    var weekInfo = cardWeek(iso);
+    var showWeek = !!weekInfo && list.length <= 7;
+    var footerLineY = H - 122, contentBottom = footerLineY - 24;
+    var weekH = 120, weekGap = 26;
+    var configs = [
+      { subject: 31, subjectH: 37, subjectLines: 3, meta: 21, metaH: 26, metaLines: 2, time: 25, base: 16, gapRow: 42, gapText: 19, maxExtra: 70, bar: 38 },
+      { subject: 27, subjectH: 33, subjectLines: 3, meta: 19, metaH: 24, metaLines: 1, time: 23, base: 12, gapRow: 34, gapText: 18, maxExtra: 28, bar: 32 },
+      { subject: 24, subjectH: 29, subjectLines: 2, meta: 17, metaH: 22, metaLines: 1, time: 21, base: 8, gapRow: 28, gapText: 16, maxExtra: 18, bar: 27 }
+    ];
+    var rowW = contentW - 200;
+    function buildRows(cfg) {
+      return list.map(function (l) {
+        ctx.font = '600 ' + cfg.subject + 'px ' + font;
+        var subject = cardLines(ctx, subjectLabel(l), rowW, cfg.subjectLines);
+        var second = '';
+        if (!isReservation(l)) second = typeLine(l);
+        if (l.room && l.room !== '-') second += (second ? ' · ' : '') + l.room;
+        var metaLines = [];
+        if (second) {
+          ctx.font = '400 ' + cfg.meta + 'px ' + font;
+          metaLines = cardLines(ctx, second, rowW, cfg.metaLines);
+        }
+        return {
+          l: l,
+          subject: subject,
+          meta: metaLines,
+          height: subject.length * cfg.subjectH + (metaLines.length ? 6 + metaLines.length * cfg.metaH : 0)
+        };
+      });
+    }
+    function fitCard(cfg, withWeek, noGaps) {
+      var rows = buildRows(cfg), g = 0;
+      var need = 0;
+      rows.forEach(function (row, i) { need += row.height; if (!noGaps && gapAt[i]) g++; });
+      need += g * cfg.gapRow + Math.max(0, rows.length - 1 - g) * cfg.base;
+      var area = (withWeek ? contentBottom - weekH - weekGap : contentBottom) - listTop;
+      return { cfg: cfg, rows: rows, need: need, area: area, withWeek: withWeek, noGaps: !!noGaps };
+    }
+    var fit = null;
+    if (showWeek) {
+      fit = fitCard(configs[0], true, false);
+      if (fit.need > fit.area) { showWeek = false; fit = null; }
+    }
+    if (!fit) {
+      var lastFit = null;
+      for (var ci = 0; ci < configs.length; ci++) {
+        lastFit = fitCard(configs[ci], false, false);
+        if (lastFit.need <= lastFit.area) { fit = lastFit; break; }
+      }
+      if (!fit) fit = lastFit;
+      if (fit.need > fit.area) fit = fitCard(configs[configs.length - 1], false, true);
+    }
+
+    /* the classes, with every name wrapped rather than cut short */
+    var y = listTop;
     if (!list.length) {
+      y += Math.max(0, (fit.area - 88) / 2);
       ctx.fillStyle = fg;
       ctx.font = '600 40px ' + font;
       ctx.fillText('Brak zajęć', pad, y);
+      ctx.fillStyle = sub;
+      ctx.font = '400 22px ' + font;
+      ctx.fillText('Cały dzień wolny — czas dla siebie.', pad, y + 54);
     } else {
-      var step = Math.min(112, Math.floor((H - y - 170) / list.length));
-      var timeW = 205;
-      list.forEach(function (l) {
+      var pairs = Math.max(0, fit.rows.length - 1);
+      var extra = Math.max(0, fit.area - fit.need);
+      var perPair = pairs ? Math.min(fit.cfg.maxExtra, extra / pairs) : 0;
+      fit.rows.forEach(function (row, i) {
+        var l = row.l;
         ctx.fillStyle = sub;
-        ctx.font = '600 26px ' + font;
-        ctx.fillText(l.start + '–' + l.end, pad, y + 7);
-        var color = safeColor(state.data.subjectColors[l.subject_full]);
-        ctx.fillStyle = color;
-        ctx.fillRect(pad + timeW - 28, y + 10, 8, 38);
+        ctx.font = '600 ' + fit.cfg.time + 'px ' + font;
+        ctx.fillText(l.start + '–' + l.end, pad, y + 3);
+        ctx.fillStyle = safeColor(state.data.subjectColors[l.subject_full]);
+        ctx.fillRect(pad + 176, y + 7, 7, Math.max(18, Math.min(fit.cfg.bar, row.height - 4)));
+        var tx = pad + 200;
         ctx.fillStyle = fg;
-        ctx.font = '600 31px ' + font;
-        var subject = subjectLabel(l);
-        ctx.fillText(subject.length > 34 ? subject.slice(0, 33) + '…' : subject, pad + timeW, y);
-        ctx.fillStyle = sub;
-        ctx.font = '400 22px ' + font;
-        var second = (isReservation(l) ? '' : (l.type_full || '')) + (l.room && l.room !== '-' ? (isReservation(l) ? '' : ' · ') + l.room : '');
-        ctx.fillText(second.length > 48 ? second.slice(0, 47) + '…' : second, pad + timeW, y + 42);
-        y += step;
+        ctx.font = '600 ' + fit.cfg.subject + 'px ' + font;
+        row.subject.forEach(function (ln, j) { ctx.fillText(ln, tx, y + j * fit.cfg.subjectH); });
+        if (row.meta.length) {
+          ctx.fillStyle = sub;
+          ctx.font = '400 ' + fit.cfg.meta + 'px ' + font;
+          var my = y + row.subject.length * fit.cfg.subjectH + 6;
+          row.meta.forEach(function (ln, j) { ctx.fillText(ln, tx, my + j * fit.cfg.metaH); });
+        }
+        y += row.height;
+        if (!fit.noGaps && gapAt[i]) {
+          var gapText = 'okienko · ' + PI.fmtDuration(gapAt[i].minutes);
+          var walk = window.Campus ? window.Campus.transfer(l.room, list[i + 1].room) : null;
+          if (walk) gapText += ' · ~' + walk.minutes + ' min pieszo do ' + buildingLabel(walk.to);
+          y += perPair / 2;
+          ctx.fillStyle = t3;
+          ctx.font = '500 ' + fit.cfg.gapText + 'px ' + font;
+          ctx.fillText(cardClip(ctx, gapText, rowW), tx, y + 10);
+          y += fit.cfg.gapRow + perPair / 2;
+        } else if (i < fit.rows.length - 1) {
+          y += fit.cfg.base + perPair;
+        }
       });
     }
-    ctx.fillStyle = sub;
-    ctx.font = '500 22px ' + font;
-    ctx.fillText('PlanWAT · plan na dziś', pad, H - 92);
+
+    /* the selected week, so the picture says more than one day */
+    if (fit.withWeek && weekInfo) {
+      var weekTop = contentBottom - weekH;
+      var monday = isoToLocalDate(weekInfo.from), sunday = addDays(monday, 6);
+      ctx.fillStyle = t3;
+      ctx.font = '600 18px ' + font;
+      ctx.fillText('Ten tydzień · ' + cardRange(monday, sunday), pad, weekTop);
+      var cellY = weekTop + 32, cellGap = 10;
+      var cellW = (contentW - cellGap * 6) / 7, cellH = 88;
+      weekInfo.days.forEach(function (day, i) {
+        var x = pad + i * (cellW + cellGap), on = day.iso === iso;
+        ctx.fillStyle = on ? accent : s2;
+        cardRoundRect(ctx, x, cellY, cellW, cellH, 16);
+        ctx.fill();
+        if (!on) {
+          ctx.strokeStyle = line;
+          ctx.lineWidth = 1;
+          cardRoundRect(ctx, x + 0.5, cellY + 0.5, cellW - 1, cellH - 1, 16);
+          ctx.stroke();
+        }
+        var d = isoToLocalDate(day.iso);
+        ctx.fillStyle = on ? '#ffffff' : t3;
+        ctx.font = '600 14px ' + font;
+        ctx.fillText(DOW_SHORT[i].toUpperCase(), x + 12, cellY + 12);
+        ctx.fillStyle = on ? '#ffffff' : fg;
+        ctx.font = '600 19px ' + font;
+        ctx.fillText(d.getDate() + '.' + pad2(d.getMonth() + 1), x + 12, cellY + 34);
+        ctx.fillStyle = on ? '#ffffff' : sub;
+        ctx.font = '500 14px ' + font;
+        ctx.fillText(day.count ? day.count + ' zaj.' : 'wolne', x + 12, cellY + 62);
+      });
+    }
+
+    /* footer: what this is, and where to find the live plan */
     ctx.fillStyle = line;
-    ctx.fillRect(pad, H - 122, W - pad * 2, 1);
-    ctx.fillStyle = accent;
-    ctx.fillRect(pad, H - 92, 42, 3);
+    ctx.fillRect(pad, footerLineY, contentW, 1);
+    ctx.fillStyle = sub;
+    ctx.font = '500 20px ' + font;
+    ctx.fillText('PlanWAT · plan dnia', pad, H - 92);
+    ctx.textAlign = 'right';
+    ctx.fillText('kilerdevs.github.io/PlanWAT', right, H - 92);
+    ctx.textAlign = 'left';
   }
+  /* canvas text helpers: the card keeps whole words when it can, and marks only what really does not fit */
+  function cardClip(ctx, text, maxWidth) {
+    var s = String(text == null ? '' : text);
+    if (ctx.measureText(s).width <= maxWidth) return s;
+    var lo = 0, hi = s.length;
+    while (lo < hi) {
+      var mid = Math.ceil((lo + hi) / 2);
+      if (ctx.measureText(s.slice(0, mid) + '…').width <= maxWidth) lo = mid; else hi = mid - 1;
+    }
+    return s.slice(0, lo).replace(/\s+$/, '') + '…';
+  }
+  function cardLines(ctx, text, maxWidth, maxLines) {
+    var words = String(text == null ? '' : text).replace(/\s+/g, ' ').trim().split(' ');
+    if (!words[0]) return [];
+    var lines = [], line = '';
+    for (var i = 0; i < words.length; i++) {
+      var word = words[i], next = line ? line + ' ' + word : word;
+      if (ctx.measureText(next).width <= maxWidth) { line = next; continue; }
+      if (line) { lines.push(line); line = word; }
+      else { lines.push(cardClip(ctx, word, maxWidth)); line = ''; }
+      if (lines.length === maxLines) {
+        var left = line || (i + 1 < words.length ? words[i + 1] : '');
+        if (left) lines[lines.length - 1] = cardClip(ctx, lines[lines.length - 1] + ' ' + left, maxWidth);
+        return lines;
+      }
+    }
+    if (line) lines.push(cardClip(ctx, line, maxWidth));
+    return lines.slice(0, maxLines);
+  }
+  function cardRoundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function cardRange(a, b) {
+    var ad = a.getDate() + '.' + pad2(a.getMonth() + 1);
+    var bd = b.getDate() + '.' + pad2(b.getMonth() + 1);
+    return a.getMonth() === b.getMonth() ? a.getDate() + '–' + bd : ad + '–' + bd;
+  }
+  function cardWeek(iso) {
+    var wi = weekIndexOf(iso);
+    if (wi < 0) return null;
+    var from = state.data.weeks[wi].monday, days = [];
+    for (var i = 0; i < 7; i++) {
+      var dayIso = isoOf(addDays(isoToLocalDate(from), i));
+      days.push({ iso: dayIso, count: (state.byDate[dayIso] || []).filter(isShownLesson).length });
+    }
+    return { from: from, days: days };
+  }
+
   function downloadShareCard(canvas, iso) {
     var done = function (url) {
       var a = el('a');
@@ -4095,7 +4321,7 @@
       canvas.id = 'shareCanvas';
       canvas.setAttribute('aria-hidden', 'true');
       body.appendChild(canvas);
-      para(body, 'Podgląd obrazu. Pobrany plik ma 1080 × 1350 px.', 'muted');
+      para(body, 'Podgląd obrazu: dzień w liczbach, wszystkie zajęcia i cały tydzień. Pobrany plik ma 1080 × 1350 px.', 'muted');
       var actions = body.appendChild(el('div', 'share-grid'));
       var shareTextBtn = actions.appendChild(el('button', 'action'));
       shareTextBtn.type = 'button';
@@ -5232,7 +5458,7 @@
           if (data && me) renderList();
         });
       panels.like.appendChild(modeRow);
-      listBox = panels.like.appendChild(el('div'));
+      listBox = panels.like.appendChild(el('div', 'pm-list'));
       panels.like.appendChild(el('p', 'muted', 'To porównanie rozkładu zajęć, a nie zgodności programu studiów. Zmianę grupy trzeba uzgodnić na uczelni.'));
     });
     window.addEventListener('resize', drawLater);
