@@ -451,9 +451,39 @@ test('share hands the page link to the system share sheet', async ({ page }) => 
   await expect(page.locator('#sharePreview')).toContainText('Matematyka II');
   const png = page.waitForEvent('download');
   await page.locator('#shareImage').click();
-  expect((await png).suggestedFilename()).toBe('plan-WCY26KY3S1-2026-10-15.png');
+  const file = await png;
+  expect(file.suggestedFilename()).toBe('plan-WCY26KY3S1-2026-10-15.png');
+  const pngBytes = fs.readFileSync(await file.path());
+  expect(pngBytes.subarray(1, 4).toString()).toBe('PNG');
+  expect(pngBytes.readUInt32BE(16)).toBe(1080);
+  expect(pngBytes.readUInt32BE(20)).toBe(1350);
   await page.locator('#shareLink').click();
   await expect.poll(() => page.evaluate(() => window.__shared && window.__shared.url)).toMatch(/\/WCY26KY3S1\/$/);
+});
+
+test('choice rows keep a clear gap before the block they introduce', async ({ page }) => {
+  await openGroup(page);
+  const gap = (first, second) => page.evaluate(([a, b]) => {
+    return document.querySelector(b).getBoundingClientRect().top - document.querySelector(a).getBoundingClientRect().bottom;
+  }, [first, second]);
+
+  await pressTool(page, '#calBtn');
+  await expect(page.locator('#calFile')).toBeVisible();
+  expect(await gap('#calFileRemind', '#calFile')).toBeGreaterThanOrEqual(10);
+  await page.locator('#toolClose').click();
+  await expect(tool(page)).toBeHidden();
+
+  await pressTool(page, '#shareBtn');
+  await expect(page.locator('#shareCanvas')).toBeVisible();
+  expect(await gap('#shareDate', '#shareQuick')).toBeGreaterThanOrEqual(10);
+  await page.locator('#toolClose').click();
+  await expect(tool(page)).toBeHidden();
+
+  await pressTool(page, '#profileBtn');
+  await expect(tool(page).locator('.pm-hero')).toBeVisible();
+  await tool(page).locator('#pmt-like').click();
+  await expect(tool(page).locator('.pm-sim li').first()).toBeVisible();
+  expect(await gap('#pmMode', '.pm-list')).toBeGreaterThanOrEqual(10);
 });
 
 test('a break is a banner, not a class, and the statistics separate it from teaching', async ({ page }) => {
