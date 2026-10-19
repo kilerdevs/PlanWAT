@@ -43,6 +43,27 @@ produkcyjny nie ingeruje.
 zadziałają dopiero po ustawieniu własnej domeny. Artefakt Pages zawiera pliki z kropką dla `.well-known/` i usuwa wewnętrzne
 znaczniki budowy `.planwat-site`.
 
+### Wyszukiwarki
+
+Każda strona ma własny tytuł i opis pod frazy, których ludzie szukają („plan zajęć WAT”, „plan zajęć WCY26KY3S1”), kartę
+Open Graph do podglądu linków i dane strukturalne JSON-LD (`WebSite` na stronie głównej, okruszki `BreadcrumbList` na
+stronach grup). Produkcja budowana jest z `--site-url` (adres `base_url` z `actions/configure-pages`), więc strony dostają też
+adres kanoniczny, a serwis `sitemap.xml` ze wszystkimi grupami i datą ostatniej zmiany planu. Po przejściu na własną domenę
+adresy zmienią się same. Podgląd dev nie dostaje mapy witryny.
+
+Pod `kilerdevs.github.io/PlanWAT/` są dwa ograniczenia, których kod nie obejdzie: Google ustala **nazwę witryny i favicon dla
+całego hosta** (`kilerdevs.github.io`, gdzie nie ma strony głównej, stąd „GitHub Pages documentation” i ikona globusa), a
+`robots.txt` czyta tylko z katalogu głównego hosta. Naprawia to własna domena (zob. niżej) albo repozytorium
+`kilerdevs.github.io` ze stroną główną, która przedstawia się jako PlanWAT.
+
+Jednorazowo w [Google Search Console](https://search.google.com/search-console) (właściwość z prefiksem URL
+`https://kilerdevs.github.io/PlanWAT/`, weryfikowana znacznikiem na stronie głównej):
+
+1. **Mapy witryn** → dodaj `sitemap.xml`.
+2. **Sprawdzanie adresu URL** → strona główna → **Poproś o zindeksowanie**.
+3. W [Bing Webmaster Tools](https://www.bing.com/webmasters) zaimportuj witrynę z Search Console (obejmuje też DuckDuckGo
+   i Ecosia).
+
 > [!NOTE]
 > GitHub wyłącza zaplanowane workflowy w publicznych repozytoriach po 60 dniach bez aktywności. Jeśli to się stanie, włącz
 > ponownie **Pages** w zakładce Actions (albo wypchnij dowolny commit).

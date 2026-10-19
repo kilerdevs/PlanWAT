@@ -12,6 +12,7 @@ Output (default: site/):
     pokrycie-wydzialow.svg  faculty coverage chart for README.md, drawn from the groups of this build
     sw.js, manifest.webmanifest, <GROUP>/manifest.webmanifest, icons/   offline worker and home-screen app
     robots.txt, .well-known/security.txt
+    sitemap.xml           every indexable page, written when --site-url gives the absolute address (not for --noindex)
     404.html
 
 Every page carries a hash-pinned Content-Security-Policy in a <meta> tag (GitHub Pages cannot send
@@ -24,6 +25,10 @@ deploy/nginx.conf, so no tracked file is ever rewritten.
     python3 build.py                                  # site/, terms picked for today
     python3 build.py --base-path /PlanWAT --today 2026-10-15
     python3 build.py --out /site --nginx deploy/nginx.conf   # inside the Docker build
+    python3 build.py --base-path /PlanWAT --site-url https://kilerdevs.github.io/PlanWAT   # GitHub Pages
+
+With --site-url the pages also carry a canonical URL, absolute Open Graph links and a sitemap; titles,
+descriptions and structured data (JSON-LD) are written either way.
 """
 import argparse
 import base64
@@ -75,6 +80,8 @@ ICONS_DIR = 'icons'  # site/icons/: app icons named by the manifests
 PRIVACY_DIR = 'prywatnosc'  # site/prywatnosc/: privacy notice and terms of use
 ASSETS_DIR = 'assets'  # site/assets/: styles and scripts shared by the pages, named after their content hash
 REPO_URL = 'https://github.com/kilerdevs/PlanWAT'
+SITE_NAME = 'PlanWAT'  # the name search engines and link previews show
+OG_IMAGE = f'{ICONS_DIR}/icon-512.png'  # the link-preview picture
 NOINDEX = '<meta name="robots" content="noindex, nofollow">'
 SW_FILE = 'sw.js'
 
@@ -717,16 +724,22 @@ def term_switch(term, terms):
     return '<nav class="termswitch" id="termSwitch" aria-label="Semestr">' + ''.join(links) + '</nav>'
 
 
-def render_group(template, ics_js, term, refreshed=None, terms=(), assets=None):
+def render_group(template, ics_js, term, refreshed=None, terms=(), assets=None, site_url=''):
     m = term.meta
     e = lambda v: html.escape(v, quote=True)  # noqa: E731
-    description = f'Plan zajęć grupy {m["group"]}' + (f' — Wydział {m["faculty"]}' if m['faculty'] else '') + \
-        (f', {m["term"]}' if m['term'] else '') + '.'
+    title, description = group_seo(term)
+    crumbs = {'@context': 'https://schema.org', '@type': 'BreadcrumbList', 'itemListElement': [
+        {'@type': 'ListItem', 'position': 1, 'name': SITE_NAME, **({'item': f'{site_url}/'} if site_url else {})},
+        {'@type': 'ListItem', 'position': 2, 'name': f'Plan zajęć {m["group"]}',
+         **({'item': f'{site_url}/{m["group"]}/'} if site_url else {})},
+    ]}
     refreshed = refreshed or {}
     # Last change of the plan (from the refresh), else the date the calendar says it was generated.
     updated = _stamp(refreshed.get('changed') or refreshed.get('checked')) or (_date(m['generated']) if m['generated'] else '')
     checked = _stamp(refreshed.get('checked'), with_time=True)
     values = {
+        '@@SEO@@': seo_head(site_url, f'{m["group"]}/', title, description, [crumbs]),
+        '@@TITLE@@': e(title),
         '@@GROUP@@': e(m['group']),
         '@@TERM_SWITCH@@': term_switch(term, terms),
         '@@DESCRIPTION@@': e(description),
@@ -759,7 +772,7 @@ STAR_SVG = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.
             'L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z"/></svg>')
 
 
-def render_index(template, current, ics_js='', assets=None):
+def render_index(template, current, ics_js='', assets=None, site_url=''):
     names = {code: pl for code, pl in FACULTIES}
     order = {code: i for i, (code, _) in enumerate(FACULTIES)}
     groups = sorted(current.items(), key=lambda kv: (order.get(faculty_of(kv[0]), len(order)), kv[0]))
@@ -827,25 +840,129 @@ def render_index(template, current, ics_js='', assets=None):
     page = page.replace('@@CHIPS@@', chips_html)
     page = page.replace('@@STATS@@', stats)
     page = page.replace('@@REDIRECT@@', redirect)
+    title, description = index_seo(current)
+    website = {'@context': 'https://schema.org', '@type': 'WebSite', 'name': SITE_NAME,
+               'alternateName': ['Plan WAT', 'Plan zajęć WAT'], 'inLanguage': 'pl', 'description': description,
+               **({'url': f'{site_url}/'} if site_url else {})}
+    page = page.replace('@@SEO@@', seo_head(site_url, '', title, description, [website]))
+    page = page.replace('@@TITLE@@', html.escape(title)).replace('@@DESCRIPTION@@', html.escape(description, quote=True))
     return finish(page, connect=True, extra=APP_CSP, assets=assets)
 
 
-def render_map(template, ics_js, campus_js, places_js, assets=None):
+MAP_TITLE = f'Mapa kampusu WAT – budynki, wydziały i sale | {SITE_NAME}'
+MAP_DESCRIPTION = ('Mapa kampusu Wojskowej Akademii Technicznej: budynki, wydziały i sale z Twojego planu zajęć, '
+                   'a wokół przystanki, akademiki, jedzenie i parkingi.')
+PRIVACY_TITLE = f'Prywatność i zasady · {SITE_NAME}'
+PRIVACY_DESCRIPTION = 'Jakie dane przetwarza PlanWAT (żadnych kont ani śledzenia), zasady korzystania i kontakt.'
+
+
+def render_map(template, ics_js, campus_js, places_js, assets=None, site_url=''):
     page = template.replace('@@ICS_JS@@', ics_js).replace('@@CAMPUS_JS@@', campus_js).replace('@@PLACES_JS@@', places_js)
+    page = page.replace('@@SEO@@', seo_head(site_url, f'{MAP_DIR}/', MAP_TITLE, MAP_DESCRIPTION))
+    page = page.replace('@@TITLE@@', html.escape(MAP_TITLE)).replace('@@DESCRIPTION@@', html.escape(MAP_DESCRIPTION, quote=True))
     return finish(page, connect=True, extra=merge_csp(MAP_APP_CSP, MAP_CSP), assets=assets, asset_prefix='../')
 
 
-def render_privacy(template):
+def render_privacy(template, site_url=''):
     # the notice runs no script at all: it follows the system theme through CSS only (no stored choice)
-    return finish(template.replace('@@THEME_HEAD@@' + chr(10), ''), connect=False)
+    page = template.replace('@@SEO@@', seo_head(site_url, f'{PRIVACY_DIR}/', PRIVACY_TITLE, PRIVACY_DESCRIPTION))
+    page = page.replace('@@TITLE@@', html.escape(PRIVACY_TITLE)).replace('@@DESCRIPTION@@', html.escape(PRIVACY_DESCRIPTION, quote=True))
+    return finish(page.replace('@@THEME_HEAD@@' + chr(10), ''), connect=False)
 
 
-def robots_txt(base_path, noindex):
+def robots_txt(base_path, noindex, site_url=''):
     if noindex:  # the dev preview: keep it out of search engines altogether
         return 'User-agent: *\nDisallow: /\n'
     base = base_path.rstrip('/')
+    # Crawlers read robots.txt only at the root of a host, so under a base path this file speaks for the site only
+    # once it has its own domain; the sitemap line is harmless until then (submit it in Search Console meanwhile).
     return (f'# PlanWAT: nieoficjalne plany zajęć WAT\nUser-agent: *\nAllow: {base}/\n'
-            f'Disallow: {base}/{DATA_DIR}/\nDisallow: {base}/dev/\n')
+            f'Disallow: {base}/{DATA_DIR}/\nDisallow: {base}/dev/\n'
+            + (f'\nSitemap: {site_url}/sitemap.xml\n' if site_url else ''))
+
+
+# ---------------------------------------------------------------- search engines
+
+def faculty_name(group, declared=''):
+    """The faculty a group belongs to, by its code, else by its calendar ('Cybernetyki' -> 'Wydział Cybernetyki')."""
+    names = dict(FACULTIES)
+    if faculty_of(group) in names:
+        return names[faculty_of(group)]
+    return f'Wydział {declared}' if declared else ''
+
+
+def _json_ld(data):
+    # inside <script>, "</" would end the block early: escape "<" the way JSON allows
+    return json.dumps(data, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
+
+
+def seo_head(site_url, rel, title, description, ld=()):
+    """Social cards, the canonical URL and JSON-LD for the page at <site_url>/<rel>.
+
+    Without a site URL (local and Docker builds) the absolute parts are left out: a relative canonical or
+    og:url would be wrong for any copy of the site served from somewhere else."""
+    e = lambda v: html.escape(v, quote=True)  # noqa: E731
+    tags = [
+        f'<meta property="og:site_name" content="{SITE_NAME}">',
+        '<meta property="og:type" content="website">',
+        '<meta property="og:locale" content="pl_PL">',
+        f'<meta property="og:title" content="{e(title)}">',
+        f'<meta property="og:description" content="{e(description)}">',
+        '<meta name="twitter:card" content="summary">',
+    ]
+    if site_url:
+        url = f'{site_url}/{rel}'
+        tags[:0] = [f'<link rel="canonical" href="{e(url)}">']
+        tags += [f'<meta property="og:url" content="{e(url)}">',
+                 f'<meta property="og:image" content="{e(site_url)}/{OG_IMAGE}">',
+                 '<meta property="og:image:width" content="512">',
+                 '<meta property="og:image:height" content="512">',
+                 f'<meta property="og:image:alt" content="Logo {SITE_NAME}">']
+    tags += [f'<script type="application/ld+json">{_json_ld(obj)}</script>' for obj in ld]
+    return '\n'.join(tags)
+
+
+def index_seo(current):
+    groups = len(current)
+    facs = len({faculty_of(g) for g in current} - {'OTHER'})
+    title = f'Plan zajęć WAT – plan Twojej grupy na telefonie | {SITE_NAME}'
+    description = (f'Plan zajęć WAT dla {groups} {"grupy" if groups == 1 else "grup"} z {facs} '
+                   f'{"wydziału" if facs == 1 else "wydziałów"} Wojskowej Akademii Technicznej: zajęcia na dziś '
+                   'i na cały tydzień, sale, wolne sale, mapa kampusu i eksport do kalendarza. Za darmo, bez logowania.')
+    return title, description
+
+
+def group_seo(term):
+    m = term.meta
+    fac = faculty_name(m['group'], m['faculty'])
+    title = f'Plan zajęć {m["group"]} – ' + (f'{fac}, WAT' if fac else 'WAT') + f' | {SITE_NAME}'
+    description = (f'Plan zajęć grupy {m["group"]} (' + (f'{fac} WAT' if fac else 'WAT') + ')'
+                   + (f', {m["term"]}' if m['term'] else '')
+                   + ': zajęcia na dziś i na cały tydzień, sale, godziny, wolne sale i eksport do kalendarza.')
+    return title, description
+
+
+def _lastmod(term, refreshed):
+    """When a group's plan last changed: the refresh's record, else the calendar's own X-PLAN-GENERATED."""
+    stamp = str((refreshed or {}).get('changed') or (refreshed or {}).get('checked') or '')
+    if re.match(r'\d{4}-\d{2}-\d{2}', stamp):
+        return stamp[:10]
+    return term.meta['generated'].isoformat() if term.meta['generated'] else None
+
+
+def sitemap_xml(site_url, current, refreshed):
+    """Every page a search engine should index: the front page, the map, the privacy notice and each group."""
+    e = lambda v: html.escape(v, quote=False)  # noqa: E731
+    stamps = {g: _lastmod(t, refreshed.get(g)) for g, t in current.items()}
+    newest = max((d for d in stamps.values() if d), default=None)
+    entries = [('', newest), (f'{MAP_DIR}/', None), (f'{PRIVACY_DIR}/', None)]
+    entries += [(f'{g}/', stamps[g]) for g in sorted(current)]
+    rows = []
+    for rel, lastmod in entries:
+        row = f'  <url><loc>{e(site_url)}/{e(rel)}</loc>'
+        rows.append(row + (f'<lastmod>{lastmod}</lastmod>' if lastmod else '') + '</url>')
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + '\n'.join(rows) + '\n</urlset>\n')
 
 
 def security_txt(today):
@@ -1009,7 +1126,7 @@ def update_nginx(conf_path, scripts, styles):
     conf_path.write_text(conf)
 
 
-def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None, noindex=False):
+def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None, noindex=False, site_url=''):
     files = sorted(Path(timetables).glob('*/*.ics'))
     if not files:
         raise BuildError(f'no calendars found in {timetables}/<term>/<GROUP>.ics')
@@ -1032,6 +1149,9 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
             raise BuildError(f'src/{name} must not contain "@@"')
 
     refreshed = load_refresh_state(state_path or ROOT / 'refresh-state.json')
+    site_url = site_url.rstrip('/')
+    if site_url and not re.match(r'^https?://[^/\s]+(/[^\s]*)?$', site_url):
+        raise BuildError(f'--site-url must be an absolute http(s) URL, not "{site_url}"')
 
     out = Path(out)
     _prepare_out(out)
@@ -1050,17 +1170,19 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
 
     for group, term in sorted(current.items()):
         write(f'{group}/index.html', render_group(group_tpl, '\n'.join((ics_js, insights_js, campus_js)), term,
-                                                  refreshed.get(group), by_group[group], assets=assets))
+                                                  refreshed.get(group), by_group[group], assets=assets, site_url=site_url))
         (out / group / 'plan.ics').write_bytes(term.data())
         (out / group / REMINDER_FILE).write_bytes(with_reminders(term.data()))
         for other in by_group[group]:  # the group's other terms: plan-<term>.ics, opened by the page's ?t=<term>
             if other.term_id != term.term_id:
                 (out / group / f'plan-{other.term_id}.ics').write_bytes(other.data())
                 (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.data()))
-    write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js, assets=assets))
-    write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets))
-    write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8')))
-    (out / 'robots.txt').write_text(robots_txt(base_path, noindex), encoding='utf-8')
+    write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js, assets=assets, site_url=site_url))
+    write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets, site_url=site_url))
+    write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8'), site_url))
+    (out / 'robots.txt').write_text(robots_txt(base_path, noindex, site_url), encoding='utf-8')
+    if site_url and not noindex:
+        (out / 'sitemap.xml').write_text(sitemap_xml(site_url, current, refreshed), encoding='utf-8')
     (out / '.well-known').mkdir()
     (out / '.well-known' / 'security.txt').write_text(security_txt(today), encoding='utf-8')
     write('404.html', render_404((SRC / '404.html').read_text(encoding='utf-8'), base_path))
@@ -1095,9 +1217,12 @@ def main(argv=None):
     ap.add_argument('--state', type=Path, help='refresh-state.json with per-group refresh times (default: ./refresh-state.json)')
     ap.add_argument('--nginx', type=Path, help='nginx.conf whose CSP header to pin (Docker build only)')
     ap.add_argument('--noindex', action='store_true', help='ask search engines to skip the whole site (the dev preview)')
+    ap.add_argument('--site-url', default='', help='absolute address of the site, e.g. https://kilerdevs.github.io/PlanWAT '
+                    '(canonical URLs, social cards and sitemap.xml)')
     args = ap.parse_args(argv)
     try:
-        picked = build(args.timetables, args.out, args.today or _today_in_warsaw(), args.base_path, args.nginx, args.state, args.noindex)
+        picked = build(args.timetables, args.out, args.today or _today_in_warsaw(), args.base_path, args.nginx, args.state, args.noindex,
+                       args.site_url)
     except BuildError as err:
         print(f'build failed: {err}', file=sys.stderr)
         return 1

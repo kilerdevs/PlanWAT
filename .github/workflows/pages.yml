@@ -115,7 +115,15 @@ jobs:
       - id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Build the production site
-        run: python prod/build.py --out site --base-path "${{ steps.pages.outputs.base_path }}"
+        # base_url (absolute) gives the pages canonical URLs and social cards, and the site a sitemap.xml.
+        # This workflow comes from the pushed branch but production is master's build.py, which may not
+        # know --site-url yet (a push to dev before the release that adds it): pass it only when it does.
+        run: |
+          site_url=()
+          if python prod/build.py --help | grep -q -- --site-url; then
+            site_url=(--site-url "${{ steps.pages.outputs.base_url }}")
+          fi
+          python prod/build.py --out site --base-path "${{ steps.pages.outputs.base_path }}" "${site_url[@]}"
       - name: Build the dev preview
         run: python devsrc/build.py --out site/dev --base-path "${{ steps.pages.outputs.base_path }}/dev" --noindex
       # Cross-link the two front pages. Plain anchors only: no inline script or

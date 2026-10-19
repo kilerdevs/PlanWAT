@@ -174,7 +174,8 @@ test('every group page renders its calendar without errors', async ({ page }) =>
 test('renders the current week from plan.ics with live status and no CSP violations', async ({ page }) => {
   const problems = await openGroup(page);
   await expect(page.locator('h1')).toHaveText('WCY26KY3S1');
-  await expect(page).toHaveTitle('Plan zajęć WCY26KY3S1');
+  // the title search engines index is the one after the script ran: it keeps the built one
+  await expect(page).toHaveTitle('Plan zajęć WCY26KY3S1 – Wydział Cybernetyki, WAT | PlanWAT');
   await expect(weekLabel(page)).toHaveText('12.10–17.10');
   await expect(page.locator('#weekMeta')).toHaveText('Tydzień 3 z 22 · 13 bloków');
   await expect(page.locator('.lesson')).toHaveCount(13);
