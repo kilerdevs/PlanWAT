@@ -47,7 +47,8 @@ const GROUPS = fs.readdirSync(SITE).filter((d) => fs.existsSync(path.join(SITE, 
 test('the root lists the groups (or goes straight to the only one) and links to a group page', async ({ page }) => {
   await page.clock.setFixedTime(THURSDAY_1030);
   await page.goto('/');
-  await expect(page.locator('.devnote')).toContainText('w trakcie rozwoju');
+  // The development notice is hidden for now (see src/index.html).
+  // await expect(page.locator('.devnote')).toContainText('w trakcie rozwoju');
   const link = page.locator('a.group[href="WCY26KY3S1/"]');
   await expect(async () => {
     expect(ON_GROUP.test(page.url()) || (await link.count()) > 0).toBe(true);
