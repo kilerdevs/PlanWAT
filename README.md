@@ -110,7 +110,7 @@ zawsze prowadzi do bieżącego tygodnia.
 | Wszystkie grupy | [`https://kilerdevs.github.io/PlanWAT/`](https://kilerdevs.github.io/PlanWAT/): lista z wyszukiwarką i filtrem wydziałów |
 | Mapa kampusu | [`…/mapa/`](https://kilerdevs.github.io/PlanWAT/mapa/) |
 
-Interfejs jest po polsku. Kod i nazwy techniczne są angielskie, dokumentacja w tym repozytorium: polska.
+Interfejs jest po polsku. Kod i nazwy techniczne są angielskie, dokumentacja w tym repozytorium: polski.
 
 ---
 
