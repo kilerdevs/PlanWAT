@@ -486,7 +486,7 @@ class SearchEngineTest(unittest.TestCase):
         for page in out.rglob('index.html'):
             text = page.read_text(encoding='utf-8')
             csp = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', text).group(1)
-            for block in re.findall(r'<script>(.*?)</script>', text, re.S):
+            for block in re.findall(r'<script>(.*?)</script>', text, re.S | re.I):
                 self.assertIn(sha(block), csp, page)
 
     def test_a_group_of_an_unlisted_faculty_is_named_from_its_calendar(self):
