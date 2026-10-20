@@ -248,10 +248,30 @@ class BuildRealSiteTest(unittest.TestCase):
         return sorted({p.stem for p in (ROOT / 'timetables').glob('*/*.ics')})
 
     def test_every_group_in_the_repository_gets_a_page_and_its_calendar(self):
+        # the file as committed, minus other semesters' lessons, with semester dates repaired where they were wrong
+        bounds = re.compile(rb'^X-PLAN-SEMESTER-(?:START|END):[^\r\n]*\r?\n', re.M)
         for group in self.groups():
             self.assertTrue((self.out / group / 'index.html').is_file(), group)
             calendar = (self.out / group / 'plan.ics').read_bytes()
-            self.assertIn(calendar, [build.clip_to_term(p.read_bytes(), p.parent.name) for p in (ROOT / 'timetables').glob(f'*/{group}.ics')], group)
+            sources = [build.clip_to_term(p.read_bytes(), p.parent.name) for p in (ROOT / 'timetables').glob(f'*/{group}.ics')]
+            self.assertIn(bounds.sub(b'', calendar), [bounds.sub(b'', s) for s in sources], group)
+
+    def test_no_group_page_counts_empty_months_into_its_semester(self):
+        # every published semester belongs to its term, and the first class comes within a few weeks of its start
+        bounds = re.compile(rb'^X-PLAN-SEMESTER-(?:START|END):[^\r\n]*\r?\n', re.M)
+        for group in self.groups():
+            raw = (self.out / group / 'plan.ics').read_bytes()
+            term_id = next(p.parent.name for p in (ROOT / 'timetables').glob(f'*/{group}.ics')
+                           if bounds.sub(b'', build.clip_to_term(p.read_bytes(), p.parent.name)) == bounds.sub(b'', raw))
+            text = raw.decode('utf-8')
+            start = re.search(r'^X-PLAN-SEMESTER-START:(\d{8})', text, re.M).group(1)
+            end = re.search(r'^X-PLAN-SEMESTER-END:(\d{8})', text, re.M).group(1)
+            first, last = build.term_window(term_id)
+            self.assertTrue(first <= start <= end <= last, f'{group}: {start}-{end} in {term_id}')
+            days = sorted(re.findall(r'^DTSTART[^:\r\n]*:(\d{8})', text, re.M))
+            if days:
+                gap = (build._ymd(days[0]) - build._ymd(start)).days
+                self.assertLess(gap, 8 * 7, f'{group}: first class {days[0]}, {gap} days after the semester start {start}')
 
     def test_root_links_every_group_and_redirects_only_when_there_is_one(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
@@ -874,6 +894,63 @@ class ClipToTermTest(unittest.TestCase):
             published = (tmp / 'site' / 'WCY25KY1S1' / name).read_text(encoding='utf-8')
             self.assertNotIn('20260410', published, name)
             self.assertIn('20261005', published, name)
+
+
+class SemesterBoundsTest(unittest.TestCase):
+    """Semester dates of another semester (a converter misled by a leftover lesson) are repaired, not published."""
+
+    def site(self, files):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        term = tmp / 'timetables' / '2026-27-zima'
+        term.mkdir(parents=True)
+        for name, text in files.items():
+            (term / f'{name}.ics').write_text(text, encoding='utf-8', newline='')
+        build.build(tmp / 'timetables', tmp / 'site', today=D(2026, 10, 20), nginx_conf=None)
+        return tmp / 'site'
+
+    def test_last_semesters_dates_give_way_to_those_the_faculty_agrees_on(self):
+        site = self.site({
+            'WCY25IX1S0': calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-10-01'),
+            'WCY26KY3S1': calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'),
+            'WCY24KY2S1': calendar('WCY24KY2S1', '2026-09-28', '2027-02-22', '2026-10-06'),
+        })
+        published = (site / 'WCY25IX1S0' / 'plan.ics').read_bytes().decode('utf-8')
+        self.assertIn('X-PLAN-SEMESTER-START:20260928\r\n', published)
+        self.assertIn('X-PLAN-SEMESTER-END:20270222\r\n', published)
+        self.assertNotIn('20260302', published)
+        self.assertIn('DTSTART:20261001T080000', published)  # the lessons are untouched
+        reminders = (site / 'WCY25IX1S0' / build.REMINDER_FILE).read_bytes().decode('utf-8')
+        self.assertIn('X-PLAN-SEMESTER-START:20260928', reminders)
+        page = (site / 'WCY25IX1S0' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('<dd>28.09.2026 &ndash; 22.02.2027</dd>', page)
+        # a calendar whose dates were right is still published byte for byte
+        self.assertEqual((site / 'WCY26KY3S1' / 'plan.ics').read_bytes().decode('utf-8'),
+                         calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+
+    def test_with_nothing_to_agree_with_the_lessons_date_the_semester(self):
+        site = self.site({'WCY25IX1S0': calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-10-01')})
+        published = (site / 'WCY25IX1S0' / 'plan.ics').read_bytes().decode('utf-8')
+        self.assertIn('X-PLAN-SEMESTER-START:20260928\r\n', published)  # Monday of the first class
+        self.assertIn('X-PLAN-SEMESTER-END:20261001\r\n', published)
+
+    def test_a_stray_lesson_of_last_semester_does_not_make_the_term_current_early(self):
+        # one March class used to start this winter term in March, so in spring the build would have picked it
+        stray = calendar('WCY25IX1S0', '2026-09-28', '2027-02-22', '2026-10-01').replace(
+            'END:VCALENDAR', 'BEGIN:VEVENT\r\nUID:old@test\r\nDTSTART:20260323T080000\r\nDTEND:20260323T093500\r\n'
+                             'SUMMARY:Fizyka\r\nEND:VEVENT\r\nEND:VCALENDAR')
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        path = tmp / '2026-27-zima' / 'WCY25IX1S0.ics'
+        path.parent.mkdir()
+        path.write_text(stray, encoding='utf-8', newline='')
+        _, term = build.load_term(path)
+        self.assertEqual(term.start, D(2026, 9, 28))
+
+    def test_dates_inside_the_term_are_left_alone(self):
+        self.assertTrue(build.bounds_fit_term(D(2026, 9, 28), D(2027, 2, 22), '2026-27-zima'))
+        self.assertFalse(build.bounds_fit_term(D(2026, 3, 2), D(2026, 7, 27), '2026-27-zima'))
+        self.assertFalse(build.bounds_fit_term(D(2026, 9, 28), D(2026, 7, 27), '2026-27-zima'))
 
 
 class RoomsDataTest(unittest.TestCase):

@@ -562,6 +562,13 @@ class WcyReadiness(unittest.TestCase):
         self.assertFalse(d.page_ok(text))
         self.assertFalse(d.not_ready(text))
 
+    def test_a_lesson_left_over_from_last_semester_does_not_date_this_one(self):
+        # one March class under a winter plan used to start the semester on 2 March and end it in July
+        d = self.driver()
+        args = d._term_args(wcy_page(['2026_03_23', '2026_10_01', '2026_10_05']))
+        self.assertEqual(args[args.index('--term-start') + 1], '20260928')  # Monday of the first winter class
+        self.assertNotIn('--term-start', d._term_args(wcy_page(['2026_03_23'])))
+
 
 @unittest.skipUnless(HAS_PYMUPDF, 'pymupdf not installed')
 class WtcConversion(unittest.TestCase):
