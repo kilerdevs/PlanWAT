@@ -994,6 +994,13 @@ class SemesterBoundsTest(unittest.TestCase):
         out = build.with_semester(missing.encode('utf-8'), D(2026, 9, 28), D(2027, 2, 22)).decode('utf-8')
         self.assertTrue(out.startswith('BEGIN:VCALENDAR\r\nX-PLAN-SEMESTER-START:20260928\r\nX-PLAN-SEMESTER-END:20270222\r\n'))
 
+    def test_an_event_property_of_the_same_name_is_never_touched(self):
+        text = calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-10-01').replace(
+            'SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nX-PLAN-SEMESTER-START:19990101')
+        out = build.with_semester(text.encode('utf-8'), D(2026, 9, 28), D(2027, 2, 22)).decode('utf-8')
+        self.assertIn('X-PLAN-SEMESTER-START:20260928\r\n', out.split('BEGIN:VEVENT')[0])
+        self.assertIn('X-PLAN-SEMESTER-START:19990101\r\n', out.split('BEGIN:VEVENT')[1])
+
     def test_only_a_start_of_last_semester_is_repaired_too(self):
         one = re.sub(r'X-PLAN-SEMESTER-END:\d+\r\n', '', calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-10-01'))
         site = self.site({'WCY25IX1S0': one, 'WCY26KY3S1': calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05')})

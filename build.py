@@ -246,10 +246,14 @@ def semester_fits_term(start, end, term_id):
 def with_semester(raw, start, end):
     """A calendar (bytes) with its X-PLAN-SEMESTER-START/END set to `start`/`end`; every other byte untouched.
 
-    Each property keeps its place (written in any case, with parameters, folded); repeats of it are dropped, and a
-    missing one is added right after BEGIN:VCALENDAR."""
-    text = raw.decode('utf-8')
-    nl = '\r\n' if '\r\n' in text else '\n'
+    Only the calendar's own header (before its first component) is touched, so no event property is ever rewritten.
+    There each property keeps its place (written in any case, with parameters, folded); repeats of it are dropped, and
+    a missing one is added right after BEGIN:VCALENDAR -- first, so it is the one every reader takes."""
+    whole = raw.decode('utf-8')
+    nl = '\r\n' if '\r\n' in whole else '\n'
+    component = re.search(r'^BEGIN:', whole[1:], flags=re.I | re.M)
+    split = component.start() + 1 if component else len(whole)
+    text, rest = whole[:split], whole[split:]
     for name, day in (('X-PLAN-SEMESTER-START', start), ('X-PLAN-SEMESTER-END', end)):
         line = f'{name}:{day:%Y%m%d}{nl}'
         pattern = re.compile(rf'^{name}(?:;[^:\r\n]*)?:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*(?:\r?\n|$)', re.I | re.M)
@@ -260,7 +264,7 @@ def with_semester(raw, start, end):
             if not re.search(after, text, flags=re.I | re.M):
                 after = r'^BEGIN:VCALENDAR\r?\n'
             text = re.sub(after, lambda m: m.group(0) + line, text, count=1, flags=re.I | re.M)
-    return text.encode('utf-8')
+    return (text + rest).encode('utf-8')
 
 
 def fix_semester_bounds(by_group):
