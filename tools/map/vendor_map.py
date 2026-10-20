@@ -9,7 +9,8 @@
     LICENSE-openfreemap.md  the licences of the style, its icons and glyphs (the engine's is in lib/)
 
 The tiles come from OpenFreeMap (© OpenMapTiles, data © OpenStreetMap contributors, ODbL 1.0) and are stored byte for
-byte. Run it by hand when the map data should be refreshed; the site itself never calls OpenFreeMap or unpkg.
+byte. .github/workflows/map.yml runs it monthly and publishes the result to the `map` branch, which pages.yml lays over
+src/map/; run it by hand when the committed snapshot should change too. The site itself never calls OpenFreeMap or unpkg.
 
     python tools/map/vendor_map.py
 

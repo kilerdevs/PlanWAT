@@ -19,7 +19,7 @@ on:
   # contents:write token and, on purpose, has no permission to start workflows itself). This trigger runs the
   # workflow from the default branch and needs nothing from the refresh run but its end.
   workflow_run:
-    workflows: ['Refresh timetables']
+    workflows: ['Refresh timetables', 'Update campus map']
     types: [completed]
   workflow_dispatch:
 
@@ -107,6 +107,27 @@ jobs:
             if [ -f data/refresh-state.json ]; then cp data/refresh-state.json "$tree/refresh-state.json"; fi
           done
           echo "overlaid $(find data/timetables -name '*.ics' | wc -l) refreshed calendars"
+      # The monthly campus map (see map.yml) lives on the `map` branch. It replaces a tree's src/map/ only when it was
+      # vendored for exactly the tiles and engine that tree expects (its tools/map/coverage.json and src/map/lib/, whose
+      # bytes the tree's SRI pins); otherwise, and before the branch exists, the tree keeps the map committed with it.
+      - id: map
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: map
+          path: mapbranch
+      - name: Overlay the updated campus map
+        if: steps.map.outcome == 'success'
+        run: |
+          for tree in prod devsrc; do
+            if [ -f "$tree/tools/map/coverage.json" ] && cmp -s mapbranch/coverage.json "$tree/tools/map/coverage.json" \
+               && diff -rq mapbranch/map/lib "$tree/src/map/lib" > /dev/null; then
+              rm -rf "$tree/src/map" && cp -r mapbranch/map "$tree/src/map"
+              echo "$tree: campus map from the map branch ($(git -C mapbranch log -1 --format=%s))"
+            else
+              echo "$tree: keeps the campus map committed with it"
+            fi
+          done
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'

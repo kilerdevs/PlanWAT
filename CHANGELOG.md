@@ -18,6 +18,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [1.1.0] - 2026-10-20
 
 ### Dodano
+- **Comiesięczna aktualizacja mapy kampusu:** workflow `map.yml` pobiera świeże kafelki i resztę mapy, testuje zbudowaną stronę
+  (testy budowy i testy przeglądarkowe mapy) i publikuje ją na gałęzi `map`, którą Pages nakłada przed budową. Gałąź ma jeden
+  commit, więc historia repozytorium nie rośnie co miesiąc.
 - **Mądrzejsza strona 404:** link do grupy wpisany małymi literami (`/wcy26ky3s1/`) prowadzi prosto do grupy, a przy
   literówce strona podsuwa najbliższe kody grup i wyszukiwanie na liście.
 - **Sesja egzaminacyjna** na stronie grupy: osobny arkusz z egzaminami i zaliczeniami z planu (filtr rodzaju, licznik dni,
