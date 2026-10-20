@@ -20,6 +20,17 @@ const TYPES = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+/* The file's bytes, or null for a directory: one open, then fstat and read on that descriptor, so nothing
+   can swap the file between the check and the read. */
+function readFile(file) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    return fs.fstatSync(fd).isDirectory() ? null : fs.readFileSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 http.createServer((req, res) => {
   const rel = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   let file = path.join(ROOT, rel);
@@ -28,14 +39,16 @@ http.createServer((req, res) => {
     return;
   }
   try {
-    if (fs.statSync(file).isDirectory()) {
+    let body = readFile(file);
+    if (body === null) {
       if (!rel.endsWith('/')) {
         res.writeHead(301, { Location: rel + '/' }).end();
         return;
       }
       file = path.join(file, 'index.html');
+      body = readFile(file);
+      if (body === null) throw new Error('not a file');
     }
-    const body = fs.readFileSync(file);
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' }).end(body);
   } catch {
     res.writeHead(404, { 'Content-Type': TYPES['.html'] }).end(fs.readFileSync(path.join(ROOT, '404.html')));

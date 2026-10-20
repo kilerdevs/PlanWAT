@@ -292,7 +292,7 @@ class BuildRealSiteTest(unittest.TestCase):
             m = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', html)
             self.assertIsNotNone(m, page)
             csp = m.group(1)
-            for block in re.findall(r'<script>(.*?)</script>', html, re.S):
+            for block in re.findall(r'<script>(.*?)</script>', html, re.S | re.I):
                 self.assertIn(sha(block), csp, f'{page}: script hash missing')
             for block in re.findall(r'<style>(.*?)</style>', html, re.S):
                 self.assertIn(sha(block), csp, f'{page}: style hash missing')
