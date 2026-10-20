@@ -442,11 +442,11 @@ class BuildRealSiteTest(unittest.TestCase):
 
     def test_404_may_look_up_the_group_list_to_fix_a_mistyped_link(self):
         html = (self.out / '404.html').read_text(encoding='utf-8')
-        self.assertIn('data-base="/PlanWAT"', html)
+        self.assertIn('var base = "/PlanWAT";', html)
         self.assertIn("root + '/data/groups.json'", html)
         csp = self.meta_csp('404.html')
         self.assertIn("connect-src 'self';", csp)
-        script = re.search(r'<script>(.*?)</script>', html, re.S).group(1)
+        script = re.search(r'<script>(.*?)</script>', html, re.S | re.I).group(1)
         self.assertIn(sha(script), csp)
         self.assertNotIn('innerHTML', script)  # the typed address only ever reaches the page as text
 

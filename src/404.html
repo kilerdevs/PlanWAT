@@ -82,7 +82,7 @@
 </style>
 </head>
 <body>
-<main data-base="@@BASE@@">
+<main>
   <svg class="mark enter" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
     <rect x="9" y="13" width="46" height="42" rx="11" fill="none" stroke="currentColor" stroke-width="3.5"/>
     <path d="M9 26h46M22 7v10M42 7v10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
@@ -105,7 +105,7 @@
    the closest group codes and a search on the list. */
 (function () {
   'use strict';
-  var base = document.querySelector('main').getAttribute('data-base');
+  var base = @@BASE_JSON@@;
   var path = location.pathname;
   if (path.indexOf(base + '/') !== 0) return;
   var parts = path.slice(base.length + 1).split('/');
@@ -149,9 +149,9 @@
     var names = rows.map(function (row) { return row[0]; });
     var exact = names.filter(function (n) { return n.toUpperCase() === want; })[0];
     if (exact && exact !== parts[0]) {
-      parts[0] = encodeURIComponent(exact);
-      if (parts.length === 1) parts.push('');
-      location.replace(root + '/' + parts.join('/') + location.search + location.hash);
+      /* only plain file names may follow the group (plan.ics, …): nothing typed can steer the redirect elsewhere */
+      var rest = parts.slice(1).filter(function (p) { return /^[A-Za-z0-9._-]+$/.test(p); });
+      location.replace(root + '/' + encodeURIComponent(exact) + '/' + rest.join('/') + location.search + location.hash);
       return;
     }
     var scored = [];

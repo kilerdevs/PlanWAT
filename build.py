@@ -997,7 +997,8 @@ def security_txt(today):
 def render_404(template, base_path, assets=None):
     # served at any depth, so its font is named from the site root
     base = html.escape(base_path.rstrip('/'), quote=True)
-    return finish(template.replace('@@BASE@@', base), connect=True, assets=assets, asset_prefix=base + '/')
+    page = template.replace('@@BASE@@', base).replace('@@BASE_JSON@@', _json_ld(base_path.rstrip('/')))
+    return finish(page, connect=True, assets=assets, asset_prefix=base + '/')
 
 
 # one colour per faculty, taken from the hand-drawn chart this file replaced, so a bar keeps its colour as counts move
