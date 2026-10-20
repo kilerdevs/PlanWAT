@@ -50,8 +50,15 @@ MARKER = '.planwat-site'
 DATA_DIR = 'data'  # site/data/: the JSON files behind the group page's tools
 GROUP_RE = re.compile(r'^[A-Za-z0-9_]{2,32}$')
 TERM_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
-FONT_CSS = 'https://fonts.googleapis.com'
-FONT_FILES = 'https://fonts.gstatic.com'
+# Inter, served from the site's own assets/ (src/fonts/, SIL OFL 1.1) in the two subsets Polish text needs. It sits
+# behind SF Pro in every font stack, so the unicode-range rules let a browser fetch only what it actually draws with it,
+# and Apple devices nothing at all.
+FONTS = (
+    ('inter-latin', 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, '
+                    'U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD'),
+    ('inter-latin-ext', 'U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, '
+                        'U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF'),
+)
 MAP_DIR = 'mapa'  # site/mapa/: the campus map
 REMINDER_FILE = 'plan-przypomnienia.ics'  # <GROUP>/plan.ics with an alarm before every class
 REMINDER_MINUTES = 15
@@ -589,12 +596,13 @@ class AssetHub:
         self.written = {}  # name -> None, in write order
 
     def put(self, slug, ext, code, prefix=''):
-        """Store `code` as assets/<slug>-<hash8>.<ext>; return its url and the SRI digest of its bytes."""
-        digest = hashlib.sha256(code.encode('utf-8'))
+        """Store `code` (text or bytes) as assets/<slug>-<hash8>.<ext>; return its url and the SRI digest of its bytes."""
+        data = code if isinstance(code, bytes) else code.encode('utf-8')
+        digest = hashlib.sha256(data)
         name = f'{slug}-{digest.hexdigest()[:8]}.{ext}'
         if name not in self.written:
             self.dir.mkdir(parents=True, exist_ok=True)
-            (self.dir / name).write_bytes(code.encode('utf-8'))
+            (self.dir / name).write_bytes(data)
             self.written[name] = None
         return f'{prefix}{ASSETS_DIR}/{name}', base64.b64encode(digest.digest()).decode()
 
@@ -624,8 +632,8 @@ def csp(scripts, styles, connect, frame_ancestors=False, extra=None):
     parts = [
         "default-src 'none'",
         'script-src ' + (' '.join(scripts + more('script-src')) if scripts else "'none'"),
-        'style-src ' + ' '.join(styles + [FONT_CSS] + more('style-src')),
-        f'font-src {FONT_FILES}',
+        'style-src ' + ' '.join(styles + more('style-src')),
+        "font-src 'self'",
         'img-src ' + ' '.join(['data:'] + more('img-src')),
         'connect-src ' + (' '.join(["'self'"] + more('connect-src')) if connect else "'none'"),
     ]
@@ -655,13 +663,25 @@ def themed(page):
     return page.replace('@@THEME_HEAD@@', '<script>' + js + '</script>').replace('/*@@THEME_CSS@@*/', css)
 
 
+def font_faces(assets, prefix):
+    """The @font-face rules for Inter, its files stored in assets/ and named from the page by `prefix`."""
+    rules = []
+    for slug, unicode_range in FONTS:
+        url, _ = assets.put(slug, 'woff2', (SRC / 'fonts' / f'{slug}.woff2').read_bytes(), prefix)
+        rules.append(f'@font-face {{ font-family: "Inter"; font-style: normal; font-weight: 400 700; font-display: swap; '
+                     f'src: url("{url}") format("woff2"); unicode-range: {unicode_range}; }}')
+    return '<style>' + ' '.join(rules) + '</style>'
+
+
 def finish(page, connect, extra=None, assets=None, asset_prefix=''):
     """Pin the page's inline code into its meta CSP and sanity-check the result.
 
     Blocks marked data-asset move out of the page into shared files under assets/ (see AssetHub).
     Those are allowed by origin: a meta CSP hash cannot cover an external file, so each file is
     instead pinned by the integrity attribute of the tag that loads it. Everything left inline is
-    pinned by hash, exactly as before."""
+    pinned by hash, exactly as before. @@FONTS@@ becomes the page's @font-face rules (without a hub,
+    for a page rendered on its own, the system font stack simply takes over)."""
+    page = page.replace('@@FONTS@@\n', font_faces(assets, asset_prefix) + '\n' if assets is not None else '')
     page = themed(page)
     if 'style="' in page:
         raise BuildError('inline style attributes would be blocked by the CSP')
@@ -863,11 +883,11 @@ def render_map(template, ics_js, campus_js, places_js, assets=None, site_url='')
     return finish(page, connect=True, extra=merge_csp(MAP_APP_CSP, MAP_CSP), assets=assets, asset_prefix='../')
 
 
-def render_privacy(template, site_url=''):
+def render_privacy(template, site_url='', assets=None):
     # the notice runs no script at all: it follows the system theme through CSS only (no stored choice)
     page = template.replace('@@SEO@@', seo_head(site_url, f'{PRIVACY_DIR}/', PRIVACY_TITLE, PRIVACY_DESCRIPTION))
     page = page.replace('@@TITLE@@', html.escape(PRIVACY_TITLE)).replace('@@DESCRIPTION@@', html.escape(PRIVACY_DESCRIPTION, quote=True))
-    return finish(page.replace('@@THEME_HEAD@@' + chr(10), ''), connect=False)
+    return finish(page.replace('@@THEME_HEAD@@' + chr(10), ''), connect=False, assets=assets, asset_prefix='../')
 
 
 def robots_txt(base_path, noindex, site_url=''):
@@ -974,8 +994,10 @@ def security_txt(today):
             f'Policy: {REPO_URL}/blob/master/SECURITY.md\n')
 
 
-def render_404(template, base_path):
-    return finish(template.replace('@@BASE@@', html.escape(base_path.rstrip('/'), quote=True)), connect=True)
+def render_404(template, base_path, assets=None):
+    # served at any depth, so its font is named from the site root
+    base = html.escape(base_path.rstrip('/'), quote=True)
+    return finish(template.replace('@@BASE@@', base), connect=True, assets=assets, asset_prefix=base + '/')
 
 
 # one colour per faculty, taken from the hand-drawn chart this file replaced, so a bar keeps its colour as counts move
@@ -1078,8 +1100,9 @@ def manifest(name, short_name, scope, up, shortcuts=()):
 def write_app(out, groups, assets=()):
     """Icons, manifests and the service worker; written last, so its version covers every other file.
 
-    `assets` lists the shared files from AssetHub: the worker precaches them, so offline pages carry
-    their whole style and code with them like the inline versions used to."""
+    `assets` lists the shared files from AssetHub: the worker precaches the styles and scripts, so offline
+    pages carry their whole style and code with them like the inline versions used to. Fonts are left to the
+    first page that draws with them (most phones never do), then kept like the rest of assets/."""
     (out / ICONS_DIR).mkdir()
     for f in sorted((SRC / 'icons').glob('*')):
         if f.suffix in ('.png', '.svg'):
@@ -1095,7 +1118,7 @@ def write_app(out, groups, assets=()):
     for f in sorted(p for p in out.rglob('*') if p.is_file() and p.relative_to(out).parts[0] != '.well-known'):
         digest.update(f.relative_to(out).as_posix().encode() + b'\0' + f.read_bytes())
     sw = (SRC / SW_FILE).read_text(encoding='utf-8')
-    left = ''.join(f", '{ASSETS_DIR}/{name}'" for name in assets)
+    left = ''.join(f", '{ASSETS_DIR}/{name}'" for name in assets if not name.endswith('.woff2'))
     for placeholder in ('@@VERSION@@', '@@ASSETS@@'):
         if sw.count(placeholder) != 1:
             raise BuildError(f'src/sw.js must contain "{placeholder}" exactly once')
@@ -1179,13 +1202,13 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
                 (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.data()))
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js, assets=assets, site_url=site_url))
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets, site_url=site_url))
-    write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8'), site_url))
+    write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8'), site_url, assets))
     (out / 'robots.txt').write_text(robots_txt(base_path, noindex, site_url), encoding='utf-8')
     if site_url and not noindex:
         (out / 'sitemap.xml').write_text(sitemap_xml(site_url, current, refreshed), encoding='utf-8')
     (out / '.well-known').mkdir()
     (out / '.well-known' / 'security.txt').write_text(security_txt(today), encoding='utf-8')
-    write('404.html', render_404((SRC / '404.html').read_text(encoding='utf-8'), base_path))
+    write('404.html', render_404((SRC / '404.html').read_text(encoding='utf-8'), base_path, assets))
     for rel, data in build_data(current, refreshed).items():
         target = out / DATA_DIR / rel
         target.parent.mkdir(parents=True, exist_ok=True)

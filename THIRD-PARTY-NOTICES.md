@@ -11,9 +11,8 @@
 
 </div>
 
-PlanWAT nie dostarcza w czasie działania żadnego kodu firm trzecich poza opisanymi niżej ikonami. Krój pisma jest ładowany z
-Google Fonts i nie jest redystrybuowany. Narzędzia deweloperskie podano dla kompletności: nigdy nie trafiają do zbudowanej
-strony.
+PlanWAT nie dostarcza w czasie działania żadnego kodu firm trzecich poza opisanymi niżej ikonami. Krój Inter jest serwowany
+z samej strony. Narzędzia deweloperskie podano dla kompletności: nigdy nie trafiają do zbudowanej strony.
 
 ## Dostarczane z serwisem
 
@@ -41,11 +40,17 @@ THIS SOFTWARE.
 Piktogramy ikon miejsc na mapie (sklep, dom, autobus, tramwaj, paczka, sztućce i inne) są rysowane na podstawie tych samych
 ścieżek Lucide.
 
+### Krój Inter
+
+[Inter](https://github.com/rsms/inter) (zapasowy tam, gdzie nie ma SF Pro) leży w `src/fonts/` w dwóch podzbiorach, łacińskim
+i łacińskim rozszerzonym (pliki woff2 w postaci, w jakiej udostępnia je Google Fonts), a budowa publikuje go w `assets/`.
+Copyright (c) 2016 The Inter Project Authors, na licencji SIL Open Font License 1.1. Pełny tekst licencji:
+[`src/fonts/OFL.txt`](src/fonts/OFL.txt).
+
 ## Ładowane w trakcie działania
 
 | Składnik | Źródło | Licencja |
 |---|---|---|
-| Krój Inter (zapasowy tam, gdzie nie ma SF Pro) | Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) | SIL Open Font License 1.1 |
 | [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) 4.7.1, tylko mapa kampusu | unpkg (`unpkg.com`), przypięty SRI | BSD-3-Clause |
 | Kafelki mapy i styl `dark`, tylko mapa kampusu | [OpenFreeMap](https://openfreemap.org) (`tiles.openfreemap.org`) | Dane mapy © [współtwórcy OpenStreetMap](https://www.openstreetmap.org/copyright), ODbL 1.0 |
 

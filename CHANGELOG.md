@@ -132,6 +132,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
+- **Krój Inter z samej strony** zamiast z Google Fonts: żadna strona poza mapą nie łączy się już z cudzym serwerem, CSP
+  zezwala tylko na `font-src 'self'`, a przeglądarka pobiera tylko te podzbiory, którymi faktycznie rysuje (urządzenia Apple
+  używają SF Pro i nie pobierają nic).
 - **Obraz do udostępniania mówi więcej:** karta PNG (1080 × 1350) mieści teraz całe nazwy zajęć i sale (zawija zamiast ucinać),
   rodzaj i numer spotkania, datę wygenerowania planu, wydział, semestr i numer tygodnia. Doszły kafelki podsumowania (liczba zajęć,
   pierwsze i ostatnie zajęcia, czas w planie, okienka), etykiety okienek z czasem dojścia między budynkami oraz pasek całego tygodnia

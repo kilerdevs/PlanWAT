@@ -316,9 +316,27 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertEqual(on_disk, referenced)  # nothing is written that no page loads, and nothing is missing
         sw = (self.out / 'sw.js').read_text(encoding='utf-8')
         for name in on_disk:
-            self.assertIn(f"'{name}'", sw)  # the worker precaches them for offline
+            if name.endswith('.woff2'):
+                self.assertNotIn(f"'{name}'", sw)  # most phones draw with SF Pro and never need the fallback font
+            else:
+                self.assertIn(f"'{name}'", sw)  # the worker precaches them for offline
         for page in ('prywatnosc/index.html', '404.html'):
-            self.assertNotIn('assets/', (self.out / page).read_text(encoding='utf-8'), page)
+            html = (self.out / page).read_text(encoding='utf-8')
+            self.assertEqual(re.findall(r'assets/[^"]+\.(?:js|css)"', html), [], page)  # only the font is shared
+
+    def test_every_page_draws_with_inter_from_the_site_itself(self):
+        rels = ('index.html', 'WCY26KY3S1/index.html', 'mapa/index.html', 'prywatnosc/index.html', '404.html')
+        for rel in rels:
+            html = (self.out / rel).read_text(encoding='utf-8')
+            self.assertNotIn('fonts.googleapis.com', html, rel)
+            self.assertNotIn('fonts.gstatic.com', html, rel)
+            self.assertIn("font-src 'self';", self.meta_csp(rel), rel)
+            urls = re.findall(r'src: url\("([^"]+\.woff2)"\)', html)
+            self.assertEqual(len(urls), 2, rel)  # latin and latin-ext: Polish letters need both
+            for url in urls:
+                # the 404 page is served at any depth, so it names its fonts from the site root
+                path = url.removeprefix('/PlanWAT/') if rel == '404.html' else (Path(rel).parent / url).as_posix()
+                self.assertTrue((self.out / Path(path)).resolve().is_file(), f'{rel}: {url}')
 
     def test_coverage_chart_counts_exactly_the_groups_the_build_publishes(self):
         published = [p.parent.name for p in self.out.glob('*/index.html')

@@ -133,6 +133,19 @@ test('the privacy page is linked from the footer, accessible and runs no script'
   expect(serious).toEqual([]);
 });
 
+test('pages draw with Inter from the site itself and ask no other host for fonts', async ({ page, browserName }) => {
+  const foreign = [];
+  page.on('request', (r) => { if (r.resourceType() === 'font' && !r.url().startsWith('http://127.0.0.1')) foreign.push(r.url()); });
+  await openGroup(page);
+  const loaded = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return [...document.fonts].filter((f) => f.family.replace(/"/g, '') === 'Inter' && f.status === 'loaded').length;
+  });
+  // Chromium and Firefox here have no SF Pro, so they fall back to Inter; WebKit may resolve -apple-system first
+  if (browserName !== 'webkit') expect(loaded).toBeGreaterThan(0);
+  expect(foreign).toEqual([]);
+});
+
 test('a group link in the wrong case goes to the group, keeping the rest of the address', async ({ page }) => {
   await page.goto('/wcy26ky3s1/?t=x#y');
   await expect(page).toHaveURL(/\/WCY26KY3S1\/\?t=x#y$/);

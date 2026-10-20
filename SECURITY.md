@@ -91,7 +91,6 @@ okno przed publicznym ujawnieniem (zwyczajowo 90 dni).
 - Nagłówki, których GitHub Pages nie potrafi wysłać (`X-Frame-Options`, `frame-ancestors`, …): udokumentowane wraz ze
   sposobem ich odtworzenia w [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#nagłówki-bezpieczeństwa-na-pages).
 - Skrypty wstrzykiwane przez pośrednika, np. wykrywanie botów w proxy: CSP strony je blokuje.
-- Ładowanie kroju Inter z Google Fonts: udokumentowane, świadome żądanie do strony trzeciej.
 - Wyłącznie na mapie kampusu (`/mapa/`): ładowanie MapLibre GL JS z unpkg (z SRI) i kafelków z OpenFreeMap, oba udokumentowane
   i świadome.
 - Ataki typu odmowa usługi na infrastrukturę GitHub Pages oraz wyniki automatycznych skanerów bez wykazanego skutku.

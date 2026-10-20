@@ -349,12 +349,12 @@ Jak przenieść własną domenę na Pages i jak odtworzyć nagłówki, których 
 ## Bezpieczeństwo i prywatność
 
 - Każda strona ma **Content-Security-Policy przypiętą do kodu**: bloki wpisane w HTML działają tylko z hashów, a wspólne
-  pliki `assets/` mają nazwę z hashem treści i sumę `integrity` na znaczniku, który je wczytuje. Z zewnątrz pobierane są
-  wyłącznie Google Fonts; strona mapy dodatkowo MapLibre GL JS z `unpkg.com` (przypięty wersją i sumą SRI) i kafelki
-  z `tiles.openfreemap.org`.
+  pliki `assets/` mają nazwę z hashem treści i sumę `integrity` na znaczniku, który je wczytuje. Także krój Inter jest
+  serwowany z samej strony, więc z zewnątrz pobiera coś tylko strona mapy: MapLibre GL JS z `unpkg.com` (przypięty wersją i
+  sumą SRI) i kafelki z `tiles.openfreemap.org`.
 - Tekst z kalendarza trafia do strony wyłącznie przez `textContent`, a w budowie jest escapowany. Kolory przyjmowane są tylko
   jako `#rrggbb`.
-- Service Worker buforuje tylko strony, kalendarze i pliki aplikacji z własnej domeny oraz Google Fonts.
+- Service Worker buforuje tylko strony, kalendarze i pliki aplikacji z własnej domeny.
 - **Nie ma kont, adresów e-mail ani plików cookie.** Ulubione grupy, wybór motywu i ukryte przedmioty zapisują się wyłącznie w
   pamięci przeglądarki. Nic nie jest wysyłane do serwera, bo serwera nie ma.
 - CI uruchamia CodeQL (JavaScript, Python, workflowy), skan obrazu Docker (Grype) i audyty zależności. Akcje są przypięte do
@@ -432,7 +432,7 @@ docs/                     dokumentacja i diagramy
 
 ## Licencja
 
-[MIT](LICENSE). Ikony pochodzą z [Lucide](https://lucide.dev) (ISC), krój Inter jest ładowany z Google Fonts (SIL OFL 1.1),
+[MIT](LICENSE). Ikony pochodzą z [Lucide](https://lucide.dev) (ISC), krój Inter (SIL OFL 1.1) jest serwowany z samej strony,
 a dane mapy to © współtwórcy OpenStreetMap (ODbL). Szczegóły: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 <div align="center">
