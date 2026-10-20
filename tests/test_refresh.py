@@ -569,6 +569,13 @@ class WcyReadiness(unittest.TestCase):
         self.assertEqual(args[args.index('--term-start') + 1], '20260928')  # Monday of the first winter class
         self.assertNotIn('--term-start', d._term_args(wcy_page(['2026_03_23'])))
 
+    def test_a_summer_semester_starting_in_february_keeps_its_february_lessons(self):
+        cfg = {'driver': 'wcy', 'label': 'WCY', 'index': 'https://example.test/pl/rozklad',
+               'page': 'https://example.test/pl/rozklad?grupa_id={group}'}
+        d = wcy.Driver("wcy", cfg, dt.date(2027, 3, 10))
+        args = d._term_args(wcy_page(['2026_10_05', '2027_02_23', '2027_03_02']))
+        self.assertEqual(args[args.index('--term-start') + 1], '20270222')
+
 
 @unittest.skipUnless(HAS_PYMUPDF, 'pymupdf not installed')
 class WtcConversion(unittest.TestCase):

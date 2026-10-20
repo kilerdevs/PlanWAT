@@ -255,6 +255,12 @@ class BuildRealSiteTest(unittest.TestCase):
             calendar = (self.out / group / 'plan.ics').read_bytes()
             sources = [build.clip_to_term(p.read_bytes(), p.parent.name) for p in (ROOT / 'timetables').glob(f'*/{group}.ics')]
             self.assertIn(bounds.sub(b'', calendar), [bounds.sub(b'', s) for s in sources], group)
+            for path in (ROOT / 'timetables').glob(f'*/{group}.ics'):
+                props, _ = build.read_calendar(path)
+                start, end = (build._ymd(props.get(f'X-PLAN-SEMESTER-{k}', '')) for k in ('START', 'END'))
+                published = build.clip_to_term(path.read_bytes(), path.parent.name)
+                if build.semester_fits_term(start, end, path.parent.name) and bounds.sub(b'', published) == bounds.sub(b'', calendar):
+                    self.assertEqual(calendar, published, f'{group}: correct semester dates must be published as they are')
 
     def test_no_group_page_counts_empty_months_into_its_semester(self):
         # every published semester belongs to its term, and the first class comes within a few weeks of its start
@@ -266,8 +272,7 @@ class BuildRealSiteTest(unittest.TestCase):
             text = raw.decode('utf-8')
             start = re.search(r'^X-PLAN-SEMESTER-START:(\d{8})', text, re.M).group(1)
             end = re.search(r'^X-PLAN-SEMESTER-END:(\d{8})', text, re.M).group(1)
-            first, last = build.term_window(term_id)
-            self.assertTrue(first <= start <= end <= last, f'{group}: {start}-{end} in {term_id}')
+            self.assertTrue(build.semester_fits_term(build._ymd(start), build._ymd(end), term_id), f'{group}: {start}-{end} in {term_id}')
             days = sorted(re.findall(r'^DTSTART[^:\r\n]*:(\d{8})', text, re.M))
             if days:
                 gap = (build._ymd(days[0]) - build._ymd(start)).days
@@ -932,7 +937,7 @@ class SemesterBoundsTest(unittest.TestCase):
         site = self.site({'WCY25IX1S0': calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-10-01')})
         published = (site / 'WCY25IX1S0' / 'plan.ics').read_bytes().decode('utf-8')
         self.assertIn('X-PLAN-SEMESTER-START:20260928\r\n', published)  # Monday of the first class
-        self.assertIn('X-PLAN-SEMESTER-END:20261001\r\n', published)
+        self.assertIn('X-PLAN-SEMESTER-END:20261003\r\n', published)  # Saturday of the last class's week
 
     def test_a_stray_lesson_of_last_semester_does_not_make_the_term_current_early(self):
         # one March class used to start this winter term in March, so in spring the build would have picked it
@@ -947,10 +952,68 @@ class SemesterBoundsTest(unittest.TestCase):
         _, term = build.load_term(path)
         self.assertEqual(term.start, D(2026, 9, 28))
 
-    def test_dates_inside_the_term_are_left_alone(self):
-        self.assertTrue(build.bounds_fit_term(D(2026, 9, 28), D(2027, 2, 22), '2026-27-zima'))
-        self.assertFalse(build.bounds_fit_term(D(2026, 3, 2), D(2026, 7, 27), '2026-27-zima'))
-        self.assertFalse(build.bounds_fit_term(D(2026, 9, 28), D(2026, 7, 27), '2026-27-zima'))
+    def test_what_counts_as_another_semesters_dates(self):
+        fits = build.semester_fits_term
+        self.assertTrue(fits(D(2026, 9, 28), D(2027, 2, 22), '2026-27-zima'))
+        self.assertTrue(fits(D(2026, 10, 12), D(2027, 3, 8), '2026-27-zima'))  # 21 weeks from a later start: fine
+        self.assertFalse(fits(D(2026, 3, 2), D(2026, 7, 27), '2026-27-zima'))
+        self.assertFalse(fits(D(2026, 9, 28), D(2026, 7, 27), '2026-27-zima'))  # ends before it starts
+        self.assertFalse(fits(D(2026, 3, 2), None, '2026-27-zima'))  # one date declared is still checked
+        self.assertTrue(fits(None, None, '2026-27-zima'))
+        self.assertTrue(fits(D(2026, 3, 2), D(2026, 7, 27), 'free-form'))  # no window to check against
+
+    def test_a_late_start_whose_end_runs_into_march_is_published_untouched(self):
+        own = calendar('WCY26_M1', '2026-10-12', '2027-03-08', '2026-10-18')
+        site = self.site({'WCY26_M1': own, 'WCY26KY3S1': calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05')})
+        self.assertEqual((site / 'WCY26_M1' / 'plan.ics').read_bytes().decode('utf-8'), own)
+
+    def test_a_lone_calendar_of_last_semester_is_dated_by_the_term_not_by_last_summer(self):
+        only_old = calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-03-23')
+        site = self.site({'WCY25IX1S0': only_old})
+        published = (site / 'WCY25IX1S0' / 'plan.ics').read_bytes().decode('utf-8')
+        self.assertIn('X-PLAN-SEMESTER-START:20260901\r\n', published)
+        self.assertIn('X-PLAN-SEMESTER-END:20270228\r\n', published)
+        self.assertNotIn('2026030', published)
+        self.assertNotIn('BEGIN:VEVENT', published)
+
+    def test_a_calendar_without_dates_and_only_last_semesters_lessons_still_builds(self):
+        bare = calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-03-23')
+        bare = re.sub(r'X-PLAN-SEMESTER-(START|END):\d+\r\n', '', bare)
+        site = self.site({'WCY25IX1S0': bare})
+        self.assertNotIn('BEGIN:VEVENT', (site / 'WCY25IX1S0' / 'plan.ics').read_bytes().decode('utf-8'))
+
+    def test_the_dates_are_replaced_whatever_the_case_parameters_or_folding(self):
+        odd = calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-10-01').replace(
+            'X-PLAN-SEMESTER-START:20260302', 'x-plan-semester-start;VALUE=DATE:202603\r\n 02').replace(
+            'X-PLAN-SEMESTER-END:20260727', 'X-PLAN-SEMESTER-END:20260727\r\nX-PLAN-SEMESTER-END:20260801')
+        out = build.with_semester(odd.encode('utf-8'), D(2026, 9, 28), D(2027, 2, 22)).decode('utf-8')
+        self.assertEqual(re.findall(r'^X-PLAN-SEMESTER-\w+:\d+', out, re.M | re.I),
+                         ['X-PLAN-SEMESTER-START:20260928', 'X-PLAN-SEMESTER-END:20270222'])
+        self.assertNotIn('202603', out)
+        missing = re.sub(r'X-PLAN-SEMESTER-(START|END):\d+\r\n', '', calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-10-01'))
+        out = build.with_semester(missing.encode('utf-8'), D(2026, 9, 28), D(2027, 2, 22)).decode('utf-8')
+        self.assertTrue(out.startswith('BEGIN:VCALENDAR\r\nX-PLAN-SEMESTER-START:20260928\r\nX-PLAN-SEMESTER-END:20270222\r\n'))
+
+    def test_only_a_start_of_last_semester_is_repaired_too(self):
+        one = re.sub(r'X-PLAN-SEMESTER-END:\d+\r\n', '', calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-10-01'))
+        site = self.site({'WCY25IX1S0': one, 'WCY26KY3S1': calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05')})
+        published = (site / 'WCY25IX1S0' / 'plan.ics').read_bytes().decode('utf-8')
+        self.assertIn('X-PLAN-SEMESTER-START:20260928\r\n', published)
+        self.assertNotIn('20260302', published)
+
+    def test_the_agreed_end_never_cuts_off_the_groups_own_last_class(self):
+        late = calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2027-02-26')
+        site = self.site({'WCY25IX1S0': late, 'WCY26KY3S1': calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05')})
+        published = (site / 'WCY25IX1S0' / 'plan.ics').read_bytes().decode('utf-8')
+        self.assertIn('X-PLAN-SEMESTER-START:20260928\r\n', published)
+        self.assertIn('X-PLAN-SEMESTER-END:20270226\r\n', published)
+
+    def test_another_faculty_does_not_vote(self):
+        site = self.site({'WCY25IX1S0': calendar('WCY25IX1S0', '2026-03-02', '2026-07-27', '2026-10-07'),
+                          'WEL26EX1S1': calendar('WEL26EX1S1', '2026-10-01', '2027-01-29', '2026-10-01')})
+        published = (site / 'WCY25IX1S0' / 'plan.ics').read_bytes().decode('utf-8')
+        self.assertIn('X-PLAN-SEMESTER-START:20261005\r\n', published)  # its own lessons date it instead
+        self.assertIn('X-PLAN-SEMESTER-END:20261010\r\n', published)
 
 
 class RoomsDataTest(unittest.TestCase):

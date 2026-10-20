@@ -153,14 +153,17 @@ class Term:
     meta: dict = dataclasses.field(default_factory=dict)
     dates: list = dataclasses.field(default_factory=list)  # the lessons' days inside the term's window
     bad_bounds: bool = False  # X-PLAN-SEMESTER-START/END name another semester (see fix_semester_bounds)
+    _published: bytes | None = dataclasses.field(default=None, init=False, repr=False, compare=False)
 
     def data(self):
         """The calendar as published: the file's bytes, minus lessons that belong to another semester, and with
-        semester dates that belong to this one."""
-        raw = clip_to_term(self.path.read_bytes(), self.term_id)
-        if self.bad_bounds:
-            raw = with_semester(raw, self.meta['semester_start'], self.meta['semester_end'])
-        return raw
+        semester dates that belong to this one. Worked out once: the build asks for it several times per group."""
+        if self._published is None:
+            raw = clip_to_term(self.path.read_bytes(), self.term_id)
+            if self.bad_bounds:
+                raw = with_semester(raw, self.meta['semester_start'], self.meta['semester_end'])
+            self._published = raw
+        return self._published
 
 
 # ---------------------------------------------------------------- calendars
@@ -215,51 +218,81 @@ def clip_to_term(raw, term_id):
     return ''.join(out).encode('utf-8')
 
 
-def bounds_fit_term(start, end, term_id):
-    """Whether declared semester dates can belong to the term: both inside its window, in order."""
+def window_dates(term_id):
+    """term_window() as dates, its "29 February" made the last day of February; None for a free-form term name."""
     try:
-        first, last = term_window(term_id)  # YYYYMMDD strings: the winter window ends on "29 February" every year
+        first, last = term_window(term_id)
     except ValueError:
+        return None
+    last_day = _ymd(last) or dt.date(int(last[:4]), 3, 1) - dt.timedelta(days=1)
+    return _ymd(first), last_day
+
+
+def semester_fits_term(start, end, term_id):
+    """Whether the declared semester dates (either may be missing) can belong to the term.
+
+    The start decides where the page's week grid begins, so it must fall inside the term's window. The end only has
+    to follow it: converters that count 21 weeks from the start legitimately end a winter semester in early March."""
+    window = window_dates(term_id)
+    if window is None:
         return True
-    return bool(start and end) and first <= f'{start:%Y%m%d}' <= f'{end:%Y%m%d}' <= last
+    if start and not window[0] <= start <= window[1]:
+        return False
+    if end and end < (start or window[0]):
+        return False
+    return True
 
 
 def with_semester(raw, start, end):
-    """A calendar (bytes) with its X-PLAN-SEMESTER-START/END set to `start`/`end`; every other byte untouched."""
+    """A calendar (bytes) with its X-PLAN-SEMESTER-START/END set to `start`/`end`; every other byte untouched.
+
+    Each property keeps its place (written in any case, with parameters, folded); repeats of it are dropped, and a
+    missing one is added right after BEGIN:VCALENDAR."""
     text = raw.decode('utf-8')
+    nl = '\r\n' if '\r\n' in text else '\n'
     for name, day in (('X-PLAN-SEMESTER-START', start), ('X-PLAN-SEMESTER-END', end)):
-        text, n = re.subn(rf'^{name}:[^\r\n]*', f'{name}:{day:%Y%m%d}', text, count=1, flags=re.M)
-        if not n:
-            text = re.sub(r'^(X-PLAN-GROUP:[^\r\n]*)(\r?\n)', rf'\g<1>\g<2>{name}:{day:%Y%m%d}\g<2>', text, count=1, flags=re.M)
+        line = f'{name}:{day:%Y%m%d}{nl}'
+        pattern = re.compile(rf'^{name}(?:;[^:\r\n]*)?:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*(?:\r?\n|$)', re.I | re.M)
+        seen = []
+        text = pattern.sub(lambda m: '' if seen or seen.append(1) else line, text)
+        if not seen:  # the end goes after the start, the start after BEGIN:VCALENDAR
+            after = r'^X-PLAN-SEMESTER-START:\d{8}\r?\n' if name.endswith('END') else r'^BEGIN:VCALENDAR\r?\n'
+            if not re.search(after, text, flags=re.I | re.M):
+                after = r'^BEGIN:VCALENDAR\r?\n'
+            text = re.sub(after, lambda m: m.group(0) + line, text, count=1, flags=re.I | re.M)
     return text.encode('utf-8')
 
 
 def fix_semester_bounds(by_group):
-    """Give every term whose declared semester belongs to another one the dates its neighbours agree on.
+    """Give every term whose declared semester belongs to another one the dates its faculty agrees on.
 
     A converter takes the semester from what the faculty's page shows, and a page that still lists a lesson of the
     last semester (a WCY page with one March class under a winter plan) yields last semester's dates: the page's
     week grid then starts months before the first class, and its semester progress counts those empty months. The
-    dates most calendars of the same faculty and term declare replace them, else those of the term as a whole,
-    else the span of the lessons themselves (Monday of the first week to the last class)."""
+    dates most calendars of the same faculty and term declare replace them (faculties keep different calendars, so
+    no other faculty votes), else the span of the lessons themselves (Monday of the first week to the Saturday of
+    the last), else the term's whole window. The end never comes before the last lesson: the page stops expanding
+    a weekly class at the semester's end."""
     votes = {}
     for terms in by_group.values():
         for t in terms:
             if not t.bad_bounds:
-                bounds = (t.meta['semester_start'], t.meta['semester_end'])
-                for key in ((t.term_id, faculty_of(t.meta['group'])), (t.term_id, None)):
-                    votes.setdefault(key, collections.Counter())[bounds] += 1
+                key = (t.term_id, faculty_of(t.meta['group']))
+                votes.setdefault(key, collections.Counter())[(t.meta['semester_start'], t.meta['semester_end'])] += 1
     for terms in by_group.values():
         for t in terms:
             if not t.bad_bounds:
                 continue
-            agreed = votes.get((t.term_id, faculty_of(t.meta['group']))) or votes.get((t.term_id, None))
+            agreed = votes.get((t.term_id, faculty_of(t.meta['group'])))
             if agreed:
                 start, end = agreed.most_common(1)[0][0]
             elif t.dates:
-                start, end = min(t.dates) - dt.timedelta(days=min(t.dates).weekday()), max(t.dates)
+                first, last = min(t.dates), max(t.dates)
+                start, end = first - dt.timedelta(days=first.weekday()), last + dt.timedelta(days=5 - last.weekday())
             else:
-                start, end = t.start, t.end
+                start, end = window_dates(t.term_id) or (t.start, t.end)
+            if t.dates:
+                end = max(end, max(t.dates))
             t.meta['semester_start'], t.meta['semester_end'] = start, end
             t.start = min([start] + t.dates)
             t.end = max([end] + t.dates)
@@ -333,19 +366,18 @@ def load_term(path):
     declared = props.get('X-PLAN-GROUP')
     if declared and declared != group:
         raise BuildError(f'{path}: file is named {group} but X-PLAN-GROUP is {declared}')
-    try:  # lessons outside the term's window are not published (clip_to_term), so they do not date the term either
-        first, last = term_window(term_id)
-        dates = [d for d in dates if first <= f'{d:%Y%m%d}' <= last]
-    except ValueError:
-        pass
+    window = window_dates(term_id)
+    stray = bool(dates)
+    if window:  # lessons outside the term's window are not published (clip_to_term), so they do not date it either
+        dates = [d for d in dates if window[0] <= d <= window[1]]
     declared_start = _ymd(props.get('X-PLAN-SEMESTER-START', ''))
     declared_end = _ymd(props.get('X-PLAN-SEMESTER-END', ''))
-    bad = bool(declared_start and declared_end) and not bounds_fit_term(declared_start, declared_end, term_id)
+    bad = not semester_fits_term(declared_start, declared_end, term_id)
     start = (None if bad else declared_start) or (min(dates) if dates else None)
     end = (None if bad else declared_end) or (max(dates) if dates else None)
     if not start or not end:
-        if bad:  # nothing of this term in it yet; fix_semester_bounds gives it the term's dates
-            start = end = declared_start
+        if window and (bad or stray):  # nothing of this term in it yet: the term's window dates it (published empty)
+            start, end = window
         else:
             raise BuildError(f'{path}: no X-PLAN-SEMESTER-START/END and no events to infer the term from')
     if dates:
