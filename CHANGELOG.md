@@ -15,6 +15,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-20
+
 ### Dodano
 - **Mądrzejsza strona 404:** link do grupy wpisany małymi literami (`/wcy26ky3s1/`) prowadzi prosto do grupy, a przy
   literówce strona podsuwa najbliższe kody grup i wyszukiwanie na liście.
@@ -259,5 +261,6 @@ Pierwsze publiczne wydanie.
 - CI: testy czytnika kalendarza z progami pokrycia, testy budowy, testy przeglądarkowe Playwright (Chromium, Firefox, WebKit;
   pulpit i telefon) ze skanem WCAG axe, skan obrazu Docker (Grype) i test dymny, CodeQL oraz Dependabot.
 
-[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/kilerdevs/PlanWAT/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/kilerdevs/PlanWAT/releases/tag/v1.0.0
