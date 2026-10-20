@@ -15,6 +15,14 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+### Naprawiono
+- **Postęp semestru liczony z pustych miesięcy:** 21 grup WCY (np. `WCY25IX1S0`) miało w kalendarzu daty zeszłego semestru
+  letniego (02.03–27.07.2026), bo konwerter brał początek semestru z pozostawionych na stronie wydziału zajęć z marca. Siatka
+  tygodni zaczynała się wtedy w marcu, a „Postęp semestru” pokazywał 69% zamiast 15%. `build.py` sprawdza teraz daty semestru
+  każdego kalendarza: jeśli nie należą do jego semestru, dostaje te, na które zgadzają się pozostałe kalendarze wydziału (albo
+  wynikające z samych zajęć), a zabłąkane zajęcia z innego semestru nie przesuwają już początku semestru. Sterownik WCY liczy
+  początek semestru tylko z zajęć tego semestru.
+
 ## [1.1.0] - 2026-10-20
 
 ### Dodano
@@ -198,12 +206,6 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   odmieniają się po polsku: „1 sprawdzony”, „72 pominięte”, „2 próby”.
 
 ### Naprawiono
-- **Postęp semestru liczony z pustych miesięcy:** 21 grup WCY (np. `WCY25IX1S0`) miało w kalendarzu daty zeszłego semestru
-  letniego (02.03–27.07.2026), bo konwerter brał początek semestru z pozostawionych na stronie wydziału zajęć z marca. Siatka
-  tygodni zaczynała się wtedy w marcu, a „Postęp semestru” pokazywał 69% zamiast 15%. `build.py` sprawdza teraz daty semestru
-  każdego kalendarza: jeśli nie należą do jego semestru, dostaje te, na które zgadzają się pozostałe kalendarze wydziału (albo
-  wynikające z samych zajęć), a zabłąkane zajęcia z innego semestru nie przesuwają już początku semestru. Sterownik WCY liczy
-  początek semestru tylko z zajęć tego semestru.
 - **Strona prywatności wymienia wszystko, co zostaje w przeglądarce:** doszły motyw, zakładka narzędzi, przewodnik, ukryte
   przedmioty i własne zajęcia. Test pilnuje, żeby każde nowe ustawienie zapisywane w `localStorage` trafiło na tę listę.
 - **Odstępy w arkuszach:** wiersz szybkich wyborów nie klei się już do pola powyżej (data w „Udostępnij”), przycisk pobierania
