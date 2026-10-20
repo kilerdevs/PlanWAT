@@ -84,8 +84,9 @@ produktu: gdyby któraś musiała zniknąć, znikałby sens projektu.
   - Docelowo GitHub Pages (repozytorium kilerdevs/PlanWAT). Można też użyć wzmocnionego kontenera nginx (`PLAN-WAT`,
     localhost:8088) za reverse proxy.
 - **Bezpieczeństwo** (wyraźny wymóg właściciela: „możliwie najbezpieczniej, serwis publiczny”):
-  - Rygorystyczne Content-Security-Policy z hashami skryptu i stylu. Jedyne zewnętrzne źródło to Google Fonts (strona mapy
-    dodaje przypięty SRI MapLibre z unpkg i kafelki OpenFreeMap). `connect-src 'self'` pozwala pobierać tylko własny `plan.ics`.
+  - Rygorystyczne Content-Security-Policy z hashami skryptu i stylu, bez żadnego zewnętrznego źródła: krój Inter, silnik mapy
+    MapLibre, jej styl, kafelki, glify i ikony leżą w repozytorium i są serwowane z samej strony. `connect-src 'self'` pozwala
+    pobierać tylko pliki własnej domeny.
   - Tylko żądania GET/HEAD, ograniczanie liczby żądań i standardowe nagłówki bezpieczeństwa.
   - Skrypty firm trzecich nie są zakazane z zasady, ale każdy musi mieścić się w CSP i być uzasadniony.
   - **Żadnych danych osobowych kadry** w planach, kodzie ani historii repozytorium.

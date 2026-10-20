@@ -15,7 +15,14 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-20
+
 ### Dodano
+- **Comiesięczna aktualizacja mapy kampusu:** workflow `map.yml` pobiera świeże kafelki i resztę mapy, testuje zbudowaną stronę
+  (testy budowy i testy przeglądarkowe mapy) i publikuje ją na gałęzi `map`, którą Pages nakłada przed budową. Gałąź ma jeden
+  commit, więc historia repozytorium nie rośnie co miesiąc.
+- **Mądrzejsza strona 404:** link do grupy wpisany małymi literami (`/wcy26ky3s1/`) prowadzi prosto do grupy, a przy
+  literówce strona podsuwa najbliższe kody grup i wyszukiwanie na liście.
 - **Sesja egzaminacyjna** na stronie grupy: osobny arkusz z egzaminami i zaliczeniami z planu (filtr rodzaju, licznik dni,
   eksport samych terminów do `.ics` z wybranym przypomnieniem). Bloki „Sesja …” i przerwy nie są już pokazywane jako zajęcia:
   tydzień dostaje czytelny baner z datą, a dzień tylko notkę.
@@ -130,6 +137,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
+- **Mapa kampusu w całości z samej strony:** silnik MapLibre GL JS (te same bajty co wcześniej, sprawdzane tą samą sumą SRI), styl
+  OpenFreeMap `dark`, wektorowe kafelki, glify etykiet i ikony leżą w `src/map/` i są publikowane pod `mapa/`. Kafelki obejmują
+  każdy widok, na jaki mapa pozwala (także przechylenie do 60° przy granicy kampusu), co wylicza sam MapLibre
+  (`tools/map/coverage.js`); `tools/map/vendor_map.py` odświeża całość. CSP żadnej strony nie wymienia już innego serwera.
+- **Krój Inter z samej strony** zamiast z Google Fonts: żadna strona poza mapą nie łączy się już z cudzym serwerem, CSP
+  zezwala tylko na `font-src 'self'`, a przeglądarka pobiera tylko te podzbiory, którymi faktycznie rysuje (urządzenia Apple
+  używają SF Pro i nie pobierają nic).
 - **Obraz do udostępniania mówi więcej:** karta PNG (1080 × 1350) mieści teraz całe nazwy zajęć i sale (zawija zamiast ucinać),
   rodzaj i numer spotkania, datę wygenerowania planu, wydział, semestr i numer tygodnia. Doszły kafelki podsumowania (liczba zajęć,
   pierwsze i ostatnie zajęcia, czas w planie, okienka), etykiety okienek z czasem dojścia między budynkami oraz pasek całego tygodnia
@@ -184,6 +198,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   odmieniają się po polsku: „1 sprawdzony”, „72 pominięte”, „2 próby”.
 
 ### Naprawiono
+- **Strona prywatności wymienia wszystko, co zostaje w przeglądarce:** doszły motyw, zakładka narzędzi, przewodnik, ukryte
+  przedmioty i własne zajęcia. Test pilnuje, żeby każde nowe ustawienie zapisywane w `localStorage` trafiło na tę listę.
 - **Odstępy w arkuszach:** wiersz szybkich wyborów nie klei się już do pola powyżej (data w „Udostępnij”), przycisk pobierania
   `.ics` ma powietrze po wyborze przypomnienia, a lista „Podobne plany” nie dotyka rzędu filtrów na mapie. Reguły są punktowe,
   więc inne arkusze zachowują dotychczasowy rytm.
@@ -252,5 +268,6 @@ Pierwsze publiczne wydanie.
 - CI: testy czytnika kalendarza z progami pokrycia, testy budowy, testy przeglądarkowe Playwright (Chromium, Firefox, WebKit;
   pulpit i telefon) ze skanem WCAG axe, skan obrazu Docker (Grype) i test dymny, CodeQL oraz Dependabot.
 
-[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/kilerdevs/PlanWAT/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/kilerdevs/PlanWAT/releases/tag/v1.0.0

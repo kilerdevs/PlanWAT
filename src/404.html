@@ -12,9 +12,7 @@
 <meta name="robots" content="noindex">
 <title>Nie znaleziono strony</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Crect x='13' y='16' width='38' height='35' rx='9' fill='none' stroke='%23f5f5f7' stroke-width='3.5'/%3E%3Cpath d='M13 27h38M24 11v9M40 11v9' stroke='%23f5f5f7' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='40' cy='39.5' r='4.5' fill='%230a84ff'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet">
+@@FONTS@@
 <style>
   :root {
     --bg: #000000;
@@ -76,6 +74,9 @@
     .enter { animation: rise 600ms cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: calc(var(--d, 0) * 55ms); }
     .d1 { --d: 1; } .d2 { --d: 2; } .d3 { --d: 3; }
   }
+  .guess { margin-top: 32px; }
+  .guess p { margin: 0; font-size: 0.9375rem; }
+  .guess .actions { margin-top: 12px; }
   @media (min-width: 768px) { main { padding-top: 96px; } h1 { font-size: 4rem; letter-spacing: -0.04em; } .mark { width: 64px; height: 64px; } }
 /*@@THEME_CSS@@*/
 </style>
@@ -93,6 +94,80 @@
     <a href="@@BASE@@/">Wszystkie plany</a>
     <a class="ghost" href="@@BASE@@/mapa/">Mapa kampusu</a>
   </div>
+  <section class="guess" id="guess" aria-live="polite" hidden>
+    <p>Może chodziło o:</p>
+    <div class="actions" id="guess-list"></div>
+  </section>
 </main>
+<script>
+/* Group links are typed by hand from group chats, so a wrong case or a slip of a letter is the usual
+   reason to land here: an exact match in another case goes straight to the group, anything else gets
+   the closest group codes and a search on the list. */
+(function () {
+  'use strict';
+  var base = @@BASE_JSON@@;
+  var path = location.pathname;
+  if (path.indexOf(base + '/') !== 0) return;
+  var parts = path.slice(base.length + 1).split('/');
+  var root = base;
+  if (parts[0] === 'dev' && parts.length > 1) { /* the dev preview has no 404 page of its own */
+    root += '/dev';
+    parts.shift();
+  }
+  var typed;
+  try { typed = decodeURIComponent(parts[0]).trim(); } catch (e) { return; }
+  if (!/^[A-Za-z0-9_-]{2,40}$/.test(typed)) return;
+  var want = typed.toUpperCase();
+
+  function distance(a, b) {
+    var row = [];
+    for (var j = 0; j <= b.length; j++) row.push(j);
+    for (var i = 1; i <= a.length; i++) {
+      var diag = row[0];
+      row[0] = i;
+      for (j = 1; j <= b.length; j++) {
+        var up = row[j];
+        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+        diag = up;
+      }
+    }
+    return row[b.length];
+  }
+
+  function link(href, text, ghost) {
+    var a = document.createElement('a');
+    a.href = href;
+    a.textContent = text;
+    if (ghost) a.className = 'ghost';
+    return a;
+  }
+
+  fetch(root + '/data/groups.json').then(function (res) {
+    if (!res.ok) throw new Error(res.status);
+    return res.json();
+  }).then(function (rows) {
+    var names = rows.map(function (row) { return row[0]; });
+    var exact = names.filter(function (n) { return n.toUpperCase() === want; })[0];
+    if (exact && exact !== parts[0]) {
+      /* only plain file names may follow the group (plan.ics, …): nothing typed can steer the redirect elsewhere */
+      var rest = parts.slice(1).filter(function (p) { return /^[A-Za-z0-9._-]+$/.test(p); });
+      location.replace(root + '/' + encodeURIComponent(exact) + '/' + rest.join('/') + location.search + location.hash);
+      return;
+    }
+    var scored = [];
+    names.forEach(function (n) {
+      var up = n.toUpperCase();
+      var score = up.indexOf(want) === 0 || want.indexOf(up) === 0 ? 0 : distance(want, up);
+      if (score <= 2) scored.push([score, n]);
+    });
+    if (!scored.length && !/^[A-Z]{3}\d{2}/.test(want)) return; /* nothing like a group code: the plain page says enough */
+    scored.sort(function (a, b) { return a[0] - b[0] || (a[1] < b[1] ? -1 : 1); });
+    var list = document.getElementById('guess-list');
+    scored.slice(0, 5).forEach(function (s) { list.appendChild(link(root + '/' + encodeURIComponent(s[1]) + '/', s[1])); });
+    list.appendChild(link(root + '/?q=' + encodeURIComponent(typed), 'Szukaj \u201e' + typed + '\u201d', true));
+    document.getElementById('guess').hidden = false;
+  }).catch(function () {});
+})();
+</script>
 </body>
 </html>

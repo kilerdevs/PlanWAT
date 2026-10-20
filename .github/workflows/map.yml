@@ -1,0 +1,125 @@
+name: Update campus map
+
+# Once a month, re-downloads what the campus map draws with (tools/map/vendor_map.py: OpenFreeMap's tiles, style,
+# glyphs and sprites, and the MapLibre engine checked against its pinned hash), tests the site built with it, and
+# publishes it to the `map` branch, which pages.yml lays over src/map/ before building -- the way refresh.yml
+# publishes timetables to `data`.
+#
+# The `map` branch holds a single commit that every update replaces: a month of tiles is ~26 MB compressed, which
+# committed to dev would grow the repository's history by that much every month. master and dev keep the snapshot
+# committed with the code, and the site falls back to it whenever the branch is missing or does not fit a tree.
+on:
+  schedule:
+    - cron: '23 4 2 * *'  # the 2nd of each month, after OpenFreeMap's weekly planet build has settled
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: map-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: download, test, publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write  # pushes the `map` branch, nothing else
+    steps:
+      # the code the map is vendored for: production's
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: master
+          persist-credentials: false
+      - name: Current map (the branch, else the committed snapshot)
+        id: current
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: map
+          path: current
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Download the map
+        run: python3 tools/map/vendor_map.py
+      - name: Anything new?
+        id: diff
+        run: |
+          if [ "${{ steps.current.outcome }}" = 'success' ] && [ -d current/map ]; then before=current/map; else before=$(mktemp -d); git archive HEAD src/map | tar -x -C "$before"; before="$before/src/map"; fi
+          # every file's bytes, except the download date in style.json's metadata
+          digest() {
+            (cd "$1" && find . -type f ! -name style.json -print0 | sort -z | xargs -0 sha256sum
+             python3 -c 'import json,sys; s=json.load(open("style.json")); s["metadata"]["planwat:vendored"].pop("date", None); print(json.dumps(s, sort_keys=True))') | sha256sum
+          }
+          if [ "$(digest "$before")" = "$(digest src/map)" ]; then
+            echo 'The map is unchanged since the last update.'
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      # the same checks a pull request runs on the map: build tests, then the map's browser tests in Chromium
+      - name: Build tests
+        if: steps.diff.outputs.changed == 'true'
+        run: python3 -m unittest discover -s tests -p 'test_build.py'
+      - name: Install test tooling
+        if: steps.diff.outputs.changed == 'true'
+        run: npm ci
+      - name: Restore Playwright browsers
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium
+        if: steps.diff.outputs.changed == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Map browser tests
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          python3 build.py --today 2026-10-15
+          npx playwright test tests/e2e/map.spec.js --project=chromium --project=mobile-chrome
+
+      - name: Publish to the map branch
+        id: push
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          out=$(mktemp -d)
+          cp -r src/map "$out/map"
+          # pages.yml only lays the files over a tree vendored for the same tiles and engine
+          cp tools/map/coverage.json "$out/coverage.json"
+          cd "$out"
+          git init -q -b map
+          git config user.name 'planwat-map'
+          git config user.email 'planwat-map@users.noreply.github.com'
+          git add -A
+          git commit -q -m "Campus map $(date -u +%Y-%m-%d) ($(find map/tiles -name '*.pbf' | wc -l) tiles)"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:map
+          echo 'pushed=true' >> "$GITHUB_OUTPUT"
+
+      # pages.yml's gate reads this (same artifact name as refresh.yml): pushed=false means nothing to redeploy
+      - name: Write the outcome for the Pages gate
+        if: always()
+        env:
+          PUSHED: ${{ steps.push.outputs.pushed || 'false' }}
+        run: |
+          printf '{"pushed": "%s"}\n' "$PUSHED" > refresh-outcome.json
+      - name: Upload the outcome
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: refresh-outcome
+          path: refresh-outcome.json
+          retention-days: 2

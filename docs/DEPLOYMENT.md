@@ -64,6 +64,20 @@ Jednorazowo w [Google Search Console](https://search.google.com/search-console) 
 3. W [Bing Webmaster Tools](https://www.bing.com/webmasters) zaimportuj witrynę z Search Console (obejmuje też DuckDuckGo
    i Ecosia).
 
+### Mapa kampusu
+
+Mapa `/mapa/` niczego nie pobiera z innych serwerów: silnik, styl, kafelki, glify i ikony leżą w `src/map/`.
+[`.github/workflows/map.yml`](../.github/workflows/map.yml) odświeża je raz w miesiącu (2. dnia, też ręcznie z zakładki
+Actions): uruchamia `tools/map/vendor_map.py`, a gdy coś się zmieniło, buduje stronę, puszcza testy budowy i testy
+przeglądarkowe mapy i dopiero wtedy publikuje pliki na gałęzi `map`. Pages nakłada je na `src/map/` (tak jak gałąź `data`
+na plany), ale tylko w drzewie, które oczekuje dokładnie tych kafelków i tej wersji silnika; inaczej zostaje mapa zapisana w
+repozytorium.
+
+Gałąź `map` ma zawsze jeden commit, zastępowany przy każdej aktualizacji: miesiąc kafelków to ok. 26 MB po kompresji, więc
+commitowane na `dev` co miesiąc powiększałyby historię repozytorium o tyle samo. Gdy zmienią się granice mapy
+(`src/campus.js`) albo wersja MapLibre, uruchom `node tools/map/coverage.js` i `python3 tools/map/vendor_map.py` i zacommituj
+wynik razem z kodem.
+
 > [!NOTE]
 > GitHub wyłącza zaplanowane workflowy w publicznych repozytoriach po 60 dniach bez aktywności. Jeśli to się stanie, włącz
 > ponownie **Pages** w zakładce Actions (albo wypchnij dowolny commit).

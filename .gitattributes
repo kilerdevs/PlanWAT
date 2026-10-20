@@ -8,3 +8,6 @@
 # Saved faculty pages used as test fixtures keep their bytes.
 tests/fixtures/refresh/*.htm -text
 tests/fixtures/refresh/*.pdf -text
+
+# The campus map's vendored vector tiles and glyphs (src/map/) are protobuf: bytes, never text.
+*.pbf binary
