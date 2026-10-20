@@ -2,7 +2,7 @@
    Pages and calendars: network first (fresh when online), the last copy when the network fails or is slow.
    Shared styles, scripts and fonts (assets/): cache first — their names carry a hash of their bytes, so a
    name never changes meaning. Styles and scripts are precached with the worker; a font is saved the first
-   time a page draws with it. Anything else (map tiles, the map engine) is left to the browser.
+   time a page draws with it. The map's engine and tiles (mapa/lib/, mapa/tiles/) are left to the browser's own cache.
    The production site and the dev preview share an origin: each worker names its caches after its own scope,
    cleans up only those, and the root worker leaves dev/ to the preview's own worker. */
 'use strict';

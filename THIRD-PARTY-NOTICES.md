@@ -7,12 +7,12 @@
 [![Zależności w runtime](https://img.shields.io/badge/zale%C5%BCno%C5%9Bci%20w%20runtime-zero-brightgreen?style=flat)](#dostarczane-z-serwisem)
 [![Ikony: Lucide](https://img.shields.io/badge/ikony-Lucide%20(ISC)-f56565?style=flat)](#ikony-lucide)
 [![Mapa: OpenStreetMap](https://img.shields.io/badge/dane%20mapy-OpenStreetMap%20(ODbL)-7ebc6f?style=flat&logo=openstreetmap&logoColor=white)](#dane)
-[![MapLibre](https://img.shields.io/badge/MapLibre%20GL%20JS-4.7.1-396cb2?style=flat)](#ładowane-w-trakcie-działania)
+[![MapLibre](https://img.shields.io/badge/MapLibre%20GL%20JS-4.7.1-396cb2?style=flat)](#mapa-kampusu)
 
 </div>
 
-PlanWAT nie dostarcza w czasie działania żadnego kodu firm trzecich poza opisanymi niżej ikonami. Krój Inter jest serwowany
-z samej strony. Narzędzia deweloperskie podano dla kompletności: nigdy nie trafiają do zbudowanej strony.
+PlanWAT niczego nie ładuje z cudzych serwerów: wszystko, co opisano niżej, leży w repozytorium i jest serwowane z samej
+strony. Narzędzia deweloperskie podano dla kompletności: nigdy nie trafiają do zbudowanej strony.
 
 ## Dostarczane z serwisem
 
@@ -47,12 +47,19 @@ i łacińskim rozszerzonym (pliki woff2 w postaci, w jakiej udostępnia je Googl
 Copyright (c) 2016 The Inter Project Authors, na licencji SIL Open Font License 1.1. Pełny tekst licencji:
 [`src/fonts/OFL.txt`](src/fonts/OFL.txt).
 
-## Ładowane w trakcie działania
+### Mapa kampusu
 
-| Składnik | Źródło | Licencja |
+Wszystko, czym rysuje mapa `/mapa/`, leży w `src/map/` (odtwarzane skryptem `tools/map/vendor_map.py`) i jest publikowane pod
+`mapa/`:
+
+| Składnik | Pochodzenie | Licencja |
 |---|---|---|
-| [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) 4.7.1, tylko mapa kampusu | unpkg (`unpkg.com`), przypięty SRI | BSD-3-Clause |
-| Kafelki mapy i styl `dark`, tylko mapa kampusu | [OpenFreeMap](https://openfreemap.org) (`tiles.openfreemap.org`) | Dane mapy © [współtwórcy OpenStreetMap](https://www.openstreetmap.org/copyright), ODbL 1.0 |
+| [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) 4.7.1 (`lib/`) | paczka npm `maplibre-gl`, bajty sprawdzane sumą SRI ze strony | BSD-3-Clause, [`src/map/lib/LICENSE.txt`](src/map/lib/LICENSE.txt) |
+| Wektorowe kafelki (`tiles/`) | [OpenFreeMap](https://openfreemap.org), schemat [OpenMapTiles](https://openmaptiles.org) | Dane © [współtwórcy OpenStreetMap](https://www.openstreetmap.org/copyright), ODbL 1.0; © OpenMapTiles |
+| Styl `dark` (`style.json`) i ikony (`sprites/`) | [OpenFreeMap styles](https://github.com/hyperknot/openfreemap-styles) | MIT; styl wywodzi się ze stylów OpenMapTiles (kod BSD-3-Clause, projekt CC BY 4.0); ikony Maki CC0 1.0; [`src/map/LICENSE-openfreemap.md`](src/map/LICENSE-openfreemap.md) |
+| Glify etykiet (`glyphs/`, Noto Sans) | OpenFreeMap | SIL Open Font License 1.1 |
+
+Mapa pokazuje te podziękowania także w swoim przycisku atrybucji.
 
 ## Dane
 

@@ -6,7 +6,7 @@ Output (default: site/):
     <GROUP>/index.html    the timetable page; it fetches ./plan.ics and renders it in the browser
     <GROUP>/plan.ics      the group's current term, byte-for-byte (minus lessons of another semester, see clip_to_term)
     <GROUP>/plan-przypomnienia.ics   the same calendar with a reminder 15 minutes before each class
-    mapa/index.html       campus map (MapLibre from unpkg, tiles from OpenFreeMap: the only page allowed them)
+    mapa/index.html       campus map: MapLibre, OpenFreeMap's style, tiles, glyphs and sprites, all vendored in src/map/
     prywatnosc/index.html privacy notice and terms of use
     assets/               the styles and scripts the pages share (each name carries a hash of its bytes)
     pokrycie-wydzialow.svg  faculty coverage chart for README.md, drawn from the groups of this build
@@ -62,15 +62,11 @@ FONTS = (
 MAP_DIR = 'mapa'  # site/mapa/: the campus map
 REMINDER_FILE = 'plan-przypomnienia.ics'  # <GROUP>/plan.ics with an alarm before every class
 REMINDER_MINUTES = 15
-# Extra CSP sources of the map page only: the MapLibre engine (SRI-pinned in src/mapa.html), its tiles,
-# and the blob: workers it renders with.
-MAP_LIB = 'https://unpkg.com'
-MAP_TILES = 'https://tiles.openfreemap.org'
+# Extra CSP sources of the map page only: the blob: worker MapLibre renders in and the blob: images it decodes.
+# Everything else the map needs (engine, style, tiles, glyphs, sprites) is vendored in src/map/ and served from
+# mapa/ on the site's own origin (tools/map/vendor_map.py refreshes it).
 MAP_CSP = {
-    'script-src': [MAP_LIB],
-    'style-src': [MAP_LIB],
-    'connect-src': [MAP_TILES],
-    'img-src': ['blob:', MAP_TILES],
+    'img-src': ['blob:'],
     'worker-src': ['blob:'],
     'child-src': ['blob:'],
 }
@@ -1202,6 +1198,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
                 (out / group / f'plan-{other.term_id}.ics').write_bytes(other.data())
                 (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.data()))
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js, assets=assets, site_url=site_url))
+    shutil.copytree(SRC / 'map', out / MAP_DIR, dirs_exist_ok=True)
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets, site_url=site_url))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8'), site_url, assets))
     (out / 'robots.txt').write_text(robots_txt(base_path, noindex, site_url), encoding='utf-8')

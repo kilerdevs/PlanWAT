@@ -1,17 +1,16 @@
 // End-to-end checks of the campus map (/mapa/) and its links from the group page.
-// Map tiles are aborted so the tests never depend on OpenFreeMap; the MapLibre engine itself comes from unpkg
-// (SRI-pinned). Without WebGL the page falls back to a plain building list, which the tests accept too.
+// The engine, style, tiles, glyphs and sprites are all vendored under mapa/, so the map draws exactly as in production
+// with no outside host. Without WebGL the page falls back to a plain building list, which the tests accept too.
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 
 const THURSDAY_1030 = new Date('2026-10-15T10:30:00+02:00');
 
-/* Open a page with tiles aborted; collect uncaught errors and CSP violations. */
+/* Open a page; collect uncaught errors and CSP violations. engine: false blocks the vendored MapLibre. */
 async function open(page, url, { engine = true } = {}) {
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.route('https://tiles.openfreemap.org/**', (r) => r.abort());
-  if (!engine) await page.route('https://unpkg.com/**', (r) => r.abort());
+  if (!engine) await page.route('**/mapa/lib/**', (r) => r.abort());
   await page.addInitScript(() => {
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (e) => {
@@ -29,6 +28,26 @@ test('the map page loads without errors or CSP violations and offers every build
   const problems = await open(page, '/mapa/');
   expect(await page.locator('.bldg, .fallback button').count()).toBeGreaterThan(90);
   await expect(page.locator('#selection h1')).toHaveText('Mapa kampusu WAT');
+  expect(await page.evaluate(() => window.__csp)).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
+test('the map draws from the site\'s own files only, and every one of them loads', async ({ page }) => {
+  const foreign = [], failed = [];
+  // blob: and data: are made in the page (MapLibre's worker, decoded images); anything else must be this origin
+  page.on('request', (r) => { if (!/^(blob|data):/.test(r.url()) && !r.url().startsWith('http://127.0.0.1')) foreign.push(r.url()); });
+  page.on('response', (r) => { if (r.status() >= 400) failed.push(`${r.status()} ${r.url()}`); });
+  page.on('requestfailed', (r) => failed.push(`${r.failure().errorText} ${r.url()}`));
+  const problems = await open(page, '/mapa/');
+  test.skip(await page.locator('.fallback').count() > 0, 'no WebGL here: the plain list has nothing to load');
+  // the tiles in view, their labels' glyphs and the style's sprites, all loaded and drawn
+  await page.waitForFunction(() => document.getElementById('status').hidden, null, { timeout: 30000 });
+  await page.waitForLoadState('networkidle');
+  await page.locator('#toggle3d').click();  // flat, then tilted again: a different set of tiles
+  await page.locator('#toggle3d').click();
+  await page.waitForLoadState('networkidle');
+  expect(foreign).toEqual([]);
+  expect(failed).toEqual([]);
   expect(await page.evaluate(() => window.__csp)).toEqual([]);
   expect(problems).toEqual([]);
 });
@@ -109,7 +128,6 @@ test('without the map engine a plain list still opens directions', async ({ page
 });
 
 test('rooms on the group page link to their building and a day opens its classes on the map', async ({ page }) => {
-  await page.route('https://tiles.openfreemap.org/**', (r) => r.abort());
   await page.clock.setFixedTime(THURSDAY_1030);
   await page.goto('/WCY26KY3S1/');
   await expect(page.locator('.lesson').first()).toBeVisible();

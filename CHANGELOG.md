@@ -134,6 +134,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 
 ### Zmieniono
+- **Mapa kampusu w całości z samej strony:** silnik MapLibre GL JS (te same bajty co wcześniej, sprawdzane tą samą sumą SRI), styl
+  OpenFreeMap `dark`, wektorowe kafelki, glify etykiet i ikony leżą w `src/map/` i są publikowane pod `mapa/`. Kafelki obejmują
+  każdy widok, na jaki mapa pozwala (także przechylenie do 60° przy granicy kampusu), co wylicza sam MapLibre
+  (`tools/map/coverage.js`); `tools/map/vendor_map.py` odświeża całość. CSP żadnej strony nie wymienia już innego serwera.
 - **Krój Inter z samej strony** zamiast z Google Fonts: żadna strona poza mapą nie łączy się już z cudzym serwerem, CSP
   zezwala tylko na `font-src 'self'`, a przeglądarka pobiera tylko te podzbiory, którymi faktycznie rysuje (urządzenia Apple
   używają SF Pro i nie pobierają nic).

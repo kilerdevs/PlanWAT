@@ -320,8 +320,8 @@ class BuildRealSiteTest(unittest.TestCase):
             tags = re.findall(r'<(?:link|script)\b[^>]*\b(?:href|src)="([^"]*assets/[^"]+)"[^>]*\bintegrity="sha256-([A-Za-z0-9+/=]+)"', html)
             self.assertEqual(len(tags), 3, rel)  # the stylesheet and the two scripts, nothing else
             csp = self.meta_csp(rel)
-            self.assertRegex(csp, r"script-src 'self' ")
-            self.assertRegex(csp, r"style-src 'self' ")
+            self.assertRegex(csp, r"script-src 'self'[ ;]")
+            self.assertRegex(csp, r"style-src 'self'[ ;]")
             for url, digest in tags:
                 self.assertTrue(url.startswith(('assets/', '../assets/')), url)  # relative: any base path works
                 body = (self.out / url.replace('../', '', 1)).read_bytes()
@@ -397,16 +397,16 @@ class BuildRealSiteTest(unittest.TestCase):
         html = (self.out / rel).read_text(encoding='utf-8')
         return re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', html).group(1)
 
-    def test_only_the_map_page_may_load_the_map_engine_and_tiles(self):
+    def test_no_page_may_load_anything_from_another_host(self):
+        for page in self.pages():
+            csp = self.meta_csp(page.relative_to(self.out).as_posix())
+            self.assertNotRegex(csp, r'https?:', page)  # the map's engine, tiles, glyphs and sprites are vendored too
         csp = self.meta_csp('mapa/index.html')
-        self.assertRegex(csp, r"script-src [^;]*https://unpkg\.com")
-        self.assertRegex(csp, r"connect-src 'self' https://tiles\.openfreemap\.org")
-        self.assertRegex(csp, r"img-src data: blob: https://tiles\.openfreemap\.org")
-        self.assertIn('worker-src blob:', csp)
+        self.assertIn("connect-src 'self';", csp)
+        self.assertIn('img-src data: blob:;', csp)
+        self.assertIn('worker-src blob:', csp)  # MapLibre's own worker, created from its bundle
         for rel in ('index.html', '404.html', 'prywatnosc/index.html', 'WCY26KY3S1/index.html'):
-            csp = self.meta_csp(rel)
-            for source in ('unpkg.com', 'openfreemap', 'blob:'):
-                self.assertNotIn(source, csp, rel)
+            self.assertNotIn('blob:', self.meta_csp(rel), rel)
 
     def test_only_the_front_and_group_pages_may_register_the_worker_and_manifest(self):
         for rel in ('index.html', 'WCY26KY3S1/index.html'):
@@ -419,14 +419,39 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn("manifest-src 'self';", self.meta_csp('mapa/index.html'))
         self.assertNotIn("'self'", self.meta_csp('mapa/index.html').split('worker-src')[1].split(';')[0])
 
-    def test_map_engine_is_pinned_by_subresource_integrity(self):
+    def test_map_engine_is_vendored_and_pinned_by_subresource_integrity(self):
         html = (self.out / 'mapa' / 'index.html').read_text(encoding='utf-8')
-        tags = re.findall(r'<(?:script|link)[^>]+unpkg\.com[^>]*>', html)
-        self.assertEqual(len(tags), 2)
-        for tag in tags:
-            self.assertRegex(tag, r'integrity="sha384-[A-Za-z0-9+/=]{64}"')
-            self.assertIn('crossorigin="anonymous"', tag)
-            self.assertIn('@4.7.1/', tag)
+        pinned = re.findall(r'(?:href|src)="(lib/maplibre-gl-4\.7\.1\.(?:js|css))" integrity="sha384-([A-Za-z0-9+/=]{64})"', html)
+        self.assertEqual(len(pinned), 2)
+        for rel, digest in pinned:
+            body = (self.out / 'mapa' / rel).read_bytes()
+            self.assertEqual(base64.b64encode(hashlib.sha384(body).digest()).decode(), digest, rel)
+
+    def test_map_style_names_only_files_the_site_serves(self):
+        mapdir = self.out / 'mapa'
+        style = json.loads((mapdir / 'style.json').read_text(encoding='utf-8'))
+        addresses = json.dumps({k: v for k, v in style.items() if k != 'metadata'})
+        addresses = re.sub(r'"attribution": "(?:[^"\\]|\\.)*"', '', addresses)  # credits link out, nothing is loaded from them
+        self.assertNotRegex(addresses, r'https?://')
+        (source,) = style['sources'].values()
+        self.assertEqual(source['tiles'], ['tiles/{z}/{x}/{y}.pbf'])
+        self.assertIn('OpenStreetMap', source['attribution'])
+        used = {layer.get('source') for layer in style['layers']} - {None}
+        self.assertEqual(used, set(style['sources']))
+        coverage = json.loads((ROOT / 'tools' / 'map' / 'coverage.json').read_text(encoding='utf-8'))
+        on_disk = {p.relative_to(mapdir / 'tiles').with_suffix('').as_posix() for p in (mapdir / 'tiles').rglob('*.pbf')}
+        self.assertEqual(on_disk, set(coverage))  # every tile a view can cover, and nothing else
+        for suffix in ('.json', '.png', '@2x.json', '@2x.png'):
+            self.assertTrue((mapdir / (style['sprite'] + suffix)).is_file(), suffix)
+        stacks = {','.join(layer['layout']['text-font']) for layer in style['layers'] if 'text-font' in layer.get('layout', {})}
+        stacks.add('Noto Sans Regular')  # the place labels src/mapa.html adds
+        names = re.findall(r'^\s*\["[a-z]+",[\d.]+,[\d.]+,"((?:[^"\\]|\\.)*)"', (ROOT / 'src' / 'places.js').read_text(encoding='utf-8'), re.M)
+        self.assertGreater(len(names), 20)
+        for stack in stacks:
+            for ch in set(''.join(names)) | set('ąćęłńóśźżĄĆĘŁŃÓŚŹŻ'):
+                start = ord(ch) // 256 * 256
+                glyphs = style['glyphs'].replace('{fontstack}', stack).replace('{range}', f'{start}-{start + 255}')
+                self.assertTrue((mapdir / glyphs).is_file(), f'{stack}: {ch!r}')
 
     def test_map_links_use_relative_urls(self):
         html = self.page_code('mapa/index.html')
@@ -463,10 +488,10 @@ class BuildRealSiteTest(unittest.TestCase):
             html = page.read_text(encoding='utf-8')
             for block in re.findall(r'<(?:script|style)>(.*?)</(?:script|style)>', html, re.S | re.I):
                 self.assertIn(sha(block), header, page)
-        self.assertIn('https://unpkg.com', header)
+        self.assertNotRegex(header, r'https?:')  # no page loads anything from another host
         self.assertIn("worker-src 'self' blob:", header)
         self.assertIn("manifest-src 'self'", header)
-        self.assertIn("connect-src 'self' https://tiles.openfreemap.org", header)
+        self.assertIn("connect-src 'self';", header)
 
 
     def test_indexable_pages_have_their_own_title_description_and_social_card(self):

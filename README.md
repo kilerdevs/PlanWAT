@@ -349,9 +349,9 @@ Jak przenieść własną domenę na Pages i jak odtworzyć nagłówki, których 
 ## Bezpieczeństwo i prywatność
 
 - Każda strona ma **Content-Security-Policy przypiętą do kodu**: bloki wpisane w HTML działają tylko z hashów, a wspólne
-  pliki `assets/` mają nazwę z hashem treści i sumę `integrity` na znaczniku, który je wczytuje. Także krój Inter jest
-  serwowany z samej strony, więc z zewnątrz pobiera coś tylko strona mapy: MapLibre GL JS z `unpkg.com` (przypięty wersją i
-  sumą SRI) i kafelki z `tiles.openfreemap.org`.
+  pliki `assets/` mają nazwę z hashem treści i sumę `integrity` na znaczniku, który je wczytuje. Żadna strona niczego nie
+  pobiera z innych serwerów: krój Inter i cała mapa kampusu (MapLibre GL JS ze sprawdzaną sumą SRI, styl, kafelki, glify i
+  ikony z OpenFreeMap) leżą w repozytorium i są serwowane z samej strony.
 - Tekst z kalendarza trafia do strony wyłącznie przez `textContent`, a w budowie jest escapowany. Kolory przyjmowane są tylko
   jako `#rrggbb`.
 - Service Worker buforuje tylko strony, kalendarze i pliki aplikacji z własnej domeny.
