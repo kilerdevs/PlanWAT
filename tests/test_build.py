@@ -41,6 +41,36 @@ def calendar(group, start, end, first_event, extra=''):
     return '\r\n'.join(lines + ['END:VCALENDAR']) + '\r\n'
 
 
+class PrivacyNoticeTest(unittest.TestCase):
+    """The privacy page promises a complete list of what the site keeps in the browser; keep it complete."""
+
+    # how the code names a stored setting: store.get('favs'), var key = 'seen:' + …, return 'extras:' + …,
+    # and the raw localStorage keys 'planwat:theme' and 'planwat.toolTab'
+    PATTERNS = (
+        r"\bstore\.(?:get|set)\(\s*'([A-Za-z]+)",
+        r"\bkey = '([A-Za-z]+):'",
+        r"return '([A-Za-z]+):' \+",
+        r"'planwat[:.]([A-Za-z]+)'",
+    )
+
+    def stored_keys(self):
+        keys = set()
+        for path in sorted((ROOT / 'src').glob('*.*')):
+            if path.suffix in ('.html', '.js') and path.name not in ('prywatnosc.html', 'sw.js'):
+                code = path.read_text(encoding='utf-8')
+                for pattern in self.PATTERNS:
+                    keys.update(re.findall(pattern, code))
+        return keys
+
+    def test_every_stored_setting_is_listed_on_the_privacy_page(self):
+        privacy = (ROOT / 'src' / 'prywatnosc.html').read_text(encoding='utf-8')
+        listed = set(' '.join(re.findall(r'data-storage="([^"]+)"', privacy)).split())
+        keys = self.stored_keys()
+        self.assertGreaterEqual(keys, {'favs', 'recent', 'view', 'theme', 'toolTab', 'seen', 'compare', 'hide', 'extras'})
+        self.assertEqual(keys - listed, set(), 'stored in the browser but missing from src/prywatnosc.html')
+        self.assertEqual(listed - keys, set(), 'listed on the privacy page but no longer stored')
+
+
 class FacultyTest(unittest.TestCase):
     def test_known_prefixes_map_to_their_faculty(self):
         self.assertEqual(build.faculty_of('WCY26KY3S1'), 'WCY')

@@ -116,10 +116,15 @@
   <h2>Co zostaje w Twojej przeglądarce</h2>
   <p>Kilka ustawień zapisuje się wyłącznie na Twoim urządzeniu (<code>localStorage</code>) i nigdy nie jest nigdzie wysyłane:</p>
   <ul>
-    <li>ulubione i ostatnio oglądane grupy,</li>
-    <li>wybrany widok planu (tydzień, lista, miesiąc),</li>
-    <li>wersja planu z ostatniej wizyty, żeby pokazać, że plan się zmienił,</li>
-    <li>grupy wybrane do porównania.</li>
+    <li data-storage="favs recent">ulubione i ostatnio oglądane grupy,</li>
+    <li data-storage="view">wybrany widok planu (tydzień, lista, miesiąc),</li>
+    <li data-storage="toolTab">ostatnio otwarta zakładka narzędzi,</li>
+    <li data-storage="theme">wybrany motyw (jasny lub ciemny),</li>
+    <li data-storage="tour">informacja, że przewodnik został już pokazany,</li>
+    <li data-storage="seen">wersja planu z ostatniej wizyty, żeby pokazać, że plan się zmienił,</li>
+    <li data-storage="compare">grupy wybrane do porównania,</li>
+    <li data-storage="hide">przedmioty ukryte w „Moich przedmiotach”,</li>
+    <li data-storage="extras">Twoje dodatkowe zajęcia (nazwa, dzień, godziny i miejsce, które sam wpiszesz).</li>
   </ul>
   <p>Aby plan działał bez internetu, przeglądarka przechowuje też kopię odwiedzonych stron i plików planu (Service Worker, Cache Storage). Wszystko to usuniesz, czyszcząc dane witryny w ustawieniach przeglądarki.</p>
 
@@ -145,7 +150,7 @@
   <h2>Kontakt i bezpieczeństwo</h2>
   <p>Błąd w planie lub w serwisie zgłoś w <a href="https://github.com/kilerdevs/PlanWAT/issues">zgłoszeniach na GitHubie</a>. Lukę bezpieczeństwa zgłoś prywatnie przez <a href="https://github.com/kilerdevs/PlanWAT/security/advisories/new">GitHub Security Advisories</a> (szczegóły w <a href="../.well-known/security.txt">security.txt</a>).</p>
 
-  <p class="updated">Ostatnia zmiana: 15 października 2026</p>
+  <p class="updated">Ostatnia zmiana: 20 października 2026</p>
 </main>
 </body>
 </html>

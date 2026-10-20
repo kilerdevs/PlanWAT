@@ -189,6 +189,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   odmieniają się po polsku: „1 sprawdzony”, „72 pominięte”, „2 próby”.
 
 ### Naprawiono
+- **Strona prywatności wymienia wszystko, co zostaje w przeglądarce:** doszły motyw, zakładka narzędzi, przewodnik, ukryte
+  przedmioty i własne zajęcia. Test pilnuje, żeby każde nowe ustawienie zapisywane w `localStorage` trafiło na tę listę.
 - **Odstępy w arkuszach:** wiersz szybkich wyborów nie klei się już do pola powyżej (data w „Udostępnij”), przycisk pobierania
   `.ics` ma powietrze po wyborze przypomnienia, a lista „Podobne plany” nie dotyka rzędu filtrów na mapie. Reguły są punktowe,
   więc inne arkusze zachowują dotychczasowy rytm.
