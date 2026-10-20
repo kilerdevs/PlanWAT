@@ -975,7 +975,7 @@ def security_txt(today):
 
 
 def render_404(template, base_path):
-    return finish(template.replace('@@BASE@@', html.escape(base_path.rstrip('/'), quote=True)), connect=False)
+    return finish(template.replace('@@BASE@@', html.escape(base_path.rstrip('/'), quote=True)), connect=True)
 
 
 # one colour per faculty, taken from the hand-drawn chart this file replaced, so a bar keeps its colour as counts move

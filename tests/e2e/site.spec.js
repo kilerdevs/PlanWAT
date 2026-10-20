@@ -133,6 +133,34 @@ test('the privacy page is linked from the footer, accessible and runs no script'
   expect(serious).toEqual([]);
 });
 
+test('a group link in the wrong case goes to the group, keeping the rest of the address', async ({ page }) => {
+  await page.goto('/wcy26ky3s1/?t=x#y');
+  await expect(page).toHaveURL(/\/WCY26KY3S1\/\?t=x#y$/);
+  await page.goto('/wcy26ky3s1');
+  await expect(page).toHaveURL(/\/WCY26KY3S1\/$/);
+});
+
+test('a mistyped group link suggests the closest groups and a search', async ({ page }) => {
+  const csp = [];
+  page.on('console', (m) => { if (m.type() === 'error' && /Content.Security/i.test(m.text())) csp.push(m.text()); });
+  const res = await page.goto('/WCY26KY3S9/');
+  expect(res.status()).toBe(404);
+  await expect(page.locator('h1')).toHaveText('Nie znaleziono strony');
+  const guesses = page.locator('#guess-list a');
+  await expect(guesses.first()).toBeVisible();
+  await expect(page.locator('#guess-list a[href="/WCY26KY3S1/"]')).toHaveCount(1);
+  expect(await guesses.count()).toBeLessThanOrEqual(6);
+  await expect(guesses.last()).toHaveAttribute('href', '/?q=WCY26KY3S9');
+  expect(csp).toEqual([]);
+});
+
+test('an address that is no group code shows the plain 404 page', async ({ page }) => {
+  await page.goto('/zupelnie/nic/');
+  await expect(page.locator('h1')).toHaveText('Nie znaleziono strony');
+  await page.waitForLoadState('networkidle');
+  await expect(page.locator('#guess')).toBeHidden();
+});
+
 test('on a weekend without classes the next week is shown', async ({ page }) => {
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
