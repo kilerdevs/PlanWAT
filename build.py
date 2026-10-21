@@ -32,6 +32,7 @@ descriptions and structured data (JSON-LD) are written either way.
 """
 import argparse
 import base64
+import collections
 import dataclasses
 import datetime as dt
 import hashlib
@@ -150,10 +151,19 @@ class Term:
     start: dt.date
     end: dt.date
     meta: dict = dataclasses.field(default_factory=dict)
+    dates: list = dataclasses.field(default_factory=list)  # the lessons' days inside the term's window
+    bad_bounds: bool = False  # X-PLAN-SEMESTER-START/END name another semester (see fix_semester_bounds)
+    _published: bytes | None = dataclasses.field(default=None, init=False, repr=False, compare=False)
 
     def data(self):
-        """The calendar as published: the file's bytes, minus lessons that belong to another semester."""
-        return clip_to_term(self.path.read_bytes(), self.term_id)
+        """The calendar as published: the file's bytes, minus lessons that belong to another semester, and with
+        semester dates that belong to this one. Worked out once: the build asks for it several times per group."""
+        if self._published is None:
+            raw = clip_to_term(self.path.read_bytes(), self.term_id)
+            if self.bad_bounds:
+                raw = with_semester(raw, self.meta['semester_start'], self.meta['semester_end'])
+            self._published = raw
+        return self._published
 
 
 # ---------------------------------------------------------------- calendars
@@ -206,6 +216,91 @@ def clip_to_term(raw, term_id):
     if not dropped:
         return raw
     return ''.join(out).encode('utf-8')
+
+
+def window_dates(term_id):
+    """term_window() as dates, its "29 February" made the last day of February; None for a free-form term name."""
+    try:
+        first, last = term_window(term_id)
+    except ValueError:
+        return None
+    last_day = _ymd(last) or dt.date(int(last[:4]), 3, 1) - dt.timedelta(days=1)
+    return _ymd(first), last_day
+
+
+def semester_fits_term(start, end, term_id):
+    """Whether the declared semester dates (either may be missing) can belong to the term.
+
+    The start decides where the page's week grid begins, so it must fall inside the term's window. The end only has
+    to follow it: converters that count 21 weeks from the start legitimately end a winter semester in early March."""
+    window = window_dates(term_id)
+    if window is None:
+        return True
+    if start and not window[0] <= start <= window[1]:
+        return False
+    if end and end < (start or window[0]):
+        return False
+    return True
+
+
+def with_semester(raw, start, end):
+    """A calendar (bytes) with its X-PLAN-SEMESTER-START/END set to `start`/`end`; every other byte untouched.
+
+    Only the calendar's own header (before its first component) is touched, so no event property is ever rewritten.
+    There each property keeps its place (written in any case, with parameters, folded); repeats of it are dropped, and
+    a missing one is added right after BEGIN:VCALENDAR -- first, so it is the one every reader takes."""
+    whole = raw.decode('utf-8')
+    nl = '\r\n' if '\r\n' in whole else '\n'
+    component = re.search(r'^BEGIN:', whole[1:], flags=re.I | re.M)
+    split = component.start() + 1 if component else len(whole)
+    text, rest = whole[:split], whole[split:]
+    for name, day in (('X-PLAN-SEMESTER-START', start), ('X-PLAN-SEMESTER-END', end)):
+        line = f'{name}:{day:%Y%m%d}{nl}'
+        pattern = re.compile(rf'^{name}(?:;[^:\r\n]*)?:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*(?:\r?\n|$)', re.I | re.M)
+        seen = []
+        text = pattern.sub(lambda m: '' if seen or seen.append(1) else line, text)
+        if not seen:  # the end goes after the start, the start after BEGIN:VCALENDAR
+            after = r'^X-PLAN-SEMESTER-START:\d{8}\r?\n' if name.endswith('END') else r'^BEGIN:VCALENDAR\r?\n'
+            if not re.search(after, text, flags=re.I | re.M):
+                after = r'^BEGIN:VCALENDAR\r?\n'
+            text = re.sub(after, lambda m: m.group(0) + line, text, count=1, flags=re.I | re.M)
+    return (text + rest).encode('utf-8')
+
+
+def fix_semester_bounds(by_group):
+    """Give every term whose declared semester belongs to another one the dates its faculty agrees on.
+
+    A converter takes the semester from what the faculty's page shows, and a page that still lists a lesson of the
+    last semester (a WCY page with one March class under a winter plan) yields last semester's dates: the page's
+    week grid then starts months before the first class, and its semester progress counts those empty months. The
+    dates most calendars of the same faculty and term declare replace them (faculties keep different calendars, so
+    no other faculty votes), else the span of the lessons themselves (Monday of the first week to the Saturday of
+    the last), else the term's whole window. The end never comes before the last lesson: the page stops expanding
+    a weekly class at the semester's end."""
+    votes = {}
+    for terms in by_group.values():
+        for t in terms:
+            if not t.bad_bounds:
+                key = (t.term_id, faculty_of(t.meta['group']))
+                votes.setdefault(key, collections.Counter())[(t.meta['semester_start'], t.meta['semester_end'])] += 1
+    for terms in by_group.values():
+        for t in terms:
+            if not t.bad_bounds:
+                continue
+            agreed = votes.get((t.term_id, faculty_of(t.meta['group'])))
+            if agreed:
+                start, end = agreed.most_common(1)[0][0]
+            elif t.dates:
+                first, last = min(t.dates), max(t.dates)
+                start, end = first - dt.timedelta(days=first.weekday()), last + dt.timedelta(days=5 - last.weekday())
+            else:
+                start, end = window_dates(t.term_id) or (t.start, t.end)
+            if t.dates:
+                end = max(end, max(t.dates))
+            t.meta['semester_start'], t.meta['semester_end'] = start, end
+            t.start = min([start] + t.dates)
+            t.end = max([end] + t.dates)
+            t.end += dt.timedelta(days=6 - t.end.weekday())
 
 
 def _unescape(value):
@@ -275,10 +370,20 @@ def load_term(path):
     declared = props.get('X-PLAN-GROUP')
     if declared and declared != group:
         raise BuildError(f'{path}: file is named {group} but X-PLAN-GROUP is {declared}')
-    start = _ymd(props.get('X-PLAN-SEMESTER-START', '')) or (min(dates) if dates else None)
-    end = _ymd(props.get('X-PLAN-SEMESTER-END', '')) or (max(dates) if dates else None)
+    window = window_dates(term_id)
+    stray = bool(dates)
+    if window:  # lessons outside the term's window are not published (clip_to_term), so they do not date it either
+        dates = [d for d in dates if window[0] <= d <= window[1]]
+    declared_start = _ymd(props.get('X-PLAN-SEMESTER-START', ''))
+    declared_end = _ymd(props.get('X-PLAN-SEMESTER-END', ''))
+    bad = not semester_fits_term(declared_start, declared_end, term_id)
+    start = (None if bad else declared_start) or (min(dates) if dates else None)
+    end = (None if bad else declared_end) or (max(dates) if dates else None)
     if not start or not end:
-        raise BuildError(f'{path}: no X-PLAN-SEMESTER-START/END and no events to infer the term from')
+        if window and (bad or stray):  # nothing of this term in it yet: the term's window dates it (published empty)
+            start, end = window
+        else:
+            raise BuildError(f'{path}: no X-PLAN-SEMESTER-START/END and no events to infer the term from')
     if dates:
         start, end = min(start, min(dates)), max(end, max(dates))
     end += dt.timedelta(days=6 - end.weekday())  # a term runs to the Sunday of its last week
@@ -286,11 +391,11 @@ def load_term(path):
         'group': group,
         'faculty': props.get('X-PLAN-FACULTY', ''),
         'term': props.get('X-PLAN-TERM', ''),
-        'semester_start': _ymd(props.get('X-PLAN-SEMESTER-START', '')) or start,
-        'semester_end': _ymd(props.get('X-PLAN-SEMESTER-END', '')) or end - dt.timedelta(days=1),
+        'semester_start': (None if bad else declared_start) or start,
+        'semester_end': (None if bad else declared_end) or end - dt.timedelta(days=1),
         'generated': _ymd(props.get('X-PLAN-GENERATED', '')),
     }
-    return group, Term(term_id, path, start, end, meta)
+    return group, Term(term_id, path, start, end, meta, dates, bad)
 
 
 def _unfold(source):
@@ -1157,6 +1262,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     clash = [g for g in by_group if g.lower() in (DATA_DIR, MAP_DIR, ICONS_DIR, PRIVACY_DIR, ASSETS_DIR)]
     if clash:
         raise BuildError(f'group code "{clash[0]}" is reserved for the site\'s own pages and data files')
+    fix_semester_bounds(by_group)
     current = {group: pick_term(terms, today) for group, terms in by_group.items()}
 
     group_tpl = (SRC / 'group.html').read_text(encoding='utf-8')

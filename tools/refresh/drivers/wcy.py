@@ -71,7 +71,11 @@ class Driver:
         season, year = core.season_of(self.today)
         label = f"semestr {'zimowy' if season == 'zima' else 'letni'} {year}/{(year + 1) % 100:02d}"
         args = ['--term', label]
+        # only this term's lessons date it: the page may still list one of the last semester (a March class under a
+        # winter plan), which would otherwise move the whole semester, and the site's week grid, back by months
         dates = [x['date'].replace('_', '') for x in rozklad2ics.parse_hidden_lessons(page) if x['date']]
+        first, last = core.term_window(core.term_id(self.today))  # the build's own idea of "inside the term"
+        dates = [d for d in dates if first <= d <= last]
         if dates:
             first = datetime.strptime(min(dates), '%Y%m%d').date()
             args += ['--term-start', (first - timedelta(days=first.weekday())).strftime('%Y%m%d')]

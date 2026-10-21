@@ -15,6 +15,16 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+### Naprawiono
+- **Postęp semestru liczony z pustych miesięcy:** 31 kalendarzy WCY (np. `WCY25IX1S0`) miało daty zeszłego semestru letniego
+  (np. 02.03–27.07.2026), bo konwerter brał początek semestru z pozostawionych na stronie wydziału zajęć z marca. Siatka tygodni
+  zaczynała się wtedy w marcu, a „Postęp semestru” pokazywał 69% zamiast 15%. `build.py` sprawdza teraz początek semestru
+  każdego kalendarza: gdy nie należy do jego semestru (albo koniec wypada przed początkiem), kalendarz dostaje daty, na które
+  zgadzają się pozostałe kalendarze tego wydziału, a bez nich daty wynikające z samych zajęć albo całe okno semestru. Koniec
+  nigdy nie wypada przed ostatnimi zajęciami grupy, a poprawne daty (także koniec w marcu przy późniejszym starcie) zostają bez
+  zmian. Zabłąkane zajęcia z innego semestru nie przesuwają już początku semestru, a sterownik WCY liczy go tylko z zajęć
+  tego semestru.
+
 ## [1.1.0] - 2026-10-20
 
 ### Dodano
