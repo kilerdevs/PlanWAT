@@ -96,7 +96,7 @@ runs:
         if [ "$MODE" = volunteer ]; then
           # The registry comes from the project, not from the fork: it decides who checks what.
           curl -fsS --max-time 30 -o "$RUNNER_TEMP/volunteers.json" \
-            "https://raw.githubusercontent.com/$UPSTREAM/master/volunteers.json" || exit 1
+            "https://raw.githubusercontent.com/$UPSTREAM/volunteers/volunteers.json" || exit 1
           args+=(--assign "$RUNNER_TEMP/volunteers.json" --as "$GITHUB_REPOSITORY_OWNER"
                  --outcomes "$RUNNER_TEMP/outcomes.json")
         fi

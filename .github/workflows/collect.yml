@@ -5,6 +5,11 @@ name: Collect volunteer crawls
 # hosted runner: it never talks to a faculty site, only to GitHub. It runs the default branch's code only and
 # never checks out or runs anything from a fork; the bundles are read as data with git plumbing.
 #
+# The registry (volunteers.json) lives alone on the `volunteers` branch, edited with tools/volunteer/manage.py. A pass
+# uses it only when GitHub verifies its head commit as signed by one of REGISTRY_EDITORS below: that list is on
+# the protected default branch, so a token that can push branches (the refresh runner's, this job's) still cannot
+# make itself or anybody else trusted.
+#
 # While the repository variable PLANWAT_COLLECT_LIVE is not 'true', every pass is a dry run: it logs what it
 # would accept and writes nothing. That is the rollout switch.
 on:
@@ -28,6 +33,9 @@ on:
 permissions:
   contents: read
 
+env:
+  REGISTRY_EDITORS: kilerdevs
+
 concurrency:
   group: collect
   cancel-in-progress: false
@@ -46,14 +54,46 @@ jobs:
         with:
           path: src
           persist-credentials: false
+      - id: registry
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: volunteers
+          path: registry
+          persist-credentials: false
+      - name: Check who signed the registry
+        id: signed
+        if: steps.registry.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          head=$(git -C registry rev-parse HEAD)
+          read -r verified committer < <(gh api "repos/$GITHUB_REPOSITORY/commits/$head" \
+            --jq '"\(.commit.verification.verified) \(.committer.login // "-")"')
+          ok=false
+          for editor in $REGISTRY_EDITORS; do
+            if [ "$verified" = true ] && [ "${committer,,}" = "${editor,,}" ]; then ok=true; fi
+          done
+          if [ "$ok" != true ]; then
+            echo "::error::volunteers $head is not a verified commit by a registry editor (verified=$verified, committer=$committer); ignoring it"
+            exit 1
+          fi
+          echo "registry $head signed by $committer"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.registry.outcome == 'success'
         with:
           ref: data
           path: data
+      - name: No registry yet
+        if: steps.registry.outcome != 'success'
+        run: echo 'The volunteers branch does not exist yet (create it with tools/volunteer/manage.py); nothing to collect.'
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: steps.registry.outcome == 'success'
         with:
           python-version: '3.13'
       - id: run
+        if: steps.registry.outcome == 'success'
         env:
           LIVE: ${{ vars.PLANWAT_COLLECT_LIVE }}
           REVERT: ${{ inputs.revert }}
@@ -61,7 +101,7 @@ jobs:
           UNBENCH: ${{ inputs.unbench }}
         run: |
           set -euo pipefail
-          args=(--registry src/volunteers.json --data data)
+          args=(--registry registry/volunteers.json --data data)
           if [ -n "$REVERT" ]; then
             args+=(--revert "$REVERT" --since "$SINCE")
           elif [ -n "$UNBENCH" ]; then
@@ -71,6 +111,7 @@ jobs:
           fi
           python src/tools/volunteer/collect.py "${args[@]}"
       - id: push
+        if: steps.registry.outcome == 'success'
         working-directory: data
         env:
           WHY: ${{ inputs.revert && format('Revert volunteer {0}', inputs.revert) || 'Timetables from volunteers' }}

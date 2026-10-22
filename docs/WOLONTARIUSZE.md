@@ -33,14 +33,14 @@ końcu jest część dla opiekuna projektu.
 - [Zasady crawlowania](#zasady-crawlowania)
 - [Rozwiązywanie problemów](#rozwiązywanie-problemów)
 - [Bezpieczeństwo](#bezpieczeństwo)
-- [Dla opiekuna](#dla-opiekuna)
+- [Dla opiekuna](#dla-opiekuna) (w tym [panel uprawnień](#panel-uprawnień))
 - [Rezygnacja](#rezygnacja)
 
 ## Jak to działa
 
 ```
 wolontariusz (Docker albo runner na forku)          projekt kilerdevs/PlanWAT
-  czyta publiczną gałąź data i volunteers.json  ─┐
+  czyta publiczną gałąź data i rejestr         ─┐
   refresh.py --assign: tylko swoja część grup    │
   bundle.py → <login>/PlanWAT, gałąź crawl ──────┼──► collect.yml (runner GitHub, co 30 min)
                                                  │      pobiera gałęzie crawl zarejestrowanych forków
@@ -73,17 +73,11 @@ domowy runner (refresh.yml, bez zmian) ──────────┼──�
 
 Dołączanie jest na zaproszenie: o tym, kto zasila stronę, decyduje opiekun.
 
-1. Otwórz zgłoszenie z szablonu [Volunteer crawler](https://github.com/kilerdevs/PlanWAT/issues/new?template=volunteer.yml).
-2. Otwórz pull request do gałęzi `dev`, który dopisuje Cię do `volunteers.json`:
-
-   ```json
-   {"login": "twoj-login", "fork": "twoj-login/PlanWAT", "trust": "peer", "faculties": ["wcy"]}
-   ```
-
-   - `fork` musi należeć do `login` — koordynator odrzuca rejestr, w którym ktoś wskazuje cudzy fork.
-   - `trust` zostaw na `peer`; poziom zaufania ustawia opiekun.
-   - `faculties` jest opcjonalne: pusta lista albo brak pola oznacza wszystkie wydziały.
-3. Gdy opiekun scali zmianę (i zostanie ona wydana na `master`), Twój login zaczyna dostawać przydziały.
+1. Otwórz zgłoszenie z szablonu [Volunteer crawler](https://github.com/kilerdevs/PlanWAT/issues/new?template=volunteer.yml):
+   podaj swój fork (musi należeć do Twojego konta), tryb uruchomienia i wydziały, do których dociera Twoje łącze.
+2. Opiekun dopisuje Cię do rejestru i ustawia poziom zaufania. Rejestr (`volunteers.json`) leży sam na gałęzi
+   [`volunteers`](https://github.com/kilerdevs/PlanWAT/tree/volunteers) i zmienia go wyłącznie opiekun, podpisanym commitem.
+3. Od najbliższego przebiegu (do 30 min) Twój login dostaje przydziały. Swój wpis zobaczysz na gałęzi `volunteers`.
 
 **Poziomy zaufania:**
 
@@ -187,12 +181,12 @@ Dla osób, które już utrzymują runnery GitHub Actions. Używa tej samej akcji
    forkach. Pierwszy raz uruchom go ręcznie: Actions → Volunteer crawl → Run workflow.
 5. Trzymaj fork aktualny (Sync fork na stronie forka), bo koordynator odrzuca stare wersje crawlera.
 
-Rejestr (`volunteers.json`) i dane są zawsze czytane z projektu, nigdy z Twojego forka.
+Rejestr (gałąź `volunteers`) i dane są zawsze czytane z projektu, nigdy z Twojego forka.
 
 ## Co robi jeden przebieg
 
 1. Klonuje publiczną gałąź `data` projektu (ostatnie przyjęte kalendarze i stan sprawdzeń) i pobiera
-   `volunteers.json` z `master`.
+   rejestr `volunteers.json` z gałęzi `volunteers`.
 2. Wylicza swój **przydział** (`tools/volunteer/assign.py`). Dla każdej grupy i dwugodzinnego okna wszyscy liczą to
    samo haszowanie (rendezvous) po aktywnych wolontariuszach danego wydziału:
    - jeśli najwyżej w rankingu jest osoba zaufana, grupę sprawdza tylko ona;
@@ -258,7 +252,7 @@ Strony wydziałów to cudza infrastruktura, a blokada uderza w każdego, kto kor
 
 | Objaw | Przyczyna | Co zrobić |
 |---|---|---|
-| `<login> is not an active volunteer`, kod 2 | Brak w `volunteers.json` na `master` albo `trust: suspended` | Poczekaj na scalenie i wydanie wpisu; sprawdź pisownię loginu |
+| `<login> is not an active volunteer`, kod 2 | Brak w rejestrze albo poziom „wstrzymany” | Sprawdź swój wpis na gałęzi `volunteers` i pisownię loginu |
 | `volunteer … : nothing` | Twoje `faculties` nie pokrywają się z włączonymi wydziałami | Popraw `faculties` w rejestrze |
 | Przebieg nie sprawdza żadnej grupy | Za mało `peer`ów dla Twoich wydziałów (potrzeba dwóch) albo wszystkie grupy są świeże | To normalne; przydziały pojawią się, gdy dołączy ktoś drugi |
 | `push to … failed` | Token wygasł, nie obejmuje forka albo nie ma Contents: write | Wygeneruj token od nowa (sekcja Token) |
@@ -303,23 +297,56 @@ Szczegóły modelu zagrożeń: [SECURITY.md](../SECURITY.md).
 
 ## Dla opiekuna
 
-- **Przyjęcie wolontariusza:** scal PR z wpisem w `volunteers.json` i ustaw `trust`. `CODEOWNERS` wymaga Twojej
-  recenzji dla rejestru i całego kodu crawlowania.
+### Panel uprawnień
+
+Uprawnienia zmieniasz w przeglądarce, w panelu uruchamianym z własnego klonu repozytorium:
+
+```sh
+python3 tools/volunteer/manage.py
+```
+
+Otwiera się strona (adres z jednorazowym tokenem jest też w terminalu), na której:
+
+- widzisz każdego wolontariusza z jego stanem u koordynatora: ostatnią paczkę, liczbę przyjętych kalendarzy,
+  niezgodności w tym tygodniu i to, czy został odsunięty;
+- przełączasz poziom: **Zaufany / Równorzędny / Wstrzymany**, i wybierasz wydziały (albo „Wszystkie”);
+- dodajesz osobę (login i fork) albo ją usuwasz;
+- zmieniasz zasady głosowania: kworum, ważność głosu, najstarszą wersję crawlera;
+- przywracasz odsuniętego wolontariusza jednym kliknięciem (uruchamia `collect.yml` z `unbench`; potrzebny `gh`).
+
+Pasek na dole pokazuje, co się zmieni. **Zapisz i opublikuj** robi jeden commit z samym `volunteers.json`,
+**podpisany Twoim kluczem** (ten sam co dla `master`), i wypycha go na gałąź `volunteers`. Zmiana działa od
+najbliższego przebiegu koordynatora, czyli najpóźniej po 30 minutach, bez wydania i bez PR. Pierwszy zapis tworzy
+gałąź. Jeśli w międzyczasie ktoś zmienił rejestr, panel odmówi zapisu i poprosi o odświeżenie.
+
+Panel słucha tylko na `127.0.0.1`, wymaga tokenu z adresu i odrzuca żądania z innym nagłówkiem `Host`.
+
+**Dlaczego to bezpieczne bez PR:** koordynator bierze rejestr tylko z commita, który GitHub weryfikuje jako podpisany
+przez osobę z listy `REGISTRY_EDITORS` w `collect.yml`. Ta lista leży na chronionym `master`, więc token, który może
+wypychać gałęzie (domowego runnera albo samego koordynatora), nie nada nikomu zaufania. Inny commit na gałęzi
+`volunteers` zatrzymuje koordynatora z błędem, zamiast zostać użyty. Dla porządku chroń też samą gałąź (Settings →
+Rules → New branch ruleset, cel `volunteers`: ogranicz aktualizacje do siebie, zablokuj force push i usuwanie,
+wymagaj podpisanych commitów).
+
+### Pozostałe przełączniki
+
+- **Przyjęcie wolontariusza:** po zgłoszeniu dopisz go w panelu (domyślnie jako równorzędnego). `CODEOWNERS` wymaga
+  Twojej recenzji dla całego kodu crawlowania.
 - **Włączenie publikowania:** dopóki zmienna repozytorium `PLANWAT_COLLECT_LIVE` nie ma wartości `true`, każdy
   przebieg `collect.yml` jest próbny: loguje, co by przyjął, i niczego nie zapisuje. Settings → Secrets and
   variables → Actions → Variables.
-- **Ustawienia rejestru:**
+- **Ustawienia rejestru** (w panelu, sekcja „Zasady głosowania”):
   - `quorum` (2–5) — ilu `peer`ów musi się zgodzić;
   - `window_hours` (2–48) — jak długo głosy są ważne;
   - `min_version` — najstarsza przyjmowana wersja crawlera. Podnieś ją po wydaniu, które zmienia konwersję.
 - **Cofnięcie wyników wolontariusza:** Actions → Collect volunteer crawls → Run workflow z `revert = <login>` i
   `since = 2026-10-20T00:00:00` (UTC). Każdy kalendarz przyjęty z jego udziałem od tej chwili wraca do poprzedniej
   wersji, a grupy są sprawdzane od nowa. Lokalnie:
-  `python tools/volunteer/collect.py --registry volunteers.json --data <klon data> --revert <login> --since <iso>`.
+  `python tools/volunteer/collect.py --registry <volunteers.json> --data <klon data> --revert <login> --since <iso>`.
 - **Odsunięcie:**
   - automatyczne: 3 przegrane głosy w 7 dni → głosy przestają się liczyć i otwiera się issue;
-  - przywrócenie: Run workflow z `unbench = <login>`;
-  - trwale: `trust: suspended` w rejestrze.
+  - przywrócenie: przycisk „Przywróć” w panelu (albo Run workflow z `unbench = <login>`);
+  - trwale: „Wstrzymany” w panelu.
 - **Domowy runner** działa jak dotąd i jest zaufaną kotwicą: jego wyniki idą prosto na `data`. Grupy niedawno
   potwierdzone przez wolontariuszy pomija, bo `core.State` uwzględnia przyjęte stemple z `volunteer-state.json`.
 - **Konflikty:** domowy runner i koordynator piszą różne pliki stanu. Jeśli w tej samej chwili zmienią ten sam
@@ -330,6 +357,6 @@ Szczegóły modelu zagrożeń: [SECURITY.md](../SECURITY.md).
 1. `docker compose down -v` (albo wyrejestruj runner i wyłącz workflow w forku).
 2. Usuń token (Settings → Developer settings → Fine-grained tokens → Delete).
 3. Usuń gałąź `crawl` z forka, jeśli chcesz.
-4. Otwórz PR usuwający Twój wpis z `volunteers.json` albo napisz w swoim zgłoszeniu — opiekun ustawi `suspended`.
+4. Napisz w swoim zgłoszeniu — opiekun usunie Cię z rejestru.
 
 Dziękujemy!

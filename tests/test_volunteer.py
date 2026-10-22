@@ -23,6 +23,7 @@ import assign  # noqa: E402
 import build  # noqa: E402
 import bundle  # noqa: E402
 import collect  # noqa: E402
+import manage  # noqa: E402
 import core  # noqa: E402
 import refresh  # noqa: E402
 
@@ -437,6 +438,115 @@ class RefusalTest(Harness):
                                                        'at': NOW.isoformat()}})
         self.assertEqual(self.collect(self.reg)['changed'], [])
         self.assertEqual(self.published(), SOURCE)
+
+
+class ManageTest(unittest.TestCase):
+    """The permissions panel: its git side (unsigned here, signed for real) and its HTTP guards."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.origin = self.tmp / 'origin.git'
+        git('init', '-q', '--bare', str(self.origin), cwd=self.tmp)
+        self.work = self.tmp / 'work'
+        git('init', '-q', str(self.work), cwd=self.tmp)
+        git('remote', 'add', 'origin', str(self.origin), cwd=self.work)
+        for name, value in (('user.name', 't'), ('user.email', 't@t')):
+            git('config', name, value, cwd=self.work)
+        self.repo = manage.Repo(self.work, sign=False)
+
+    def registry(self, *volunteers, **rules):
+        return {'quorum': 2, 'window_hours': 12, 'min_version': '1.2.0', 'volunteers': list(volunteers), **rules}
+
+    def test_the_first_save_creates_the_branch_and_later_saves_build_on_it(self):
+        self.assertIsNone(self.repo.head())
+        self.assertEqual(self.repo.registry()['volunteers'], [])
+        first = manage.save(self.repo, {'registry': self.registry({'login': 'alice'}), 'base': None})
+        self.assertEqual(first['base'], first['commit'])
+        self.assertEqual(manage.assign.find(self.repo.registry(), 'alice')['trust'], 'peer')
+        second = manage.save(self.repo, {'registry': self.registry({'login': 'alice', 'trust': 'trusted'}),
+                                         'base': first['base'], 'note': 'known in person'})
+        self.assertIn('alice: zaufany', second['message'])
+        parent = git('rev-parse', f'{second["commit"]}^', cwd=self.work).strip()
+        self.assertEqual(parent, first['commit'])
+        self.assertEqual(git('ls-tree', '--name-only', second['commit'], cwd=self.work).split(), ['volunteers.json'])
+        self.assertIn('known in person', git('log', '-1', '--format=%B', second['commit'], cwd=self.work))
+
+    def test_a_stale_page_cannot_overwrite_a_newer_registry(self):
+        first = manage.save(self.repo, {'registry': self.registry({'login': 'alice'}), 'base': None})
+        manage.save(self.repo, {'registry': self.registry({'login': 'bob'}), 'base': first['base']})
+        with self.assertRaises(manage.SaveError) as caught:
+            manage.save(self.repo, {'registry': self.registry({'login': 'carol'}), 'base': first['base']})
+        self.assertEqual(caught.exception.status, 409)
+
+    def test_an_invalid_or_unchanged_registry_is_not_saved(self):
+        with self.assertRaises(manage.SaveError):
+            manage.save(self.repo, {'registry': self.registry({'login': 'alice', 'fork': 'mallory/PlanWAT'}), 'base': None})
+        first = manage.save(self.repo, {'registry': self.registry({'login': 'alice'}), 'base': None})
+        with self.assertRaises(manage.SaveError):
+            manage.save(self.repo, {'registry': self.registry({'login': 'alice'}), 'base': first['base']})
+        self.assertEqual(self.repo.head(), first['commit'])
+
+    def test_the_summary_names_every_kind_of_change(self):
+        old = assign.check_registry(self.registry({'login': 'alice'}, {'login': 'bob', 'trust': 'trusted'}))
+        new = assign.check_registry(self.registry({'login': 'alice', 'trust': 'suspended', 'faculties': ['wcy']},
+                                                  {'login': 'carol'}, quorum=3))
+        text = manage.describe(old, new)
+        for part in ('alice: wstrzymany', 'alice: wcy', '+carol (równorzędny)', '-bob', 'kworum 3'):
+            self.assertIn(part, text)
+
+    def test_status_comes_from_the_coordinator_state_on_data(self):
+        data = self.tmp / 'data'
+        git('init', '-q', '-b', 'data', str(data), cwd=self.tmp)
+        (data / 'volunteer-state.json').write_text(json.dumps({
+            'groups': {'A@t': {'by': ['alice', 'bob']}, 'B@t': {'by': ['alice']}},
+            'seen': {'alice': {'ended': '2026-10-20T10:00:00'}},
+            'strikes': {'bob': ['2026-10-19T10:00:00']}, 'benched': {'bob': '2026-10-19T10:00:00'}}))
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '-A', cwd=data)
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 's', cwd=data)
+        git('push', '-q', str(self.origin), 'data', cwd=data)
+        self.repo.fetch()
+        got = self.repo.status()
+        self.assertEqual((got['alice']['accepted'], got['alice']['last']), (2, '2026-10-20T10:00:00'))
+        self.assertEqual((got['bob']['strikes'], got['bob']['accepted']), (1, 1))
+        self.assertTrue(got['bob']['benched'])
+
+    def serve(self):
+        import http.client
+        import http.server
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), manage.make_handler(self.repo, 'sekret'))
+        threading = __import__('threading')
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        def request(method, path, body=None, headers=None):
+            conn = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=10)
+            conn.request(method, path, body=body, headers=headers or {})
+            r = conn.getresponse()
+            out = (r.status, r.read(), dict(r.getheaders()))
+            conn.close()
+            return out
+        return request
+
+    def test_the_page_answers_only_its_own_token_on_localhost(self):
+        request = self.serve()
+        status, body, headers = request('GET', '/')
+        self.assertEqual(status, 200)
+        self.assertIn(b'Wolontariusze', body)
+        self.assertIn("frame-ancestors 'none'", headers['Content-Security-Policy'])
+        self.assertEqual(request('GET', '/api/state')[0], 403)
+        self.assertEqual(request('GET', '/api/state', headers={'X-Token': 'zgadywanka'})[0], 403)
+        self.assertEqual(request('GET', '/api/state', headers={'X-Token': 'sekret', 'Host': 'evil.example'})[0], 403)
+        status, body, _ = request('GET', '/api/state', headers={'X-Token': 'sekret'})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)['registry']['volunteers'], [])
+        save = json.dumps({'registry': self.registry({'login': 'alice'}), 'base': None})
+        self.assertEqual(request('POST', '/api/save', save, {'X-Token': 'sekret', 'Content-Type': 'text/plain'})[0], 415)
+        self.assertEqual(request('POST', '/api/save', save, {'Content-Type': 'application/json'})[0], 403)
+        status, body, _ = request('POST', '/api/save', save, {'X-Token': 'sekret', 'Content-Type': 'application/json'})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(self.repo.head(), json.loads(body)['commit'])
 
 
 if __name__ == '__main__':

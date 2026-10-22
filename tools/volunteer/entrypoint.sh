@@ -42,11 +42,11 @@ pass() {
 }
 
 curl_registry() {
-  # The registry always comes from the project itself, never from the fork: it decides who checks what.
+  # The registry always comes from the project's volunteers branch, never from the fork: it decides who checks what.
   python - "$UPSTREAM" "$WORK/volunteers.json" <<'PY'
 import sys, urllib.request
 upstream, out = sys.argv[1], sys.argv[2]
-with urllib.request.urlopen(f'https://raw.githubusercontent.com/{upstream}/master/volunteers.json', timeout=30) as r:
+with urllib.request.urlopen(f'https://raw.githubusercontent.com/{upstream}/volunteers/volunteers.json', timeout=30) as r:
     data = r.read(1024 * 1024)
 open(out, 'wb').write(data)
 PY
