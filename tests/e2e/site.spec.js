@@ -340,6 +340,18 @@ test('a calendar that cannot be loaded shows an error and disables navigation', 
   await expect(page.locator('#weekBtn')).toBeDisabled();
 });
 
+test('the background mesh stays a fixed layer behind the page and never pushes the header down', async ({ page }) => {
+  const problems = await openGroup(page);
+  await expect(page.locator('#glows')).toHaveClass(/mesh-on/);
+  const layout = await page.evaluate(() => ({
+    position: getComputedStyle(document.getElementById('glows')).position,
+    heroTop: document.getElementById('hero').getBoundingClientRect().top + window.scrollY,
+  }));
+  expect(layout.position).toBe('fixed');
+  expect(layout.heroTop).toBeLessThan(100);
+  expect(problems).toEqual([]);
+});
+
 test('the group page has no serious or critical accessibility violations', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openGroup(page);

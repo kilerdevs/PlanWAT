@@ -148,9 +148,9 @@
     /* until the mesh runs (and without script): one quiet glow behind the title */
     background: radial-gradient(80vmax 55vmax at 50% -12%, var(--mesh-fallback), transparent 70%);
   }
-  .glows.live { background: none; }
+  .glows.mesh-on { background: none; }
   .glows canvas { display: block; width: 100%; height: 100%; opacity: 0; transition: opacity 1.2s var(--ease-out); }
-  .glows.live canvas { opacity: var(--mesh-k); }
+  .glows.mesh-on canvas { opacity: var(--mesh-k); }
   .glows::after {
     content: '';
     position: absolute;
@@ -2711,7 +2711,7 @@
     readPalette();
     fit();
     draw(0);
-    box.classList.add('live');
+    box.classList.add('mesh-on'); /* not 'live': that is the Live card's class */
     /* a theme change brings its own palette; a still mesh is redrawn at once */
     var retheme = function () { readPalette(); if (reduceMotion) draw(0); };
     if (window.MutationObserver) new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
