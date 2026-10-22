@@ -15,23 +15,7 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
-### Dodano
-- **Ukrywanie części przedmiotu** ([#31](https://github.com/kilerdevs/PlanWAT/issues/31)): w „Moich przedmiotach” przedmiot
-  prowadzony w kilku formach rozwija się strzałką na wykłady, ćwiczenia, laboratoria itd. Każdą z nich można odznaczyć osobno,
-  np. przy zwolnieniu z ćwiczeń. Ukryte zajęcia znikają z widoków, statystyk i pobranego pliku .ics, a wcześniej zapisane
-  wybory całych przedmiotów działają jak dotąd.
-
-### Naprawiono
-- **Postęp semestru liczony z pustych miesięcy:** 31 kalendarzy WCY (np. `WCY25IX1S0`) miało daty zeszłego semestru letniego
-  (np. 02.03–27.07.2026), bo konwerter brał początek semestru z pozostawionych na stronie wydziału zajęć z marca. Siatka tygodni
-  zaczynała się wtedy w marcu, a „Postęp semestru” pokazywał 69% zamiast 15%. `build.py` sprawdza teraz początek semestru
-  każdego kalendarza: gdy nie należy do jego semestru (albo koniec wypada przed początkiem), kalendarz dostaje daty, na które
-  zgadzają się pozostałe kalendarze tego wydziału, a bez nich daty wynikające z samych zajęć albo całe okno semestru. Koniec
-  nigdy nie wypada przed ostatnimi zajęciami grupy, a poprawne daty (także koniec w marcu przy późniejszym starcie) zostają bez
-  zmian. Zabłąkane zajęcia z innego semestru nie przesuwają już początku semestru, a sterownik WCY liczy go tylko z zajęć
-  tego semestru.
-
-## [1.1.0] - 2026-10-20
+## [1.1.0] - 2026-10-22
 
 ### Dodano
 - **Comiesięczna aktualizacja mapy kampusu:** workflow `map.yml` pobiera świeże kafelki i resztę mapy, testuje zbudowaną stronę
@@ -151,6 +135,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Egress:** karta postępu odlicza do następnego odświeżenia („następny ≈ 16:23 (za 1 h 59 min)”, także w trakcie przebiegu),
   a kliknięcie wiersza przebiegu rozwija jego szczegóły: profil, czasy, kod wyjścia i tabelę wydziałów ze sprawdzonymi, zmianami,
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
+- **Ukrywanie części przedmiotu** ([#31](https://github.com/kilerdevs/PlanWAT/issues/31)): w „Moich przedmiotach” przedmiot
+  prowadzony w kilku formach rozwija się strzałką na wykłady, ćwiczenia, laboratoria itd. Każdą z nich można odznaczyć osobno,
+  np. przy zwolnieniu z ćwiczeń. Ukryte zajęcia znikają z widoków, statystyk, pobranego pliku .ics i dnia na mapie kampusu,
+  a wcześniej zapisane wybory całych przedmiotów działają jak dotąd.
 
 ### Zmieniono
 - **Mapa kampusu w całości z samej strony:** silnik MapLibre GL JS (te same bajty co wcześniej, sprawdzane tą samą sumą SRI), styl
@@ -212,8 +200,28 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Egress:** karta bezczynnego postępu mówi jedno: chip „bez przebiegu” plus wiersz harmonogramu z odliczaniem (zdublowane
   „brak aktywnego przebiegu” zniknęło), kolumna czasu w szczegółach przebiegu nazywa się „kiedy” zamiast „o”, a liczebniki
   odmieniają się po polsku: „1 sprawdzony”, „72 pominięte”, „2 próby”.
+- **Płynniejsze animacje na wszystkich stronach:**
+  - zaznaczenie w przełącznikach (widok, narzędzia, mapa planów) przesuwa się;
+  - miesiące przewijają się jak tygodnie;
+  - zmiana widoku, otwierane panele, powiadomienia i pola formularzy łagodnie się pojawiają;
+  - wykresy w statystykach rosną od osi;
+  - zmiana motywu przechodzi płynnie;
+  - na stronie głównej wydziały zwijają się płynnie, a wyszukiwarka grup także się chowa z animacją.
+
+  Przyciski reagują na dotyk, a ruch ustępuje całkowicie przy „ogranicz ruch” w systemie.
 
 ### Naprawiono
+- **Kontrast w jasnym motywie:** daty minionych dni, opis dnia w kolumnie „Dziś” i plakietka „Dziś” miały kontrast 4,0–4,4:1,
+  a zielona godzina w „Wolnych salach” 3,7:1, zamiast wymaganych 4,5:1. Odcienie `--past-2`, `--t3`, `--accent-text` i `--free`
+  są odrobinę ciemniejsze, a wynik na mapie planów (szary w środku skali, 2,8:1) przybiera w jasnym motywie odcień tekstu. Skan axe wcześniej tych miejsc nie oceniał.
+- **Postęp semestru liczony z pustych miesięcy:** 31 kalendarzy WCY (np. `WCY25IX1S0`) miało daty zeszłego semestru letniego
+  (np. 02.03–27.07.2026), bo konwerter brał początek semestru z pozostawionych na stronie wydziału zajęć z marca. Siatka tygodni
+  zaczynała się wtedy w marcu, a „Postęp semestru” pokazywał 69% zamiast 15%. `build.py` sprawdza teraz początek semestru
+  każdego kalendarza: gdy nie należy do jego semestru (albo koniec wypada przed początkiem), kalendarz dostaje daty, na które
+  zgadzają się pozostałe kalendarze tego wydziału, a bez nich daty wynikające z samych zajęć albo całe okno semestru. Koniec
+  nigdy nie wypada przed ostatnimi zajęciami grupy, a poprawne daty (także koniec w marcu przy późniejszym starcie) zostają bez
+  zmian. Zabłąkane zajęcia z innego semestru nie przesuwają już początku semestru, a sterownik WCY liczy go tylko z zajęć
+  tego semestru.
 - **Strona prywatności wymienia wszystko, co zostaje w przeglądarce:** doszły motyw, zakładka narzędzi, przewodnik, ukryte
   przedmioty i własne zajęcia. Test pilnuje, żeby każde nowe ustawienie zapisywane w `localStorage` trafiło na tę listę.
 - **Odstępy w arkuszach:** wiersz szybkich wyborów nie klei się już do pola powyżej (data w „Udostępnij”), przycisk pobierania

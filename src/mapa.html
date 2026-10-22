@@ -43,6 +43,12 @@
     --gr: max(12px, env(safe-area-inset-right));
     --bldg-scale: 1;
     --bldg-opacity: 1;
+    /* motion: the same vocabulary as the other pages (theme.css) */
+    --ease-out: var(--ease-out);
+    --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+    --spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+    --dur-fast: 150ms;
+    --dur-base: 300ms;
     color-scheme: dark;
   }
   *, *::before, *::after { box-sizing: border-box; }
@@ -160,8 +166,16 @@
   }
   .sheet > summary::-webkit-details-marker { display: none; }
   .sheet > summary .hint { color: var(--t3); font-weight: 400; font-size: 0.8125rem; display: inline-flex; align-items: center; gap: 4px; }
-  .sheet > summary .hint .i { transition: transform 200ms; }
+  .sheet > summary .hint .i { transition: transform var(--dur-base) var(--spring); }
   .sheet[open] > summary .hint .i { transform: rotate(180deg); }
+  /* the sheet's body slides open and shut instead of jumping (the browser animates the height to and from auto) */
+  .sheet { interpolate-size: allow-keywords; }
+  .sheet::details-content {
+    block-size: 0;
+    overflow: clip;
+    transition: block-size var(--dur-base) var(--ease-out), content-visibility var(--dur-base) allow-discrete;
+  }
+  .sheet[open]::details-content { block-size: auto; }
   .sheet-body { padding: 0 max(16px, env(safe-area-inset-left)) 16px; }
   .sheet h1 { margin: 0 0 4px; font-size: 1.25rem; line-height: 1.25; }
   .sheet h1 strong { color: var(--accent-text); }
@@ -186,6 +200,9 @@
     background: var(--s2); color: inherit; font: inherit; text-align: left; cursor: pointer;
   }
   .stops button:hover:not(:disabled) { background: var(--s3); }
+  /* hover and press fade and give rather than flip */
+  :where(button.ctl, .result, .legend-row, .chip, .stops button) { transition: background-color var(--dur-fast), transform var(--dur-base) var(--spring); }
+  :where(button.ctl, .chip, .stops button:not(:disabled)):active { transform: scale(0.96); }
   .stops button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
   .stops button:disabled { cursor: default; opacity: 0.7; }
   .stops .idx { color: var(--t3); font-variant-numeric: tabular-nums; }
@@ -247,15 +264,16 @@
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
     @keyframes fade { from { opacity: 0; } }
     @keyframes pop { from { opacity: 0; transform: scale(0.45); } }
-    .back { animation: rise 460ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
-    .search { animation: rise 460ms 40ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
-    .tools { animation: rise 460ms 80ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
-    .sheet { animation: rise 520ms 120ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+    .back { animation: rise 460ms var(--ease-out) backwards; }
+    .search { animation: rise 460ms 40ms var(--ease-out) backwards; }
+    .tools { animation: rise 460ms 80ms var(--ease-out) backwards; }
+    .sheet { animation: rise 520ms 120ms var(--ease-out) backwards; }
     .maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { animation: fade 600ms 160ms backwards; }
     .bldg { animation: pop 240ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .sheet > summary .hint .i { transition: none; }
+    .sheet > summary .hint .i, .sheet::details-content { transition: none; }
+    :where(button.ctl, .chip, .stops button):active { transform: none; }
   }
 </style>
 </head>
@@ -649,7 +667,7 @@
   var dayMode = !!(group && date && GROUP_RE.test(group) && ISO_RE.test(date));
   if (dayMode) $('back').href = '../' + encodeURIComponent(group) + '/';
 
-  function renderDay(stops) {
+  function renderDay(stops, filtered) {
     var box = $('day');
     box.replaceChildren();
     var codes = {};
@@ -663,6 +681,7 @@
     var when = new Date(date + 'T12:00:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
     selection.appendChild(el('p', null, group + ' · ' + when + '. ' +
       (stops.length ? 'Zajęcia: ' + stops.length + ', budynki: ' + buildings.length + '. Wybierz zajęcia, a mapa przybliży budynek.' : 'Tego dnia nie ma zajęć w planie.')));
+    if (filtered) selection.appendChild(el('p', 'note', 'Bez zajęć ukrytych w „Moich przedmiotach”.'));
     if (!stops.length) return;
 
     var head = el('div', 'day-head');
@@ -701,8 +720,12 @@
     return fetch('../' + encodeURIComponent(group) + '/plan.ics', { credentials: 'same-origin' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
       .then(function (buf) {
-        var plan = PlanICS.toPlan(PlanICS.parse(PlanICS.decode(buf)));
-        renderDay(C.dayStops(plan, date));
+        var parsed = PlanICS.parse(PlanICS.decode(buf));
+        /* the classes hidden in the group's "Moje przedmioty" (same site, same storage) stay hidden here too */
+        var saved = null;
+        try { saved = JSON.parse(window.localStorage.getItem('planwat:hide:' + group)); } catch (e) { /* private mode */ }
+        var hidden = PlanICS.hiddenFor(saved, PlanICS.subjectsOf(parsed));
+        renderDay(C.dayStops(PlanICS.toPlan(PlanICS.withoutSubjects(parsed, hidden)), date), hidden.length > 0);
       })
       .catch(function () {
         $('day').replaceChildren(el('p', 'note', 'Nie udało się wczytać planu grupy ' + group + '.'));

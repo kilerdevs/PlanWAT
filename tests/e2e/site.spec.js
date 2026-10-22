@@ -506,9 +506,15 @@ test('share hands the page link to the system share sheet', async ({ page }) => 
 
 test('choice rows keep a clear gap before the block they introduce', async ({ page }) => {
   await openGroup(page);
-  const gap = (first, second) => page.evaluate(([a, b]) => {
-    return document.querySelector(b).getBoundingClientRect().top - document.querySelector(a).getBoundingClientRect().bottom;
-  }, [first, second]);
+  // measured at rest: a field that was just shown settles a few pixels into place (scroll-linked effects, like the
+  // header's, always count as running and are left out)
+  const gap = async (first, second) => {
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.timeline !== document.timeline
+      || a.effect.getComputedTiming().iterations === Infinity));
+    return page.evaluate(([a, b]) => {
+      return document.querySelector(b).getBoundingClientRect().top - document.querySelector(a).getBoundingClientRect().bottom;
+    }, [first, second]);
+  };
 
   await pressTool(page, '#calBtn');
   await expect(page.locator('#calFile')).toBeVisible();
@@ -762,8 +768,10 @@ test('the list view and the tool sheets have no serious or critical accessibilit
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openGroup(page);
   const scan = async () => {
-    // a sheet still fading in reads as low contrast; wait for every finite animation to end
-    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
+    // a sheet still fading in reads as low contrast; wait for every finite animation to end and for an open sheet to be
+    // fully opaque (WebKit can report its fade as done a frame or two early)
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity)
+      && Array.prototype.every.call(document.querySelectorAll('dialog[open]'), (d) => getComputedStyle(d).opacity === '1'));
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
     return results.violations
       .filter((v) => v.impact === 'serious' || v.impact === 'critical')
@@ -1031,13 +1039,14 @@ test('the system light theme is followed, and a stored choice wins and survives 
   expect(await bg()).toBe('rgb(242, 242, 247)');
   await page.locator('[data-theme-set="dark"]').click();
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
-  expect(await bg()).toBe('rgb(0, 0, 0)');
+  // a chosen theme fades over for a moment, so wait for its final colour
+  await expect.poll(bg).toBe('rgb(0, 0, 0)');
   await page.reload();
   await expect(page.locator('.lesson').first()).toBeVisible();
   expect(await bg()).toBe('rgb(0, 0, 0)');
   await expect(page.locator('[data-theme-set="dark"]')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('[data-theme-set="auto"]').click();
-  expect(await bg()).toBe('rgb(242, 242, 247)');
+  await expect.poll(bg).toBe('rgb(242, 242, 247)');
   expect(problems).toEqual([]);
 });
 
