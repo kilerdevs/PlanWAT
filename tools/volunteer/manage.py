@@ -4,8 +4,9 @@
     python tools/volunteer/manage.py [--port 8765] [--no-browser]
 
 The registry (volunteers.json) lives alone on the `volunteers` branch. This tool shows it next to what the
-coordinator knows about each volunteer (last bundle, accepted calendars, strikes, benched; read from the `data`
-branch), lets you change trust levels, faculties and the quorum rules, and saves the result as one commit signed
+coordinator knows about each volunteer (last bundle, online or not, crawler version, refusals, blocked faculties,
+token expiry, accepted calendars, strikes, benched; read from the `data` branch) and how well each faculty is
+covered (groups nobody checked in a day), lets you change trust levels, faculties and the quorum rules, and saves the result as one commit signed
 with your own git signing key, pushed straight to that branch. collect.yml takes a registry only from a commit
 that GitHub verifies as signed by a maintainer, so the change is live at the next coordinator pass (within 30
 minutes) and nobody else can make one.
@@ -14,6 +15,7 @@ The page is served on 127.0.0.1 only, behind a random token in its address, and 
 with another Host, so nothing else on the machine or the network can drive it.
 """
 import argparse
+import datetime as dt
 import http.server
 import json
 import secrets
@@ -25,13 +27,16 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+sys.path.insert(0, str(ROOT / 'tools' / 'refresh'))
 sys.path.insert(0, str(HERE))
 import assign  # noqa: E402
+import core  # noqa: E402
 
 BRANCH = 'volunteers'
 FILE = 'volunteers.json'
 DEFAULT = {'quorum': 2, 'window_hours': 12, 'min_version': '1.2.0', 'volunteers': []}
 MAX_BODY = 256 * 1024
+STALE_HOURS = 24
 
 
 class SaveError(Exception):
@@ -69,28 +74,69 @@ class Repo:
         text = self.show(f'refs/remotes/{self.remote}/{BRANCH}', FILE)
         return assign.check_registry(json.loads(text)) if text else assign.check_registry(DEFAULT)
 
-    def status(self):
-        """What the coordinator knows per login (from volunteer-state.json on data)."""
-        text = self.show(f'refs/remotes/{self.remote}/data', 'volunteer-state.json')
+    def data_json(self, path):
+        text = self.show(f'refs/remotes/{self.remote}/data', path)
         try:
-            state = json.loads(text) if text else {}
+            found = json.loads(text) if text else {}
         except ValueError:
-            state = {}
+            found = {}
+        return found if isinstance(found, dict) else {}
+
+    def status(self, now=None):
+        """What the coordinator knows per login (volunteer-state.json on data)."""
+        now = now or core.now_utc()
+        state = self.data_json(core.VOLUNTEER_STATE_FILE)
         accepted = {}
         for entry in (state.get('groups') or {}).values():
             for login in entry.get('by', []) if isinstance(entry, dict) else []:
                 accepted[login.lower()] = accepted.get(login.lower(), 0) + 1
+        seen, strikes, benched = (state.get(k) or {} for k in ('seen', 'strikes', 'benched'))
+        health = state.get('volunteers') if isinstance(state.get('volunteers'), dict) else {}
         out = {}
-        logins = {*(state.get('seen') or {}), *(state.get('strikes') or {}), *(state.get('benched') or {})}
-        for login in logins:
-            out[login.lower()] = {
-                'last': (state.get('seen') or {}).get(login, {}).get('ended'),
-                'strikes': len((state.get('strikes') or {}).get(login, [])),
-                'benched': (state.get('benched') or {}).get(login),
-            }
-        for login, n in accepted.items():
-            out.setdefault(login, {'last': None, 'strikes': 0, 'benched': None})['accepted'] = n
+        for login in {*seen, *strikes, *benched, *health, *accepted}:
+            record = health.get(login) if isinstance(health.get(login), dict) else {}
+            last = record.get('ended') or (seen.get(login) or {}).get('ended')
+            ended = assign._stamp(last) if last else None
+            days = record.get('days') if isinstance(record.get('days'), dict) else {}
+            out.setdefault(login.lower(), {}).update({
+                'last': last,
+                'online': bool(ended and now - ended < dt.timedelta(hours=assign.LIVE_HOURS)),
+                'version': record.get('version'),
+                'refused': record.get('refused'),
+                'blocked': sorted(record.get('blocked') or {}),
+                'token_expires': record.get('token_expires'),
+                'week': sum(d[2] for d in days.values() if isinstance(d, list) and len(d) == 3),
+                'reasons': (record.get('last') or {}).get('reasons') or [],
+                'strikes': len(strikes.get(login, [])),
+                'benched': benched.get(login),
+                'accepted': accepted.get(login.lower(), 0),
+            })
         return out
+
+    def coverage(self, now=None):
+        """[{faculty, groups, stale}]: the published groups of the running term per faculty, and how many of them
+        nobody trusted (the home runner, or an accepted volunteer check) looked at in the last STALE_HOURS."""
+        now = now or core.now_utc()
+        tid = core.term_id(now.date())
+        listing = self.git('ls-tree', '--name-only', f'refs/remotes/{self.remote}/data', f'timetables/{tid}/',
+                           check=False).stdout.split()
+        home = self.data_json(core.STATE_FILE).get('groups') or {}
+        volunteers = self.data_json(core.VOLUNTEER_STATE_FILE).get('groups') or {}
+        cutoff = (now - dt.timedelta(hours=STALE_HOURS)).isoformat()
+        labels = {f['label'].upper(): f['label'] for f in faculties()}
+        labels.setdefault('WMT', labels.get('WML', 'WML'))
+        rows = {}
+        for path in listing:
+            code = Path(path).stem
+            label = next((labels[p] for p in sorted(labels, key=len, reverse=True) if code.upper().startswith(p)), 'WIM')
+            marks = [(volunteers.get(f'{code}@{tid}') or {}).get('checked') or '']
+            entry = home.get(code) or {}
+            if isinstance(entry, dict) and entry.get('term') == tid:
+                marks.append(entry.get('checked') or '')
+            row = rows.setdefault(label, {'faculty': label, 'groups': 0, 'stale': 0})
+            row['groups'] += 1
+            row['stale'] += max(marks) < cutoff
+        return sorted(rows.values(), key=lambda r: r['faculty'])
 
     def save(self, registry, base, message):
         """Commit `registry` on top of `base` (None: the branch is new) and push it; returns the commit id."""
@@ -216,7 +262,7 @@ def make_handler(repo, token):
 
 def state(repo):
     return {'registry': repo.registry(), 'base': repo.head(), 'status': repo.status(),
-            'faculties': faculties(), 'branch': BRANCH}
+            'coverage': repo.coverage(), 'faculties': faculties(), 'branch': BRANCH}
 
 
 def save(repo, body):
@@ -288,7 +334,7 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   h2 { margin:0 0 12px; font-size:1.0625rem; font-weight:600; }
   .sub { margin:4px 0 24px; color:var(--t2); font-size:.8125rem; }
   .card { padding:16px 20px 20px; border-radius:var(--r-card); background:var(--s2); box-shadow:var(--edge); margin-bottom:16px; }
-  .vol { display:grid; grid-template-columns:minmax(150px,1.1fr) auto minmax(0,1.6fr) minmax(150px,1fr) auto; gap:10px 16px;
+  .vol { display:grid; grid-template-columns:minmax(130px,.9fr) auto minmax(0,1.5fr) minmax(210px,1.3fr) auto; gap:10px 16px;
          align-items:center; padding:14px 0; border-top:1px solid var(--line); }
   .vol:first-of-type { border-top:0; }
   .vol.changed { box-shadow:-20px 0 0 -16px var(--accent); }
@@ -337,6 +383,12 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   .bar .in { max-width:1000px; margin:0 auto; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
   .bar .what { flex:1 1 260px; font-size:.8125rem; color:var(--t2); min-width:0; overflow-wrap:anywhere; }
   .bar input { flex:1 1 220px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; background:var(--t3); vertical-align:1px; }
+  .dot.on { background:var(--free); }
+  .cov { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .cov div { padding:10px 12px; border-radius:var(--r-ctl); background:var(--s3); font-size:.8125rem; color:var(--t2); }
+  .cov b { display:block; color:var(--t1); font-size:.9375rem; }
+  .cov .warn b { color:var(--warn); }
   .toast { position:fixed; left:50%; top:16px; transform:translate(-50%,-150%); max-width:min(560px,calc(100% - 32px));
            padding:10px 16px; border-radius:var(--r-ctl); background:var(--s3); box-shadow:0 8px 30px rgba(0,0,0,.25);
            font-size:.875rem; visibility:hidden; transition:transform .3s var(--ease-out), visibility 0s linear .3s; z-index:2; }
@@ -361,6 +413,11 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     <button class="ghost" type="submit">Dodaj</button>
   </form>
 </section>
+<section class="card" aria-labelledby="h-cov">
+  <h2 id="h-cov">Pokrycie</h2>
+  <p class="sub" style="margin:-6px 0 12px">Grupy bieżącego semestru, których nikt zaufany (domowy runner ani przyjęci wolontariusze) nie sprawdził od doby.</p>
+  <div class="cov" id="cov"></div>
+</section>
 <section class="card" aria-labelledby="h-rules">
   <h2 id="h-rules">Zasady głosowania</h2>
   <div class="rules">
@@ -384,7 +441,7 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
 (function () {
   var token = (location.hash.match(/t=([\w-]+)/) || [])[1] || '';
   var TRUST = [['trusted', 'Zaufany'], ['peer', 'Równorzędny'], ['suspended', 'Wstrzymany']];
-  var saved = null, draft = null, base = null, status = {}, facs = [], removed = {};
+  var saved = null, draft = null, base = null, status = {}, facs = [], removed = {}, coverage = [];
   function $(id) { return document.getElementById(id); }
   function el(tag, attrs, kids) {
     var n = document.createElement(tag);
@@ -412,6 +469,7 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   }
   function load(j) {
     saved = j.registry; draft = copy(j.registry); base = j.base; status = j.status || {}; facs = j.faculties || []; removed = {};
+    coverage = j.coverage || [];
     $('sub').textContent = (j.base ? 'Gałąź ' + j.branch + ' · ' + j.base.slice(0, 7) : 'Gałąź ' + j.branch + ' jeszcze nie istnieje: pierwszy zapis ją utworzy')
       + ' · zmiany działają od najbliższego przebiegu koordynatora (do 30 min).';
     render();
@@ -457,11 +515,25 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     });
     return box;
   }
+  function older(a, b) {
+    var x = String(a || '0').split('.'), y = String(b || '0').split('.');
+    for (var i = 0; i < 3; i++) { if ((+x[i] || 0) !== (+y[i] || 0)) return (+x[i] || 0) < (+y[i] || 0); }
+    return false;
+  }
   function stat(v) {
     var s = status[v.login.toLowerCase()] || {}, box = el('div', { 'class': 'stat' });
     var last = ago(s.last);
-    box.appendChild(el('div', {}, [document.createTextNode(last ? 'Ostatnia paczka: ' : 'Jeszcze bez paczki'), last ? el('b', { text: last }) : null]));
-    box.appendChild(el('div', { text: 'Przyjęte kalendarze: ' + (s.accepted || 0) }));
+    box.appendChild(el('div', {}, [el('span', { 'class': 'dot' + (s.online ? ' on' : ''), 'aria-hidden': 'true' }),
+      document.createTextNode(last ? (s.online ? 'Działa, paczka ' : 'Cisza od ') : 'Jeszcze bez paczki'), last ? el('b', { text: last }) : null]));
+    box.appendChild(el('div', { text: 'Przyjęte w 7 dni: ' + (s.week || 0) + (s.version ? ' · crawler ' + s.version : '') }));
+    if (s.version && older(s.version, draft.min_version)) box.appendChild(el('div', { 'class': 'warn', text: 'Wersja starsza niż wymagana: paczki są odrzucane' }));
+    if (s.refused) box.appendChild(el('div', { 'class': 'bad', text: 'Ostatnia paczka odrzucona: ' + s.refused.reason }));
+    else if (s.reasons && s.reasons.length) box.appendChild(el('div', { 'class': 'warn', text: 'Odrzucone kalendarze: ' + s.reasons[0] }));
+    if (s.blocked && s.blocked.length) box.appendChild(el('div', { 'class': 'warn', text: 'Blokady: ' + s.blocked.join(', ').toUpperCase() + ' (przydziały przejmują inni)' }));
+    if (s.token_expires) {
+      var left = (Date.parse(s.token_expires + 'Z') - Date.now()) / 86400000;
+      if (left < 14) box.appendChild(el('div', { 'class': left < 0 ? 'bad' : 'warn', text: left < 0 ? 'Token wygasł' : 'Token wygasa za ' + Math.max(0, Math.round(left)) + ' dni' }));
+    }
     if (s.benched) {
       var row = el('div', {}, [el('span', { 'class': 'bad', text: 'Odsunięty przez koordynatora ' }), null]);
       var b = el('button', { type: 'button', 'class': 'link', text: 'Przywróć' });
@@ -490,6 +562,12 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
       row.appendChild(x);
       list.appendChild(row);
     });
+    var cov = $('cov'); cov.textContent = '';
+    if (!coverage.length) cov.appendChild(el('p', { 'class': 'empty', text: 'Brak danych o bieżącym semestrze na gałęzi data.' }));
+    coverage.forEach(function (c) {
+      cov.appendChild(el('div', { 'class': c.stale ? 'warn' : '' }, [el('b', { text: c.faculty }),
+        document.createTextNode(c.stale ? 'bez sprawdzenia: ' + c.stale + ' z ' + c.groups : 'sprawdzone wszystkie (' + c.groups + ')')]));
+    });
     $('quorum').value = draft.quorum; $('window').value = draft.window_hours; $('minver').value = draft.min_version;
     var c = changes();
     $('what').textContent = c.length ? 'Zmiany: ' + c.join('; ') : '';
@@ -501,7 +579,7 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(login)) return toast('To nie wygląda na login GitHub.', true);
     if (fork.split('/')[0].toLowerCase() !== login.toLowerCase()) return toast('Fork musi należeć do tego loginu.', true);
     if (find(draft.volunteers, login)) return toast(login + ' już jest na liście.', true);
-    draft.volunteers.push({ login: login, fork: fork, trust: 'peer', faculties: [] });
+    draft.volunteers.push({ login: login, fork: fork, trust: 'peer', faculties: [], added: new Date().toISOString().slice(0, 10) });
     $('new-login').value = ''; $('new-fork').value = ''; render();
   });
   $('quorum').addEventListener('input', function () { draft.quorum = parseInt(this.value, 10) || 2; render(); });

@@ -885,6 +885,28 @@ class ManageTest(unittest.TestCase):
         self.assertEqual((got['bob']['strikes'], got['bob']['accepted']), (1, 1))
         self.assertTrue(got['bob']['benched'])
 
+    def test_health_and_coverage_come_from_the_data_branch(self):
+        data = self.tmp / 'data'
+        git('init', '-q', '-b', 'data', str(data), cwd=self.tmp)
+        (data / 'timetables' / TID).mkdir(parents=True)
+        for code in ('WCY26KY3S1', 'WCY26KY3S2', 'WLO26AX1S1'):
+            (data / 'timetables' / TID / f'{code}.ics').write_text('x')
+        (data / core.STATE_FILE).write_text(json.dumps({'groups': {'WCY26KY3S1': {'term': TID, 'checked': '2026-10-20T11:00:00'}}}))
+        (data / core.VOLUNTEER_STATE_FILE).write_text(json.dumps({
+            'groups': {f'WLO26AX1S1@{TID}': {'checked': '2026-10-20T09:00:00', 'by': ['alice']}},
+            'volunteers': {'alice': {'ended': '2026-10-20T09:00:00', 'version': '1.2.0', 'blocked': {'wcy': 'x'},
+                                     'token_expires': '2026-10-25T00:00:00', 'days': {'2026-10-20': [5, 0, 4]},
+                                     'refused': {'reason': 'stale'}}}}))
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '-A', cwd=data)
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 's', cwd=data)
+        git('push', '-q', str(self.origin), 'data', cwd=data)
+        self.repo.fetch()
+        alice = self.repo.status(NOW)['alice']
+        self.assertEqual((alice['online'], alice['week'], alice['blocked'], alice['refused']['reason']), (True, 4, ['wcy'], 'stale'))
+        self.assertFalse(self.repo.status(NOW + dt.timedelta(hours=7))['alice']['online'])
+        self.assertEqual(self.repo.coverage(NOW), [{'faculty': 'WCY', 'groups': 2, 'stale': 1},
+                                                   {'faculty': 'WLO', 'groups': 1, 'stale': 0}])
+
     def serve(self):
         import http.client
         import http.server
