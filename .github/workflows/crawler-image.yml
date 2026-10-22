@@ -60,6 +60,11 @@ jobs:
           docker run "${hard[@]}" --entrypoint python planwat-crawler:ci /app/tools/volunteer/bundle.py --help > /dev/null
           docker run "${hard[@]}" planwat-crawler:ci setup --help > /dev/null
           docker run "${hard[@]}" -e PLANWAT_LOGIN=ci -e PLANWAT_DRY_RUN=1 planwat-crawler:ci doctor --offline
+          # A fresh named volume (as compose creates) must be writable for the crawler's user.
+          docker volume create planwat-smoke-work > /dev/null
+          docker run --rm --read-only --cap-drop ALL -v planwat-smoke-work:/work --entrypoint sh planwat-crawler:ci \
+            -c 'touch /work/probe && rm /work/probe'
+          docker volume rm planwat-smoke-work > /dev/null
           if docker run "${hard[@]}" planwat-crawler:ci health; then
             echo '::error::healthy without a status file'; exit 1
           fi

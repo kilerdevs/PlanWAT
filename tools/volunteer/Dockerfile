@@ -10,7 +10,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && pip install --no-cache-dir curl_cffi==0.13.0 pymupdf==1.28.2 \
- && useradd -r -u 10003 -d /work -s /usr/sbin/nologin crawler
+ && useradd -r -u 10003 -d /work -s /usr/sbin/nologin crawler \
+ && install -d -o 10003 -g 10003 -m 0700 /work
 
 WORKDIR /app
 # Only what the crawl needs: the crawler, the volunteer tools, the site's validator and the version.
@@ -21,6 +22,7 @@ RUN chmod 0555 tools/volunteer/entrypoint.sh && find /app -type d -exec chmod 05
  && find /app -type f ! -name entrypoint.sh -exec chmod 0444 {} +
 
 USER 10003:10003
+# Owned by the crawler in the image, so a fresh named volume starts out writable for it.
 VOLUME /work
 # Healthy while the loop keeps writing /work/status.json (every pass, and every 10 minutes while it waits).
 HEALTHCHECK --interval=5m --timeout=20s --start-period=10m --retries=2 \
