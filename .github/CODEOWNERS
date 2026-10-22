@@ -1,0 +1,12 @@
+# These paths decide who may feed the site with timetables and what runs on crawling machines (the home runner
+# and every volunteer's): a change to any of them needs the owner's review (docs/WOLONTARIUSZE.md, docs/REFRESH.md).
+/volunteers.json                        @kilerdevs
+/tools/volunteer/                       @kilerdevs
+/tools/refresh/                         @kilerdevs
+/tools/egress/                          @kilerdevs
+/.github/actions/refresh/               @kilerdevs
+/.github/workflows/refresh.yml          @kilerdevs
+/.github/workflows/collect.yml          @kilerdevs
+/.github/workflows/volunteer.yml        @kilerdevs
+/.github/workflows/crawler-image.yml    @kilerdevs
+/.github/CODEOWNERS                     @kilerdevs

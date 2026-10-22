@@ -1,0 +1,65 @@
+# The volunteer crawler with a default-deny egress (docs/WOLONTARIUSZE.md).
+#
+#   cp tools/volunteer/compose.volunteer.yml compose.yml && cp tools/volunteer/volunteer.env.example .env
+#   (fill in .env)  docker compose up -d
+#
+# The crawler sits on an internal network with no route out; its only exit is the egress proxy, which lets
+# GitHub and the faculty sites through and answers everything else with 403. Nothing listens on the host
+# except the egress status page, bound to localhost.
+services:
+  crawler:
+    image: ghcr.io/kilerdevs/planwat-crawler:${PLANWAT_VERSION:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HTTP_PROXY: http://egress:8888
+      HTTPS_PROXY: http://egress:8888
+      http_proxy: http://egress:8888
+      https_proxy: http://egress:8888
+      NO_PROXY: egress,localhost,127.0.0.1
+      # The crawler reports block pages and live progress to the egress (its status page shows them).
+      PLANWAT_EGRESS_BLOCK: http://egress:8080/api/block
+      PLANWAT_EGRESS_PROGRESS: http://egress:8080/api/progress
+      PLANWAT_EGRESS_STATUS: http://egress:8080/api/run
+    read_only: true
+    user: "10003:10003"
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 768m
+    pids_limit: 128
+    tmpfs:
+      - /tmp:size=256m,mode=1777,noexec,nosuid,nodev
+    volumes:
+      - work:/work
+    networks: [inner]
+    depends_on: [egress]
+
+  egress:
+    image: ghcr.io/kilerdevs/planwat-crawler-egress:${PLANWAT_VERSION:-latest}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 256m
+    pids_limit: 128
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    environment:
+      EGRESS_DATA: /data
+      # Every faculty host goes out directly from your own line. Remove a host from this list to send it
+      # through the rotating public proxy pool instead (only worth it for a host that blocks your line).
+      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,planzajec.wcy.wat.edu.pl"
+    volumes:
+      - egress:/data
+    ports:
+      - "127.0.0.1:18080:8080"   # status page: http://localhost:18080/
+    networks: [inner, outside]
+
+networks:
+  inner:
+    internal: true   # no route out: the egress is the only way
+  outside: {}
+
+volumes:
+  work: {}
+  egress: {}

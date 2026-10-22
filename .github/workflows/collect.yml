@@ -1,0 +1,133 @@
+name: Collect volunteer crawls
+
+# Reads the crawl bundles that registered volunteers push to their own forks, checks them, counts the votes and
+# files what was accepted on the `data` branch (tools/volunteer/collect.py, docs/WOLONTARIUSZE.md). Runs on a
+# hosted runner: it never talks to a faculty site, only to GitHub. It runs the default branch's code only and
+# never checks out or runs anything from a fork; the bundles are read as data with git plumbing.
+#
+# While the repository variable PLANWAT_COLLECT_LIVE is not 'true', every pass is a dry run: it logs what it
+# would accept and writes nothing. That is the rollout switch.
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+    inputs:
+      revert:
+        description: 'Restore every calendar this volunteer helped accept (login)'
+        type: string
+        default: ''
+      since:
+        description: 'With revert: from this UTC time on, e.g. 2026-10-20T00:00:00'
+        type: string
+        default: ''
+      unbench:
+        description: 'Let a benched volunteer vote again (login)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    if: github.repository == 'kilerdevs/PlanWAT'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      # contents pushes the data branch, issues reports a benched volunteer. No actions:write, as in refresh.yml.
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: data
+          path: data
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - id: run
+        env:
+          LIVE: ${{ vars.PLANWAT_COLLECT_LIVE }}
+          REVERT: ${{ inputs.revert }}
+          SINCE: ${{ inputs.since }}
+          UNBENCH: ${{ inputs.unbench }}
+        run: |
+          set -euo pipefail
+          args=(--registry src/volunteers.json --data data)
+          if [ -n "$REVERT" ]; then
+            args+=(--revert "$REVERT" --since "$SINCE")
+          elif [ -n "$UNBENCH" ]; then
+            args+=(--unbench "$UNBENCH")
+          elif [ "$LIVE" != 'true' ]; then
+            args+=(--dry-run)
+          fi
+          python src/tools/volunteer/collect.py "${args[@]}"
+      - id: push
+        working-directory: data
+        env:
+          WHY: ${{ inputs.revert && format('Revert volunteer {0}', inputs.revert) || 'Timetables from volunteers' }}
+          WHO: ${{ steps.run.outputs.volunteers }}
+        run: |
+          git config user.name 'planwat-collect'
+          git config user.email 'planwat-collect@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'nothing to publish'
+            echo 'pushed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          n=$(git diff --cached --name-only -- timetables | wc -l)
+          git commit -q -m "$WHY ($n calendars${WHO:+; $WHO})"
+          # The home runner pushes to the same branch. Its files never overlap ours except a calendar both
+          # changed at once; then this pass gives way and the votes are counted again next time.
+          for attempt in 1 2 3; do
+            if git pull -q --rebase origin data && git push -q origin HEAD:data; then
+              echo 'pushed=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((attempt * 5))
+          done
+          echo '::warning::the data branch moved under this pass; trying again on the next one'
+          echo 'pushed=false' >> "$GITHUB_OUTPUT"
+      - name: Report benched volunteers
+        if: steps.run.outputs.benched != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BENCHED: ${{ steps.run.outputs.benched }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          for login in $BENCHED; do
+            title="Wolontariusz $login niezgodny"
+            body="Głosy $login trzy razy w tygodniu przegrały z planem przyjętym przez innych, więc kolektor przestał je liczyć. Sprawdź jego paczki i albo zmień mu \`trust\` w volunteers.json, albo przywróć go (Actions → Collect volunteer crawls → unbench). Przebieg: $RUN_URL"
+            open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "$body"
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+            fi
+          done
+      # The same outcome file refresh.yml writes, so pages.yml's gate skips a rebuild after a quiet pass.
+      - name: Write the outcome for the Pages gate
+        if: always()
+        env:
+          PUSHED: ${{ steps.push.outputs.pushed || 'false' }}
+          CHANGED: ${{ steps.run.outputs.changed || '0' }}
+        run: |
+          printf '{"pushed": "%s", "changed": "%s", "blocked": "false"}\n' "$PUSHED" "$CHANGED" > refresh-outcome.json
+      - name: Upload the outcome
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: refresh-outcome
+          path: refresh-outcome.json
+          retention-days: 2

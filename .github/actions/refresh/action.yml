@@ -22,6 +22,14 @@ inputs:
   source:
     description: Workspace path of the checked-out repository that holds tools/refresh.
     default: src
+  mode:
+    description: >
+      project (the home runner: push the data branch, file issues) or volunteer (crawl this login's share of
+      the upstream project and push a bundle to the crawl branch of this repository, a fork; see docs/WOLONTARIUSZE.md).
+    default: project
+  upstream:
+    description: Volunteer mode only, the project whose data branch and registry are read.
+    default: kilerdevs/PlanWAT
 
 outputs:
   blocked:
@@ -37,7 +45,7 @@ outputs:
     description: Number of calendars that changed
     value: ${{ steps.run.outputs.changed }}
   pushed:
-    description: 'true when the data branch received a commit this run'
+    description: 'true when the data branch received a commit this run (project mode)'
     value: ${{ steps.push.outputs.pushed }}
 
 runs:
@@ -45,9 +53,12 @@ runs:
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        # A volunteer reads the project's own data (public), never its fork's copy.
+        repository: ${{ inputs.mode == 'volunteer' && inputs.upstream || github.repository }}
         ref: data
         path: data
         token: ${{ inputs.token }}
+        persist-credentials: ${{ inputs.mode != 'volunteer' }}
     - if: runner.environment == 'github-hosted'
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
@@ -68,6 +79,8 @@ runs:
         MAX_MINUTES: ${{ inputs.max-minutes }}
         ADAPTIVE_HOURS: ${{ inputs.adaptive-hours }}
         SOURCE: ${{ inputs.source }}
+        MODE: ${{ inputs.mode }}
+        UPSTREAM: ${{ inputs.upstream }}
         # The crawler posts a block notice here whenever a faculty answered a block page via a
         # pooled exit, so the egress can demote that exit (see tools/egress/server.py). Best
         # effort: on a runner with no egress box the posts just fail and the crawl continues.
@@ -80,11 +93,28 @@ runs:
         set +e
         args=(--out data --profile "$PROFILE" --max-minutes "$MAX_MINUTES" --adaptive-hours "$ADAPTIVE_HOURS")
         if [ -n "$FACULTY" ]; then args+=(--faculty "$FACULTY"); fi
+        if [ "$MODE" = volunteer ]; then
+          # The registry comes from the project, not from the fork: it decides who checks what.
+          curl -fsS --max-time 30 -o "$RUNNER_TEMP/volunteers.json" \
+            "https://raw.githubusercontent.com/$UPSTREAM/master/volunteers.json" || exit 1
+          args+=(--assign "$RUNNER_TEMP/volunteers.json" --as "$GITHUB_REPOSITORY_OWNER"
+                 --outcomes "$RUNNER_TEMP/outcomes.json")
+        fi
         "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}"
         code=$?
         if [ "$code" -ne 0 ] && [ "$code" -ne 3 ] && [ "$code" -ne 4 ]; then exit "$code"; fi
         exit 0
+    - id: bundle
+      if: inputs.mode == 'volunteer'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        SOURCE: ${{ inputs.source }}
+      run: |
+        "$PLANWAT_PY" "$SOURCE/tools/volunteer/bundle.py" --data data --outcomes "$RUNNER_TEMP/outcomes.json" \
+          --fork "$GITHUB_REPOSITORY"
     - id: push
+      if: inputs.mode != 'volunteer'
       shell: bash
       working-directory: data
       run: |
@@ -104,7 +134,8 @@ runs:
     # No `gh workflow run pages.yml` here on purpose: pages.yml rebuilds daily on its own and picks
     # the refreshed calendars up. Granting actions:write so the crawl could trigger deploys would let
     # anyone holding the refresh token (or a workflow patch) run arbitrary workflows.
-    - shell: bash
+    - if: inputs.mode != 'volunteer'
+      shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
         BLOCKED: ${{ steps.run.outputs.blocked }}
