@@ -99,7 +99,7 @@ for week in data['weeks']:
                 f'DTSTAMP:{generated}T000000Z',
                 f'DTSTART;TZID=Europe/Warsaw:{local(ev["date"], ev["start"])}',
                 f'DTEND;TZID=Europe/Warsaw:{local(ev["date"], ev["end"])}',
-                f'SUMMARY:{esc(ev["subject_full"])}',
+                f'SUMMARY:{esc(ev["subject_full"]) + " (" + esc(desc) + ")"}',
                 f'CATEGORIES:{esc(ev["type_full"])}',
             ]
             if ev.get('room') and ev['room'] != '-':
