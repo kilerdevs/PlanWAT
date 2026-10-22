@@ -86,7 +86,13 @@ jobs:
       - name: PSScriptAnalyzer
         shell: pwsh
         run: |
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -RequiredVersion 1.24.0
+          # The runner image usually ships it; the gallery download is flaky, so it is only a retried fallback.
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            foreach ($try in 1..4) {
+              try { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction Stop; break }
+              catch { if ($try -eq 4) { throw }; Start-Sleep -Seconds (15 * $try) }
+            }
+          }
           # Write-Host is deliberate (terminal lines that must never become part of a function's result).
           $found = Invoke-ScriptAnalyzer -Path tools/volunteer/install.ps1 -Severity Error,Warning `
             -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions,PSUseSingularNouns
