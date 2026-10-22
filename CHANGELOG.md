@@ -213,6 +213,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   Przyciski reagują na dotyk, a ruch ustępuje całkowicie przy „ogranicz ruch” w systemie.
 
 ### Naprawiono
+- **Kontrast w jasnym motywie:** daty minionych dni, opis dnia w kolumnie „Dziś” i plakietka „Dziś” miały kontrast 4,0–4,4:1
+  zamiast wymaganych 4,5:1. Odcienie `--past-2`, `--t3` i `--accent-text` są odrobinę ciemniejsze. Statyczna poświata za tytułem
+  zasłaniała te miejsca przed skanem axe, więc test ich nie widział.
 - **Postęp semestru liczony z pustych miesięcy:** 31 kalendarzy WCY (np. `WCY25IX1S0`) miało daty zeszłego semestru letniego
   (np. 02.03–27.07.2026), bo konwerter brał początek semestru z pozostawionych na stronie wydziału zajęć z marca. Siatka tygodni
   zaczynała się wtedy w marcu, a „Postęp semestru” pokazywał 69% zamiast 15%. `build.py` sprawdza teraz początek semestru
