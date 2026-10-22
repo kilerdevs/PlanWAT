@@ -162,6 +162,15 @@ runnera musi pozostać czysty, a opublikowana strona bezpieczna:
 - Obserwuj oznakę nadużycia runnera: niespodziewane pliki workflowów z `runs-on: [self-hosted, planwat]` albo zmiany
   `refresh.yml` / `.github/actions/refresh`. Alarmuj dla tych ścieżek regułą CODEOWNERS lub wymaganym przeglądem w ochronie gałęzi.
 
+## Wolontariusze
+
+Domowy runner nie jest jedynym źródłem. Zaproszeni wolontariusze uruchamiają ten sam crawler w trybie
+`--assign volunteers.json --as <login>`: każdy sprawdza tylko swoją część grup i wypycha paczkę na gałąź `crawl`
+własnego forka. Koordynator `collect.yml` (runner GitHub, co 30 min) sprawdza paczki, liczy głosy i przyjęte plany
+zapisuje na `data`, a stemple do `volunteer-state.json`. Domowy runner zostaje zaufaną kotwicą: jego wyniki idą na `data`
+jak dotąd. Grupy, które wolontariusze właśnie potwierdzili, traktuje jako świeże. Całość, łącznie z modelem zaufania:
+[WOLONTARIUSZE.md](WOLONTARIUSZE.md).
+
 ## Co pokazuje strona
 
 Każda strona grupy pokazuje **Zaktualizowano** (kiedy plan ostatnio się zmienił) i **Sprawdzono** (kiedy crawler ostatnio go

@@ -83,9 +83,13 @@ okno przed publicznym ujawnieniem (zwyczajowo 90 dni).
 | `deploy/nginx.conf`, `Dockerfile`, `docker-compose.yml` | Serwowany plik, który nie powinien, brakujące nagłówki, uprawnienia lub zapis w kontenerze |
 | `.github/workflows/` | Wstrzyknięcie do workflowu, nadmierne uprawnienia tokenu, nieprzypięty kod firm trzecich |
 | `tools/refresh/`, `tools/egress/` | Ucieczka z izolacji runnera, wyciek tokenu, żądania poza listą dozwolonych hostów |
+| `tools/volunteer/`, `volunteers.json`, `collect.yml` | Paczka wolontariusza, która publikuje plan bez kworum, wykonuje kod u koordynatora, czyta lub zapisuje poza listą ścieżek, podszywa się pod innego wolontariusza albo odtwarza starą paczkę; obraz crawlera, który wychodzi poza GitHub i `*.wat.edu.pl` |
 
 ### Poza zakresem
 
+- **Zmowa zatwierdzonych wolontariuszy** w liczbie równej kworum albo osoba z poziomem `trusted`, która dostarcza błędne
+  plany: to znane ograniczenie modelu zaufania (zob. [docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md#bezpieczeństwo)),
+  obsługiwane cofnięciem i odsunięciem, nie podatność.
 - **Błędne dane planu** (sala lub godzina): otwórz zamiast tego
   [zgłoszenie planu](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml).
 - Nagłówki, których GitHub Pages nie potrafi wysłać (`X-Frame-Options`, `frame-ancestors`, …): udokumentowane wraz ze

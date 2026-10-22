@@ -15,6 +15,19 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+### Dodano
+- **Crawlery wolontariuszy** ([docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md)):
+  - **Kto i jak:** zaproszone osoby z rejestru `volunteers.json` mogą odświeżać plany ze swojego łącza, obrazem Docker
+    (`ghcr.io/kilerdevs/planwat-crawler` z poświadczeniem pochodzenia) albo runnerem na własnym forku.
+  - **Przydział:** każdy sprawdza tylko swoją część grup. Przydział zmienia się co 2 godziny, a strona wydziału dostaje
+    najwyżej dwa zapytania na grupę na okno.
+  - **Kiedy wynik trafia na stronę:** koordynator `collect.yml` przyjmuje plan od osoby zaufanej albo dopiero wtedy, gdy
+    zgodzi się dwóch wolontariuszy. Każdy kalendarz przechodzi pełną walidację serwisu.
+  - **Rozliczalność:** każdy przyjęty wynik ma podpis, kto go dostarczył, i da się go cofnąć jednym poleceniem.
+  - **Ochrona przed błędami:** wolontariusz, którego wyniki stale nie zgadzają się z innymi, jest automatycznie odsuwany.
+- „Sprawdzono” na stronie grupy uwzględnia także sprawdzenia wolontariuszy, a domowy runner pomija grupy, które
+  wolontariusze właśnie potwierdzili.
+
 ## [1.1.1] - 2026-10-22
 
 ### Zmieniono
