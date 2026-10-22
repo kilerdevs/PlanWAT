@@ -86,14 +86,7 @@
     --r-ctl: 12px;
     --r-pill: 999px;
 
-    /* motion */
-    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-    --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
-    --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
-    --spring: cubic-bezier(0.34, 1.3, 0.64, 1);
-    --dur-fast: 150ms;
-    --dur-base: 300ms;
-    --dur-slow: 600ms;
+    /* motion (the easings and durations are shared, in theme.css) */
     --rise-y: 16px;
     --rise-blur: 0px;
 
@@ -103,12 +96,6 @@
     --gr: max(16px, env(safe-area-inset-right));
 
     color-scheme: dark;
-  }
-  @supports (transition-timing-function: linear(0, 1)) {
-    :root {
-      /* damped spring, ~4% overshoot */
-      --spring: linear(0, 0.066, 0.215, 0.393, 0.566, 0.715, 0.833, 0.92, 0.978, 1.013, 1.032, 1.038, 1.037, 1.032, 1.026, 1.019, 1.013, 1.008, 1.004, 1.001, 1, 0.999, 1);
-    }
   }
 
   /* ================= base ================= */
@@ -209,6 +196,18 @@
     :root { --rise-y: 20px; --rise-blur: 8px; }
     @keyframes rise { from { opacity: 0; transform: translateY(var(--rise-y)); filter: blur(var(--rise-blur)); } }
   }
+  /* a view switched to (week, list, month) settles in: a shorter, smaller cousin of the entrance */
+  .view-in { animation: view-in var(--dur-base) var(--ease-out) backwards; }
+  @keyframes view-in { from { opacity: 0; transform: translateY(8px); } }
+  /* what a tap shows (a notice, a tab's panel, a form field, a table) settles in instead of popping up. Only after
+     the first paint (motion-ready), so the page entrance stays one sequence; hiding stays instant, so two panels
+     never share the space for a moment */
+  .notice, .toolpanel, .pm-panel, .field, table.data {
+    transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+  }
+  @starting-style {
+    .motion-ready :is(.notice, .toolpanel, .pm-panel, .field, table.data) { opacity: 0; transform: translateY(6px); }
+  }
   /* scroll reveal, applied by script only to what starts below the fold */
   .rv { opacity: 0; transform: translateY(var(--rise-y)); }
   .rv.in {
@@ -229,6 +228,7 @@
     display: inline-flex; align-items: center; gap: 2px;
     min-height: 32px; margin: -8px 0 var(--sp-2) -6px; padding: 0 8px 0 2px;
     border-radius: 8px; color: var(--t2); font-size: var(--fs-15); text-decoration: none;
+    transition: background-color var(--dur-fast), color var(--dur-fast), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
   }
   .backlink:hover { color: var(--t1); background: var(--s2); }
   .backlink .i { width: 18px; height: 18px; }
@@ -652,7 +652,7 @@
   .meta > span { display: inline-flex; align-items: flex-start; gap: 5px; min-width: 0; }
   .meta .i { margin-top: 2px; color: var(--t3); }
   .meta .room { color: var(--t1); font-weight: 500; font-variant-numeric: tabular-nums; }
-  .room a { color: inherit; text-decoration: underline; text-decoration-color: var(--t4); text-underline-offset: 3px; border-radius: 4px; }
+  .room a { color: inherit; text-decoration: underline; text-decoration-color: var(--t4); text-underline-offset: 3px; border-radius: 4px; transition: text-decoration-color var(--dur-fast), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out); }
   .room a:hover { text-decoration-color: var(--t2); }
   .daymap {
     display: inline-flex;
@@ -665,7 +665,9 @@
     color: var(--t2);
     font-size: var(--fs-13);
     text-decoration: none;
+    transition: background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-base) var(--spring), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
   }
+  .daymap:active { transform: scale(0.97); }
   .daymap:hover { color: var(--t1); background: var(--s3); }
   @media print { .daymap { display: none; } }
 
@@ -946,7 +948,8 @@
   }
   #favBtn[aria-pressed="true"] .i { fill: currentColor; color: var(--t1); }
   .termswitch { display: inline-flex; gap: 2px; padding: 3px; margin-top: 10px; border-radius: 999px; background: var(--s3); }
-  .termswitch a { padding: 6px 14px; border-radius: 999px; color: var(--t2); font-size: 13px; font-weight: 600; text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; }
+  .termswitch a { padding: 6px 14px; border-radius: 999px; color: var(--t2); font-size: 13px; font-weight: 600; text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; transition: background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-base) var(--spring); }
+  .termswitch a:active { transform: scale(0.97); }
   .termswitch a[aria-current] { background: var(--t1); color: var(--bg); }
   .termswitch a:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 
@@ -978,7 +981,9 @@
     font-weight: 600;
     cursor: pointer;
     touch-action: manipulation;
+    transition: background-color var(--dur-fast), transform var(--dur-base) var(--spring), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
   }
+  .link:active { transform: scale(0.97); }
 
   /* ================= view switch ================= */
   .viewbar { padding-bottom: var(--sp-2); }
@@ -1004,7 +1009,7 @@
     font-weight: 600;
     cursor: pointer;
     touch-action: manipulation;
-    transition: background-color var(--dur-fast), color var(--dur-fast), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
+    transition: background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-base) var(--spring), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
   }
   .seg button[aria-pressed="true"] { background: var(--s4); color: var(--t1); }
   body[data-view="list"] #nav, body[data-view="month"] #nav,
@@ -1073,6 +1078,10 @@
   .mword { display: none; }
   @media (min-width: 768px) { .mword { display: inline; } }
   .month .legend-tip { margin-top: var(--sp-3); }
+  .month[data-dir="next"] { --vt-x: 32px; }
+  .month[data-dir="prev"] { --vt-x: -32px; }
+  .month-grid.is-entering { animation: week-in 420ms var(--ease-out); }
+  .month-head h2.is-entering { animation: vt-label-in 360ms var(--ease-out); }
   @media (min-width: 768px) { .mday { min-height: 88px; padding: 10px; } .mdots span { width: 8px; height: 8px; } }
 
   /* ================= subject progress ================= */
@@ -1120,7 +1129,9 @@
     text-decoration: none;
     cursor: pointer;
     touch-action: manipulation;
+    transition: background-color var(--dur-fast), transform var(--dur-base) var(--spring), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
   }
+  .action:active { transform: scale(0.985); }
   .action .i { color: var(--t2); }
   .action small { display: block; font-size: var(--fs-13); font-weight: 400; color: var(--t2); }
   .field { display: grid; gap: 4px; font-size: var(--fs-13); color: var(--t2); }
@@ -1149,7 +1160,9 @@
     font-weight: 600;
     cursor: pointer;
     touch-action: manipulation;
+    transition: background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-base) var(--spring), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
   }
+  .choice:active { transform: scale(0.97); }
   .choice[aria-pressed="true"] { background: var(--t1); color: var(--bg); }
   .sheet-body > .field { margin-top: var(--sp-3); }
   /* the quick-date row belongs to the field above it, but still needs air before it */
@@ -1163,10 +1176,17 @@
   .mysub-toggle {
     flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin: -6px -10px 0 0;
     border: 0; border-radius: 999px; background: transparent; color: var(--t3); cursor: pointer; touch-action: manipulation;
+    transition: background-color var(--dur-fast), color var(--dur-fast), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out);
   }
+  .mysub-toggle:active { background: var(--s3); }
   .mysub-toggle .i { width: 18px; height: 18px; transition: transform var(--dur-base) var(--spring); }
   .mysub-toggle[aria-expanded="true"] .i { transform: rotate(180deg); }
-  .mysub-parts { display: grid; padding-left: calc(20px + var(--sp-2)); }
+  .mysub-parts {
+    display: grid; padding-left: calc(20px + var(--sp-2));
+    interpolate-size: allow-keywords; overflow: clip; overflow-clip-margin: 6px;
+    transition: block-size var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-out);
+  }
+  @starting-style { .mysub-parts { block-size: 0; opacity: 0; } }
   .mysub-parts[hidden] { display: none; }
   #toolBody > .dl { margin: 0 var(--sp-2) var(--sp-2) 0; }
   /* the calendar download button gets the same breathing room as the choice row's label */
@@ -1186,9 +1206,12 @@
   .bars .bar-track { grid-area: bar; }
   .bar-track, .bar-fill { display: block; }
   .bar-track { height: 10px; border-radius: 4px; background: var(--s3); overflow: hidden; }
-  .bar-fill { height: 100%; width: calc(var(--w, 0) * 1%); border-radius: 4px; background: var(--t3); }
+  .bar-fill { height: 100%; width: calc(var(--w, 0) * 1%); border-radius: 4px; background: var(--t3); transform-origin: left; animation: grow-x var(--dur-slow) var(--ease-out) backwards; }
   .cols { display: flex; align-items: flex-end; gap: 2px; height: 120px; margin-top: var(--sp-2); padding-bottom: 1px; border-bottom: 1px solid var(--line-2); }
-  .cols span { flex: 1; min-height: 1px; height: calc(var(--h, 0) * 1%); border-radius: 4px 4px 0 0; background: var(--t3); }
+  .cols span { flex: 1; min-height: 1px; height: calc(var(--h, 0) * 1%); border-radius: 4px 4px 0 0; background: var(--t3); transform-origin: bottom; animation: grow-y var(--dur-slow) var(--ease-out) backwards; }
+  /* the charts grow from their baseline when they are drawn */
+  @keyframes grow-x { from { transform: scaleX(0); } }
+  @keyframes grow-y { from { transform: scaleY(0); } }
   .cols span.is-cur { background: var(--accent); }
   .cols-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: var(--fs-12); color: var(--t3); font-variant-numeric: tabular-nums; }
   .facts-list { display: grid; gap: 6px; margin: 0; }
@@ -1253,8 +1276,25 @@
 
   /* ================= tabs (the tools row, the plan map) ================= */
   .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border-radius: var(--r-ctl); background: var(--s2); box-shadow: var(--edge); }
-  .tabs button { min-height: 36px; padding: 4px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--t2); font-size: var(--fs-13); font-weight: 600; cursor: pointer; touch-action: manipulation; transition: background-color var(--dur-fast), color var(--dur-fast); }
+  .tabs button { min-height: 36px; padding: 4px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--t2); font-size: var(--fs-13); font-weight: 600; cursor: pointer; touch-action: manipulation; transition: background-color var(--dur-fast), color var(--dur-fast), transform var(--dur-base) var(--spring), outline-color var(--dur-fast), outline-offset var(--dur-base) var(--ease-out); }
   .tabs button[aria-selected="true"] { background: var(--s4); color: var(--t1); }
+  /* the selection of a segmented control is one pill that slides between the buttons (setPill sets --n and --i) */
+  .seg.has-pill, .tabs.has-pill { position: relative; isolation: isolate; }
+  .seg.has-pill::before, .tabs.has-pill::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: 2px;
+    bottom: 2px;
+    left: 2px;
+    width: calc((100% - 4px - (var(--n, 1) - 1) * 2px) / var(--n, 1));
+    border-radius: 10px;
+    background: var(--s4);
+    transform: translateX(calc(var(--i, 0) * (100% + 2px)));
+    transition: transform var(--dur-base) var(--spring);
+  }
+  .seg.has-pill button[aria-pressed="true"], .tabs.has-pill button[aria-selected="true"] { background: transparent; }
+  .seg button:active, .tabs button:active { transform: scale(0.96); }
   @media (pointer: coarse) { .tabs button { min-height: 44px; } }
 
   /* ================= plan map ================= */
@@ -1429,6 +1469,9 @@
     .mday:not(:disabled):hover { background: var(--s3); }
     .todaypill.show:hover { background: var(--pill-hover); }
     .legend summary:hover .i, .mysub-toggle:hover { color: var(--t1); }
+    .mysub-toggle:hover { background: var(--s3); }
+    .tour-skip:hover { color: var(--t1); }
+    .termswitch a:not([aria-current]):hover { color: var(--t1); }
   }
 
   /* ================= tablet and up ================= */
@@ -1485,12 +1528,13 @@
   .tour-dots button::after { content: ''; position: absolute; inset: -18px -6px; }
   .tour-dots button[aria-current="true"] { width: 22px; background: var(--t1); }
   .tour-actions { display: flex; align-items: center; gap: var(--sp-2); }
-  .tour-skip { font: inherit; font-size: var(--fs-15); color: var(--t2); background: none; border: 0; padding: 12px var(--sp-3); min-height: 44px; border-radius: 99px; cursor: pointer; }
+  .tour-skip { font: inherit; font-size: var(--fs-15); color: var(--t2); background: none; border: 0; padding: 12px var(--sp-3); min-height: 44px; border-radius: 99px; cursor: pointer; transition: color var(--dur-fast), background-color var(--dur-fast); }
+  .tour-skip:active { background: var(--s3); }
   .tour-skip[hidden] { display: none; }
   .tour-next {
     font: inherit; font-size: var(--fs-15); font-weight: 600; min-height: 44px; min-width: 112px; padding: 0 var(--sp-5);
     border: 0; border-radius: 99px; background: var(--accent); color: #fff; cursor: pointer;
-    transition: transform var(--dur-fast) var(--ease-out);
+    transition: transform var(--dur-base) var(--spring), background-color var(--dur-fast);
   }
   .tour-next:active { transform: scale(0.97); }
   .tour-skip:focus-visible, .tour-next:focus-visible, .tour-dots button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1777,9 +1821,13 @@
     .dot::after, .skel span::after { animation: none; }
     .todaypill, .todaypill.show, .todaypill.show:active { transform: translate(-50%, 0); }
     .toast, .toast.show { transform: translate(-50%, 0); }
-    .live:hover, .live:active, .lesson:hover, .week .lesson:hover, .round:not(:disabled):active, .weekbtn:active, .chip:active, .dl:active { transform: none; }
+    .live:hover, .live:active, .lesson:hover, .week .lesson:hover, .round:not(:disabled):active, .weekbtn:active, .chip:active, .dl:active,
+    .link:active, .action:active, .choice:active, .daymap:active, .termswitch a:active, .tour-next:active, .seg button:active, .tabs button:active { transform: none; }
     .weekbtn .i, .legend summary .i, .mysub-toggle .i { transition: none; }
     dialog.sheet, .legend::details-content { transition: none; }
+    .month[data-dir] { --vt-x: 0px; }
+    .view-in, .month-grid.is-entering, .month-head h2.is-entering, .bar-fill, .cols span { animation: none; }
+    .notice, .toolpanel, .pm-panel, .field, table.data, .mysub-parts, .seg.has-pill::before, .tabs.has-pill::before { transition: none; }
     ::view-transition-group(*) { animation-duration: 0s; }
   }
 
@@ -2265,6 +2313,23 @@
     node.classList.remove(cls);
     void node.offsetWidth;
     node.classList.add(cls);
+  }
+  /* a view switched to settles in once; the class goes when it is done, so it never replays with a week's own animation */
+  function settleIn(node) {
+    if (reduceMotion) return;
+    restartAnim(node, 'view-in');
+    node.addEventListener('animationend', function done(e) {
+      if (e.target !== node) return;
+      node.classList.remove('view-in');
+      node.removeEventListener('animationend', done);
+    });
+  }
+  /* a segmented control's selection is one pill that slides to the chosen button (its first placement does not animate) */
+  function setPill(box, on) {
+    var items = Array.prototype.slice.call(box.children);
+    box.style.setProperty('--n', String(items.length));
+    box.style.setProperty('--i', String(Math.max(0, items.indexOf(on))));
+    box.classList.add('has-pill');
   }
   function weekLessonCount(week) {
     var n = 0;
@@ -3328,14 +3393,20 @@
   /* ---------- views: week, list, month ---------- */
   function setView(v, keepScroll) {
     if (['week', 'list', 'month'].indexOf(v) < 0) v = 'week';
+    var changed = state.booted && state.view !== v;
     state.view = v;
     document.body.setAttribute('data-view', v);
     var btns = $('viewSeg').querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) btns[i].setAttribute('aria-pressed', String(btns[i].getAttribute('data-view') === v));
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].setAttribute('aria-pressed', String(btns[i].getAttribute('data-view') === v));
+      if (btns[i].getAttribute('data-view') === v) setPill($('viewSeg'), btns[i]);
+    }
     $('listView').hidden = v !== 'list';
     $('monthView').hidden = v !== 'month';
     if (v === 'list') renderList(); else $('listView').replaceChildren();
     if (v === 'month') renderMonth();
+    /* the view that comes in settles in softly; the first one at load is part of the page entrance */
+    if (changed) settleIn($(v === 'week' ? 'weekBody' : v + 'View'));
     store.set('view', v);
     applyFocus();
     updateLive(true);
@@ -4832,8 +4903,16 @@
     for (var i = 0; i < seg.length; i++) {
       seg[i].addEventListener('click', function (e) { setView(e.currentTarget.getAttribute('data-view')); });
     }
-    $('monthPrev').addEventListener('click', function () { state.month--; renderMonth(); });
-    $('monthNext').addEventListener('click', function () { state.month++; renderMonth(); });
+    /* months slide the way weeks do: towards the side of the arrow that was pressed */
+    var stepMonth = function (dir) {
+      state.month += dir;
+      renderMonth();
+      $('monthView').setAttribute('data-dir', dir > 0 ? 'next' : 'prev');
+      restartAnim($('monthGrid'), 'is-entering');
+      restartAnim($('monthTitle'), 'is-entering');
+    };
+    $('monthPrev').addEventListener('click', function () { stepMonth(-1); });
+    $('monthNext').addEventListener('click', function () { stepMonth(1); });
     /* the tool rows scroll sideways on phones: mark them so the cut edge fades instead of looking broken */
     ['tp-plan', 'tp-export', 'tp-analysis'].forEach(function (id) { edgeFade($(id)); });
   }
@@ -4933,6 +5012,8 @@
     initTour();
     setView(store.get('view', 'week'), true);
     state.booted = true;
+    /* from here on, what a tap shows settles in (see @starting-style); the first paint is the entrance's job */
+    requestAnimationFrame(function () { document.documentElement.classList.add('motion-ready'); });
 
     if (!reduceMotion) {
       var caps = document.querySelectorAll('#liveCap, .lesson.is-now');
@@ -5209,6 +5290,7 @@
         var panel = document.getElementById(t.getAttribute('aria-controls'));
         if (panel) panel.hidden = !on;
       });
+      setPill(list, tab);
       if (focus) tab.focus();
       if (onShow) onShow(tab.getAttribute('data-tab'));
     }
@@ -5221,6 +5303,7 @@
         show(tabs[(j + tabs.length) % tabs.length], true);
       });
     });
+    setPill(list, tabs.filter(function (t) { return t.getAttribute('aria-selected') === 'true'; })[0] || tabs[0]);
     return function (key) {
       var hit = tabs.filter(function (t) { return t.getAttribute('data-tab') === key; })[0];
       if (hit) show(hit);

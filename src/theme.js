@@ -21,6 +21,14 @@
       }
     }
   }
+  /* a chosen theme fades in over a moment; the first paint and reduced motion stay instant */
+  var fadeTimer;
+  function fade() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    root.classList.add('theme-fade');
+    clearTimeout(fadeTimer);
+    fadeTimer = setTimeout(function () { root.classList.remove('theme-fade'); }, 340);
+  }
   apply(stored());
   document.addEventListener('DOMContentLoaded', function () {
     var buttons = document.querySelectorAll('[data-theme-set]');
@@ -32,6 +40,7 @@
       buttons[i].addEventListener('click', function (e) {
         var t = e.currentTarget.getAttribute('data-theme-set');
         try { if (t === 'auto') window.localStorage.removeItem('planwat:theme'); else window.localStorage.setItem('planwat:theme', t); } catch (err) { /* private mode: the choice lasts until the page closes */ }
+        fade();
         apply(t);
         mark();
       });

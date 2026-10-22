@@ -21,6 +21,17 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   np. przy zwolnieniu z ćwiczeń. Ukryte zajęcia znikają z widoków, statystyk i pobranego pliku .ics, a wcześniej zapisane
   wybory całych przedmiotów działają jak dotąd.
 
+### Zmieniono
+- **Płynniejsze animacje na wszystkich stronach:**
+  - zaznaczenie w przełącznikach (widok, narzędzia, mapa planów) przesuwa się;
+  - miesiące przewijają się jak tygodnie;
+  - zmiana widoku, otwierane panele, powiadomienia i pola formularzy łagodnie się pojawiają;
+  - wykresy w statystykach rosną od osi;
+  - zmiana motywu przechodzi płynnie;
+  - na stronie głównej wydziały zwijają się płynnie, a wyszukiwarka grup także się chowa z animacją.
+
+  Przyciski reagują na dotyk, a ruch ustępuje całkowicie przy „ogranicz ruch” w systemie.
+
 ### Naprawiono
 - **Postęp semestru liczony z pustych miesięcy:** 31 kalendarzy WCY (np. `WCY25IX1S0`) miało daty zeszłego semestru letniego
   (np. 02.03–27.07.2026), bo konwerter brał początek semestru z pozostawionych na stronie wydziału zajęć z marca. Siatka tygodni
