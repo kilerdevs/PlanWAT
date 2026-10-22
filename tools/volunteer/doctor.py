@@ -159,7 +159,9 @@ def run(cfg, report, offline=False, probe=True, now=None):
         if assign.version_tuple(mine) < assign.version_tuple(reg['min_version']):
             report.line(FAIL, f'crawler {mine} jest starszy niż wymagany {reg["min_version"]}',
                         'planwat-crawler update')
-    _, latest = get_json(f'{registry.API}/repos/{upstream}/releases/latest', token or None)
+    # The dev channel follows the dev branch; a release number says nothing about it.
+    latest = None if os.environ.get('PLANWAT_CHANNEL') == 'dev' else get_json(
+        f'{registry.API}/repos/{upstream}/releases/latest', token or None)[1]
     tag = (latest or {}).get('tag_name', '') if isinstance(latest, dict) else ''
     if tag.lstrip('v') and tag.lstrip('v') != bundle.version():
         try:

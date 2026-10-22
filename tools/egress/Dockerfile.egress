@@ -1,5 +1,8 @@
 FROM python:3.13-slim
 
+LABEL org.opencontainers.image.source=https://github.com/kilerdevs/PlanWAT \
+      org.opencontainers.image.description="PlanWAT egress proxy (docs/EGRESS.md)"
+
 # No HTTP(S)_PROXY here on purpose: this box *is* the egress, it fetches proxy
 # lists and probes candidates over its own direct route.
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1

@@ -108,6 +108,19 @@ powershell -ExecutionPolicy Bypass -File .\planwat-install.ps1
 
 `sh install.sh --check` (Windows: `-Check`) pokazuje tylko, co zostałoby zainstalowane, i niczego nie zmienia.
 
+**Kanały.** Domyślnie (`stable`) instalator bierze najnowsze wydanie: pliki z jego tagu i obrazy `:<wersja>`. Kanał
+`dev` bierze to, co jest na gałęzi `dev`: pliki z tej gałęzi i obrazy `:dev`, które `crawler-image.yml` publikuje (z tym
+samym poświadczeniem pochodzenia) po każdej zmianie crawlera na `dev`. Kanał zapamiętuje `.env`, więc aktualizacje idą
+za nim; na `dev` aktualizacja następuje, gdy zmieni się zweryfikowany obraz.
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/kilerdevs/PlanWAT/dev/tools/volunteer/install.sh
+sh install.sh --channel dev              # Windows: .\planwat-install.ps1 -Channel dev
+planwat-crawler update --channel stable  # powrót na wydania (Windows: planwat-crawler update -Channel stable)
+```
+
+Dopóki żadne wydanie nie zawiera crawlera wolontariusza, kanał `stable` mówi to wprost i odsyła do `--channel dev`.
+
 **Token.** Crawler wypycha paczki tokenem fine-grained, który widzi **wyłącznie Twój fork** (Contents: Read and write,
 nic więcej). Instalator otwiera wypełniony formularz; Ty wybierasz tylko repozytorium (swój fork) i klikasz Generate.
 Token klasyczny (`ghp_…`) albo token `gh auth login` (`gho_…`) jest odrzucany: sięga do wszystkich Twoich repozytoriów.

@@ -68,6 +68,8 @@ jobs:
           printf '%s\n' "$out"
           printf '%s\n' "$out" | grep -q "($FAMILY" || { echo "::error::expected family $FAMILY"; exit 1; }
           [ ! -e /tmp/planwat/.env ] || { echo '::error::--check wrote files'; exit 1; }
+          dev=$(PLANWAT_HOME=/tmp/planwat PLANWAT_BIN=/tmp/planwat-bin sh tools/volunteer/install.sh --check --channel dev)
+          printf '%s\n' "$dev" | grep -q 'kanał: dev' || { echo '::error::the dev channel was not picked'; exit 1; }
 
   windows:
     name: Windows script
@@ -103,6 +105,8 @@ jobs:
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/volunteer/install.ps1 -Check
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          $dev = powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/volunteer/install.ps1 -Check -Channel dev | Out-String
+          if ($dev -notmatch 'kanał: dev') { Write-Output $dev; exit 1 }
 
   install:
     name: full install (Ubuntu, images from this commit)

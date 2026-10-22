@@ -15,6 +15,8 @@
 #
 # Afterwards: planwat-crawler status | logs | doctor | setup | update | autoupdate on|off | start | stop | restart |
 #             uninstall | version
+# Channels (-Channel, remembered in .env, followed by updates): stable (default) installs the latest release, dev
+# installs the dev branch's files and the :dev images crawler-image.yml publishes from it; both verified alike.
 # Development: -Check (plan only), -Yes, -NoStart, -NoVerify, -Version X.Y.Z, $env:PLANWAT_INSTALL_SOURCE.
 [CmdletBinding()]
 param(
@@ -25,7 +27,8 @@ param(
     [switch] $NoStart,
     [switch] $NoVerify,
     [switch] $Auto,
-    [string] $Version = ''
+    [string] $Version = '',
+    [string] $Channel = ''
 )
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { Write-Verbose 'console encoding unchanged' }
@@ -139,14 +142,39 @@ function Get-LatestVersion {
     return ($release.tag_name -replace '^v', '')
 }
 
-function Get-ReleaseFiles([string] $Ver) {
+function Get-Channel {
+    # -Channel, else PLANWAT_CHANNEL, else what .env remembers, else stable.
+    $name = if ($Channel) { $Channel } elseif ($env:PLANWAT_CHANNEL) { $env:PLANWAT_CHANNEL } else { Get-EnvValue 'PLANWAT_CHANNEL' }
+    if (-not $name) { $name = 'stable' }
+    if ($name -notin @('stable', 'dev')) { Fail "nieznany kanał: $name (stable albo dev)" }
+    if ($Version -and $name -eq 'dev') { Fail '-Version dotyczy kanału stable' }
+    return $name
+}
+
+function Resolve-Release([string] $Name) {
+    # Where the files come from (Ref), which images (Tag), and what to call it (Label).
+    if ($Name -eq 'dev') {
+        $dev = ''
+        try { $dev = (Invoke-RestMethod -UseBasicParsing -Uri "https://raw.githubusercontent.com/$Repo/dev/package.json" -TimeoutSec 30).version } catch { $dev = '' }
+        return @{ Channel = 'dev'; Ref = 'dev'; Tag = 'dev'; Label = $(if ($dev) { "dev ($dev)" } else { 'dev' }) }
+    }
+    $ver = if ($Version) { $Version } else { Get-LatestVersion }
+    if (-not $ver) { Fail "nie mogę odczytać najnowszego wydania $Repo" }
+    return @{ Channel = 'stable'; Ref = "v$ver"; Tag = $ver; Label = $ver }
+}
+
+function Get-ReleaseFiles($Release) {
     New-Item -ItemType Directory -Force -Path $App | Out-Null
     if ($Source) {
         Copy-Item (Join-Path $Source 'tools/volunteer/compose.volunteer.yml') "$App\compose.yml.new" -Force
         Copy-Item (Join-Path $Source 'tools/volunteer/install.ps1') "$CommandFile.new" -Force
     } else {
-        $raw = "https://raw.githubusercontent.com/$Repo/v$Ver/tools/volunteer"
-        Invoke-WebRequest -UseBasicParsing -Uri "$raw/compose.volunteer.yml" -OutFile "$App\compose.yml.new"
+        $raw = "https://raw.githubusercontent.com/$Repo/$($Release.Ref)/tools/volunteer"
+        try { Invoke-WebRequest -UseBasicParsing -Uri "$raw/compose.volunteer.yml" -OutFile "$App\compose.yml.new" }
+        catch {
+            if ($Release.Channel -eq 'stable') { Fail "wydanie $($Release.Label) nie ma jeszcze crawlera wolontariusza; do czasu wydania użyj -Channel dev" }
+            Fail "nie mogę pobrać compose.yml z $($Release.Ref)"
+        }
         try { Invoke-WebRequest -UseBasicParsing -Uri "$raw/install.ps1" -OutFile "$CommandFile.new" }
         catch { Copy-Item $PSCommandPath "$CommandFile.new" -Force }
     }
@@ -259,7 +287,8 @@ function Install-Crawler {
     if (-not (Test-Docker)) { $plan += '  - Docker Desktop (winget; przy pierwszej instalacji także WSL2)' }
     if (-not $NoVerify -and -not (Test-Gh)) { $plan += "  - GitHub CLI >= $GhMin (winget; tylko do weryfikacji obrazów)" }
     Say 'PlanWAT: instalacja crawlera wolontariusza (Windows)'
-    Say "Katalog: $App, polecenie: planwat-crawler"
+    $chan = Get-Channel
+    Say "Katalog: $App, polecenie: planwat-crawler, kanał: $chan"
     if ($plan) { Say 'Do zainstalowania:'; $plan | ForEach-Object { Say $_ } } else { Say 'Potrzebne programy już są.' }
     Say 'Potem: obrazy z weryfikacją pochodzenia, kreator konfiguracji, start i codzienne aktualizacje.'
     if ($Check) { return }
@@ -272,16 +301,16 @@ function Install-Crawler {
     Start-Docker
     Enable-DockerAutostart
     Step 'Wydanie'
-    $ver = if ($Version) { $Version } else { Get-LatestVersion }
-    if (-not $ver) { Fail "nie mogę odczytać najnowszego wydania $Repo" }
-    Say "  wersja $ver"
-    Get-ReleaseFiles $ver
+    $release = Resolve-Release $chan
+    Say "  wersja $($release.Label)"
+    Get-ReleaseFiles $release
     Complete-ReleaseFiles
+    Set-EnvValue 'PLANWAT_CHANNEL' $chan
     Step 'Konto i token'
     Read-Identity
     Step 'Obrazy'
-    Set-Pins (Get-VerifiedImages $ver)
-    Set-EnvValue 'PLANWAT_VERSION' $ver
+    Set-Pins (Get-VerifiedImages $release.Tag)
+    Set-EnvValue 'PLANWAT_VERSION' $release.Label
     Step 'Konfiguracja'
     $extra = @()
     if ($env:PLANWAT_SETUP_ARGS) { $extra = $env:PLANWAT_SETUP_ARGS -split ' ' }
@@ -309,14 +338,28 @@ function Update-Crawler {
     if ($Auto) { Start-Transcript -Path $log -Append | Out-Null }
     try {
         $installed = Get-EnvValue 'PLANWAT_VERSION'
-        $ver = if ($Version) { $Version } else { Get-LatestVersion }
-        if (-not $Version -and $installed -and ([version]$installed -ge [version]$ver)) { Say "Masz najnowszą wersję ($installed)."; return }
-        Say "Aktualizacja $installed → $ver"
+        $was = Get-EnvValue 'PLANWAT_CHANNEL'
+        $chan = Get-Channel
+        $release = Resolve-Release $chan
+        $forced = [bool]($Version -or $Channel)
+        # A release number says enough on stable; anything else (dev, a channel switch) is decided by the digests.
+        if (-not $forced -and $chan -eq 'stable' -and (-not $was -or $was -eq 'stable') -and $installed -match '^\d+\.\d+\.\d+$' `
+                -and ([version]$installed -ge [version]$release.Tag)) {
+            Say "Masz najnowszą wersję ($installed)."; return
+        }
         Start-Docker
-        Get-ReleaseFiles $ver
-        $pins = Get-VerifiedImages $ver
+        Get-ReleaseFiles $release
+        $pins = Get-VerifiedImages $release.Tag
+        if (-not $forced -and $pins['planwat-crawler'] -eq (Get-EnvValue 'PLANWAT_CRAWLER_IMAGE') -and
+                $pins['planwat-crawler-egress'] -eq (Get-EnvValue 'PLANWAT_EGRESS_IMAGE')) {
+            Remove-Item "$App\compose.yml.new", "$CommandFile.new" -ErrorAction SilentlyContinue
+            Say "Masz najnowszą wersję ($($release.Label))."; return
+        }
+        $ver = $release.Label
+        Say "Aktualizacja $installed → $ver"
         Set-Pins $pins
         Complete-ReleaseFiles
+        Set-EnvValue 'PLANWAT_CHANNEL' $chan
         Invoke-Compose up -d --remove-orphans
         Start-Sleep -Seconds 90
         $running = @(Get-RunningServices)
@@ -327,6 +370,7 @@ function Update-Crawler {
             Set-EnvValue 'PLANWAT_CRAWLER_IMAGE' (Get-EnvValue 'PLANWAT_PREVIOUS_CRAWLER_IMAGE')
             Set-EnvValue 'PLANWAT_EGRESS_IMAGE' (Get-EnvValue 'PLANWAT_PREVIOUS_EGRESS_IMAGE')
             if (Test-Path "$App\compose.yml.prev") { Copy-Item "$App\compose.yml.prev" "$App\compose.yml" -Force }
+            if ($was) { Set-EnvValue 'PLANWAT_CHANNEL' $was }
             Invoke-Compose up -d --remove-orphans
             Fail "aktualizacja do $ver cofnięta (zostaje $installed)"
         }
@@ -372,7 +416,7 @@ switch ($Command) {
             'start' { Invoke-Compose up -d }
             'stop' { Invoke-Compose stop }
             'restart' { Invoke-Compose restart }
-            'version' { Say "planwat-crawler $(Get-EnvValue 'PLANWAT_VERSION')" }
+            'version' { Say "planwat-crawler $(Get-EnvValue 'PLANWAT_VERSION') (kanał $(Get-Channel))" }
             default { Fail "nieznane polecenie: $Command (status, logs, doctor, setup, update, autoupdate on|off, start, stop, restart, uninstall)" }
         }
     }

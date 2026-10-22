@@ -4,6 +4,9 @@
 # (crawler-image.yml); check one with `gh attestation verify oci://<image> --repo kilerdevs/PlanWAT`.
 FROM python:3.13-slim@sha256:57b29a7c050c4e679e4bea572e14b3965cf4b5839de2da49d55e49ffc4024f39
 
+LABEL org.opencontainers.image.source=https://github.com/kilerdevs/PlanWAT \
+      org.opencontainers.image.description="PlanWAT volunteer crawler (docs/WOLONTARIUSZE.md)"
+
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/work PLANWAT_REGISTRY_EDITORS=kilerdevs
 
 RUN apt-get update \

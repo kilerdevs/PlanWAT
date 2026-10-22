@@ -5,10 +5,20 @@ name: Crawler image
 # from this tag, by this workflow: gh attestation verify oci://ghcr.io/kilerdevs/planwat-crawler:<tag> --repo kilerdevs/PlanWAT
 # Both images are built natively for amd64 and arm64 (Raspberry Pi) and published as one multi-arch tag; the
 # provenance is attested on that index digest, which is also what the installer pins.
-# Pull requests only build both images (no push), so a broken Dockerfile shows up before a release.
+# A release tag v1.2.0 publishes :1.2.0 and :latest (the installers' stable channel); a push to dev that touches
+# the crawler publishes :dev and :dev-<commit> (the dev channel), attested the same way. Pull requests only build
+# both images (no push), so a broken Dockerfile shows up before a release.
 on:
   push:
-    tags: ['v*']
+    branches: [dev]
+    tags: ['v*']   # path filters are not applied to tag pushes: every release tag publishes
+    paths:
+      - tools/volunteer/**
+      - tools/refresh/**
+      - tools/egress/**
+      - build.py
+      - package.json
+      - .github/workflows/crawler-image.yml
   pull_request:
     paths:
       - tools/volunteer/**
@@ -107,6 +117,7 @@ jobs:
           tags=()
           case "$GITHUB_REF" in
             refs/tags/v*) tags=(-t "IMAGE:$tag" -t "IMAGE:latest") ;;
+            refs/heads/dev) tag="dev-${GITHUB_SHA::12}"; tags=(-t "IMAGE:$tag" -t "IMAGE:dev") ;;
             *) tag="dev-${GITHUB_SHA::12}"; tags=(-t "IMAGE:$tag") ;;
           esac
           for name in planwat-crawler planwat-crawler-egress; do

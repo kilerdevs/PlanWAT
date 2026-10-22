@@ -21,6 +21,10 @@
 # Afterwards this script is ~/.local/bin/planwat-crawler:
 #   status | logs | doctor | setup | update | autoupdate on|off | start | stop | restart | uninstall | version
 #
+# Channels (--channel, remembered in .env, followed by updates): stable (default) installs the latest release,
+# its files from the release tag and its images; dev installs what is on the dev branch, its files from that
+# branch and the :dev images that crawler-image.yml publishes (and attests) from it. Both are verified alike.
+#
 # For tests and development: --check (plan only), --yes, --no-start, --no-verify, --version X.Y.Z, and
 # PLANWAT_INSTALL_SOURCE=<checkout> (install the compose file and this script from a local checkout),
 # PLANWAT_CRAWLER_IMAGE / PLANWAT_EGRESS_IMAGE (use these images; with --no-verify), PLANWAT_LOGIN and
@@ -236,14 +240,33 @@ latest_version() {
     | sed -n 's/.*"tag_name": *"v\{0,1\}\([0-9][0-9.]*\)".*/\1/p' | head -n 1
 }
 
-fetch_release_files() {  # fetch_release_files VERSION: compose.yml and this command, from that release
+resolve_release() {  # for CHANNEL: REF (where the files come from), TAG (the images), LABEL (what to call it)
+  case "$CHANNEL" in
+    stable)
+      [ -n "$VERSION" ] || VERSION=$(latest_version)
+      [ -n "$VERSION" ] || die "nie mogę odczytać najnowszego wydania $REPO"
+      REF="v$VERSION"; TAG="$VERSION"; LABEL="$VERSION" ;;
+    dev)
+      [ -z "$VERSION" ] || die "--version dotyczy kanału stable"
+      REF=dev; TAG=dev
+      dev_version=$(curl -fsSL --proto '=https' --max-time 30 "https://raw.githubusercontent.com/$REPO/dev/package.json" \
+        2>/dev/null | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' | head -n 1)
+      LABEL="dev${dev_version:+ ($dev_version)}" ;;
+    *) die "nieznany kanał: $CHANNEL (stable albo dev)" ;;
+  esac
+}
+
+fetch_release_files() {  # compose.yml and this command, from REF (a release tag, or the dev branch)
   mkdir -p "$APP" "$BIN"
   if [ -n "$SOURCE" ]; then
     cp "$SOURCE/tools/volunteer/compose.volunteer.yml" "$APP/compose.yml.new"
     cp "$SOURCE/tools/volunteer/install.sh" "$BIN/planwat-crawler.new"
   else
-    raw="https://raw.githubusercontent.com/$REPO/v$1/tools/volunteer"
-    fetch "$raw/compose.volunteer.yml" "$APP/compose.yml.new" || die "nie mogę pobrać compose.yml wydania $1"
+    raw="https://raw.githubusercontent.com/$REPO/$REF/tools/volunteer"
+    if ! fetch "$raw/compose.volunteer.yml" "$APP/compose.yml.new"; then
+      [ "$CHANNEL" = stable ] && die "wydanie $LABEL nie ma jeszcze crawlera wolontariusza; do czasu wydania użyj --channel dev"
+      die "nie mogę pobrać compose.yml z $REF"
+    fi
     if ! fetch "$raw/install.sh" "$BIN/planwat-crawler.new"; then
       if [ -f "$0" ]; then cp "$0" "$BIN/planwat-crawler.new"; else die "nie mogę pobrać polecenia planwat-crawler"; fi
     fi
@@ -257,7 +280,7 @@ commit_release_files() {
   mv "$BIN/planwat-crawler.new" "$BIN/planwat-crawler"
 }
 
-verify_images() {  # verify_images VERSION: pull, check provenance, set PIN_CRAWLER / PIN_EGRESS (digest refs)
+verify_images() {  # verify_images TAG: pull, check provenance, set PIN_CRAWLER / PIN_EGRESS (digest refs)
   if [ "$VERIFY" = 0 ]; then
     PIN_CRAWLER="${PLANWAT_CRAWLER_IMAGE:-ghcr.io/kilerdevs/planwat-crawler:$1}"
     PIN_EGRESS="${PLANWAT_EGRESS_IMAGE:-ghcr.io/kilerdevs/planwat-crawler-egress:$1}"
@@ -399,10 +422,12 @@ cmd_install() {
       --no-start) START=0 ;;
       --no-verify) VERIFY=0 ;;
       --version) shift; VERSION="${1:-}" ;;
+      --channel) shift; CHANNEL="${1:-}" ;;
       *) die "nieznana opcja: $1" ;;
     esac
     shift
   done
+  pick_channel
   detect
   plan=''
   docker_ok || plan="$plan
@@ -412,7 +437,7 @@ cmd_install() {
   [ "$FAMILY" = macos ] && ! have brew && die "potrzebny Homebrew: https://brew.sh (zainstaluj go i uruchom ten skrypt ponownie)"
   say "PlanWAT: instalacja crawlera wolontariusza"
   say "System: $OS/$ARCH ($FAMILY$([ "$WSL" = 1 ] && echo ', WSL'))"
-  say "Katalog: $APP, polecenie: $BIN/planwat-crawler"
+  say "Katalog: $APP, polecenie: $BIN/planwat-crawler, kanał: $CHANNEL"
   if [ -n "$plan" ]; then say "Do zainstalowania:$plan"; else say 'Potrzebne programy już są.'; fi
   say "Potem: obrazy crawlera z weryfikacją pochodzenia, kreator konfiguracji, start i codzienne aktualizacje."
   if [ "$CHECK" = 1 ]; then return 0; fi
@@ -421,17 +446,17 @@ cmd_install() {
   if [ "$VERIFY" = 1 ] && ! gh_ok; then step 'GitHub CLI'; install_gh; fi
   start_docker
   step 'Wydanie'
-  [ -n "$VERSION" ] || VERSION=$(latest_version)
-  [ -n "$VERSION" ] || die "nie mogę odczytać najnowszego wydania $REPO"
-  say "  wersja $VERSION"
-  fetch_release_files "$VERSION"
+  resolve_release
+  say "  wersja $LABEL"
+  fetch_release_files
   commit_release_files
+  env_set PLANWAT_CHANNEL "$CHANNEL"
   step 'Konto i token'
   identity
   step 'Obrazy'
-  verify_images "$VERSION"
+  verify_images "$TAG"
   pin_images
-  env_set PLANWAT_VERSION "$VERSION"
+  env_set PLANWAT_VERSION "$LABEL"
   step 'Konfiguracja'
   # The wizard runs in the verified image as you (so it can write .env here), with the token from .env.
   # shellcheck disable=SC2086  # PLANWAT_SETUP_ARGS is a list of flags
@@ -462,6 +487,7 @@ cmd_update() {
     case "$1" in
       --auto) auto=1 ;;
       --version) shift; VERSION="${1:-}"; force=1 ;;
+      --channel) shift; CHANNEL="${1:-}"; force=1 ;;
       --no-verify) VERIFY=0 ;;
       *) die "nieznana opcja: $1" ;;
     esac
@@ -470,32 +496,43 @@ cmd_update() {
   [ "$auto" = 1 ] && [ "$(env_get PLANWAT_AUTO_UPDATE)" = 0 ] && return 0
   [ "$auto" = 1 ] && say "== $(date -u '+%Y-%m-%d %H:%M:%S') UTC: automatyczna aktualizacja"
   installed=$(env_get PLANWAT_VERSION)
-  [ -n "$VERSION" ] || VERSION=$(latest_version)
-  [ -n "$VERSION" ] || die "nie mogę odczytać najnowszego wydania $REPO"
-  if [ "$force" = 0 ] && [ -n "$installed" ] && ver_ge "$installed" "$VERSION"; then
+  was=$(env_get PLANWAT_CHANNEL)
+  pick_channel
+  resolve_release
+  # A release number says enough on stable; anything else (dev, a channel switch) is decided by the digests.
+  if [ "$force" = 0 ] && [ "$CHANNEL" = stable ] && [ "${was:-stable}" = stable ] && [ -n "$installed" ] \
+      && ver_ge "$installed" "$VERSION"; then
     say "Masz najnowszą wersję ($installed)."
     return 0
   fi
-  say "Aktualizacja ${installed:-?} → $VERSION"
-  fetch_release_files "$VERSION"
-  verify_images "$VERSION"
+  fetch_release_files
+  verify_images "$TAG"
+  if [ "$force" = 0 ] && [ "$PIN_CRAWLER" = "$(env_get PLANWAT_CRAWLER_IMAGE)" ] \
+      && [ "$PIN_EGRESS" = "$(env_get PLANWAT_EGRESS_IMAGE)" ]; then
+    rm -f "$APP/compose.yml.new" "$BIN/planwat-crawler.new"
+    say "Masz najnowszą wersję ($LABEL)."
+    return 0
+  fi
+  say "Aktualizacja ${installed:-?} → $LABEL"
   pin_images
   commit_release_files
+  env_set PLANWAT_CHANNEL "$CHANNEL"
   compose up -d --remove-orphans
   say '  sprawdzam, czy nowa wersja działa…'
   sleep "${PLANWAT_UPDATE_SETTLE:-90}"
   running=$(compose ps --status running --services 2>/dev/null || true)
   case "$running" in
     *crawler*egress*|*egress*crawler*)
-      env_set PLANWAT_VERSION "$VERSION"
-      say "✓ zaktualizowano do $VERSION" ;;
+      env_set PLANWAT_VERSION "$LABEL"
+      say "✓ zaktualizowano do $LABEL" ;;
     *)
       warn "nowa wersja nie wystartowała; wracam do poprzedniej"
       env_set PLANWAT_CRAWLER_IMAGE "$(env_get PLANWAT_PREVIOUS_CRAWLER_IMAGE)"
       env_set PLANWAT_EGRESS_IMAGE "$(env_get PLANWAT_PREVIOUS_EGRESS_IMAGE)"
       [ -f "$APP/compose.yml.prev" ] && cp "$APP/compose.yml.prev" "$APP/compose.yml"
+      [ -n "$was" ] && env_set PLANWAT_CHANNEL "$was"
       compose up -d --remove-orphans
-      die "aktualizacja do $VERSION cofnięta (zostaje ${installed:-poprzednia})" ;;
+      die "aktualizacja do $LABEL cofnięta (zostaje ${installed:-poprzednia})" ;;
   esac
 }
 
@@ -510,6 +547,13 @@ cmd_uninstall() {
   say '  - jeśli chcesz, usuń gałąź crawl ze swojego forka i napisz w swoim zgłoszeniu, że rezygnujesz'
 }
 
+pick_channel() {  # the --channel flag, else PLANWAT_CHANNEL, else what .env remembers, else stable
+  [ -n "$CHANNEL" ] || CHANNEL=$(env_get PLANWAT_CHANNEL)
+  [ -n "$CHANNEL" ] || CHANNEL=stable
+  case "$CHANNEL" in stable|dev) ;; *) die "nieznany kanał: $CHANNEL (stable albo dev)" ;; esac
+  if [ -n "$VERSION" ] && [ "$CHANNEL" = dev ]; then die "--version dotyczy kanału stable"; fi
+}
+
 running() { compose ps --status running --services 2>/dev/null | grep -qx crawler; }
 
 in_crawler() {  # run an entrypoint command in the running crawler, or in a one-off container
@@ -519,7 +563,7 @@ in_crawler() {  # run an entrypoint command in the running crawler, or in a one-
 }
 
 main() {
-  YES=0; VERIFY=1; VERSION=''
+  YES=0; VERIFY=1; VERSION=''; CHANNEL="${PLANWAT_CHANNEL:-}"
   cmd="${1:-}"
   case "$cmd" in
     ''|install) [ $# -gt 0 ] && shift; cmd_install "$@"; return ;;
@@ -548,7 +592,7 @@ main() {
     stop) compose stop ;;
     restart) compose restart ;;
     uninstall) cmd_uninstall ;;
-    version) say "planwat-crawler $(env_get PLANWAT_VERSION)" ;;
+    version) say "planwat-crawler $(env_get PLANWAT_VERSION) (kanał ${CHANNEL:-$(env_get PLANWAT_CHANNEL)})" ;;
     help|-h) sed -n '2,30p' "$0" ;;
     *) die "nieznane polecenie: $cmd (status, logs, doctor, setup, update, autoupdate on|off, start, stop, restart, uninstall)" ;;
   esac
