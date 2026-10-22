@@ -206,9 +206,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   - zmiana widoku, otwierane panele, powiadomienia i pola formularzy łagodnie się pojawiają;
   - wykresy w statystykach rosną od osi;
   - zmiana motywu przechodzi płynnie;
-  - tło planu to teraz kilka miękkich plam światła w odcieniach niebieskiego (7 na komputerze, 5 na telefonie), rozrzuconych
-    losowo po ekranie przy każdym wejściu i bardzo powoli dryfujących; w jasnym motywie są delikatniejsze, żeby szary tekst
-    nie tracił kontrastu, a przy „ogranicz ruch” stoją w miejscu;
+  - tło planu to teraz duża, powoli falująca siatka światła: pięć ogromnych, nachodzących na siebie plam w odcieniach
+    niebieskiego, fioletu i turkusu, ułożonych losowo przy każdym wejściu, z delikatnym ziarnem. Rysuje ją mały canvas
+    rozciągnięty na cały ekran, więc działa płynnie także na telefonach. Siła koloru jest ograniczona tak, że szary tekst
+    zawsze zachowuje kontrast 4,5:1 (w jasnym motywie pastele nie są ciemniejsze od tła), a przy „ogranicz ruch” tło stoi;
   - na stronie głównej wydziały zwijają się płynnie, a wyszukiwarka grup także się chowa z animacją.
 
   Przyciski reagują na dotyk, a ruch ustępuje całkowicie przy „ogranicz ruch” w systemie.

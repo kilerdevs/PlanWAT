@@ -506,9 +506,11 @@ test('share hands the page link to the system share sheet', async ({ page }) => 
 
 test('choice rows keep a clear gap before the block they introduce', async ({ page }) => {
   await openGroup(page);
-  // measured at rest: a field that was just shown settles a few pixels into place
+  // measured at rest: a field that was just shown settles a few pixels into place (scroll-linked effects, like the
+  // header's, always count as running and are left out)
   const gap = async (first, second) => {
-    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.timeline !== document.timeline
+      || a.effect.getComputedTiming().iterations === Infinity));
     return page.evaluate(([a, b]) => {
       return document.querySelector(b).getBoundingClientRect().top - document.querySelector(a).getBoundingClientRect().bottom;
     }, [first, second]);
