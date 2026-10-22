@@ -6,7 +6,7 @@
 
 **Pomóż utrzymać plany aktualne: Twój crawler sprawdza część grup, a serwis przyjmuje tylko to, co da się zweryfikować.**
 
-[![Collect](https://github.com/kilerdevs/PlanWAT/actions/workflows/collect.yml/badge.svg)](https://github.com/kilerdevs/PlanWAT/actions/workflows/collect.yml)
+[![Instalator](https://github.com/kilerdevs/PlanWAT/actions/workflows/installer.yml/badge.svg?branch=dev)](https://github.com/kilerdevs/PlanWAT/actions/workflows/installer.yml)
 ![Dołączanie](https://img.shields.io/badge/do%C5%82%C4%85czanie-na%20zaproszenie-blue?style=flat)
 ![Kworum](https://img.shields.io/badge/kworum-2%20wolontariuszy-informational?style=flat)
 ![Sekrety projektu](https://img.shields.io/badge/sekrety%20projektu-brak-brightgreen?style=flat)
