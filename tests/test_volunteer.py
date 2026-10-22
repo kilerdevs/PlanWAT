@@ -620,6 +620,16 @@ class RegistryReaderTest(unittest.TestCase):
             with self.assertRaises(assign.RegistryError):
                 registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=get)
 
+    def test_a_rejected_token_falls_back_to_reading_anonymously(self):
+        good, _ = self.fake()
+        seen = []
+
+        def get(url, token=None):
+            seen.append(token)
+            return (401, b'') if token else good(url, token)
+        reg, _, _, _ = registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', token='github_pat_old', get=get)
+        self.assertEqual((reg['volunteers'][0]['login'], seen[:2]), ('alice', ['github_pat_old', None]))
+
     def test_a_missing_branch_and_an_outage_are_told_apart(self):
         with self.assertRaises(registry_reader.Missing):
             registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=self.fake(head=404)[0])

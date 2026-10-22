@@ -72,6 +72,9 @@ def fetch_verified(upstream, editors, token=None, get=http_get):
     if not allowed:
         raise assign.RegistryError('no registry editors configured')
     status, body = get(f'{API}/repos/{upstream}/commits/{BRANCH}', token)
+    if status == 401 and token:
+        # An expired or revoked token must not blind the crawler: the registry is public, so ask anonymously.
+        status, body = get(f'{API}/repos/{upstream}/commits/{BRANCH}', None)
     if status in (404, 422):
         raise Missing(f'{upstream} has no {BRANCH} branch')
     if status != 200:

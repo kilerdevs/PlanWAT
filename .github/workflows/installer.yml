@@ -1,0 +1,158 @@
+name: Volunteer installer
+
+# The one-command installers of the volunteer crawler (tools/volunteer/install.sh for Linux and macOS,
+# install.ps1 for Windows; docs/WOLONTARIUSZE.md). Everything here runs on GitHub's runners: linting, the
+# detect-and-plan mode on every supported system family, and one full install on Ubuntu with images built from
+# this commit (provenance cannot be verified for those, so that run uses --no-verify; the verified path is
+# exercised by every real install and update against the published, attested images).
+on:
+  push:
+    branches: [dev]
+    paths:
+      - tools/volunteer/**
+      - .github/workflows/installer.yml
+  pull_request:
+    paths:
+      - tools/volunteer/**
+      - tools/refresh/**
+      - tools/egress/**
+      - .github/workflows/installer.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: shellcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: shellcheck --shell=sh tools/volunteer/install.sh tools/volunteer/entrypoint.sh
+
+  plan:
+    name: plan on ${{ matrix.image || matrix.os }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.image }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, image: 'debian:12', family: debian }
+          - { os: ubuntu-24.04, image: 'ubuntu:24.04', family: ubuntu }
+          - { os: ubuntu-24.04, image: 'fedora:41', family: fedora }
+          - { os: ubuntu-24.04, image: 'rockylinux:9', family: rhel }
+          - { os: ubuntu-24.04, image: 'archlinux:latest', family: arch }
+          - { os: ubuntu-24.04, image: 'opensuse/tumbleweed:latest', family: suse }
+          - { os: ubuntu-24.04-arm, image: 'debian:12', family: debian }
+          - { os: macos-14, family: macos }
+    steps:
+      - name: Tools the script itself relies on (awk is missing from some minimal images)
+        if: matrix.image
+        shell: sh
+        run: command -v awk >/dev/null 2>&1 || zypper -n in gawk || pacman -Sy --noconfirm gawk
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Detect and plan, change nothing
+        shell: sh
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: |
+          set -eu
+          out=$(PLANWAT_HOME=/tmp/planwat PLANWAT_BIN=/tmp/planwat-bin sh tools/volunteer/install.sh --check)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q "($FAMILY" || { echo "::error::expected family $FAMILY"; exit 1; }
+          [ ! -e /tmp/planwat/.env ] || { echo '::error::--check wrote files'; exit 1; }
+
+  windows:
+    name: Windows script
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Parses in Windows PowerShell 5.1 and PowerShell 7
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/tools/volunteer/install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+          powershell.exe -NoProfile -Command "`$e=`$null; [System.Management.Automation.Language.Parser]::ParseFile('$PWD\tools\volunteer\install.ps1',[ref]`$null,[ref]`$e) | Out-Null; if (`$e) { `$e; exit 1 }"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -RequiredVersion 1.24.0
+          # Write-Host is deliberate (terminal lines that must never become part of a function's result).
+          $found = Invoke-ScriptAnalyzer -Path tools/volunteer/install.ps1 -Severity Error,Warning `
+            -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions,PSUseSingularNouns
+          $found | Format-Table -AutoSize | Out-String | Write-Output
+          if ($found | Where-Object Severity -eq 'Error') { exit 1 }
+      - name: Detect and plan, change nothing
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/volunteer/install.ps1 -Check
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+  install:
+    name: full install (Ubuntu, images from this commit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PLANWAT_HOME: /tmp/planwat
+      PLANWAT_BIN: /tmp/planwat-bin
+      PLANWAT_INSTALL_SOURCE: ${{ github.workspace }}
+      PLANWAT_CRAWLER_IMAGE: planwat-crawler:ci
+      PLANWAT_EGRESS_IMAGE: planwat-crawler-egress:ci
+      PLANWAT_LOGIN: planwat-ci-volunteer
+      PLANWAT_FORK_TOKEN: github_pat_ci_not_a_real_token
+      PLANWAT_SETUP_ARGS: --skip-github-checks --faculties= --auto-update off --non-interactive
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the images
+        run: |
+          docker build -f tools/volunteer/Dockerfile -t planwat-crawler:ci .
+          docker build -f tools/egress/Dockerfile.egress -t planwat-crawler-egress:ci tools/egress
+      - name: Install
+        run: sh tools/volunteer/install.sh --yes --no-verify --no-start --version 0.0.0
+      - name: What it left behind
+        run: |
+          set -eu
+          env_file="$PLANWAT_HOME/.env"
+          test "$(stat -c %a "$env_file")" = 600
+          grep -qx 'PLANWAT_LOGIN=planwat-ci-volunteer' "$env_file"
+          grep -qx 'PLANWAT_AUTO_UPDATE=0' "$env_file"
+          grep -qx 'PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci' "$env_file"
+          test -x "$PLANWAT_BIN/planwat-crawler"
+          "$PLANWAT_BIN/planwat-crawler" version
+          "$PLANWAT_BIN/planwat-crawler" doctor --offline || true
+      - name: Start, report, schedule, stop
+        run: |
+          set -eu
+          cmd="$PLANWAT_BIN/planwat-crawler"
+          "$cmd" start
+          # Not in the registry (or no registry yet): the crawler must say so and wait instead of crawling or crashing.
+          waiting='wpis do rejestru|no volunteer registry yet'
+          for i in $(seq 1 30); do
+            if "$cmd" status 2>&1 | tee /tmp/status.txt | grep -Eq "$waiting"; then break; fi
+            sleep 5
+          done
+          cat /tmp/status.txt
+          grep -Eq "$waiting" /tmp/status.txt
+          docker compose --project-name planwat-crawler ps
+          "$cmd" autoupdate on
+          systemctl list-timers --all | grep -q planwat-crawler-update
+          "$cmd" autoupdate off
+          if systemctl list-timers --all | grep -q planwat-crawler-update; then
+            echo '::error::the update timer is still there'; exit 1
+          fi
+      - name: Uninstall
+        run: |
+          set -eu
+          echo | "$PLANWAT_BIN/planwat-crawler" uninstall
+          test ! -e "$PLANWAT_HOME"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=planwat-crawler)"

@@ -10,8 +10,9 @@ classic token, its expiry), one polite request to each faculty site to see which
 entry in the registry (or a prefilled application when there is none yet), and whether to update automatically.
 
 Without a terminal (CI, scripts) every answer comes from the flags or the environment instead:
---login, --fork, --token (or PLANWAT_FORK_TOKEN), --faculties, --auto-update on|off, and --skip-github-checks
-to write .env without asking GitHub anything.
+--login, --fork, --token (or PLANWAT_SETUP_TOKEN), --faculties, --auto-update on|off, and --skip-github-checks
+to write .env without asking GitHub anything. --keep-token uses (and checks) the token already in .env: the
+installer asks for it on the host, because it needs it to verify the images before anything runs in them.
 """
 import argparse
 import getpass
@@ -156,6 +157,16 @@ class Wizard:
         raise SystemExit('setup: the fork did not appear; run setup again once it exists')
 
     def token(self, login, fork, current):
+        if self.args.keep_token and current and not self.args.token:
+            # The installer already asked for it on the host (it verifies the images with it first): check it only.
+            problem, expires = ('', None) if self.args.skip_github_checks else bundle.token_report(fork, current)
+            if not problem:
+                self.say(f'  ✓ token działa{f", wygasa {expires[:10]}" if expires else ""}')
+                return current
+            self.say(f'  ✗ {problem}')
+            if not self.interactive:
+                raise SystemExit(f'setup: {problem}')
+            current = ''
         if self.args.token or (not self.interactive and current):
             token = self.args.token or current
             problem, expires = ('', None) if self.args.skip_github_checks else bundle.token_report(fork, token)
@@ -259,6 +270,7 @@ def main(argv=None):
     ap.add_argument('--login')
     ap.add_argument('--fork')
     ap.add_argument('--token', default=os.environ.get('PLANWAT_SETUP_TOKEN'))
+    ap.add_argument('--keep-token', action='store_true', help='use the token already in .env (checking it)')
     ap.add_argument('--faculties', help='comma-separated; empty string means all (skips the probe)')
     ap.add_argument('--auto-update', choices=('on', 'off'))
     ap.add_argument('--upstream', default=os.environ.get('PLANWAT_UPSTREAM') or UPSTREAM)
