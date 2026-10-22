@@ -86,16 +86,6 @@
     --r-ctl: 12px;
     --r-pill: 999px;
 
-    /* the background mesh: its colours and how strongly it shows (light theme: theme-light.css). At --mesh-k a pixel of any
-       of these colours, or any mix of them, still leaves --t3 text 4.5:1 on the page */
-    --mesh-1: #0a84ff;
-    --mesh-2: #5e5ce6;
-    --mesh-3: #30b0c7;
-    --mesh-4: #bf5af2;
-    --mesh-k: 0.17;
-    --mesh-fallback: rgba(10, 132, 255, 0.16);
-    --grain: 0.035;
-
     /* motion (the easings and durations are shared, in theme.css) */
     --rise-y: 16px;
     --rise-blur: 0px;
@@ -136,27 +126,18 @@
     caret-color: var(--accent);
   }
   .page { position: relative; display: block; overflow-x: clip; }
-  /* the background: one large, slowly shifting mesh of light in the accent's blues (meshBackground draws it). A small
-     canvas, about an eighth of the screen, is stretched over the whole screen: soft gradients survive that untouched,
-     so the whole effect is one tiny texture redrawn a few dozen times a second, on phones too. It sits behind everything
-     on the page (the page is its own stacking context). --mesh-k caps its strength: every pixel is a mix of the palette
-     at most that strong, so grey text keeps 4.5:1 however the blobs overlap; the light theme's pastels are no darker
-     than the page and cannot cost contrast at all. A faint static grain hides the 8-bit steps of the gradients */
-  .page { isolation: isolate; }
-  .glows {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100vh; height: 100lvh; z-index: -1; pointer-events: none;
-    /* until the mesh runs (and without script): one quiet glow behind the title */
-    background: radial-gradient(80vmax 55vmax at 50% -12%, var(--mesh-fallback), transparent 70%);
-  }
-  .glows.mesh-on { background: none; }
-  .glows canvas { display: block; width: 100%; height: 100%; opacity: 0; transition: opacity 1.2s var(--ease-out); }
-  .glows.mesh-on canvas { opacity: var(--mesh-k); }
-  .glows::after {
+  /* the one ambient glow: static, behind the title area */
+  .page::before {
     content: '';
     position: absolute;
-    inset: 0;
-    opacity: var(--grain);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    top: -260px;
+    left: 50%;
+    width: min(1100px, 160vw);
+    height: 720px;
+    transform: translateX(-50%);
+    background: radial-gradient(closest-side, rgba(10, 132, 255, 0.13), rgba(10, 132, 255, 0.04) 55%, transparent);
+    pointer-events: none;
+    z-index: 0;
   }
   ::selection { background: var(--accent-select); color: #fff; }
   h1, h2, h3 { margin: 0; text-wrap: balance; }
@@ -1840,7 +1821,6 @@
     :root { --rise-y: 0px; --rise-blur: 0px; }
     :root[data-vt], .week[data-dir] { --vt-x: 0px; }
     .dot::after, .skel span::after { animation: none; }
-    .glows canvas { transition: none; }
     .todaypill, .todaypill.show, .todaypill.show:active { transform: translate(-50%, 0); }
     .toast, .toast.show { transform: translate(-50%, 0); }
     .live:hover, .live:active, .lesson:hover, .week .lesson:hover, .round:not(:disabled):active, .weekbtn:active, .chip:active, .dl:active,
@@ -1867,7 +1847,7 @@
     .rv, .enter, .hero-intro { transform: none !important; opacity: 1 !important; }
 
     /* what a sheet of paper does not need */
-    .glows, .backlink, .semprog, .tools, .notice, .viewbar, .live, .skel, .hint, .themeswitch, .toast, .todaypill,
+    .page::before, .backlink, .semprog, .tools, .notice, .viewbar, .live, .skel, .hint, .themeswitch, .toast, .todaypill,
     .bar .round, .weekbtn .i, .month-head .round, #progress, .legend-tip, .gap, .gaptag, .daymap, .count, .today-pill, .colbg,
     .st, .dur, .tick, .room .i, .room svg, .bar::before, .legend { display: none !important; }
     .wrap { max-width: none; padding-left: 0; padding-right: 0; margin: 0; }
@@ -1955,7 +1935,6 @@
 </svg>
 
 <main class="page">
-  <div class="glows" id="glows" aria-hidden="true"><canvas></canvas></div>
   <header class="hero wrap" id="hero">
     <div class="hero-main">
       <div class="hero-intro">
@@ -2652,83 +2631,6 @@
     prepareReveal(first);
     watchPings();
   }
-
-  /* the background mesh (see .glows): five large blobs, each wandering its own slow path (sines of 70-140 s) and breathing
-     a little, so they always overlap and the colours keep shifting. Every load arranges them anew: jittered anchors that
-     cover the corners and the middle, colours in a random order, paths starting at random points */
-  (function meshBackground() {
-    var box = $('glows'), canvas = box && box.querySelector('canvas');
-    var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
-    if (!ctx) return;
-    var TAU = Math.PI * 2;
-    var rand = function (a, b) { return a + Math.random() * (b - a); };
-    var slots = [0, 1, 2, 0, 1];
-    for (var i = slots.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = slots[i]; slots[i] = slots[j]; slots[j] = t; }
-    slots[Math.floor(Math.random() * slots.length)] = 3; /* the purple accent: one blob, a little smaller */
-    var blobs = [[0.12, 0.1], [0.88, 0.14], [0.5, 0.52], [0.1, 0.9], [0.9, 0.88]].map(function (at, k) {
-      return {
-        x: at[0] + rand(-0.08, 0.08), y: at[1] + rand(-0.08, 0.08), c: slots[k],
-        r: rand(0.55, 0.85) * (slots[k] === 3 ? 0.75 : 1),
-        ax: rand(0.08, 0.16), ay: rand(0.06, 0.14),
-        px: rand(70, 140), py: rand(70, 140), pr: rand(50, 90),
-        fx: rand(0, TAU), fy: rand(0, TAU), fr: rand(0, TAU)
-      };
-    });
-    var W = 0, H = 0, palette = [];
-    function readPalette() {
-      var css = getComputedStyle(document.documentElement);
-      palette = [1, 2, 3, 4].map(function (n) {
-        var hex = css.getPropertyValue('--mesh-' + n).trim().replace('#', '');
-        if (hex.length === 3) hex = hex.replace(/./g, '$&$&');
-        return [0, 2, 4].map(function (o) { return parseInt(hex.slice(o, o + 2), 16) || 0; }).join(',');
-      });
-    }
-    function fit() {
-      W = Math.max(24, Math.round(box.clientWidth / 8));
-      H = Math.max(24, Math.round(box.clientHeight / 8));
-      canvas.width = W;
-      canvas.height = H;
-    }
-    function draw(t) {
-      ctx.clearRect(0, 0, W, H);
-      var m = Math.max(W, H);
-      blobs.forEach(function (b) {
-        var x = (b.x + b.ax * Math.sin(TAU * t / b.px + b.fx)) * W;
-        var y = (b.y + b.ay * Math.sin(TAU * t / b.py + b.fy)) * H;
-        var r = b.r * m * (1 + 0.06 * Math.sin(TAU * t / b.pr + b.fr));
-        var c = palette[b.c];
-        var g = ctx.createRadialGradient(x, y, 0, x, y, r);
-        g.addColorStop(0, 'rgba(' + c + ',1)');
-        g.addColorStop(0.35, 'rgba(' + c + ',0.62)');
-        g.addColorStop(0.7, 'rgba(' + c + ',0.2)');
-        g.addColorStop(1, 'rgba(' + c + ',0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, W, H);
-      });
-    }
-    var start = Date.now(), last = 0;
-    var now = function () { return (Date.now() - start) / 1000; };
-    readPalette();
-    fit();
-    draw(0);
-    box.classList.add('mesh-on'); /* not 'live': that is the Live card's class */
-    /* a theme change brings its own palette; a still mesh is redrawn at once */
-    var retheme = function () { readPalette(); if (reduceMotion) draw(0); };
-    if (window.MutationObserver) new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    var scheme = mql('(prefers-color-scheme: light)');
-    if (scheme) { if (scheme.addEventListener) scheme.addEventListener('change', retheme); else if (scheme.addListener) scheme.addListener(retheme); }
-    var resizeTimer = null;
-    window.addEventListener('resize', function () {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(function () { fit(); draw(reduceMotion ? 0 : now()); }, 150);
-    });
-    if (reduceMotion) return;
-    /* ~30 frames a second is plenty for motion this slow; the browser stops the loop in a hidden tab */
-    (function frame(ms) {
-      if (ms - last >= 32) { last = ms; draw(now()); }
-      requestAnimationFrame(frame);
-    })(0);
-  })();
 
   /* looping pings rest while their element is off-screen */
   var pingIO = null;

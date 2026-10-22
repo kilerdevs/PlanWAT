@@ -206,10 +206,6 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   - zmiana widoku, otwierane panele, powiadomienia i pola formularzy łagodnie się pojawiają;
   - wykresy w statystykach rosną od osi;
   - zmiana motywu przechodzi płynnie;
-  - tło planu to teraz duża, powoli falująca siatka światła: pięć ogromnych, nachodzących na siebie plam w odcieniach
-    niebieskiego, fioletu i turkusu, ułożonych losowo przy każdym wejściu, z delikatnym ziarnem. Rysuje ją mały canvas
-    rozciągnięty na cały ekran, więc działa płynnie także na telefonach. Siła koloru jest ograniczona tak, że szary tekst
-    zawsze zachowuje kontrast 4,5:1 (w jasnym motywie pastele nie są ciemniejsze od tła), a przy „ogranicz ruch” tło stoi;
   - na stronie głównej wydziały zwijają się płynnie, a wyszukiwarka grup także się chowa z animacją.
 
   Przyciski reagują na dotyk, a ruch ustępuje całkowicie przy „ogranicz ruch” w systemie.
@@ -217,7 +213,7 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ### Naprawiono
 - **Kontrast w jasnym motywie:** daty minionych dni, opis dnia w kolumnie „Dziś” i plakietka „Dziś” miały kontrast 4,0–4,4:1,
   a zielona godzina w „Wolnych salach” 3,7:1, zamiast wymaganych 4,5:1. Odcienie `--past-2`, `--t3`, `--accent-text` i `--free`
-  są odrobinę ciemniejsze, a wynik na mapie planów (szary w środku skali, 2,8:1) przybiera w jasnym motywie odcień tekstu. Skan axe wcześniej tych miejsc nie oceniał (m.in. przez statyczną poświatę za tytułem).
+  są odrobinę ciemniejsze, a wynik na mapie planów (szary w środku skali, 2,8:1) przybiera w jasnym motywie odcień tekstu. Skan axe wcześniej tych miejsc nie oceniał.
 - **Postęp semestru liczony z pustych miesięcy:** 31 kalendarzy WCY (np. `WCY25IX1S0`) miało daty zeszłego semestru letniego
   (np. 02.03–27.07.2026), bo konwerter brał początek semestru z pozostawionych na stronie wydziału zajęć z marca. Siatka tygodni
   zaczynała się wtedy w marcu, a „Postęp semestru” pokazywał 69% zamiast 15%. `build.py` sprawdza teraz początek semestru
