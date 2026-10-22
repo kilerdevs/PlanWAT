@@ -114,14 +114,13 @@ detect() {
   elif [ "$OS" = Linux ]; then
     id=$(os_field ID); like=$(os_field ID_LIKE)
     case " $id $like " in
+      " fedora "*) FAMILY=fedora ;;
       *" ubuntu "*) FAMILY=ubuntu; CODENAME=$(os_field UBUNTU_CODENAME); [ -n "$CODENAME" ] || CODENAME=$(os_field VERSION_CODENAME) ;;
       *" debian "*|*" raspbian "*) FAMILY=debian; CODENAME=$(os_field VERSION_CODENAME) ;;
-      *" fedora "*) FAMILY=fedora ;;
       *" rhel "*|*" centos "*|*" rocky "*|*" almalinux "*) FAMILY=rhel; [ "$id" = rhel ] && RHEL_REPO=rhel || RHEL_REPO=centos ;;
       *" arch "*|*" manjaro "*|*" endeavouros "*) FAMILY=arch ;;
       *" opensuse"*|*" suse "*|*" sles "*) FAMILY=suse ;;
     esac
-    case " $id $like " in *" fedora "*) FAMILY=fedora ;; esac
     if grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null; then WSL=1; fi
   else
     die "system $OS nie jest obsługiwany przez ten skrypt (Windows: install.ps1)"
@@ -246,7 +245,7 @@ fetch_release_files() {  # fetch_release_files VERSION: compose.yml and this com
     raw="https://raw.githubusercontent.com/$REPO/v$1/tools/volunteer"
     fetch "$raw/compose.volunteer.yml" "$APP/compose.yml.new" || die "nie mogę pobrać compose.yml wydania $1"
     if ! fetch "$raw/install.sh" "$BIN/planwat-crawler.new"; then
-      [ -f "$0" ] && cp "$0" "$BIN/planwat-crawler.new" || die "nie mogę pobrać polecenia planwat-crawler"
+      if [ -f "$0" ]; then cp "$0" "$BIN/planwat-crawler.new"; else die "nie mogę pobrać polecenia planwat-crawler"; fi
     fi
   fi
   chmod 755 "$BIN/planwat-crawler.new"
@@ -502,7 +501,7 @@ cmd_update() {
 
 cmd_uninstall() {
   confirm 'Usunąć crawler, jego dane i harmonogram aktualizacji?' || die 'przerwano'
-  [ -f "$APP/compose.yml" ] && compose down -v --remove-orphans || true
+  if [ -f "$APP/compose.yml" ]; then compose down -v --remove-orphans || true; fi
   autoupdate_off >/dev/null 2>&1 || true
   rm -rf "$APP"
   rm -f "$BIN/planwat-crawler"
