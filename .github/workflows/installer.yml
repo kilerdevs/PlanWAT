@@ -106,7 +106,7 @@ jobs:
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/volunteer/install.ps1 -Check
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $dev = powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/volunteer/install.ps1 -Check -Channel dev | Out-String
-          if ($dev -notmatch 'kanał: dev') { Write-Output $dev; exit 1 }
+          if ($dev -notmatch 'kana.: dev')  # ASCII only: PowerShell 5.1 reads this step without a BOM { Write-Output $dev; exit 1 }
 
   install:
     name: full install (Ubuntu, images from this commit)
