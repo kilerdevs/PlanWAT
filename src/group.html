@@ -126,19 +126,53 @@
     caret-color: var(--accent);
   }
   .page { position: relative; display: block; overflow-x: clip; }
-  /* the one ambient glow: static, behind the title area */
-  .page::before {
-    content: '';
+  /* the ambient light behind the title: three soft glows in the accent's blues, each drifting on its own slow loop.
+     Only transform and opacity move, so the compositor does all the work and nothing repaints, on phones too; they
+     stand still under reduced motion and rest while scrolled out of view */
+  .glows { position: absolute; top: 0; left: 0; right: 0; height: 0; z-index: 0; pointer-events: none; }
+  .glows i {
+    --c: 10, 132, 255;
+    --a: 0.13;
     position: absolute;
-    top: -260px;
-    left: 50%;
-    width: min(1100px, 160vw);
-    height: 720px;
-    transform: translateX(-50%);
-    background: radial-gradient(closest-side, rgba(10, 132, 255, 0.13), rgba(10, 132, 255, 0.04) 55%, transparent);
-    pointer-events: none;
-    z-index: 0;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(var(--c), var(--a)), rgba(var(--c), calc(var(--a) * 0.55)) 35%,
+      rgba(var(--c), calc(var(--a) * 0.18)) 65%, rgba(var(--c), 0));
+    will-change: transform, opacity;
+    animation: var(--path) var(--t) ease-in-out var(--delay) infinite alternate both;
   }
+  /* the main one, centred over the title */
+  .glows i:nth-child(1) {
+    top: -300px; left: 50%; width: min(820px, 150vw); height: 620px; margin-left: calc(min(820px, 150vw) / -2);
+    --path: glow-a; --t: 56s; --delay: -21s;
+  }
+  /* indigo, from the left */
+  .glows i:nth-child(2) {
+    --c: 94, 92, 230; --a: 0.1;
+    top: -180px; left: -12%; width: min(600px, 110vw); height: 480px;
+    --path: glow-b; --t: 71s; --delay: -38s;
+  }
+  /* a cooler cyan, from the right and a little lower */
+  .glows i:nth-child(3) {
+    --c: 100, 210, 255; --a: 0.07;
+    top: -40px; right: -14%; width: min(560px, 100vw); height: 440px;
+    --path: glow-c; --t: 83s; --delay: -12s;
+  }
+  @keyframes glow-a {
+    0% { transform: translate3d(-70px, 0, 0) scale(1); opacity: 1; }
+    50% { transform: translate3d(30px, 36px, 0) scale(1.06); opacity: 0.85; }
+    100% { transform: translate3d(90px, -12px, 0) scale(0.97); opacity: 1; }
+  }
+  @keyframes glow-b {
+    0% { transform: translate3d(0, 0, 0) scale(0.95); opacity: 0.7; }
+    50% { transform: translate3d(120px, 60px, 0) scale(1.08); opacity: 1; }
+    100% { transform: translate3d(220px, 10px, 0) scale(1); opacity: 0.8; }
+  }
+  @keyframes glow-c {
+    0% { transform: translate3d(0, 0, 0) scale(1.05); opacity: 1; }
+    50% { transform: translate3d(-110px, -50px, 0) scale(0.94); opacity: 0.75; }
+    100% { transform: translate3d(-200px, 30px, 0) scale(1.02); opacity: 1; }
+  }
+  .glows.calm i { animation-play-state: paused; }
   ::selection { background: var(--accent-select); color: #fff; }
   h1, h2, h3 { margin: 0; text-wrap: balance; }
   p { margin: 0; }
@@ -1818,7 +1852,7 @@
   @media (prefers-reduced-motion: reduce) {
     :root { --rise-y: 0px; --rise-blur: 0px; }
     :root[data-vt], .week[data-dir] { --vt-x: 0px; }
-    .dot::after, .skel span::after { animation: none; }
+    .dot::after, .skel span::after, .glows i { animation: none; }
     .todaypill, .todaypill.show, .todaypill.show:active { transform: translate(-50%, 0); }
     .toast, .toast.show { transform: translate(-50%, 0); }
     .live:hover, .live:active, .lesson:hover, .week .lesson:hover, .round:not(:disabled):active, .weekbtn:active, .chip:active, .dl:active,
@@ -1845,7 +1879,7 @@
     .rv, .enter, .hero-intro { transform: none !important; opacity: 1 !important; }
 
     /* what a sheet of paper does not need */
-    .page::before, .backlink, .semprog, .tools, .notice, .viewbar, .live, .skel, .hint, .themeswitch, .toast, .todaypill,
+    .glows, .backlink, .semprog, .tools, .notice, .viewbar, .live, .skel, .hint, .themeswitch, .toast, .todaypill,
     .bar .round, .weekbtn .i, .month-head .round, #progress, .legend-tip, .gap, .gaptag, .daymap, .count, .today-pill, .colbg,
     .st, .dur, .tick, .room .i, .room svg, .bar::before, .legend { display: none !important; }
     .wrap { max-width: none; padding-left: 0; padding-right: 0; margin: 0; }
@@ -1933,6 +1967,7 @@
 </svg>
 
 <main class="page">
+  <div class="glows" id="glows" aria-hidden="true"><i></i><i></i><i></i></div>
   <header class="hero wrap" id="hero">
     <div class="hero-main">
       <div class="hero-intro">
@@ -2628,6 +2663,12 @@
     updateLive(true);
     prepareReveal(first);
     watchPings();
+  }
+
+  /* the background glows rest while the top of the page is scrolled away */
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) { $('glows').classList.toggle('calm', !entries[0].isIntersecting); },
+      { rootMargin: '320px 0px' }).observe($('hero'));
   }
 
   /* looping pings rest while their element is off-screen */

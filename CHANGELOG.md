@@ -206,6 +206,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   - zmiana widoku, otwierane panele, powiadomienia i pola formularzy łagodnie się pojawiają;
   - wykresy w statystykach rosną od osi;
   - zmiana motywu przechodzi płynnie;
+  - poświata za tytułem planu to teraz trzy miękkie plamy światła, które bardzo powoli dryfują (stoją przy „ogranicz ruch”
+    i gdy góra strony jest przewinięta);
   - na stronie głównej wydziały zwijają się płynnie, a wyszukiwarka grup także się chowa z animacją.
 
   Przyciski reagują na dotyk, a ruch ustępuje całkowicie przy „ogranicz ruch” w systemie.
