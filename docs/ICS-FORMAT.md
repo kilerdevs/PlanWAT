@@ -58,9 +58,14 @@ e-dziekanatu.
 
 Wartości tekstowe używają escapowania iCalendar (`\,` `\;` `\\` `\n`).
 
-Alarmy (`VALARM`) wewnątrz zdarzenia są ignorowane przez stronę. Budowa publikuje każdy kalendarz dwa razy: `plan.ics` bajt w
-bajt oraz `plan-przypomnienia.ics` z alarmem `DISPLAY` 15 minut przed każdym zdarzeniem, które go nie ma (zakończenia linii
-CRLF, linie składane ponownie po 75 oktetach, `X-WR-CALNAME` z dopiskiem „ (przypomnienia)”).
+Alarmy (`VALARM`) wewnątrz zdarzenia są ignorowane przez stronę. Budowa publikuje każdy kalendarz dwa razy: `plan.ics` oraz
+`plan-przypomnienia.ics` z alarmem `DISPLAY` 15 minut przed każdym zdarzeniem, które go nie ma (zakończenia linii CRLF, linie
+składane ponownie po 75 oktetach, `X-WR-CALNAME` z dopiskiem „ (przypomnienia)”).
+
+W obu opublikowanych plikach `SUMMARY` ma po przedmiocie rodzaj zajęć w nawiasie, np. `Matematyka I (Wykład)`, bo aplikacje
+kalendarza pokazują głównie tytuł. Rodzaj to pierwsza wartość `CATEGORIES`; zdarzenia bez niej i tytuły zastępcze (`-`) zostają
+bez zmian. W `timetables/` `SUMMARY` to sama nazwa przedmiotu: strona przy czytaniu pliku zdejmuje dopisek z powrotem, więc
+kolory, „Moje przedmioty” i statystyki nadal grupują po przedmiocie.
 
 ## Przykład
 

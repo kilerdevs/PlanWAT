@@ -982,7 +982,11 @@ test('"Moje przedmioty" hides a subject everywhere, remembers it, and the downlo
   await showTool(page, '#icsLink');
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#icsLink').click()]);
   const text = fs.readFileSync(await download.path(), 'utf-8');
-  expect(text.split(/\r?\n/)).not.toContain('SUMMARY:' + firstSubject);
+  const titles = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/).filter((l) => l.startsWith('SUMMARY:'));
+  expect(titles.length).toBeGreaterThan(0);
+  // the published titles carry the class type: "SUMMARY:<subject> (<type>)"
+  expect(titles.filter((l) => l === 'SUMMARY:' + firstSubject || l.startsWith('SUMMARY:' + firstSubject + ' ('))).toEqual([]);
+  expect(titles.some((l) => / \([^()]+\)$/.test(l))).toBe(true);
   expect(text).toContain('BEGIN:VCALENDAR');
   await page.locator('#hiddenEdit').click();
   await page.getByRole('button', { name: 'Pokaż wszystkie' }).click();
@@ -1014,7 +1018,7 @@ test('"Moje przedmioty" can hide one kind of a subject\'s classes and keep the r
   await showTool(page, '#icsLink');
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#icsLink').click()]);
   const events = fs.readFileSync(await download.path(), 'utf-8').replace(/\r?\n[ \t]/g, '').split('BEGIN:VEVENT').slice(1);
-  const kinds = events.filter((e) => e.split(/\r?\n/).includes('SUMMARY:' + subject)).map((e) => /^CATEGORIES:(.*)$/m.exec(e)[1].trim());
+  const kinds = events.filter((e) => e.split(/\r?\n/).some((l) => l.startsWith('SUMMARY:' + subject + ' ('))).map((e) => /^CATEGORIES:(.*)$/m.exec(e)[1].trim());
   expect(kinds).toContain('Wykład');
   expect(kinds).not.toContain('Ćwiczenia');
 
