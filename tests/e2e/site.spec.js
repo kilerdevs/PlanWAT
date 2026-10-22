@@ -1031,13 +1031,14 @@ test('the system light theme is followed, and a stored choice wins and survives 
   expect(await bg()).toBe('rgb(242, 242, 247)');
   await page.locator('[data-theme-set="dark"]').click();
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
-  expect(await bg()).toBe('rgb(0, 0, 0)');
+  // a chosen theme fades over for a moment, so wait for its final colour
+  await expect.poll(bg).toBe('rgb(0, 0, 0)');
   await page.reload();
   await expect(page.locator('.lesson').first()).toBeVisible();
   expect(await bg()).toBe('rgb(0, 0, 0)');
   await expect(page.locator('[data-theme-set="dark"]')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('[data-theme-set="auto"]').click();
-  expect(await bg()).toBe('rgb(242, 242, 247)');
+  await expect.poll(bg).toBe('rgb(242, 242, 247)');
   expect(problems).toEqual([]);
 });
 
