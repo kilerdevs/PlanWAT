@@ -189,7 +189,7 @@ def main(argv=None):
             left = dt.datetime.fromisoformat(expires) - core.now_utc()
             if left < dt.timedelta(days=14):
                 print(f'WARNING: the fork token expires on {expires[:10]}: create a new one before then '
-                      f'(docs/WOLONTARIUSZE.md, "Token do forka")')
+                      f'and run planwat-crawler setup (docs/WOLONTARIUSZE.md, "Szybki start")')
     tree = Path(tempfile.mkdtemp(prefix='planwat-bundle-'))
     try:
         write_tree(tree, manifest, files)

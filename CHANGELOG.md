@@ -24,11 +24,27 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   - **Kiedy wynik trafia na stronę:** koordynator `collect.yml` przyjmuje plan od osoby zaufanej albo dopiero wtedy, gdy
     zgodzi się dwóch wolontariuszy. Każdy kalendarz przechodzi pełną walidację serwisu.
   - **Rozliczalność:** każdy przyjęty wynik ma podpis, kto go dostarczył, i da się go cofnąć jednym poleceniem.
-  - **Ochrona przed błędami:** wolontariusz, którego wyniki stale nie zgadzają się z innymi, jest automatycznie odsuwany.
   - **Panel uprawnień** (`python3 tools/volunteer/manage.py`): lokalna strona, na której opiekun dodaje i usuwa
-    wolontariuszy, przełącza Zaufany / Równorzędny / Wstrzymany i wydziały, widzi ich stan u koordynatora i zapisuje
+    wolontariuszy, przełącza Zaufany / Równorzędny / Wstrzymany i wydziały, widzi ich stan u koordynatora (czy działają,
+    wersja, odmowy, blokady, wygasające tokeny) i pokrycie wydziałów, i zapisuje
     zmianę jednym podpisanym commitem. Działa po najwyżej 30 minutach, bez wydania. Koordynator przyjmuje rejestr tylko z
     commita zweryfikowanego jako podpisany przez opiekuna.
+  - **Instalacja jednym poleceniem** na Linuksie (Debian, Ubuntu, Raspberry Pi OS, Fedora, RHEL, Arch, openSUSE, WSL2),
+    macOS i Windows: instalator doinstalowuje Dockera i GitHub CLI, prowadzi przez fork i token (wypełnione linki),
+    sprawdza pochodzenie obrazów, zanim cokolwiek w nich uruchomi, sprawdza, które wydziały odpowiadają z łącza, daje
+    wypełnione zgłoszenie i startuje crawler. Potem polecenie `planwat-crawler` (`status`, `logs`, `doctor`, `setup`,
+    `update`, `uninstall`…).
+  - **Codzienne, zweryfikowane aktualizacje** z wycofaniem, gdy nowa wersja nie wstaje; można z nich zrezygnować
+    (`planwat-crawler autoupdate off`).
+  - **Crawler sam o siebie dba:** poprawia rozjechany zegar, nie crawluje, gdy paczka i tak zostałaby odrzucona (brak
+    w rejestrze, odsunięcie, stara wersja), dociąga dane przyrostowo, pamięta tempo i blokady swojego łącza, robi jeden
+    przebieg na okno przydziału i mówi w `status` / `doctor`, co koordynator powiedział o jego ostatniej paczce.
+  - **Mądrzejszy przydział:** grupy wolontariusza, który przestał wysyłać paczki albo którego łącze blokuje wydział,
+    same przechodzą do innych.
+  - **Obrazy dla amd64 i arm64** (Raspberry Pi).
+  - **Ochrona przed błędami:** wolontariusz, którego wyniki stale nie zgadzają się z innymi, jest automatycznie
+    odsuwany, ale tylko za niezgodność z planem, który wszyscy już widzieli; głosy starsze niż ostatnie zaufane
+    sprawdzenie grupy nigdy nie nadpisują nowszego planu.
 - „Sprawdzono” na stronie grupy uwzględnia także sprawdzenia wolontariuszy, a domowy runner pomija grupy, które
   wolontariusze właśnie potwierdzili.
 

@@ -168,7 +168,10 @@ Domowy runner nie jest jedynym źródłem. Zaproszeni wolontariusze uruchamiają
 `--assign volunteers.json --as <login>` (rejestr z gałęzi `volunteers`, edytowany panelem `tools/volunteer/manage.py`): każdy sprawdza tylko swoją część grup i wypycha paczkę na gałąź `crawl`
 własnego forka. Koordynator `collect.yml` (runner GitHub, co 30 min) sprawdza paczki, liczy głosy i przyjęte plany
 zapisuje na `data`, a stemple do `volunteer-state.json`. Domowy runner zostaje zaufaną kotwicą: jego wyniki idą na `data`
-jak dotąd. Grupy, które wolontariusze właśnie potwierdzili, traktuje jako świeże. Całość, łącznie z modelem zaufania:
+jak dotąd. Grupy, które wolontariusze właśnie potwierdzili, traktuje jako świeże, a jego sprawdzenie grupy unieważnia
+starsze głosy wolontariuszy, więc wolne kworum nie nadpisze planu, który runner właśnie widział. Wolontariusz trzyma
+wyuczone tempo i blokady swojego łącza osobno (`--faculty-state`), zamiast korzystać z liczb domowego runnera z
+`refresh-state.json`. Całość, łącznie z modelem zaufania:
 [WOLONTARIUSZE.md](WOLONTARIUSZE.md).
 
 ## Co pokazuje strona

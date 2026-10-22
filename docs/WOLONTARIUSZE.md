@@ -23,9 +23,11 @@ końcu jest część dla opiekuna projektu.
 
 - [Jak to działa](#jak-to-działa)
 - [Zanim zaczniesz](#zanim-zaczniesz)
+- [Szybki start](#szybki-start) (jedno polecenie na Linux, macOS i Windows)
 - [Zgłoszenie](#zgłoszenie)
-- [Token do forka](#token-do-forka)
-- [Tryb A: Docker (zalecany)](#tryb-a-docker-zalecany)
+- [Polecenie planwat-crawler](#polecenie-planwat-crawler)
+- [Aktualizacje](#aktualizacje)
+- [Instalacja ręczna](#instalacja-ręczna)
 - [Tryb B: runner na własnym forku](#tryb-b-runner-na-własnym-forku)
 - [Co robi jeden przebieg](#co-robi-jeden-przebieg)
 - [Co trafia do paczki](#co-trafia-do-paczki)
@@ -59,25 +61,73 @@ domowy runner (refresh.yml, bez zmian) ──────────┼──�
 
 ## Zanim zaczniesz
 
-- Konto GitHub i fork [kilerdevs/PlanWAT](https://github.com/kilerdevs/PlanWAT) na tym koncie (nazwa dowolna,
-  domyślnie `PlanWAT`).
-- Maszyna, która działa przez większość doby: domowy serwer, Raspberry Pi 4 / 5, VPS, stary laptop. Wystarczy
-  1 GB RAM i ok. 500 MB miejsca. Ruch: kilkadziesiąt MB co dwie godziny (głównie klon gałęzi `data`).
+- Konto GitHub. Fork [kilerdevs/PlanWAT](https://github.com/kilerdevs/PlanWAT) instalator pomoże utworzyć jednym
+  kliknięciem.
+- Maszyna, która działa przez większość doby: domowy serwer, Raspberry Pi 4 / 5 (system **64-bitowy**), VPS, stary
+  laptop, komputer z Windows albo macOS. Wystarczy 1 GB RAM i ok. 1 GB miejsca. Ruch: kilka MB co dwie godziny
+  (dane projektu są pobierane przyrostowo).
 - Łącze, z którego strony wydziałów odpowiadają normalnie. Strony stoją za Incapsulą, która blokuje adresy centrów
-  danych, więc **VPS-y często się nie nadają** — sprawdź to pierwszym przebiegiem próbnym (niżej). Jeśli Twoje
-  łącze dociera tylko do części wydziałów, zgłoś tylko je (`faculties`).
-- Docker z Compose v2 (tryb A) albo runner GitHub Actions, który potrafisz utwardzić (tryb B).
-- Zgodny zegar systemowy (NTP). Paczki z czasem z przyszłości albo sprzed ponad 12 h są odrzucane.
+  danych, więc **VPS-y często się nie nadają**. Instalator sprawdza to sam: wysyła po jednym zapytaniu do każdego
+  wydziału i mówi, które Cię wpuszczają.
+- Zegar nie musi być idealny: crawler mierzy, o ile Twój zegar odbiega od GitHuba, i poprawia znaczniki czasu. Przy
+  odchyłce ponad 2 minuty poprosi o włączenie NTP.
+
+## Szybki start
+
+Instalator robi wszystko po kolei i przed jakąkolwiek zmianą pokazuje plan:
+
+1. instaluje, czego brakuje: Docker z Compose (z oficjalnych, podpisanych repozytoriów Dockera; na macOS Colima, na
+   Windows Docker Desktop) i GitHub CLI (tylko do weryfikacji obrazów);
+2. pyta o login i token do Twojego forka (linki są wypełnione, wystarczy kliknąć);
+3. pobiera obrazy crawlera i **sprawdza ich pochodzenie** (`gh attestation verify`: zbudowane przez
+   `crawler-image.yml` w kilerdevs/PlanWAT, nic innego), zanim cokolwiek w nich uruchomi, i przypina je skrótem;
+4. uruchamia kreatora: fork, token, które wydziały odpowiadają z Twojego łącza, czy jesteś w rejestrze (jeśli nie,
+   daje gotowe, wypełnione zgłoszenie), automatyczne aktualizacje;
+5. startuje crawler i ustawia codzienną, zweryfikowaną aktualizację (możesz z niej zrezygnować).
+
+Instalator nigdy nie dopisuje Cię do grupy `docker` (to uprawnienia roota pod inną nazwą); tam, gdzie musi, pyta o `sudo`.
+Można go uruchomić ponownie w każdej chwili: naprawi, czego brakuje.
+
+**Linux** (Debian, Ubuntu, Raspberry Pi OS 64-bit, Mint, Fedora, RHEL / CentOS / Rocky / Alma, Arch, openSUSE, WSL2)
+**i macOS** (potrzebny [Homebrew](https://brew.sh)):
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/kilerdevs/PlanWAT/master/tools/volunteer/install.sh
+less install.sh     # przeczytaj, zanim uruchomisz
+sh install.sh
+```
+
+**Windows 10 / 11** (PowerShell; Docker Desktop przy pierwszej instalacji może poprosić o restart, wtedy uruchom
+skrypt jeszcze raz, a dokończy od miejsca, w którym przerwał):
+
+```powershell
+irm https://raw.githubusercontent.com/kilerdevs/PlanWAT/master/tools/volunteer/install.ps1 -OutFile planwat-install.ps1
+notepad planwat-install.ps1     # przeczytaj, zanim uruchomisz
+powershell -ExecutionPolicy Bypass -File .\planwat-install.ps1
+```
+
+`sh install.sh --check` (Windows: `-Check`) pokazuje tylko, co zostałoby zainstalowane, i niczego nie zmienia.
+
+**Token.** Crawler wypycha paczki tokenem fine-grained, który widzi **wyłącznie Twój fork** (Contents: Read and write,
+nic więcej). Instalator otwiera wypełniony formularz; Ty wybierasz tylko repozytorium (swój fork) i klikasz Generate.
+Token klasyczny (`ghp_…`) albo token `gh auth login` (`gho_…`) jest odrzucany: sięga do wszystkich Twoich repozytoriów.
+Token służy też do weryfikacji obrazów, dlatego instalator pyta o niego przed uruchomieniem czegokolwiek z obrazu.
+Gdy zbliża się jego wygaśnięcie (14 dni), crawler, `planwat-crawler doctor` i panel opiekuna to pokażą; nowy wklejasz
+przez `planwat-crawler setup`.
 
 ## Zgłoszenie
 
 Dołączanie jest na zaproszenie: o tym, kto zasila stronę, decyduje opiekun.
 
-1. Otwórz zgłoszenie z szablonu [Volunteer crawler](https://github.com/kilerdevs/PlanWAT/issues/new?template=volunteer.yml):
-   podaj swój fork (musi należeć do Twojego konta), tryb uruchomienia i wydziały, do których dociera Twoje łącze.
+1. Kreator sprawdza, czy jesteś w rejestrze. Jeśli nie, wypisuje link do wypełnionego zgłoszenia (szablon
+   [Volunteer crawler](https://github.com/kilerdevs/PlanWAT/issues/new?template=volunteer.yml)) z Twoim forkiem i
+   wydziałami, które odpowiadają z Twojego łącza. Sprawdź je i kliknij Submit.
 2. Opiekun dopisuje Cię do rejestru i ustawia poziom zaufania. Rejestr (`volunteers.json`) leży sam na gałęzi
-   [`volunteers`](https://github.com/kilerdevs/PlanWAT/tree/volunteers) i zmienia go wyłącznie opiekun, podpisanym commitem.
-3. Od najbliższego przebiegu (do 30 min) Twój login dostaje przydziały. Swój wpis zobaczysz na gałęzi `volunteers`.
+   [`volunteers`](https://github.com/kilerdevs/PlanWAT/tree/volunteers) i zmienia go wyłącznie opiekun, podpisanym
+   commitem. Crawler (tak samo jak koordynator) czyta go tylko z commita, który GitHub weryfikuje jako podpisany przez
+   opiekuna.
+3. Crawler może działać już wcześniej: czeka uprzejmie (co 30 minut zagląda do rejestru) i sam zaczyna, gdy pojawi się
+   Twój wpis.
 
 **Poziomy zaufania:**
 
@@ -87,84 +137,63 @@ Dołączanie jest na zaproszenie: o tym, kto zasila stronę, decyduje opiekun.
 | `peer` | Twój wynik liczy się, gdy niezależnie potwierdzi go drugi wolontariusz `peer`. |
 | `suspended` | Wpis zostaje, ale crawler nie dostaje przydziałów, a paczki są pomijane. |
 
-## Token do forka
+## Polecenie planwat-crawler
 
-Crawler w trybie Docker wypycha paczkę tokenem, który ma dostęp **wyłącznie do Twojego forka**:
+Instalator zostawia polecenie `planwat-crawler` (Linux / macOS: `~/.local/bin`, Windows: w `PATH` użytkownika):
 
-1. GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token.
-2. Resource owner: Twoje konto. Expiration: np. 90 dni (ustaw przypomnienie o odnowieniu).
-3. Repository access: **Only select repositories** → tylko Twój fork.
-4. Permissions → Repository permissions → **Contents: Read and write**. Nic więcej.
-5. Skopiuj token do `.env` (niżej). Nie wklejaj go nigdzie indziej.
+| Polecenie | Co robi |
+|---|---|
+| `planwat-crawler status` | co crawler robi teraz, kiedy następny przebieg i co koordynator powiedział o ostatniej paczce |
+| `planwat-crawler logs` | dziennik na żywo |
+| `planwat-crawler doctor` | pełna diagnostyka: zegar, rejestr, wersja, token, fork, proxy, wydziały, werdykt koordynatora; przy każdym problemie podpowiedź, co zrobić |
+| `planwat-crawler setup` | kreator od nowa (np. nowy token) |
+| `planwat-crawler update` | aktualizacja teraz (zweryfikowana, z wycofaniem) |
+| `planwat-crawler autoupdate on` / `off` | włącza / wyłącza codzienne aktualizacje |
+| `planwat-crawler start` / `stop` / `restart` | uruchamia / zatrzymuje crawler |
+| `planwat-crawler uninstall` | usuwa crawler, jego dane i harmonogram |
 
-W trybie B token nie jest potrzebny: workflow używa własnego `GITHUB_TOKEN` forka.
+Panel proxy z postępem przebiegu: <http://localhost:18080/>.
 
-## Tryb A: Docker (zalecany)
+## Aktualizacje
 
-Dwa kontenery: crawler w sieci wewnętrznej **bez trasy na zewnątrz** i proxy wyjściowe (to samo co na domowym
-runnerze, [EGRESS.md](EGRESS.md)), które przepuszcza tylko GitHub i strony wydziałów, a wszystko inne odrzuca kodem 403.
+Domyślnie raz dziennie (systemd albo cron na Linuksie, launchd na macOS, Harmonogram zadań na Windows) crawler:
 
-### 1. Pliki
+1. sprawdza najnowsze wydanie projektu;
+2. pobiera jego obrazy i weryfikuje ich pochodzenie tak samo jak instalator;
+3. przypina nowe skróty, uruchamia nową wersję i sprawdza, że oba kontenery działają;
+4. jeśli nie działają, **wraca do poprzedniej wersji**.
+
+Każdy błąd (np. obraz bez poświadczenia) zostawia działającą wersję bez zmian. Log: `update.log` w katalogu crawlera.
+
+Z automatycznych aktualizacji możesz zrezygnować: `planwat-crawler autoupdate off` (albo w kreatorze). Wtedy crawler
+zgłasza w logu i w `doctor`, że jest nowsza wersja, a aktualizujesz sam przez `planwat-crawler update`. Pamiętaj, że
+koordynator odrzuca paczki ze zbyt starej wersji (`min_version` w rejestrze); taki crawler w ogóle nie crawluje, tylko
+prosi o aktualizację, żeby nie obciążać stron wydziałów na darmo.
+
+## Instalacja ręczna
+
+Dla osób, które wolą zrobić wszystko same (potrzebny Docker z Compose ≥ 2.24 i `gh` ≥ 2.49):
 
 ```sh
 mkdir planwat-crawler && cd planwat-crawler
-curl -fsSLO https://raw.githubusercontent.com/kilerdevs/PlanWAT/master/tools/volunteer/compose.volunteer.yml
-curl -fsSL -o .env https://raw.githubusercontent.com/kilerdevs/PlanWAT/master/tools/volunteer/volunteer.env.example
-mv compose.volunteer.yml compose.yml
-chmod 600 .env
-```
-
-Uzupełnij `.env`: `PLANWAT_LOGIN` (Twój login z rejestru) i `PLANWAT_FORK_TOKEN`. `PLANWAT_FORK` ustaw tylko wtedy,
-gdy fork nie nazywa się `PlanWAT`.
-
-### 2. Sprawdź obraz
-
-Obrazy są budowane przez workflow `crawler-image.yml` z tagu wydania i mają poświadczenie pochodzenia:
-
-```sh
-docker compose pull
-gh attestation verify oci://ghcr.io/kilerdevs/planwat-crawler:latest --repo kilerdevs/PlanWAT
-gh attestation verify oci://ghcr.io/kilerdevs/planwat-crawler-egress:latest --repo kilerdevs/PlanWAT
-```
-
-Możesz przypiąć konkretne wydanie: `PLANWAT_VERSION=1.2.0` w `.env` (wtedy aktualizujesz świadomie).
-
-### 3. Przebieg próbny
-
-Jeden przebieg, który pobiera i konwertuje, ale niczego nie zapisuje ani nie wypycha:
-
-```sh
-docker compose up -d egress
-docker compose run --rm -e PLANWAT_ONCE=1 -e PLANWAT_DRY_RUN=1 crawler
-```
-
-W logu zobaczysz `volunteer <login> (peer), window …` i dla każdego wydziału, ile grup ma do sprawdzenia. Linie
-`BLOCKED` oznaczają, że wydział blokuje Twoje łącze — usuń go ze swoich `faculties` w rejestrze.
-Panel proxy: <http://localhost:18080/> (postęp przebiegu, wydziały, odmowy).
-
-### 4. Start
-
-```sh
+curl -fsSL -o compose.yml https://raw.githubusercontent.com/kilerdevs/PlanWAT/master/tools/volunteer/compose.volunteer.yml
+# obrazy: sprawdź pochodzenie i przypnij skróty w .env
+for name in planwat-crawler planwat-crawler-egress; do
+  docker pull -q ghcr.io/kilerdevs/$name:latest
+  GH_TOKEN=<twój token> gh attestation verify oci://ghcr.io/kilerdevs/$name:latest --repo kilerdevs/PlanWAT \
+    --signer-workflow kilerdevs/PlanWAT/.github/workflows/crawler-image.yml
+done
+docker compose run --rm --user "$(id -u):$(id -g)" -v "$PWD:/config" crawler setup   # kreator zapisuje .env
 docker compose up -d
-docker compose logs -f crawler
 ```
 
-Crawler robi przebieg od razu, a potem co 2 godziny (z losowym przesunięciem do 20 min).
+Przypięcie skrótów: w `.env` wpisz `PLANWAT_CRAWLER_IMAGE=ghcr.io/kilerdevs/planwat-crawler@sha256:…` i
+`PLANWAT_EGRESS_IMAGE=…` (skróty z `docker image inspect --format '{{index .RepoDigests 0}}' <obraz>`).
 
-### 5. Aktualizacje
-
-```sh
-docker compose pull && docker compose up -d
-```
-
-Koordynator odrzuca paczki ze zbyt starej wersji crawlera (`min_version` w rejestrze), więc aktualizuj po każdym
-wydaniu. Watchtower albo cron z powyższą komendą też się nada.
-
-### Utwardzenie (już w `compose.yml`)
-
-Crawler działa jako użytkownik bez uprawnień, z systemem plików tylko do odczytu, bez żadnych capabilities, z
-`no-new-privileges`, limitami pamięci i procesów i bez otwartych portów. Jedyne, co słucha na hoście, to panel proxy
-na `127.0.0.1:18080`. Dane robocze leżą w wolumenie `work` i są odtwarzane w każdym przebiegu.
+**Utwardzenie (już w `compose.yml`):** crawler działa jako użytkownik bez uprawnień, z systemem plików tylko do
+odczytu, bez żadnych capabilities, z `no-new-privileges`, limitami pamięci i procesów, bez otwartych portów i bez trasy
+na zewnątrz poza proxy, które przepuszcza tylko GitHub i strony wydziałów. Jedyne, co słucha na hoście, to panel
+proxy na `127.0.0.1:18080`. Obie usługi mają healthcheck, a `init: true` pozwala zatrzymać crawler czysto.
 
 ## Tryb B: runner na własnym forku
 
@@ -181,23 +210,39 @@ Dla osób, które już utrzymują runnery GitHub Actions. Używa tej samej akcji
    forkach. Pierwszy raz uruchom go ręcznie: Actions → Volunteer crawl → Run workflow.
 5. Trzymaj fork aktualny (Sync fork na stronie forka), bo koordynator odrzuca stare wersje crawlera.
 
-Rejestr (gałąź `volunteers`) i dane są zawsze czytane z projektu, nigdy z Twojego forka.
+Rejestr (gałąź `volunteers`, tylko z commita podpisanego przez opiekuna) i dane są zawsze czytane z projektu, nigdy
+z Twojego forka. Wyuczone tempo i czasy blokad Twojego łącza runner trzyma w swoim katalogu narzędzi między przebiegami.
 
 ## Co robi jeden przebieg
 
-1. Klonuje publiczną gałąź `data` projektu (ostatnie przyjęte kalendarze i stan sprawdzeń) i pobiera
-   rejestr `volunteers.json` z gałęzi `volunteers`.
-2. Wylicza swój **przydział** (`tools/volunteer/assign.py`). Dla każdej grupy i dwugodzinnego okna wszyscy liczą to
-   samo haszowanie (rendezvous) po aktywnych wolontariuszach danego wydziału:
+Przebiegi idą za dwugodzinnymi oknami przydziałów: jeden na okno, 5–35 minut po jego otwarciu. Dzięki temu osoby,
+które sprawdzają te same grupy, robią to w tym samym oknie, a strona wydziału nie dostaje dwóch zapytań o jedno okno.
+Przebieg robi tylko to, co może skończyć się przyjętą paczką, a gdy staje wcześniej, mówi dlaczego:
+
+1. **Zegar.** Mierzy odchyłkę od GitHuba; ponad 30 s poprawia (paczki nie są odrzucane jako „stare” albo „z
+   przyszłości”), ponad 2 minuty dodatkowo zgłasza.
+2. **Rejestr.** Pobiera `volunteers.json` z gałęzi `volunteers`, tylko z commita zweryfikowanego jako podpisany przez
+   opiekuna. Brak wpisu, „wstrzymany” albo zbyt stara wersja crawlera: bez crawlowania, ponowna próba za 30 minut.
+3. **Dane.** Dociąga przyrostowo publiczną gałąź `data` projektu (ostatnie przyjęte kalendarze, stan sprawdzeń i
+   werdykty koordynatora) do tego samego klonu.
+4. **Werdykt.** Wypisuje, co koordynator powiedział o poprzedniej paczce (przeczytana, ile głosów, ile przyjęto,
+   albo dlaczego odrzucona). Odsunięty przez koordynatora: bez crawlowania, dopóki opiekun nie przywróci.
+5. **Przydział** (`tools/volunteer/assign.py`). Dla każdej grupy i okna wszyscy liczą to samo haszowanie (rendezvous)
+   po wolontariuszach danego wydziału, którzy **naprawdę działają**: pomija tych, od których koordynator nie dostał
+   paczki od 6 godzin (nowa osoba ma dobę od dopisania), i tych, których łącze ten wydział niedawno blokował. Potem:
    - jeśli najwyżej w rankingu jest osoba zaufana, grupę sprawdza tylko ona;
    - w przeciwnym razie sprawdza ją dwóch najwyżej ocenionych `peer`ów;
    - pary zmieniają się co okno, więc nikt nie ma stałego partnera.
-   
-   Dzięki temu strona wydziału dostaje około dwóch zapytań na grupę na okno, niezależnie od liczby wolontariuszy.
-3. Pomija grupy sprawdzone niedawno (przez kogokolwiek, komu serwis ufa) — jak domowy runner.
-4. Pobiera strony w tempie wolontariusza (4–9 s przerwy, jedno zapytanie naraz na wydział, `robots.txt`,
-   rewalidacja warunkowa `304`), konwertuje i waliduje tymi samymi funkcjami co domowy runner.
-5. `bundle.py` składa paczkę i wypycha ją na gałąź `crawl` forka jako jeden commit bez historii (`--force`).
+
+   Strona wydziału dostaje więc około dwóch zapytań na grupę na okno, niezależnie od liczby wolontariuszy, a grupy
+   osoby, która wyłączyła komputer albo trafiła na blokadę, same przechodzą do innych.
+6. **Crawl.** Pomija grupy sprawdzone niedawno (przez kogokolwiek, komu serwis ufa), najpierw bierze najdawniej
+   sprawdzone. Pobiera strony w tempie wolontariusza (4–9 s przerwy, jedno zapytanie naraz na wydział, `robots.txt`,
+   rewalidacja warunkowa `304`), z tempem i czasami blokad wyuczonymi dla **Twojego** łącza (trzyma je między
+   przebiegami), konwertuje i waliduje tymi samymi funkcjami co domowy runner.
+7. **Paczka.** `bundle.py` sprawdza token (dostęp do forka, nie klasyczny, data wygaśnięcia), składa paczkę i
+   wypycha ją na gałąź `crawl` forka jako jeden commit bez historii (`--force`, z ponowieniem). Okno bez grup do
+   sprawdzenia też wysyła (pustą) paczkę: koordynator wie wtedy, że Twój crawler żyje.
 
 ## Co trafia do paczki
 
@@ -209,12 +254,15 @@ timetables/2026-27-zima/WCY26KY3S1.ics      tylko kalendarze, które się zmieni
 ```json
 {"format": 1, "version": "1.2.0", "login": "twoj-login", "seq": 1792000000,
  "started": "2026-10-20T10:00:00", "ended": "2026-10-20T10:40:00", "window": 14933,
+ "token_expires": "2027-01-18T10:00:00",
  "groups": {"WCY26KY3S1@2026-27-zima": {"status": "changed", "plan": "<sha256>", "at": "2026-10-20T10:12:31"}},
  "faculties": {"wcy": {"blocked": false, "cause": null}}}
 ```
 
 - `status`: `changed` (nowy plan), `unchanged` (taki jak opublikowany), `not_ready` (wydział pokazuje jeszcze inny
   semestr), `gone` (404). Dwa ostatnie są informacyjne i nie są głosami.
+- `token_expires`: kiedy wygasa Twój token, żeby koordynator i opiekun mogli ostrzec, zanim crawler zamilknie.
+- `faculties`: które wydziały Cię blokowały; przydziały tych wydziałów na kilka godzin przejmują inni.
 - `plan`: SHA-256 kalendarza bez linii zmiennych (`DTSTAMP`, `X-PLAN-GENERATED`, `X-PLAN-UPDATED`), więc dwie
   osoby, które widziały ten sam plan, zgadzają się co do bajtu.
 
@@ -224,15 +272,17 @@ publiczny), tylko skonwertowane kalendarze, w których nazwisk nie ma (`build.lo
 
 ## Jak sprawdzić, że działa
 
-1. **Twój fork**, gałąź `crawl`: świeży commit „PlanWAT volunteer crawl” i `manifest.json` z bieżącą godziną.
-2. **Przebiegi koordynatora** (publiczne): [Actions → Collect volunteer crawls](https://github.com/kilerdevs/PlanWAT/actions/workflows/collect.yml).
-   W logu jest linia o Twojej paczce:
-   - `twoj-login: 37 votes, 0 calendars rejected (crawler 1.2.0)` — wszystko w porządku;
-   - `twoj-login: bundle refused: …` — zob. [Rozwiązywanie problemów](#rozwiązywanie-problemów).
-3. **Gałąź `data`**, plik `volunteer-state.json`: grupy, które przyjęto z Twoim udziałem, mają Twój login w `by`.
-4. **Strona grupy**: „Sprawdzono” pokazuje czas ostatniego przyjętego sprawdzenia, także Twojego.
+1. **`planwat-crawler status`**: stan, następny przebieg, ostatni przebieg i werdykt koordynatora, np.
+   `Koordynator: the coordinator read the bundle of 2026-10-20T10:40:00: 37 votes, 0 calendars rejected; 120 accepted in 7 days`.
+2. **`planwat-crawler doctor`**: każda zależność z ✓ / ! / ✗ i podpowiedzią.
+3. **Przebiegi koordynatora** (publiczne): [Actions → Collect volunteer crawls](https://github.com/kilerdevs/PlanWAT/actions/workflows/collect.yml).
+   Podsumowanie każdego przebiegu ma tabelę z wierszem dla każdego wolontariusza: paczka przeczytana albo odrzucona
+   (z powodem), głosy, przyjęte w 7 dni, blokady i ostrzeżenie o wygasającym tokenie.
+4. **Gałąź `data`**, plik `volunteer-state.json`: sekcja `volunteers.<login>` to wszystko, co koordynator wie o Tobie;
+   grupy przyjęte z Twoim udziałem mają Twój login w `by`.
+5. **Strona grupy**: „Sprawdzono” pokazuje czas ostatniego przyjętego sprawdzenia, także Twojego.
 
-Jako `peer` pierwsze przyjęte wyniki zobaczysz dopiero, gdy ktoś inny sprawdzi te same grupy — przy niewielu
+Jako `peer` pierwsze przyjęte wyniki zobaczysz dopiero, gdy ktoś inny sprawdzi te same grupy; przy niewielu
 wolontariuszach może to chwilę potrwać.
 
 ## Zasady crawlowania
@@ -250,30 +300,36 @@ Strony wydziałów to cudza infrastruktura, a blokada uderza w każdego, kto kor
 
 ## Rozwiązywanie problemów
 
-| Objaw | Przyczyna | Co zrobić |
+Zacznij od `planwat-crawler doctor`: przy każdym ✗ jest podpowiedź. Najczęstsze sytuacje:
+
+| Objaw (`status`, `doctor`, log) | Przyczyna | Co zrobić |
 |---|---|---|
-| `<login> is not an active volunteer`, kod 2 | Brak w rejestrze albo poziom „wstrzymany” | Sprawdź swój wpis na gałęzi `volunteers` i pisownię loginu |
-| `volunteer … : nothing` | Twoje `faculties` nie pokrywają się z włączonymi wydziałami | Popraw `faculties` w rejestrze |
-| Przebieg nie sprawdza żadnej grupy | Za mało `peer`ów dla Twoich wydziałów (potrzeba dwóch) albo wszystkie grupy są świeże | To normalne; przydziały pojawią się, gdy dołączy ktoś drugi |
-| `push to … failed` | Token wygasł, nie obejmuje forka albo nie ma Contents: write | Wygeneruj token od nowa (sekcja Token) |
-| `bundle refused: crawler X is older than Y` | Stara wersja | `docker compose pull && docker compose up -d` / Sync fork |
-| `bundle refused: replayed or out of order` | Zegar cofnął się albo wypchnięto starą paczkę | Włącz NTP; następny przebieg naprawi to sam |
-| `bundle refused: stale` / `bad end time` | Zegar źle ustawiony albo paczka czekała ponad 12 h | Włącz NTP |
-| `bundle refused: not a plain file` / `not a manifest or a calendar path` | Na gałęzi `crawl` jest coś poza paczką | Nie commituj ręcznie na `crawl`; następny przebieg nadpisze gałąź |
-| `<grupa> rejected (lost too many events …)` | Strona wydziału była chwilowo niepełna | Nic; inni (albo kolejny przebieg) potwierdzą właściwy plan |
-| `BLOCKED` w logu crawlera | Incapsula blokuje Twoje łącze | Odczekaj; przy stałej blokadzie zrezygnuj z tego wydziału |
-| Issue „Wolontariusz `<login>` niezgodny” | Trzy razy w tygodniu Twoje głosy przegrały z planem przyjętym przez innych | Sprawdź wersję i log; opiekun przywraca po wyjaśnieniu |
-| Panel `localhost:18080` nie działa | Kontener `egress` nie wystartował | `docker compose logs egress` |
+| „czeka na wpis do rejestru” | Opiekun jeszcze Cię nie dopisał albo masz poziom „wstrzymany” | Wyślij zgłoszenie z linku w `status`; crawler zacznie sam |
+| „wymaga aktualizacji” | Wersja starsza niż `min_version` | `planwat-crawler update` (albo `autoupdate on`) |
+| „odsunięty przez koordynatora” | Trzy razy w tygodniu Twój głos przegrał, gdy wszyscy widzieli już nowy plan | Sprawdź wersję; odpisz w issue „Wolontariusz `<login>` niezgodny”, opiekun przywraca |
+| `the token cannot see …` / `cannot write to …` | Token nie obejmuje forka albo nie ma Contents: write | `planwat-crawler setup` i nowy token |
+| `GitHub does not accept the token` / „token wygasł” | Token wygasł albo został usunięty | Nowy token, `planwat-crawler setup` |
+| „ostatnia paczka odrzucona: stale / bad end time” | Bardzo zły zegar albo paczka czekała ponad 12 h | Włącz NTP; następny przebieg wyśle nową |
+| „ostatnia paczka odrzucona: not a plain file / not a manifest…” | Ktoś commitował ręcznie na `crawl` | Nie commituj na `crawl`; następny przebieg nadpisze gałąź |
+| „odrzucone kalendarze: lost too many events” | Strona wydziału była chwilowo niepełna | Nic; inni (albo kolejny przebieg) potwierdzą właściwy plan |
+| `wydział … blokuje Twoje łącze` | Incapsula blokuje Twoje łącze | Nic: przydziały tego wydziału przejmują na razie inni; przy stałej blokadzie poproś o zmianę wydziałów |
+| „proxy wyjściowe (egress) nie odpowiada” | Kontener `egress` nie wystartował | `docker compose logs egress` (katalog crawlera) |
+| Instalator: „obraz NIE przeszedł weryfikacji” | Obraz nie pochodzi z workflow projektu (albo sieć/GitHub zawiodły) | Nie obchodź tego. Spróbuj później; jeśli się powtarza, zgłoś issue |
+| Windows: „Docker Desktop nie odpowiada” | Świeżo zainstalowany WSL2 wymaga restartu | Uruchom ponownie komputer i skrypt |
 
 ## Bezpieczeństwo
 
 ### Dla Ciebie
 
-- Obraz jest budowany publicznie z tagu wydania i ma poświadczenie pochodzenia (`gh attestation verify`).
+- Obraz jest budowany publicznie z tagu wydania (natywnie dla amd64 i arm64) i ma poświadczenie pochodzenia.
+  Instalator i aktualizacje sprawdzają je (`gh attestation verify --signer-workflow …/crawler-image.yml`) **zanim**
+  cokolwiek w obrazie uruchomią, i przypinają obraz skrótem; aktualizacja, która nie wstaje, jest wycofywana.
 - Nie dostajesz żadnego sekretu projektu. Twój token działa tylko na Twój fork, tylko na zawartość.
 - Crawler nie ma trasy na zewnątrz poza proxy, które wpuszcza wyłącznie GitHub i `*.wat.edu.pl`, i nie otwiera
   żadnego portu przychodzącego.
 - Paczki są publiczne i podpisane Twoim loginem — to, co wysyłasz, widać i da się to audytować.
+- Rejestr, który decyduje, co crawlujesz, jest przyjmowany tylko z commita podpisanego przez opiekuna, więc nikt, kto
+  przejmie gałąź `volunteers`, nie skieruje Twojego crawlera gdzie indziej.
 
 ### Dla serwisu
 
@@ -286,10 +342,16 @@ Strony wydziałów to cudza infrastruktura, a blokada uderza w każdego, kto kor
 
   Strony są escapowane i chronione CSP przypiętym hashami, więc najgorszy możliwy skutek to błędne godziny zajęć, z
   podpisem, kto je dostarczył, i do cofnięcia jednym poleceniem.
+- **Stare głosy nie nadpisują nowszego planu.** Głos oddany przed ostatnim zaufanym sprawdzeniem grupy (domowego
+  runnera albo przyjętego kworum) jest pomijany, więc wolne kworum nie cofnie świeższego kalendarza.
+- **Uczciwe niezgodności nie są karane.** Przegrany głos to „niezgodność” tylko wtedy, gdy oddano go, kiedy zwycięski
+  plan już był widoczny; kto widział stronę przed zmianą na wydziale, nie dostaje kary.
 - **Głos „bez zmian” nigdy nie blokuje zmiany**, którą potwierdziło kworum, więc nie da się zamrozić planu fałszywym
   „nic się nie zmieniło”.
-- **Koordynator nie wykonuje niczego z forków.** Czyta bloby gitem bez checkoutu, z limitami rozmiaru i listą
-  dozwolonych ścieżek, a jego token nie może uruchamiać workflowów ani zmieniać `master`.
+- **Koordynator nie wykonuje niczego z forków.** Najpierw pyta `ls-remote` (paczka bez zmian albo już odrzucona nie
+  jest pobierana drugi raz), potem czyta bloby gitem bez checkoutu: tylko HTTPS, bez hooków, z limitem rozmiaru pliku
+  na samym pobieraniu (`RLIMIT_FSIZE`), z limitami rozmiaru i listą dozwolonych ścieżek. Jego token nie może
+  uruchamiać workflowów ani zmieniać `master`.
 - **Czego to nie rozwiązuje:** wolontariusz nie może *udowodnić*, że strona pochodzi z WAT. Wymagałoby to
   notaryzacji TLS, a to tutaj przesada. Obroną jest kworum, tożsamość z rejestru i rozliczalność.
 
@@ -307,10 +369,12 @@ python3 tools/volunteer/manage.py
 
 Otwiera się strona (adres z jednorazowym tokenem jest też w terminalu), na której:
 
-- widzisz każdego wolontariusza z jego stanem u koordynatora: ostatnią paczkę, liczbę przyjętych kalendarzy,
-  niezgodności w tym tygodniu i to, czy został odsunięty;
+- widzisz każdego wolontariusza z jego stanem u koordynatora: czy działa (paczka w ostatnich 6 h), wersję crawlera
+  (z ostrzeżeniem poniżej `min_version`), ostatnią odmowę albo powód odrzucenia kalendarzy, blokady wydziałów,
+  wygasający token, przyjęte kalendarze w 7 dni, niezgodności w tym tygodniu i to, czy został odsunięty;
+- karta **Pokrycie** pokazuje dla każdego wydziału, ile grup bieżącego semestru nikt zaufany nie sprawdził od doby;
 - przełączasz poziom: **Zaufany / Równorzędny / Wstrzymany**, i wybierasz wydziały (albo „Wszystkie”);
-- dodajesz osobę (login i fork) albo ją usuwasz;
+- dodajesz osobę (login i fork; panel zapisuje datę dodania, od której liczy się doba na pierwszą paczkę) albo ją usuwasz;
 - zmieniasz zasady głosowania: kworum, ważność głosu, najstarszą wersję crawlera;
 - przywracasz odsuniętego wolontariusza jednym kliknięciem (uruchamia `collect.yml` z `unbench`; potrzebny `gh`).
 
@@ -354,7 +418,8 @@ wymagaj podpisanych commitów).
 
 ## Rezygnacja
 
-1. `docker compose down -v` (albo wyrejestruj runner i wyłącz workflow w forku).
+1. `planwat-crawler uninstall` (usuwa kontenery, dane i harmonogram aktualizacji). W trybie B: wyrejestruj runner i
+   wyłącz workflow w forku.
 2. Usuń token (Settings → Developer settings → Fine-grained tokens → Delete).
 3. Usuń gałąź `crawl` z forka, jeśli chcesz.
 4. Napisz w swoim zgłoszeniu — opiekun usunie Cię z rejestru.

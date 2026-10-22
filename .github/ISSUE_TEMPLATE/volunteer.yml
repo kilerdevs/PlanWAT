@@ -7,8 +7,9 @@ body:
     attributes:
       value: |
         Thanks for helping! Read [docs/WOLONTARIUSZE.md](https://github.com/kilerdevs/PlanWAT/blob/HEAD/docs/WOLONTARIUSZE.md)
-        first. The maintainer adds you to the registry (the `volunteers` branch) and sets your trust level; your
-        crawler gets its first assignments within half an hour after that.
+        first. The installer (`install.sh` / `install.ps1`) fills this form in for you. The maintainer adds you to the
+        registry (the `volunteers` branch) and sets your trust level; your crawler, already running and waiting,
+        gets its first assignments within half an hour after that.
 
   - type: input
     id: fork

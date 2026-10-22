@@ -298,8 +298,9 @@ grupy i linkiem do oficjalnego planu.
 - Opublikowane kalendarze **nie zawierają danych kadry**: konwertery nie zapisują ani nazwisk, ani tytułów, a `build.py`
   odrzuca każdy kalendarz, który by je miał.
 
-- **Wolontariusze** mogą uruchamiać własne crawlery (Docker albo runner na swoim forku). Ich wyniki trafiają na stronę
-  dopiero po weryfikacji: od osoby zaufanej albo gdy zgodzi się dwóch wolontariuszy. Jak dołączyć: [docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md).
+- **Wolontariusze** mogą uruchamiać własne crawlery (instalacja jednym poleceniem na Linuksie, macOS i Windows, albo runner
+  na swoim forku). Ich wyniki trafiają na stronę dopiero po weryfikacji: od osoby zaufanej albo gdy zgodzi się dwóch
+  wolontariuszy. Jak dołączyć: [docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md).
 
 Szczegóły, w tym model zagrożeń dla samego runnera, opisuje [docs/REFRESH.md](docs/REFRESH.md).
 

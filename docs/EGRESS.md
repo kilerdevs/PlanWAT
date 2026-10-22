@@ -61,7 +61,7 @@ Host z listy pokazuje w GUI tryb `DIRECT (lista)`.
 Ten sam obraz chroni crawlery wolontariuszy (`tools/volunteer/compose.volunteer.yml`, publikowany jako
 `ghcr.io/kilerdevs/planwat-crawler-egress`): crawler stoi w sieci bez trasy na zewnątrz, a proxy z wszystkimi hostami
 wydziałów na liście `EGRESS_DIRECT_FACULTY` działa jako zwykła lista dozwolonych hostów (GitHub i `*.wat.edu.pl`
-bezpośrednio, reszta 403). Zob. [WOLONTARIUSZE.md](WOLONTARIUSZE.md#tryb-a-docker-zalecany).
+bezpośrednio, reszta 403). Zob. [WOLONTARIUSZE.md](WOLONTARIUSZE.md#instalacja-ręczna).
 
 ## GUI monitoringu
 
