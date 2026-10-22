@@ -325,6 +325,27 @@ test('hiddenFor keeps only what the calendar still has, and never everything', (
   assert.equal(PlanICS.hidesAll([['Fizyka', 'Wykład'], ['Fizyka', 'Ćwiczenia']], subjects), false);
 });
 
+test('the class type goes into a calendar title and comes back off when the page reads it', () => {
+  assert.equal(PlanICS.typedTitle('Matematyka I', 'Wykład'), 'Matematyka I (Wykład)');
+  assert.equal(PlanICS.typedTitle('Matematyka I (Wykład)', 'Wykład'), 'Matematyka I (Wykład)');  // never twice
+  assert.equal(PlanICS.typedTitle('-', 'Rezerwacja'), '-');  // placeholders stay
+  assert.equal(PlanICS.typedTitle('Fizyka', ''), 'Fizyka');
+  assert.equal(PlanICS.plainTitle('Fizyka (Ćwiczenia)', 'Ćwiczenia'), 'Fizyka');
+  assert.equal(PlanICS.plainTitle('Fizyka (Ćwiczenia)', 'Wykład'), 'Fizyka (Ćwiczenia)');  // only the event's own type
+
+  const ev = (n, s, t) => event(['UID:' + n, 'DTSTART:20261015T' + (10 + n) + '0000', 'DTEND:20261015T' + (10 + n) + '3000', 'SUMMARY:' + s, ...(t ? ['CATEGORIES:' + t] : [])]);
+  const typed = cal([...ev(1, 'Fizyka (Wykład)', 'Wykład'), ...ev(2, 'Fizyka (Ćwiczenia)', 'Ćwiczenia'),
+    ...ev(3, 'Chemia (organiczna)', 'Wykład'), ...ev(4, 'Algebra\\, liniowa (Lab\\, wyjazd)', 'Lab\\, wyjazd'), ...ev(5, 'Koło (Wykład)', '')]);
+  const parsed = PlanICS.parse(typed);
+  assert.deepEqual(allLessons(PlanICS.toPlan(parsed)).map((l) => l.subject_full + '/' + l.type_full),
+    ['Fizyka/Wykład', 'Fizyka/Ćwiczenia', 'Chemia (organiczna)/Wykład', 'Algebra, liniowa/Lab, wyjazd', 'Koło (Wykład)/']);
+  assert.deepEqual(PlanICS.subjectsOf(parsed).map((x) => x.name), ['Algebra, liniowa', 'Chemia (organiczna)', 'Fizyka', 'Koło (Wykład)']);
+  // hiding works on the typed file too, and a download keeps the typed titles
+  const text = PlanICS.filterText(typed, [['Fizyka', 'Ćwiczenia'], 'Algebra, liniowa']);
+  assert.deepEqual(PlanICS.parse(text).events.map((e) => e.UID[0].value), ['1', '3', '5']);
+  assert.ok(text.includes('SUMMARY:Fizyka (Wykład)'));
+});
+
 test('physical education without a room is held at the SWF', () => {
   const text = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//t//t//PL', 'X-PLAN-GROUP:G',
@@ -358,8 +379,9 @@ test('toIcs writes a minimal CRLF calendar with a TZID event and stable output',
   assert.match(ics, /DTSTART;TZID=Europe\/Warsaw:20261015T080000\r\n/);
   assert.match(ics, /DTEND;TZID=Europe\/Warsaw:20261015T093500\r\n/);
   assert.ok(ics.includes('DTSTAMP:20261018T123456Z\r\n'));
-  assert.ok(ics.includes('SUMMARY:Matematyka I\r\n'));
+  assert.ok(ics.includes('SUMMARY:Matematyka I (Wykład)\r\n'));  // calendar apps show the title only
   assert.ok(ics.includes('CATEGORIES:Wykład\r\n'));
+  assert.ok(ics.includes('DESCRIPTION:Przypomnienie: Matematyka I (Wykład)\r\n'));
   assert.ok(ics.includes('LOCATION:314 S\r\n'));
   assert.ok(ics.includes('X-PLAN-COLOR:#2563a8\r\n'));
   assert.match(ics, /UID:[^\r\n]+@planwat\r\n/);
@@ -380,7 +402,7 @@ test('toIcs escapes text values', () => {
   const ics = PlanICS.toIcs([makeLesson({ subject_full: summary, type_full: type, room })],
     { name: 'Plan; grupa, 1', now: NOW });
   assert.ok(ics.includes('X-WR-CALNAME:Plan\\; grupa\\, 1\r\n'));
-  assert.ok(ics.includes('SUMMARY:A\\; B\\, C\\\\D\\nlinia druga\r\n'));
+  assert.ok(ics.includes('SUMMARY:A\\; B\\, C\\\\D\\nlinia druga (Ćwiczenia\\, lab.)\r\n'));
   assert.ok(ics.includes('LOCATION:Sala 12\\, bud. B\\; piętro 2\r\n'));
   assert.ok(ics.includes('CATEGORIES:Ćwiczenia\\, lab.\r\n'));
 

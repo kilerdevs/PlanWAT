@@ -144,9 +144,10 @@ class BuildRealSiteTest(unittest.TestCase):
         for rel in ('index.html', '404.html', 'mapa/index.html', 'WCY26KY3S1/index.html', 'WCY26KY3S1/plan.ics'):
             self.assertTrue((self.out / rel).is_file(), rel)
 
-    def test_group_calendar_is_a_byte_copy_of_the_current_term(self):
-        self.assertEqual((self.out / 'WCY26KY3S1' / 'plan.ics').read_bytes(),
-                         (ROOT / 'timetables' / '2026-27-zima' / 'WCY26KY3S1.ics').read_bytes())
+    def test_group_calendar_is_the_current_term_with_the_class_type_in_each_title(self):
+        published = (self.out / 'WCY26KY3S1' / 'plan.ics').read_bytes()
+        self.assertEqual(published, build.with_type_titles((ROOT / 'timetables' / '2026-27-zima' / 'WCY26KY3S1.ics').read_bytes()))
+        self.assertIn('SUMMARY:Matematyka I (Wykład)\r\n', published.decode('utf-8'))
 
     def test_offline_worker_manifests_and_icons(self):
         sw = (self.out / 'sw.js').read_text(encoding='utf-8')
@@ -237,7 +238,7 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertEqual(lines[-1], b'')
         self.assertNotIn(b'\n', b''.join(lines))  # CRLF only
         self.assertTrue(all(len(l) <= 75 for l in lines), 'a line longer than 75 octets')
-        self.assertIn('BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Matematyka I\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT', text)
+        self.assertIn('BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Matematyka I (Wykład)\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT', text)
         # the same events, and every group gets one
         plain = (self.out / 'WCY26KY3S1' / 'plan.ics').read_text(encoding='utf-8')
         self.assertEqual(re.findall(r'^UID:[^\r\n]*', text, re.M), re.findall(r'^UID:[^\r\n]*', plain, re.M))
@@ -249,16 +250,18 @@ class BuildRealSiteTest(unittest.TestCase):
 
     def test_every_group_in_the_repository_gets_a_page_and_its_calendar(self):
         # the file as committed, minus other semesters' lessons, with semester dates repaired where they were wrong
+        # and the class type in each title
         bounds = re.compile(rb'^X-PLAN-SEMESTER-(?:START|END):[^\r\n]*\r?\n', re.M)
         for group in self.groups():
             self.assertTrue((self.out / group / 'index.html').is_file(), group)
             calendar = (self.out / group / 'plan.ics').read_bytes()
-            sources = [build.clip_to_term(p.read_bytes(), p.parent.name) for p in (ROOT / 'timetables').glob(f'*/{group}.ics')]
+            sources = [build.with_type_titles(build.clip_to_term(p.read_bytes(), p.parent.name))
+                       for p in (ROOT / 'timetables').glob(f'*/{group}.ics')]
             self.assertIn(bounds.sub(b'', calendar), [bounds.sub(b'', s) for s in sources], group)
             for path in (ROOT / 'timetables').glob(f'*/{group}.ics'):
                 props, _ = build.read_calendar(path)
                 start, end = (build._ymd(props.get(f'X-PLAN-SEMESTER-{k}', '')) for k in ('START', 'END'))
-                published = build.clip_to_term(path.read_bytes(), path.parent.name)
+                published = build.with_type_titles(build.clip_to_term(path.read_bytes(), path.parent.name))
                 if build.semester_fits_term(start, end, path.parent.name) and bounds.sub(b'', published) == bounds.sub(b'', calendar):
                     self.assertEqual(calendar, published, f'{group}: correct semester dates must be published as they are')
 
@@ -268,7 +271,7 @@ class BuildRealSiteTest(unittest.TestCase):
         for group in self.groups():
             raw = (self.out / group / 'plan.ics').read_bytes()
             term_id = next(p.parent.name for p in (ROOT / 'timetables').glob(f'*/{group}.ics')
-                           if bounds.sub(b'', build.clip_to_term(p.read_bytes(), p.parent.name)) == bounds.sub(b'', raw))
+                           if bounds.sub(b'', build.with_type_titles(build.clip_to_term(p.read_bytes(), p.parent.name))) == bounds.sub(b'', raw))
             text = raw.decode('utf-8')
             start = re.search(r'^X-PLAN-SEMESTER-START:(\d{8})', text, re.M).group(1)
             end = re.search(r'^X-PLAN-SEMESTER-END:(\d{8})', text, re.M).group(1)
@@ -640,6 +643,37 @@ class RemindersTest(unittest.TestCase):
         self.assertEqual(text.count('BEGIN:VALARM'), 2)  # the second event keeps its own and gets no extra
         self.assertIn('DESCRIPTION:' + long, text.replace('\r\n ', ''))
         self.assertIn('X-WR-CALNAME:X (przypomnienia)', text)
+
+
+class TypeTitlesTest(unittest.TestCase):
+    """Calendar apps show the title and little else: the published files put the class type after the subject."""
+
+    def test_the_first_category_follows_the_subject_once(self):
+        cal = ('BEGIN:VCALENDAR\nX-WR-CALNAME:X\n'
+               'BEGIN:VEVENT\nUID:1\nSUMMARY:Fizyka\nCATEGORIES:Wykład\nEND:VEVENT\n'
+               'BEGIN:VEVENT\nUID:2\nSUMMARY:Algebra\\, liniowa\nCATEGORIES:Lab\\, wyjazd,Inne\nEND:VEVENT\n'
+               'BEGIN:VEVENT\nUID:3\nSUMMARY:Bez rodzaju\nEND:VEVENT\n'
+               'BEGIN:VEVENT\nUID:4\nSUMMARY:-\nCATEGORIES:Rezerwacja\nEND:VEVENT\n'
+               'BEGIN:VEVENT\nUID:5\nSUMMARY:Chemia (Ćwiczenia)\nCATEGORIES:Ćwiczenia\n'
+               'BEGIN:VALARM\nTRIGGER:-PT5M\nDESCRIPTION:Chemia\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR\n')
+        out = build.with_type_titles(cal.encode('utf-8'))
+        text = out.decode('utf-8')
+        self.assertIn('SUMMARY:Fizyka (Wykład)\r\n', text)
+        self.assertIn('SUMMARY:Algebra\\, liniowa (Lab\\, wyjazd)\r\n', text)  # escaped commas stay one type
+        self.assertIn('SUMMARY:Bez rodzaju\r\n', text)  # no type, no change
+        self.assertIn('SUMMARY:-\r\n', text)  # a reserved slot keeps its placeholder
+        self.assertIn('SUMMARY:Chemia (Ćwiczenia)\r\n', text)  # never twice
+        self.assertIn('DESCRIPTION:Chemia\r\n', text)  # only the event's own title
+        self.assertEqual(build.with_type_titles(out), out)
+        self.assertNotIn(b'\n', out.replace(b'\r\n', b''))
+
+    def test_long_titles_fold_on_character_boundaries(self):
+        cal = 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:' + 'Ż' * 40 + '\nCATEGORIES:Laboratorium\nEND:VEVENT\nEND:VCALENDAR\n'
+        out = build.with_type_titles(cal.encode('utf-8'))
+        for line in out.split(b'\r\n'):
+            self.assertLessEqual(len(line), 75)
+            line.decode('utf-8')
+        self.assertIn('SUMMARY:' + 'Ż' * 40 + ' (Laboratorium)', out.decode('utf-8').replace('\r\n ', ''))
 
 
 class BuildManyGroupsTest(unittest.TestCase):

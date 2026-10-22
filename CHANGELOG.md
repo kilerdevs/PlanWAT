@@ -15,6 +15,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+### Zmieniono
+- **Rodzaj zajęć w tytule wydarzenia** (pomysł z [#34](https://github.com/kilerdevs/PlanWAT/pull/34)): w subskrybowanych
+  i pobieranych kalendarzach (`plan.ics`, `plan-przypomnienia.ics`, plik z „Kalendarza” i z „Moich przedmiotów”) tytuł to
+  „Matematyka I (Wykład)” zamiast „Matematyka I”, więc Google Calendar i iPhone pokazują rodzaj od razu. Dopisek powstaje przy
+  budowie z `CATEGORIES`, a pliki w `timetables/` się nie zmieniają. Strona zdejmuje go przy czytaniu, więc kolory, „Moje
+  przedmioty”, statystyki i liczniki nadal grupują po przedmiocie. Subskrypcje dostaną nowe tytuły przy najbliższej synchronizacji.
+
 ## [1.1.0] - 2026-10-22
 
 ### Dodano

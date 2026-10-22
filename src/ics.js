@@ -78,7 +78,7 @@
         if (kind === 'VCALENDAR' && !calendar) calendar = {};
         else if (kind === 'VEVENT' && stack[stack.length - 2] === 'VCALENDAR') cur = {};
       } else if (p.name === 'END') {
-        if (kind === 'VEVENT' && cur && stack[stack.length - 1] === 'VEVENT') { events.push(cur); cur = null; }
+        if (kind === 'VEVENT' && cur && stack[stack.length - 1] === 'VEVENT') { untype(cur); events.push(cur); cur = null; }
         stack.pop();
       } else if (cur && stack[stack.length - 1] === 'VEVENT') {
         add(cur, p);
@@ -285,6 +285,28 @@
     return cur;
   }
 
+  /* ---------- the class type in the title ---------- */
+  /* Calendar apps show an event's title and little else, so the published calendars carry the class type after the
+     subject: "Matematyka I (Wykład)" (build.py, with_type_titles; toIcs below does the same). Everything here keys on
+     the subject alone (colours, "my subjects", counters), so reading a calendar takes the type back off, but only when
+     it is exactly the event's own type */
+  var NO_TITLE = { '': true, '-': true, '–': true };
+  function typedTitle(subject, type) {
+    var tail = ' (' + type + ')';
+    if (NO_TITLE[subject] || NO_TITLE[type] || !type) return subject;
+    return subject.slice(-tail.length) === tail ? subject : subject + tail;
+  }
+  function plainTitle(summary, type) {
+    var tail = ' (' + type + ')';
+    if (!type || NO_TITLE[type] || summary.length <= tail.length || summary.slice(-tail.length) !== tail) return summary;
+    return summary.slice(0, -tail.length);
+  }
+  function untype(ev) {
+    if (!ev.SUMMARY || !ev.CATEGORIES) return;
+    var title = text(ev, 'SUMMARY'), plain = plainTitle(title, typeOf(ev));
+    if (plain !== title) ev.SUMMARY[0].value = escapeText(plain);
+  }
+
   /* ---------- "my subjects": a personal filter, applied in the browser only ---------- */
   /* the class type (Wykład, Ćwiczenia, …): the first of the event's categories */
   function typeOf(ev) { return ev.CATEGORIES ? (splitList(ev.CATEGORIES[0].value)[0] || '') : ''; }
@@ -360,7 +382,7 @@
       if (!m) return block;
       var c = /^CATEGORIES[^:\r\n]*:(.*)$/m.exec(flat);
       var type = c ? (splitList(c[1].replace(/\r$/, ''))[0] || '') : '';
-      return drop(unescapeText(m[1].replace(/\r$/, '')).trim(), type) ? '' : block;
+      return drop(plainTitle(unescapeText(m[1].replace(/\r$/, '')).trim(), type), type) ? '' : block;
     });
   }
 
@@ -502,7 +524,7 @@
       lines.push(contentLine('DTSTAMP', stamp));
       lines.push(contentLine('DTSTART;TZID=Europe/Warsaw', wallClock(l.date, l.start)));
       lines.push(contentLine('DTEND;TZID=Europe/Warsaw', wallClock(l.date, l.end)));
-      lines.push(contentLine('SUMMARY', escapeText(l.subject_full)));
+      lines.push(contentLine('SUMMARY', escapeText(typedTitle(l.subject_full, l.type_full))));
       if (l.type_full && l.type_full !== '-' && l.type_full !== '–') {
         lines.push(contentLine('CATEGORIES', escapeText(l.type_full)));
       }
@@ -513,7 +535,7 @@
       reminders.forEach(function (m) {
         lines.push('BEGIN:VALARM');
         lines.push('ACTION:DISPLAY');
-        lines.push(contentLine('DESCRIPTION', escapeText('Przypomnienie: ' + l.subject_full)));
+        lines.push(contentLine('DESCRIPTION', escapeText('Przypomnienie: ' + typedTitle(l.subject_full, l.type_full))));
         lines.push(contentLine('TRIGGER', '-PT' + m + 'M'));
         lines.push('END:VALARM');
       });
@@ -526,7 +548,7 @@
 
   var PlanICS = { decode: decode, parse: parse, toPlan: toPlan, toIcs: toIcs, initialWeekIndex: initialWeekIndex,
     subjectsOf: subjectsOf, withoutSubjects: withoutSubjects, filterText: filterText,
-    hiddenFor: hiddenFor, hiddenTypes: hiddenTypes, hidesAll: hidesAll };
+    hiddenFor: hiddenFor, hiddenTypes: hiddenTypes, hidesAll: hidesAll, typedTitle: typedTitle, plainTitle: plainTitle };
   if (typeof module === 'object' && module.exports) module.exports = PlanICS;
   else root.PlanICS = PlanICS;
 })(this);

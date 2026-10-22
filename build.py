@@ -441,6 +441,52 @@ def _fold(line):
     return '\r\n'.join(parts + [cur])
 
 
+NO_TITLE = ('', '-', '–')  # the faculties' placeholder titles (a reserved slot, a break): never typed
+
+
+def _escape(value):
+    return value.replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,').replace('\n', '\\n')
+
+
+def typed_title(subject, kind):
+    """ "Matematyka I" + "Wykład" -> "Matematyka I (Wykład)"; placeholders and an already typed title stay as they are."""
+    if subject in NO_TITLE or kind in NO_TITLE or subject.endswith(f' ({kind})'):
+        return subject
+    return f'{subject} ({kind})'
+
+
+def with_type_titles(raw):
+    """The calendar with each class's type after its subject in SUMMARY ("Matematyka I (Wykład)"): calendar apps show
+    the title and little else. The type is the first of the event's CATEGORIES; events without one keep their title.
+    Only the published files get it: the build's own data and the source calendars keep the plain subject, and the
+    page takes the type off again when it reads the file (ics.js). CRLF, refolded."""
+    text = raw.decode('utf-8').lstrip('\ufeff')
+    out, stack, event, summary, kind = [], [], None, None, ''
+    for line in (l for l in re.sub(r'\r?\n[ \t]', '', text).splitlines() if l):
+        name, _, value = line.partition(':')
+        name = name.split(';', 1)[0].upper()
+        if name == 'BEGIN':
+            stack.append(value.strip().upper())
+            if stack[-1] == 'VEVENT':
+                event, summary, kind = [], None, ''
+        elif name == 'END':
+            if value.strip().upper() == 'VEVENT' and stack[-1:] == ['VEVENT'] and event is not None:
+                if summary is not None and kind:
+                    head, _, title = event[summary].partition(':')
+                    event[summary] = head + ':' + _escape(typed_title(_unescape(title), kind))
+                out += event
+                event = None
+            if stack:
+                stack.pop()
+        elif stack[-1:] == ['VEVENT'] and event is not None:
+            if name == 'SUMMARY' and summary is None:
+                summary = len(event)
+            elif name == 'CATEGORIES' and not kind:
+                kind = _unescape(re.split(r'(?<!\\),', value, maxsplit=1)[0])
+        (event if event is not None else out).append(line)
+    return ''.join(_fold(l) + '\r\n' for l in out).encode('utf-8')
+
+
 def with_reminders(raw):
     """The calendar with a display alarm REMINDER_MINUTES before each event that has none; CRLF, refolded."""
     text = raw.decode('utf-8').lstrip('\ufeff')
@@ -1297,12 +1343,14 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     for group, term in sorted(current.items()):
         write(f'{group}/index.html', render_group(group_tpl, '\n'.join((ics_js, insights_js, campus_js)), term,
                                                   refreshed.get(group), by_group[group], assets=assets, site_url=site_url))
-        (out / group / 'plan.ics').write_bytes(term.data())
-        (out / group / REMINDER_FILE).write_bytes(with_reminders(term.data()))
+        published = with_type_titles(term.data())
+        (out / group / 'plan.ics').write_bytes(published)
+        (out / group / REMINDER_FILE).write_bytes(with_reminders(published))
         for other in by_group[group]:  # the group's other terms: plan-<term>.ics, opened by the page's ?t=<term>
             if other.term_id != term.term_id:
-                (out / group / f'plan-{other.term_id}.ics').write_bytes(other.data())
-                (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(other.data()))
+                published = with_type_titles(other.data())
+                (out / group / f'plan-{other.term_id}.ics').write_bytes(published)
+                (out / group / f'plan-{other.term_id}-przypomnienia.ics').write_bytes(with_reminders(published))
     write('index.html', render_index((SRC / 'index.html').read_text(encoding='utf-8'), current, ics_js, assets=assets, site_url=site_url))
     shutil.copytree(SRC / 'map', out / MAP_DIR, dirs_exist_ok=True)
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets, site_url=site_url))
