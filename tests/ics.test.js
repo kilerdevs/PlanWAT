@@ -290,6 +290,30 @@ test('hidden subjects drop out of the plan and out of the calendar text', () => 
   assert.equal(PlanICS.filterText(raw, []), raw);
 });
 
+test('subjectsOf counts each subject per class type, the usual parts first', () => {
+  const ev = (n, s, t) => event(['UID:' + n, 'DTSTART:20261015T100000', 'DTEND:20261015T113000', 'SUMMARY:' + s, ...(t ? ['CATEGORIES:' + t] : [])]);
+  const parsed = PlanICS.parse(cal([...ev(1, 'Fizyka', 'Zaliczenie'), ...ev(2, 'Fizyka', 'Laboratorium'), ...ev(3, 'Fizyka', 'Wykład'),
+    ...ev(4, 'Fizyka', 'Laboratorium'), ...ev(5, 'Fizyka', 'Ćwiczenia'), ...ev(6, 'Algebra', '')]));
+  const [algebra, fizyka] = PlanICS.subjectsOf(parsed);
+  assert.deepEqual(fizyka.types, [{ type: 'Wykład', count: 1 }, { type: 'Ćwiczenia', count: 1 }, { type: 'Laboratorium', count: 2 }, { type: 'Zaliczenie', count: 1 }]);
+  assert.deepEqual(algebra.types, [{ type: '', count: 1 }]);
+});
+
+test('a hidden [subject, type] pair drops only those classes, from the plan and from the calendar text', () => {
+  const ev = (n, s, t) => event(['UID:' + n, 'DTSTART:20261015T' + (10 + n) + '0000', 'DTEND:20261015T' + (10 + n) + '3000', 'SUMMARY:' + s, 'CATEGORIES:' + t]);
+  const raw = cal([...ev(1, 'Fizyka', 'Wykład'), ...ev(2, 'Fizyka', 'Ćwiczenia'), ...ev(3, 'Algebra\, liniowa', 'Wykład'),
+    ...ev(4, 'Algebra\, liniowa', 'Lab\\, wyjazd')]);
+  const parsed = PlanICS.parse(raw);
+  const kept = (hidden) => allLessons(PlanICS.toPlan(PlanICS.withoutSubjects(parsed, hidden))).map((l) => l.subject_full + '/' + l.type_full);
+  assert.deepEqual(kept([['Fizyka', 'Ćwiczenia']]), ['Fizyka/Wykład', 'Algebra, liniowa/Wykład', 'Algebra, liniowa/Lab, wyjazd']);
+  assert.deepEqual(kept(['Fizyka', ['Algebra, liniowa', 'Lab, wyjazd']]), ['Algebra, liniowa/Wykład']);
+  assert.deepEqual(kept([['Fizyka', 'Wykład'], ['Fizyka', 'Ćwiczenia']]), ['Algebra, liniowa/Wykład', 'Algebra, liniowa/Lab, wyjazd']);
+  assert.deepEqual(kept([['Fizyka', 'Seminarium'], ['Fizyka'], 'Chemia']).length, 4);  // nothing it names is in the plan
+  const text = PlanICS.filterText(raw, [['Fizyka', 'Ćwiczenia'], ['Algebra, liniowa', 'Lab, wyjazd']]);
+  assert.deepEqual(PlanICS.parse(text).events.map((e) => e.UID[0].value), ['1', '3']);
+  assert.ok(text.trim().endsWith('END:VCALENDAR'));
+});
+
 test('physical education without a room is held at the SWF', () => {
   const text = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//t//t//PL', 'X-PLAN-GROUP:G',

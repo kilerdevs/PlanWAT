@@ -15,6 +15,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+### Dodano
+- **Ukrywanie części przedmiotu** ([#31](https://github.com/kilerdevs/PlanWAT/issues/31)): w „Moich przedmiotach” przedmiot
+  prowadzony w kilku formach rozwija się strzałką na wykłady, ćwiczenia, laboratoria itd. Każdą z nich można odznaczyć osobno,
+  np. przy zwolnieniu z ćwiczeń. Ukryte zajęcia znikają z widoków, statystyk i pobranego pliku .ics, a wcześniej zapisane
+  wybory całych przedmiotów działają jak dotąd.
+
 ### Naprawiono
 - **Postęp semestru liczony z pustych miesięcy:** 31 kalendarzy WCY (np. `WCY25IX1S0`) miało daty zeszłego semestru letniego
   (np. 02.03–27.07.2026), bo konwerter brał początek semestru z pozostawionych na stronie wydziału zajęć z marca. Siatka tygodni
