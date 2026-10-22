@@ -17,6 +17,8 @@ if str(ROOT) not in sys.path:
 import build  # noqa: E402  (the site's own validator, so "valid here" means "builds there")
 
 STATE_FILE = 'refresh-state.json'
+# Check stamps the volunteer coordinator accepted (tools/volunteer/collect.py), keyed CODE@term.
+VOLUNTEER_STATE_FILE = 'volunteer-state.json'
 # Lines that change on every run without the plan changing.
 VOLATILE = ('X-PLAN-GENERATED', 'DTSTAMP', 'X-PLAN-UPDATED')
 
@@ -202,6 +204,11 @@ def _stable(ics):
     return [l for l in ics.replace('\r\n', '\n').split('\n') if not l.startswith(VOLATILE)]
 
 
+def plan_hash(ics):
+    """A digest of the plan itself: two calendars with the same plan_hash differ only in volatile lines."""
+    return sha256('\n'.join(_stable(ics)).encode('utf-8'))
+
+
 def same_plan(old, new):
     """True when two calendars differ only in volatile header lines."""
     return old is not None and _stable(old) == _stable(new)
@@ -300,6 +307,7 @@ class State:
                       flush=True)
             except OSError:
                 pass
+        self.accepted = load_accepted(self.path.with_name(VOLUNTEER_STATE_FILE))
 
     @property
     def groups(self):
@@ -315,9 +323,15 @@ class State:
         is given, when the entry belongs to another term (stale-term entries recheck once)."""
         entry = self.groups.get(code, {})
         seen = entry.get('checked')
-        if not seen:
-            return False
         if tid is not None and entry.get('term') != tid:
+            seen = None
+        if tid is not None:
+            # A check the volunteer coordinator accepted counts as well, whichever is newer.
+            other = self.accepted.get(code if '@' in code else f'{code}@{tid}')
+            other = other.get('checked') if isinstance(other, dict) else None
+            if isinstance(other, str) and (not seen or other > seen):
+                seen = other
+        if not seen:
             return False
         try:
             checked = dt.datetime.fromisoformat(seen)
@@ -342,6 +356,15 @@ class State:
             tmp = self.path.with_suffix('.tmp')
             tmp.write_text(text, encoding='utf-8')
             tmp.replace(self.path)
+
+
+def load_accepted(path):
+    """{CODE@term: {checked, changed, ...}} from volunteer-state.json; {} when there is none."""
+    try:
+        groups = json.loads(Path(path).read_text(encoding='utf-8')).get('groups', {})
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return groups if isinstance(groups, dict) else {}
 
 
 def now_utc():

@@ -864,13 +864,34 @@ def _stamp(iso, with_time=False):
     return moment.strftime('%d.%m.%Y %H:%M' if with_time else '%d.%m.%Y')
 
 
-def load_refresh_state(path):
-    """Per-group refresh times written by tools/refresh (refresh-state.json); {} when there is none."""
+def _state_groups(path):
     try:
         groups = json.loads(Path(path).read_text(encoding='utf-8')).get('groups', {})
     except (OSError, ValueError, AttributeError):
         return {}
     return groups if isinstance(groups, dict) else {}
+
+
+def load_refresh_state(path):
+    """Per-group refresh times written by tools/refresh (refresh-state.json); {} when there is none.
+
+    Checks the volunteer coordinator accepted (volunteer-state.json next to it, keyed GROUP@term) count too:
+    whichever stamp is newer wins, so "Sprawdzono" shows the latest check by anyone the site trusts."""
+    groups = _state_groups(path)
+    for key, stamps in _state_groups(Path(path).with_name('volunteer-state.json')).items():
+        code, _, tid = str(key).partition('@')
+        if not tid or not isinstance(stamps, dict):
+            continue
+        own = groups.get(code)
+        # The plain key is the running term's entry; a volunteer stamp for another term goes under GROUP@term.
+        target = code if not isinstance(own, dict) or own.get('term') in (None, tid) else key
+        entry = dict(groups.get(target) or {})
+        for field in ('checked', 'changed'):
+            theirs = stamps.get(field)
+            if isinstance(theirs, str) and theirs > str(entry.get(field) or ''):
+                entry[field] = theirs
+        groups[target] = entry
+    return groups
 
 
 def term_label(term_id):

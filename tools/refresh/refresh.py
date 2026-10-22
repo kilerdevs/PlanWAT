@@ -27,7 +27,10 @@ is published, the old calendars stay. A merely transient fetch (transport error,
 an empty 200) is retried a few times with exponential backoff first (--retries/--retry-backoff); exhaustion
 raises core.Blocked for HTTP transients (a wall) and the transport error itself for flakiness, so the run
 learns the cause.
-Exit codes: 0 done, 3 blocked, 4 incomplete.
+With --assign volunteers.json --as <login> it runs as a volunteer crawler (see docs/WOLONTARIUSZE.md): only the
+groups assigned to that login this window are checked, at the volunteer pace, and --outcomes records what each
+check found for tools/volunteer/bundle.py.
+Exit codes: 0 done, 2 bad arguments, 3 blocked, 4 incomplete.
 With GITHUB_OUTPUT set, `blocked`, `incomplete` and `changed` are exported for the workflow.
 """
 import argparse
@@ -42,10 +45,12 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / 'volunteer'))
+import assign  # noqa: E402
 import core  # noqa: E402
 import drivers  # noqa: E402
 
-PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (1.5, 4.0)}  # seconds between pages
+PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (1.5, 4.0), 'volunteer': (4.0, 9.0)}  # seconds between pages
 # WLO and WEL share one Incapsula policy (cookies for .wat.edu.pl): crawling either too fast blocks both home
 # addresses for hours. The ranges above are for the home line with one request at a time per host; a block
 # response now costs a reported retry on a fresh exit before it counts as a wall (--block-retries), and the
@@ -360,6 +365,13 @@ def noted_quiet(entry):
         entry['streak'] = 1
 
 
+def note_outcome(args, code, tid, status):
+    """Record what a volunteer's check of `code` found (bundle.py turns these into votes)."""
+    outcomes = getattr(args, 'outcomes_log', None)
+    if outcomes is not None:
+        outcomes[f'{code}@{tid}'] = {'status': status, 'at': core.now_utc().isoformat()}
+
+
 def noted_change(entry):
     """The plan really moved: the group is hot again and is checked every pass."""
     entry['streak'] = 0
@@ -435,6 +447,9 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
     # unseen the longest. Never-checked ('') sorts before any ISO timestamp; the code breaks ties
     # so the order is deterministic. The limit slices after the sort, keeping the stalest N.
     todo.sort(key=lambda i: (state.groups.get(key(i.code), {}).get('checked', ''), i.code))
+    if getattr(args, 'registry', None):
+        # A volunteer checks only its own share of this window (tools/volunteer/assign.py).
+        todo = [i for i in todo if assign.is_assigned(args.registry, args.login, name, i.code, tid, args.window)]
     if args.limit:
         todo = todo[:args.limit]
     log(f'[{name}] {len(items)} groups, {len(items) - len(todo)} fresh, {len(todo)} to check (term {tid})')
@@ -502,17 +517,20 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             remember_validators(entry, r)
             entry['checked'] = core.now_utc().isoformat()
             noted_quiet(entry)
+            note_outcome(args, item.code, tid, 'unchanged')
             continue
         raw = r.content
         text = raw.decode('utf-8', errors='replace')
         if r.status_code == 404:
             log(f'[{name}] {item.code}: gone (404), keeping the old calendar')
+            note_outcome(args, item.code, tid, 'gone')
             continue
         if not driver.page_ok(text):
             if getattr(driver, 'not_ready', None) and driver.not_ready(text):
                 not_ready += 1
                 log(f'[{name}] {item.code}: not ready for {tid} yet (the faculty still shows '
                     f'another semester); keeping the old calendar')
+                note_outcome(args, item.code, tid, 'not_ready')
                 continue
             log(f'[{name}] {item.code}: not a timetable page, skipped')
             failed += 1
@@ -524,6 +542,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if old is not None and entry.get('hash') == digest:
             entry['checked'] = core.now_utc().isoformat()
             noted_quiet(entry)
+            note_outcome(args, item.code, tid, 'unchanged')
             continue
         try:
             ics = core.to_crlf(driver.convert(item, raw))
@@ -555,6 +574,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         entry.update(hash=digest, checked=core.now_utc().isoformat(), term=tid)
         if core.same_plan(old, ics):
             noted_quiet(entry)
+            note_outcome(args, item.code, tid, 'unchanged')
             continue
         entry['changed'] = entry['checked']
         entry['streak'] = 0
@@ -563,6 +583,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if not args.dry_run:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(ics.encode('utf-8'))
+            note_outcome(args, item.code, tid, 'changed')
     # Skips (unreadable pages, failed conversions, rejected calendars) against responses
     # received: too many means the site is half-broken, not the plans half-changed. Pages
     # that are merely "not ready" (the faculty still shows another semester) are expected
@@ -616,7 +637,21 @@ def parse(argv=None):
                     help='policy groups crawled side by side (1 = strictly one faculty at a time)')
     ap.add_argument('--block-probes', type=int, default=5,
                     help='recovery probes per block (one cheap index fetch each)')
+    ap.add_argument('--assign', type=Path, help='volunteer mode: the registry (volunteers.json)')
+    ap.add_argument('--as', dest='login', default='', help='volunteer mode: your GitHub login in the registry')
+    ap.add_argument('--outcomes', type=Path, help='write what each check found here (JSON, for bundle.py)')
     args = ap.parse_args(argv)
+    args.registry, args.window = None, None
+    args.outcomes_log = {} if (args.outcomes or args.assign) else None
+    if args.assign:
+        if not args.login:
+            ap.error('--assign needs --as <login>')
+        try:
+            args.registry = assign.load_registry(args.assign)
+        except (OSError, ValueError) as err:
+            ap.error(f'cannot read the registry {args.assign}: {err}')
+        # Volunteers crawl at the gentle pace, whatever profile was asked for: many lines add up.
+        args.profile = 'volunteer'
     args.delay = PROFILES[args.profile]
     return args
 
@@ -747,6 +782,20 @@ def plan_lanes(wanted):
     return list(lanes.values())
 
 
+def write_outcomes(args, started, wanted, sources, state):
+    """What this run found, group by group, for tools/volunteer/bundle.py."""
+    faculties = {}
+    for n in wanted:
+        run = state.faculties.get(n, {}).get('run', {}) if n in sources else {}
+        faculties[n] = {'blocked': bool(run.get('blocked')), 'cause': run.get('cause')}
+    report = {'started': started, 'ended': core.now_utc().isoformat(), 'login': args.login,
+              'window': args.window, 'dry_run': args.dry_run,
+              'groups': dict(sorted((args.outcomes_log or {}).items())),
+              'faculties': faculties}
+    args.outcomes.parent.mkdir(parents=True, exist_ok=True)
+    args.outcomes.write_text(json.dumps(report, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+
+
 def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monotonic):
     args = parse(argv)
     today = today or core.now_utc().date()
@@ -754,6 +803,15 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     sources = json.loads((HERE / 'sources.json').read_text(encoding='utf-8'))
     named = [f for f in args.faculty.split(',') if f]
     wanted = named or [f for f, c in sources.items() if c.get('enabled')]
+    if args.registry:
+        me = assign.find(args.registry, args.login)
+        if me is None or me['trust'] == 'suspended':
+            log(f'{args.login} is not an active volunteer in {args.assign}')
+            return 2
+        if me['faculties']:
+            wanted = [f for f in wanted if f in me['faculties']]
+        args.window = assign.window_of(core.now_utc())
+        log(f'volunteer {me["login"]} ({me["trust"]}), window {args.window}: {", ".join(wanted) or "nothing"}')
     unknown = [f for f in wanted if f not in sources]
     if unknown:
         log(f'unknown faculty: {", ".join(unknown)}')
@@ -804,6 +862,8 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     if not args.dry_run:
         state.save()
     exit_code = 3 if blocked else 4 if incomplete else 0
+    if args.outcomes:
+        write_outcomes(args, started, wanted, sources, state)
     export(blocked=blocked, incomplete=incomplete, changed=len(tallies['changed']),
            degraded=degraded_any)
     log(f'changed: {len(tallies["changed"])}; blocked: {blocked}; incomplete: {incomplete}')
