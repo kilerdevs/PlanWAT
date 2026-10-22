@@ -15,6 +15,15 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-22
+
+### Zmieniono
+- **Rodzaj zajęć w tytule wydarzenia** (pomysł z [#34](https://github.com/kilerdevs/PlanWAT/pull/34)): w subskrybowanych
+  i pobieranych kalendarzach (`plan.ics`, `plan-przypomnienia.ics`, plik z „Kalendarza” i z „Moich przedmiotów”) tytuł to
+  „Matematyka I (Wykład)” zamiast „Matematyka I”, więc Google Calendar i iPhone pokazują rodzaj od razu. Dopisek powstaje przy
+  budowie z `CATEGORIES`, a pliki w `timetables/` się nie zmieniają. Strona zdejmuje go przy czytaniu, więc kolory, „Moje
+  przedmioty”, statystyki i liczniki nadal grupują po przedmiocie. Subskrypcje dostaną nowe tytuły przy najbliższej synchronizacji.
+
 ## [1.1.0] - 2026-10-22
 
 ### Dodano
@@ -209,11 +218,6 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   - na stronie głównej wydziały zwijają się płynnie, a wyszukiwarka grup także się chowa z animacją.
 
   Przyciski reagują na dotyk, a ruch ustępuje całkowicie przy „ogranicz ruch” w systemie.
-- **Rodzaj zajęć w tytule wydarzenia** (pomysł z [#34](https://github.com/kilerdevs/PlanWAT/pull/34)): w subskrybowanych
-  i pobieranych kalendarzach (`plan.ics`, `plan-przypomnienia.ics`, plik z „Kalendarza” i z „Moich przedmiotów”) tytuł to
-  „Matematyka I (Wykład)” zamiast „Matematyka I”, więc Google Calendar i iPhone pokazują rodzaj od razu. Dopisek powstaje przy
-  budowie z `CATEGORIES`, a pliki w `timetables/` się nie zmieniają. Strona zdejmuje go przy czytaniu, więc kolory, „Moje
-  przedmioty”, statystyki i liczniki nadal grupują po przedmiocie. Subskrypcje dostaną nowe tytuły przy najbliższej synchronizacji.
 
 ### Naprawiono
 - **Kontrast w jasnym motywie:** daty minionych dni, opis dnia w kolumnie „Dziś” i plakietka „Dziś” miały kontrast 4,0–4,4:1,
@@ -297,6 +301,7 @@ Pierwsze publiczne wydanie.
 - CI: testy czytnika kalendarza z progami pokrycia, testy budowy, testy przeglądarkowe Playwright (Chromium, Firefox, WebKit;
   pulpit i telefon) ze skanem WCAG axe, skan obrazu Docker (Grype) i test dymny, CodeQL oraz Dependabot.
 
-[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/kilerdevs/PlanWAT/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/kilerdevs/PlanWAT/releases/tag/v1.0.0
