@@ -86,6 +86,11 @@
     --r-ctl: 12px;
     --r-pill: 999px;
 
+    /* the background glows' peak strength: over a glow's centre --t3 text still has 4.5:1 (light: theme-light.css) */
+    --glow-blue: 0.16;
+    --glow-indigo: 0.17;
+    --glow-cyan: 0.1;
+
     /* motion (the easings and durations are shared, in theme.css) */
     --rise-y: 16px;
     --rise-blur: 0px;
@@ -126,53 +131,45 @@
     caret-color: var(--accent);
   }
   .page { position: relative; display: block; overflow-x: clip; }
-  /* the ambient light behind the title: three soft glows in the accent's blues, each drifting on its own slow loop.
-     Only transform and opacity move, so the compositor does all the work and nothing repaints, on phones too; they
-     stand still under reduced motion and rest while scrolled out of view */
-  .glows { position: absolute; top: 0; left: 0; right: 0; height: 0; z-index: 0; pointer-events: none; }
+  /* the ambient light: soft glows in the accent's blues, scattered over the screen (a fresh layout on every load, see
+     scatterGlows) and drifting on slow, separate loops. Only transform and opacity move, so the compositor does the
+     work and nothing repaints, on phones too. They sit behind everything on the page (the page is its own stacking
+     context) and stand still under reduced motion. How strong they get is set per theme (--glow-*): on the light
+     background a blue tint costs the small grey text contrast quickly, so there they stay faint */
+  .page { isolation: isolate; }
+  .glows { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; height: 100lvh; z-index: -1; pointer-events: none; }
   .glows i {
     --c: 10, 132, 255;
-    --a: 0.13;
+    --a: var(--glow-blue);
     position: absolute;
+    left: calc(var(--x, 50) * 1% - var(--w, 40vmax) / 2);
+    top: calc(var(--y, 20) * 1% - var(--h, 32vmax) / 2);
+    width: var(--w, 40vmax);
+    height: var(--h, 32vmax);
     border-radius: 50%;
     background: radial-gradient(closest-side, rgba(var(--c), var(--a)), rgba(var(--c), calc(var(--a) * 0.55)) 35%,
       rgba(var(--c), calc(var(--a) * 0.18)) 65%, rgba(var(--c), 0));
     will-change: transform, opacity;
-    animation: var(--path) var(--t) ease-in-out var(--delay) infinite alternate both;
+    animation: glow-drift var(--t, 64s) ease-in-out var(--delay, -20s) infinite alternate both;
   }
-  /* the main one, centred over the title */
-  .glows i:nth-child(1) {
-    top: -300px; left: 50%; width: min(820px, 150vw); height: 620px; margin-left: calc(min(820px, 150vw) / -2);
-    --path: glow-a; --t: 56s; --delay: -21s;
+  .glows i.indigo { --c: 94, 92, 230; --a: var(--glow-indigo); }
+  .glows i.cyan { --c: 100, 210, 255; --a: var(--glow-cyan); }
+  /* the spots before the script scatters them (and if it never runs) */
+  .glows i:nth-child(1) { --x: 50; --y: 4; }
+  .glows i:nth-child(2) { --x: 8; --y: 30; }
+  .glows i:nth-child(3) { --x: 92; --y: 22; }
+  .glows i:nth-child(4) { --x: 30; --y: 70; }
+  .glows i:nth-child(5) { --x: 80; --y: 86; }
+  .glows i:nth-child(6) { --x: 62; --y: 50; }
+  .glows i:nth-child(7) { --x: 14; --y: 96; }
+  @media (max-width: 767px) { .glows i:nth-child(n + 6) { display: none; } }
+  /* each glow wanders through three points of its own (set by the script) and back */
+  @keyframes glow-drift {
+    0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.8; }
+    33% { transform: translate3d(var(--dx1, 4vmax), var(--dy1, 2vmax), 0) scale(var(--s1, 1.06)); opacity: 1; }
+    66% { transform: translate3d(var(--dx2, -2vmax), var(--dy2, 5vmax), 0) scale(var(--s2, 0.95)); opacity: 0.85; }
+    100% { transform: translate3d(var(--dx3, -5vmax), var(--dy3, 1vmax), 0) scale(1.02); opacity: 1; }
   }
-  /* indigo, from the left */
-  .glows i:nth-child(2) {
-    --c: 94, 92, 230; --a: 0.1;
-    top: -180px; left: -12%; width: min(600px, 110vw); height: 480px;
-    --path: glow-b; --t: 71s; --delay: -38s;
-  }
-  /* a cooler cyan, from the right and a little lower */
-  .glows i:nth-child(3) {
-    --c: 100, 210, 255; --a: 0.07;
-    top: -40px; right: -14%; width: min(560px, 100vw); height: 440px;
-    --path: glow-c; --t: 83s; --delay: -12s;
-  }
-  @keyframes glow-a {
-    0% { transform: translate3d(-70px, 0, 0) scale(1); opacity: 1; }
-    50% { transform: translate3d(30px, 36px, 0) scale(1.06); opacity: 0.85; }
-    100% { transform: translate3d(90px, -12px, 0) scale(0.97); opacity: 1; }
-  }
-  @keyframes glow-b {
-    0% { transform: translate3d(0, 0, 0) scale(0.95); opacity: 0.7; }
-    50% { transform: translate3d(120px, 60px, 0) scale(1.08); opacity: 1; }
-    100% { transform: translate3d(220px, 10px, 0) scale(1); opacity: 0.8; }
-  }
-  @keyframes glow-c {
-    0% { transform: translate3d(0, 0, 0) scale(1.05); opacity: 1; }
-    50% { transform: translate3d(-110px, -50px, 0) scale(0.94); opacity: 0.75; }
-    100% { transform: translate3d(-200px, 30px, 0) scale(1.02); opacity: 1; }
-  }
-  .glows.calm i { animation-play-state: paused; }
   ::selection { background: var(--accent-select); color: #fff; }
   h1, h2, h3 { margin: 0; text-wrap: balance; }
   p { margin: 0; }
@@ -1967,7 +1964,7 @@
 </svg>
 
 <main class="page">
-  <div class="glows" id="glows" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="glows" id="glows" aria-hidden="true"><i></i><i class="indigo"></i><i class="cyan"></i><i class="indigo"></i><i></i><i class="cyan"></i><i></i></div>
   <header class="hero wrap" id="hero">
     <div class="hero-main">
       <div class="hero-intro">
@@ -2665,11 +2662,37 @@
     watchPings();
   }
 
-  /* the background glows rest while the top of the page is scrolled away */
-  if ('IntersectionObserver' in window) {
-    new IntersectionObserver(function (entries) { $('glows').classList.toggle('calm', !entries[0].isIntersecting); },
-      { rootMargin: '320px 0px' }).observe($('hero'));
-  }
+  /* the background glows: a new scatter on every load. The screen is cut into a loose grid and each glow takes a cell
+     of its own (random spot inside it), so they spread out instead of clumping; colour, size, pace and path vary too */
+  (function scatterGlows() {
+    var box = $('glows');
+    if (!box) return;
+    var glows = Array.prototype.slice.call(box.children);
+    var rand = function (a, b) { return a + Math.random() * (b - a); };
+    var cells = [];
+    for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) cells.push([c, r]);
+    for (var i = cells.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = cells[i]; cells[i] = cells[j]; cells[j] = t; }
+    var hues = ['', 'indigo', 'cyan'];
+    var first = Math.floor(Math.random() * 3);
+    glows.forEach(function (g, k) {
+      var cell = cells[k % cells.length];
+      var set = function (name, value) { g.style.setProperty(name, value); };
+      g.className = hues[(first + k) % 3];
+      set('--x', (cell[0] * 33.3 + rand(4, 29)).toFixed(1));
+      set('--y', (cell[1] * 33.3 + rand(4, 29)).toFixed(1));
+      var w = rand(30, 48);
+      set('--w', w.toFixed(1) + 'vmax');
+      set('--h', (w * rand(0.7, 1)).toFixed(1) + 'vmax');
+      set('--t', Math.round(rand(48, 92)) + 's');
+      set('--delay', -Math.round(rand(0, 90)) + 's');
+      ['1', '2', '3'].forEach(function (n) {
+        set('--dx' + n, rand(-9, 9).toFixed(1) + 'vmax');
+        set('--dy' + n, rand(-7, 7).toFixed(1) + 'vmax');
+      });
+      set('--s1', rand(0.9, 1.12).toFixed(2));
+      set('--s2', rand(0.9, 1.12).toFixed(2));
+    });
+  })();
 
   /* looping pings rest while their element is off-screen */
   var pingIO = null;
