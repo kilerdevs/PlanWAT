@@ -1157,6 +1157,17 @@
   .mysubjects { display: grid; gap: 2px; margin: var(--sp-3) 0; }
   .mysubjects .check { align-items: flex-start; padding: 6px 0; }
   .mysubjects .check input { flex: none; margin-top: 1px; }
+  /* a subject taught in several forms opens into them: untick only the lectures, only the exercises, … */
+  .mysub-head { display: flex; align-items: flex-start; gap: var(--sp-2); }
+  .mysub-head .check { flex: 1; min-width: 0; }
+  .mysub-toggle {
+    flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin: -6px -10px 0 0;
+    border: 0; border-radius: 999px; background: transparent; color: var(--t3); cursor: pointer; touch-action: manipulation;
+  }
+  .mysub-toggle .i { width: 18px; height: 18px; transition: transform var(--dur-base) var(--spring); }
+  .mysub-toggle[aria-expanded="true"] .i { transform: rotate(180deg); }
+  .mysub-parts { display: grid; padding-left: calc(20px + var(--sp-2)); }
+  .mysub-parts[hidden] { display: none; }
   #toolBody > .dl { margin: 0 var(--sp-2) var(--sp-2) 0; }
   /* the calendar download button gets the same breathing room as the choice row's label */
   #toolBody > .field + #calFile { margin-top: var(--sp-4); }
@@ -1417,7 +1428,7 @@
     .action:hover, .link:hover, .choice:not([aria-pressed="true"]):hover { background: var(--s4); }
     .mday:not(:disabled):hover { background: var(--s3); }
     .todaypill.show:hover { background: var(--pill-hover); }
-    .legend summary:hover .i { color: var(--t1); }
+    .legend summary:hover .i, .mysub-toggle:hover { color: var(--t1); }
   }
 
   /* ================= tablet and up ================= */
@@ -1767,7 +1778,7 @@
     .todaypill, .todaypill.show, .todaypill.show:active { transform: translate(-50%, 0); }
     .toast, .toast.show { transform: translate(-50%, 0); }
     .live:hover, .live:active, .lesson:hover, .week .lesson:hover, .round:not(:disabled):active, .weekbtn:active, .chip:active, .dl:active { transform: none; }
-    .weekbtn .i, .legend summary .i { transition: none; }
+    .weekbtn .i, .legend summary .i, .mysub-toggle .i { transition: none; }
     dialog.sheet, .legend::details-content { transition: none; }
     ::view-transition-group(*) { animation-duration: 0s; }
   }
@@ -4371,38 +4382,116 @@
     var parts = location.pathname.split('/').filter(Boolean);
     return (parts[parts.length - 1] || '') + (planFile === 'plan.ics' ? '' : ':' + planFile);
   }
+  /* the saved choice, kept to what this calendar still has: a subject's name hides all of it, a [name, type] pair only
+     its classes of that type */
+  function hiddenFor(saved, subjects) {
+    if (!Array.isArray(saved)) return [];
+    var types = {};
+    subjects.forEach(function (sub) { types[sub.name] = sub.types.map(function (t) { return t.type; }); });
+    var kept = saved.filter(function (h) {
+      if (typeof h === 'string') return !!types[h];
+      return Array.isArray(h) && h.length === 2 && !!types[h[0]] && types[h[0]].indexOf(h[1]) >= 0;
+    });
+    return hidesAll(kept, subjects) ? [] : kept; /* never hide everything */
+  }
+  /* per subject, the types the list hides (all of them for a hidden name) */
+  function hiddenTypes(hidden, sub) {
+    if (hidden.indexOf(sub.name) >= 0) return sub.types.map(function (t) { return t.type; });
+    return hidden.filter(function (h) { return Array.isArray(h) && h[0] === sub.name; }).map(function (h) { return h[1]; });
+  }
+  function hidesAll(hidden, subjects) {
+    return subjects.every(function (sub) { return hiddenTypes(hidden, sub).length >= sub.types.length; });
+  }
+  /* "Ćwiczenia" -> "ćwiczenia", "Wykład" -> "wykłady": how a row under the subject names its classes */
+  var TYPE_PLURAL = { 'Wykład': 'wykłady', 'Ćwiczenia': 'ćwiczenia', 'Laboratorium': 'laboratoria', 'Projekt': 'projekty',
+    'Seminarium': 'seminaria', 'Egzamin': 'egzaminy', 'Zaliczenie': 'zaliczenia' };
+  function typeLabel(type) { return type ? TYPE_PLURAL[type] || type : 'bez rodzaju'; }
   function initHidden() {
-    var n = state.hidden.length;
-    $('hiddenNotice').hidden = !n;
-    if (n) {
-      $('hiddenText').textContent = 'Ukryto ' + n + ' ' + PI.plural(n, 'przedmiot', 'przedmioty', 'przedmiotów') + ' (tylko w tej przeglądarce). Statystyki i pobrany plik też ich nie zawierają.';
+    var whole = state.hidden.filter(function (h) { return typeof h === 'string'; }).length;
+    var parts = state.hidden.length - whole;
+    $('hiddenNotice').hidden = !state.hidden.length;
+    if (state.hidden.length) {
+      var what = [];
+      if (whole) what.push(whole + ' ' + PI.plural(whole, 'przedmiot', 'przedmioty', 'przedmiotów'));
+      if (parts) what.push(parts + ' ' + PI.plural(parts, 'rodzaj zajęć', 'rodzaje zajęć', 'rodzajów zajęć'));
+      $('hiddenText').textContent = 'Ukryto ' + what.join(' i ') + ' (tylko w tej przeglądarce). Statystyki i pobrany plik też ich nie zawierają.';
       var href = URL.createObjectURL(new Blob([window.PlanICS.filterText(state.rawText, state.hidden)], { type: 'text/calendar' }));
       $('icsLink').setAttribute('href', href);
     }
   }
   function openSubjects() {
-    var pending = state.hidden.slice();
-    openTool('Moje przedmioty', function (body) {
-      para(body, 'Odznacz przedmioty, których nie masz (np. lektoraty do wyboru). Znikną z widoków, statystyk i pobranego pliku .ics. Zapisujemy to tylko w tej przeglądarce; subskrypcja kalendarza nadal zawiera cały plan.');
-      var list = body.appendChild(el('div', 'mysubjects'));
+    /* subject name -> the types unticked in the sheet */
+    var off = {};
+    state.subjects.forEach(function (sub) { off[sub.name] = hiddenTypes(state.hidden, sub); });
+    var pending = function () {
+      var out = [];
       state.subjects.forEach(function (sub) {
-        var row = list.appendChild(el('label', 'check'));
+        if (off[sub.name].length >= sub.types.length) out.push(sub.name);
+        else off[sub.name].forEach(function (t) { out.push([sub.name, t]); });
+      });
+      return out;
+    };
+    openTool('Moje przedmioty', function (body) {
+      para(body, 'Odznacz przedmioty, których nie masz (np. lektoraty do wyboru). Strzałka przy przedmiocie pozwala odznaczyć tylko część zajęć, np. same wykłady. Znikną z widoków, statystyk i pobranego pliku .ics. Zapisujemy to tylko w tej przeglądarce; subskrypcja kalendarza nadal zawiera cały plan.');
+      var list = body.appendChild(el('div', 'mysubjects'));
+      var syncs = [];
+      var check = function (parent, text) {
+        var row = parent.appendChild(el('label', 'check'));
         var cb = row.appendChild(el('input'));
         cb.type = 'checkbox';
-        cb.checked = pending.indexOf(sub.name) < 0;
+        row.appendChild(el('span', null, text));
+        return cb;
+      };
+      state.subjects.forEach(function (sub, i) {
+        var item = list.appendChild(el('div', 'mysub'));
+        var head = item.appendChild(el('div', 'mysub-head'));
+        var cb = check(head, sub.name);
+        var boxes = [];
+        /* ticked while any of it is shown; part-hidden shows as mixed, and a click on it shows everything again */
+        var sync = function () {
+          var n = off[sub.name].length;
+          cb.indeterminate = n > 0 && n < sub.types.length;
+          cb.checked = n === 0;
+          boxes.forEach(function (b, k) { b.checked = off[sub.name].indexOf(sub.types[k].type) < 0; });
+          apply.disabled = hidesAll(pending(), state.subjects);
+        };
         cb.addEventListener('change', function () {
-          pending = pending.filter(function (n) { return n !== sub.name; });
-          if (!cb.checked) pending.push(sub.name);
-          apply.disabled = pending.length >= state.subjects.length;
+          off[sub.name] = cb.checked ? [] : sub.types.map(function (t) { return t.type; });
+          sync();
         });
-        row.appendChild(el('span', null, sub.name));
+        if (sub.types.length > 1) {
+          var parts = item.appendChild(el('div', 'mysub-parts'));
+          parts.id = 'mysub-' + i;
+          parts.hidden = !(off[sub.name].length && off[sub.name].length < sub.types.length); /* open when part of it is hidden */
+          var toggle = head.appendChild(el('button', 'mysub-toggle'));
+          toggle.type = 'button';
+          toggle.setAttribute('aria-controls', parts.id);
+          toggle.setAttribute('aria-expanded', String(!parts.hidden));
+          toggle.setAttribute('aria-label', 'Rodzaje zajęć: ' + sub.name);
+          toggle.appendChild(icon('chevron-down'));
+          toggle.addEventListener('click', function () {
+            parts.hidden = !parts.hidden;
+            toggle.setAttribute('aria-expanded', String(!parts.hidden));
+          });
+          sub.types.forEach(function (t) {
+            var b = check(parts, typeLabel(t.type));
+            b.addEventListener('change', function () {
+              off[sub.name] = off[sub.name].filter(function (x) { return x !== t.type; });
+              if (!b.checked) off[sub.name].push(t.type);
+              sync();
+            });
+            boxes.push(b);
+          });
+        }
+        syncs.push(sync);
       });
       var apply = body.appendChild(el('button', 'dl', 'Zastosuj'));
       apply.type = 'button';
       apply.addEventListener('click', function () {
-        store.set('hide:' + hideKey(), pending);
+        store.set('hide:' + hideKey(), pending());
         location.reload();
       });
+      syncs.forEach(function (f) { f(); });
       var reset = body.appendChild(el('button', 'dl', 'Pokaż wszystkie'));
       reset.type = 'button';
       reset.addEventListener('click', function () {
@@ -5555,10 +5644,7 @@
         state.rawText = window.PlanICS.decode(buf);
         var parsed = window.PlanICS.parse(state.rawText);
         state.subjects = window.PlanICS.subjectsOf(parsed);
-        var known = state.subjects.map(function (x) { return x.name; });
-        var saved = store.get('hide:' + hideKey(), []);
-        state.hidden = Array.isArray(saved) ? saved.filter(function (n) { return known.indexOf(n) >= 0; }) : [];
-        if (state.hidden.length >= known.length) state.hidden = []; /* never hide everything */
+        state.hidden = hiddenFor(store.get('hide:' + hideKey(), []), state.subjects);
         var data = window.PlanICS.toPlan(window.PlanICS.withoutSubjects(parsed, state.hidden));
         if (!data.weeks.length) throw new Error('plik planu nie zawiera zajęć');
         boot(data);

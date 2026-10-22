@@ -983,6 +983,47 @@ test('"Moje przedmioty" hides a subject everywhere, remembers it, and the downlo
   expect(problems).toEqual([]);
 });
 
+test('"Moje przedmioty" can hide one kind of a subject\'s classes and keep the rest', async ({ page }) => {
+  const problems = await openGroup(page);
+  const subject = 'Matematyka I';  // a lecture on Monday and exercises on Friday of the opening week
+  const ofSubject = page.locator('#weekBody .lesson').filter({ has: page.getByText(subject, { exact: true }) });
+  await expect(ofSubject).toHaveCount(2);
+  const types = (await ofSubject.locator('.type').allTextContents()).map((t) => t.trim());
+  await pressTool(page, '#subjectsBtn');
+  const item = page.locator('#toolBody .mysub').filter({ has: page.locator('.mysub-head').getByText(subject, { exact: true }) });
+  const parts = item.locator('.mysub-parts');
+  await expect(parts).toBeHidden();
+  await item.locator('.mysub-toggle').click();
+  await expect(item.locator('.mysub-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(parts.locator('label')).toHaveText(['wykłady', 'ćwiczenia']);
+  await parts.locator('label').filter({ hasText: 'ćwiczenia' }).locator('input').uncheck();
+  expect(await item.locator('.mysub-head input').evaluate((n) => n.indeterminate)).toBe(true);
+  await page.getByRole('button', { name: 'Zastosuj' }).click();
+
+  await expect(page.locator('#hiddenText')).toContainText('Ukryto 1 rodzaj zajęć');
+  await expect(ofSubject).toHaveCount(1);
+  expect((await ofSubject.locator('.type').textContent()).trim()).toBe(types[0]);
+  await showTool(page, '#icsLink');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#icsLink').click()]);
+  const events = fs.readFileSync(await download.path(), 'utf-8').replace(/\r?\n[ \t]/g, '').split('BEGIN:VEVENT').slice(1);
+  const kinds = events.filter((e) => e.split(/\r?\n/).includes('SUMMARY:' + subject)).map((e) => /^CATEGORIES:(.*)$/m.exec(e)[1].trim());
+  expect(kinds).toContain('Wykład');
+  expect(kinds).not.toContain('Ćwiczenia');
+
+  await page.reload();
+  await expect(page.locator('#hiddenText')).toContainText('Ukryto 1 rodzaj zajęć');
+  await expect(ofSubject).toHaveCount(1);
+  await page.locator('#hiddenEdit').click();
+  await expect(item.locator('.mysub-parts')).toBeVisible();  // opened where part of a subject is hidden
+  expect(await item.locator('.mysub-head input').evaluate((n) => n.indeterminate)).toBe(true);
+  await item.locator('.mysub-head input').check();  // a mixed subject's box shows all of it again
+  await expect(item.locator('.mysub-parts input:checked')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Zastosuj' }).click();
+  await expect(page.locator('#hiddenNotice')).toBeHidden();
+  await expect(ofSubject).toHaveCount(2);
+  expect(problems).toEqual([]);
+});
+
 test('the system light theme is followed, and a stored choice wins and survives a reload', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   const problems = await openGroup(page);

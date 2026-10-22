@@ -217,7 +217,7 @@
       if (text(ev, 'STATUS').toUpperCase() === 'CANCELLED') return;
       var subject = text(ev, 'SUMMARY');
       if (!subject) return;
-      var type = ev.CATEGORIES ? (splitList(ev.CATEGORIES[0].value)[0] || '') : '';
+      var type = typeOf(ev);
       var room = text(ev, 'LOCATION');
       /* the faculties write "54/ 62" and "29/ 54 30/ 54": the space after the slash is noise in a room code */
       if (room) room = room.replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ').trim();
@@ -286,34 +286,62 @@
   }
 
   /* ---------- "my subjects": a personal filter, applied in the browser only ---------- */
-  /* every subject of the calendar, [{ name, count, color }] sorted by name, with the number of its calendar entries */
+  /* the class type (Wykład, Ćwiczenia, …): the first of the event's categories */
+  function typeOf(ev) { return ev.CATEGORIES ? (splitList(ev.CATEGORIES[0].value)[0] || '') : ''; }
+  /* the usual parts of a subject first, in the order a syllabus lists them; anything else after, by name */
+  var TYPE_ORDER = ['Wykład', 'Ćwiczenia', 'Laboratorium', 'Projekt', 'Seminarium'];
+  function byTypeOrder(a, b) {
+    var i = TYPE_ORDER.indexOf(a), j = TYPE_ORDER.indexOf(b);
+    if (i < 0) i = TYPE_ORDER.length;
+    if (j < 0) j = TYPE_ORDER.length;
+    return i - j || a.localeCompare(b, 'pl');
+  }
+  /* every subject of the calendar, [{ name, count, color, types: [{ type, count }] }] sorted by name, with the number
+     of its calendar entries in all and per class type */
   function subjectsOf(parsed) {
     var by = {};
     (parsed.events || []).forEach(function (ev) {
       var name = text(ev, 'SUMMARY');
       if (!name || name === '-' || name === '–' || text(ev, 'STATUS').toUpperCase() === 'CANCELLED') return;
-      var s = by[name] || (by[name] = { name: name, count: 0, color: '' });
+      var s = by[name] || (by[name] = { name: name, count: 0, color: '', types: {} });
       s.count++;
+      var type = typeOf(ev);
+      s.types[type] = (s.types[type] || 0) + 1;
       var color = text(ev, 'X-PLAN-COLOR');
       if (!s.color && HEX.test(color)) s.color = color.toLowerCase();
     });
-    return Object.keys(by).sort(function (a, b) { return a.localeCompare(b, 'pl'); }).map(function (k) { return by[k]; });
+    return Object.keys(by).sort(function (a, b) { return a.localeCompare(b, 'pl'); }).map(function (k) {
+      var s = by[k];
+      s.types = Object.keys(s.types).sort(byTypeOrder).map(function (t) { return { type: t, count: s.types[t] }; });
+      return s;
+    });
   }
-  /* the parsed calendar without the classes of the hidden subjects (an array of names) */
+  /* hidden: a subject's name hides all of it, a [name, type] pair only its classes of that type */
+  function hiddenTest(hidden) {
+    var whole = {}, part = {};
+    hidden.forEach(function (h) {
+      if (typeof h === 'string') whole[h] = true;
+      else if (Array.isArray(h) && h.length === 2) part[h[0] + '\u0000' + h[1]] = true;
+    });
+    return function (name, type) { return !!(whole[name] || part[name + '\u0000' + type]); };
+  }
+  /* the parsed calendar without the hidden classes */
   function withoutSubjects(parsed, hidden) {
     if (!hidden || !hidden.length) return parsed;
-    var drop = {};
-    hidden.forEach(function (n) { drop[n] = true; });
-    return { calendar: parsed.calendar, events: (parsed.events || []).filter(function (ev) { return !drop[text(ev, 'SUMMARY')]; }) };
+    var drop = hiddenTest(hidden);
+    return { calendar: parsed.calendar, events: (parsed.events || []).filter(function (ev) { return !drop(text(ev, 'SUMMARY'), typeOf(ev)); }) };
   }
-  /* the calendar file's own text without the hidden subjects' events: what "Pobierz plan" saves after filtering */
+  /* the calendar file's own text without the hidden classes' events: what "Pobierz plan" saves after filtering */
   function filterText(raw, hidden) {
     if (!hidden || !hidden.length) return raw;
-    var drop = {};
-    hidden.forEach(function (n) { drop[n] = true; });
+    var drop = hiddenTest(hidden);
     return String(raw).replace(/BEGIN:VEVENT[\s\S]*?END:VEVENT(\r?\n)?/g, function (block) {
-      var m = /^SUMMARY[^:\r\n]*:(.*)$/m.exec(block.replace(/\r?\n[ \t]/g, ''));
-      return m && drop[unescapeText(m[1].replace(/\r$/, '')).trim()] ? '' : block;
+      var flat = block.replace(/\r?\n[ \t]/g, '');
+      var m = /^SUMMARY[^:\r\n]*:(.*)$/m.exec(flat);
+      if (!m) return block;
+      var c = /^CATEGORIES[^:\r\n]*:(.*)$/m.exec(flat);
+      var type = c ? (splitList(c[1].replace(/\r$/, ''))[0] || '') : '';
+      return drop(unescapeText(m[1].replace(/\r$/, '')).trim(), type) ? '' : block;
     });
   }
 
