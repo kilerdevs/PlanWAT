@@ -365,6 +365,36 @@ def noted_quiet(entry):
         entry['streak'] = 1
 
 
+def accepted_checked(state, code, tid):
+    """The coordinator's last accepted check of `code` in term `tid` ('' when none)."""
+    entry = state.accepted.get(f'{code}@{tid}')
+    stamp = entry.get('checked') if isinstance(entry, dict) else None
+    return stamp if isinstance(stamp, str) else ''
+
+
+# What a crawl learns about its own line (per-faculty runs, learned block durations, AIMD pacing). A volunteer
+# keeps these in its own file (--faculty-state): the data branch it starts from carries the home runner's numbers.
+LINE_KEYS = ('faculties', 'blocks', 'pacing')
+
+
+def load_line_state(state, path):
+    try:
+        mine = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        mine = {}
+    for k in LINE_KEYS:
+        state.data[k] = mine[k] if isinstance(mine, dict) and isinstance(mine.get(k), dict) else {}
+
+
+def save_line_state(state, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix('.tmp')
+    tmp.write_text(json.dumps({k: state.data.get(k, {}) for k in LINE_KEYS}, ensure_ascii=False, indent=1) + '\n',
+                   encoding='utf-8')
+    tmp.replace(path)
+
+
 def note_outcome(args, code, tid, status):
     """Record what a volunteer's check of `code` found (bundle.py turns these into votes)."""
     outcomes = getattr(args, 'outcomes_log', None)
@@ -446,10 +476,14 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
     # Stalest first: a run cut short by --max-minutes, --limit or a block refreshes the groups
     # unseen the longest. Never-checked ('') sorts before any ISO timestamp; the code breaks ties
     # so the order is deterministic. The limit slices after the sort, keeping the stalest N.
-    todo.sort(key=lambda i: (state.groups.get(key(i.code), {}).get('checked', ''), i.code))
+    # A check the volunteer coordinator accepted counts as a sighting too.
+    todo.sort(key=lambda i: (max(state.groups.get(key(i.code), {}).get('checked', '') or '',
+                                 accepted_checked(state, i.code, tid)), i.code))
     if getattr(args, 'registry', None):
-        # A volunteer checks only its own share of this window (tools/volunteer/assign.py).
-        todo = [i for i in todo if assign.is_assigned(args.registry, args.login, name, i.code, tid, args.window)]
+        # A volunteer checks only its own share of this window (tools/volunteer/assign.py), among the volunteers
+        # the coordinator last heard from.
+        todo = [i for i in todo if assign.is_assigned(args.registry, args.login, name, i.code, tid, args.window,
+                                                      getattr(args, 'health', None))]
     if args.limit:
         todo = todo[:args.limit]
     log(f'[{name}] {len(items)} groups, {len(items) - len(todo)} fresh, {len(todo)} to check (term {tid})')
@@ -640,8 +674,10 @@ def parse(argv=None):
     ap.add_argument('--assign', type=Path, help='volunteer mode: the registry (volunteers.json)')
     ap.add_argument('--as', dest='login', default='', help='volunteer mode: your GitHub login in the registry')
     ap.add_argument('--outcomes', type=Path, help='write what each check found here (JSON, for bundle.py)')
+    ap.add_argument('--faculty-state', type=Path,
+                    help="keep this line's learned pacing and block durations here instead of in the data checkout")
     args = ap.parse_args(argv)
-    args.registry, args.window = None, None
+    args.registry, args.window, args.health = None, None, None
     args.outcomes_log = {} if (args.outcomes or args.assign) else None
     if args.assign:
         if not args.login:
@@ -811,12 +847,15 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
         if me['faculties']:
             wanted = [f for f in wanted if f in me['faculties']]
         args.window = assign.window_of(core.now_utc())
+        args.health = assign.load_health(Path(args.out) / core.VOLUNTEER_STATE_FILE)
         log(f'volunteer {me["login"]} ({me["trust"]}), window {args.window}: {", ".join(wanted) or "nothing"}')
     unknown = [f for f in wanted if f not in sources]
     if unknown:
         log(f'unknown faculty: {", ".join(unknown)}')
         return 2
     state = core.State(Path(args.out) / core.STATE_FILE)
+    if args.faculty_state:
+        load_line_state(state, args.faculty_state)
     model = core.BlockModel(state.data)
     coming = core.upcoming_reference(today)
     lanes = plan_lanes(wanted)
@@ -861,6 +900,8 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
             'forcing incomplete so the run gets attention')
     if not args.dry_run:
         state.save()
+    if args.faculty_state:
+        save_line_state(state, args.faculty_state)
     exit_code = 3 if blocked else 4 if incomplete else 0
     if args.outcomes:
         write_outcomes(args, started, wanted, sources, state)

@@ -30,6 +30,9 @@ inputs:
   upstream:
     description: Volunteer mode only, the project whose data branch and registry are read.
     default: kilerdevs/PlanWAT
+  registry-editors:
+    description: Volunteer mode only, the logins whose verified commits may set the registry.
+    default: kilerdevs
 
 outputs:
   blocked:
@@ -81,6 +84,8 @@ runs:
         SOURCE: ${{ inputs.source }}
         MODE: ${{ inputs.mode }}
         UPSTREAM: ${{ inputs.upstream }}
+        EDITORS: ${{ inputs.registry-editors }}
+        GH_TOKEN: ${{ inputs.token }}
         # The crawler posts a block notice here whenever a faculty answered a block page via a
         # pooled exit, so the egress can demote that exit (see tools/egress/server.py). Best
         # effort: on a runner with no egress box the posts just fail and the crawl continues.
@@ -94,11 +99,14 @@ runs:
         args=(--out data --profile "$PROFILE" --max-minutes "$MAX_MINUTES" --adaptive-hours "$ADAPTIVE_HOURS")
         if [ -n "$FACULTY" ]; then args+=(--faculty "$FACULTY"); fi
         if [ "$MODE" = volunteer ]; then
-          # The registry comes from the project, not from the fork: it decides who checks what.
-          curl -fsS --max-time 30 -o "$RUNNER_TEMP/volunteers.json" \
-            "https://raw.githubusercontent.com/$UPSTREAM/volunteers/volunteers.json" || exit 1
+          # The registry comes from the project, not from the fork, and only from a commit GitHub verifies as
+          # signed by a registry editor (tools/volunteer/registry.py): it decides who checks what.
+          "$PLANWAT_PY" "$SOURCE/tools/volunteer/registry.py" --upstream "$UPSTREAM" --editors "$EDITORS" \
+            --out "$RUNNER_TEMP/volunteers.json" || exit 1
+          # Learned pacing and block cooldowns of this runner's own line, kept between runs in the tool cache.
+          mkdir -p "$RUNNER_TOOL_CACHE/planwat"
           args+=(--assign "$RUNNER_TEMP/volunteers.json" --as "$GITHUB_REPOSITORY_OWNER"
-                 --outcomes "$RUNNER_TEMP/outcomes.json")
+                 --outcomes "$RUNNER_TEMP/outcomes.json" --faculty-state "$RUNNER_TOOL_CACHE/planwat/faculties.json")
         fi
         "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}"
         code=$?

@@ -5,6 +5,7 @@ Nothing here touches the network, so it is unit-tested offline (tests/test_refre
 import datetime as dt
 import hashlib
 import json
+import os
 import re
 import sys
 import tempfile
@@ -367,5 +368,16 @@ def load_accepted(path):
     return groups if isinstance(groups, dict) else {}
 
 
+def clock_offset():
+    """Seconds to add to this machine's clock (PLANWAT_CLOCK_OFFSET): a volunteer's crawler measures how far its
+    host is off GitHub's clock and corrects its stamps, so a drifting host does not get its bundles refused."""
+    try:
+        offset = float(os.environ.get('PLANWAT_CLOCK_OFFSET', '0') or 0)
+    except ValueError:
+        return 0.0
+    return offset if abs(offset) <= 86400 else 0.0
+
+
 def now_utc():
-    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0, tzinfo=None)
+    moment = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=clock_offset())
+    return moment.replace(microsecond=0, tzinfo=None)

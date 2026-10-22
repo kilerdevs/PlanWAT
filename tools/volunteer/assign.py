@@ -4,6 +4,13 @@ Every group is handed out per two-hour window by rendezvous hashing over the vol
 faculty: the top-ranked one alone when it is trusted, otherwise the top `quorum` peers, so the load on a faculty
 site stays about `quorum` fetches per group and window however many volunteers join, and pairs of peers rotate
 every window. Everybody computes the same answer from the public registry; nothing is coordinated live.
+
+The answer also heeds the volunteers' health that the coordinator publishes in volunteer-state.json on the data
+branch (`volunteers`): a volunteer whose last bundle is more than LIVE_HOURS old is offline, and one that reported
+a faculty blocked within the last BLOCK_HOURS is skipped for that faculty, so quorums form among the volunteers who
+are actually working. Health is judged at the start of the window, so everybody who read the same data commit
+agrees; a never-seen volunteer counts as live for GRACE_HOURS after the `added` date of its registry entry, and a
+volunteer always counts itself as live (otherwise one back from a break would never be heard from again).
 """
 import datetime as dt
 import hashlib
@@ -13,9 +20,13 @@ from pathlib import Path
 
 TRUST = ('trusted', 'peer', 'suspended')
 WINDOW_HOURS = 2
+LIVE_HOURS = 6
+BLOCK_HOURS = 6
+GRACE_HOURS = 24
 LOGIN_RE = re.compile(r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$')
 REPO_RE = re.compile(r'^[A-Za-z0-9._-]{1,100}$')
 VERSION_RE = re.compile(r'^\d+\.\d+\.\d+$')
+DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?)?$')
 
 
 class RegistryError(ValueError):
@@ -60,8 +71,14 @@ def check_registry(data):
         faculties = v.get('faculties', [])
         if not isinstance(faculties, list) or not all(isinstance(f, str) for f in faculties):
             raise RegistryError(f'{login}: faculties must be a list of names')
-        volunteers.append({'login': login, 'fork': f'{login}/{repo}', 'trust': trust,
-                           'faculties': [f.lower() for f in faculties]})
+        added = v.get('added')
+        if added is not None and not (isinstance(added, str) and DATE_RE.match(added)):
+            raise RegistryError(f'{login}: added must be a date (YYYY-MM-DD)')
+        entry = {'login': login, 'fork': f'{login}/{repo}', 'trust': trust,
+                 'faculties': [f.lower() for f in faculties]}
+        if added:
+            entry['added'] = added
+        volunteers.append(entry)
     return {'quorum': quorum, 'window_hours': float(window),
             'min_version': data.get('min_version', '0.0.0'), 'volunteers': volunteers}
 
@@ -80,14 +97,59 @@ def window_of(moment, hours=WINDOW_HOURS):
     return int(moment.replace(tzinfo=dt.timezone.utc).timestamp() // (hours * 3600))
 
 
+def window_start(window, hours=WINDOW_HOURS):
+    """When window number `window` opens (naive UTC)."""
+    return dt.datetime.fromtimestamp(window * hours * 3600, dt.timezone.utc).replace(tzinfo=None)
+
+
+def load_health(path):
+    """{login: record} published by the coordinator in volunteer-state.json; {} when there is none."""
+    try:
+        found = json.loads(Path(path).read_text(encoding='utf-8')).get('volunteers', {})
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return found if isinstance(found, dict) else {}
+
+
+def _stamp(text):
+    try:
+        moment = dt.datetime.fromisoformat(str(text))
+    except ValueError:
+        return None
+    return moment.astimezone(dt.timezone.utc).replace(tzinfo=None) if moment.tzinfo else moment
+
+
+def working(volunteer, faculty, health, opens):
+    """Whether `volunteer` can be counted on for `faculty` in the window that `opens` then."""
+    record = health.get(volunteer['login']) or health.get(volunteer['login'].lower()) or {}
+    if not isinstance(record, dict):
+        record = {}
+    blocked = _stamp((record.get('blocked') or {}).get(faculty.lower(), '')) if isinstance(
+        record.get('blocked'), dict) else None
+    if blocked and opens - blocked < dt.timedelta(hours=BLOCK_HOURS):
+        return False
+    ended = _stamp(record.get('ended', ''))
+    if ended:
+        return opens - ended < dt.timedelta(hours=LIVE_HOURS)
+    added = _stamp(volunteer.get('added', ''))
+    return added is None or opens - added < dt.timedelta(hours=GRACE_HOURS)
+
+
 def _rank(login, key):
     return int(hashlib.sha256(f'{login.lower()}|{key}'.encode('utf-8')).hexdigest()[:16], 16)
 
 
-def assignees(registry, faculty, code, tid, window):
-    """The logins that should check `code` (of `faculty`, term `tid`) in `window`; [] when nobody can."""
+def assignees(registry, faculty, code, tid, window, health=None, me=None):
+    """The logins that should check `code` (of `faculty`, term `tid`) in `window`; [] when nobody can.
+    With `health`, offline volunteers and those blocked on the faculty are passed over (`me` never is), unless
+    that would leave nobody at all."""
     able = [v for v in registry['volunteers']
             if v['trust'] != 'suspended' and (not v['faculties'] or faculty.lower() in v['faculties'])]
+    if health:
+        opens = window_start(window)
+        fit = [v for v in able
+               if (me and v['login'].lower() == str(me).lower()) or working(v, faculty, health, opens)]
+        able = fit or able
     key = f'{code}@{tid}#{window}'
     ranked = sorted(able, key=lambda v: (_rank(v['login'], key), v['login'].lower()), reverse=True)
     if not ranked:
@@ -102,5 +164,5 @@ def assignees(registry, faculty, code, tid, window):
     return peers
 
 
-def is_assigned(registry, login, faculty, code, tid, window):
-    return str(login).lower() in (a.lower() for a in assignees(registry, faculty, code, tid, window))
+def is_assigned(registry, login, faculty, code, tid, window, health=None):
+    return str(login).lower() in (a.lower() for a in assignees(registry, faculty, code, tid, window, health, login))

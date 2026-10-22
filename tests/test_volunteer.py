@@ -26,6 +26,13 @@ import collect  # noqa: E402
 import manage  # noqa: E402
 import core  # noqa: E402
 import refresh  # noqa: E402
+import registry as registry_reader  # noqa: E402
+import runner  # noqa: E402
+import wizard  # noqa: E402
+import doctor  # noqa: E402
+from unittest import mock  # noqa: E402
+import io  # noqa: E402
+import urllib.error  # noqa: E402
 
 TID = '2026-27-zima'
 CODE = 'WCY26KY3S1'
@@ -114,6 +121,70 @@ class AssignTest(unittest.TestCase):
         self.assertEqual(assign.window_of(NOW + dt.timedelta(hours=2)), assign.window_of(NOW) + 1)
 
 
+class HealthAwareAssignTest(unittest.TestCase):
+    PEERS = [{'login': f'peer{i}', 'trust': 'peer'} for i in range(4)]
+
+    def setUp(self):
+        self.window = assign.window_of(NOW)
+        self.opens = assign.window_start(self.window)
+
+    def share(self, reg, health, me=None, code=CODE):
+        return assign.assignees(reg, 'wcy', code, TID, self.window, health, me)
+
+    def test_offline_volunteers_are_passed_over_and_a_volunteer_always_counts_itself(self):
+        reg = registry(*self.PEERS)
+        fresh = (self.opens - dt.timedelta(hours=1)).isoformat()
+        stale = (self.opens - dt.timedelta(hours=7)).isoformat()
+        health = {'peer0': {'ended': fresh}, 'peer1': {'ended': fresh}, 'peer2': {'ended': stale},
+                  'peer3': {'ended': stale}}
+        for n in range(40):
+            self.assertLessEqual(set(self.share(reg, health, code=f'G{n}')), {'peer0', 'peer1'})
+        mine = [n for n in range(40) if 'peer2' in self.share(reg, health, me='peer2', code=f'G{n}')]
+        self.assertTrue(mine)
+
+    def test_a_new_volunteer_has_a_grace_period_after_it_was_added(self):
+        late = dict(self.PEERS[0], added=(self.opens - dt.timedelta(hours=30)).date().isoformat())
+        new = dict(self.PEERS[1], added=self.opens.date().isoformat())
+        reg = registry(late, new, *self.PEERS[2:])
+        fresh = {'peer2': {'ended': self.opens.isoformat()}, 'peer3': {'ended': self.opens.isoformat()}}
+        seen = Counter(v for n in range(60) for v in self.share(reg, fresh, code=f'G{n}'))
+        self.assertNotIn('peer0', seen)
+        self.assertIn('peer1', seen)
+
+    def test_a_blocked_faculty_goes_to_the_others_until_the_block_is_old(self):
+        reg = registry(*self.PEERS)
+        live = {f'peer{i}': {'ended': self.opens.isoformat()} for i in range(4)}
+        live['peer0']['blocked'] = {'wcy': (self.opens - dt.timedelta(hours=1)).isoformat()}
+        self.assertFalse(any('peer0' in self.share(reg, live, code=f'G{n}') for n in range(40)))
+        live['peer0']['blocked'] = {'wcy': (self.opens - dt.timedelta(hours=7)).isoformat()}
+        self.assertTrue(any('peer0' in self.share(reg, live, code=f'G{n}') for n in range(40)))
+
+    def test_nobody_working_falls_back_to_everybody(self):
+        reg = registry(*self.PEERS[:2])
+        gone = {'peer0': {'ended': '2026-01-01T00:00:00'}, 'peer1': {'ended': '2026-01-01T00:00:00'}}
+        self.assertEqual(len(self.share(reg, gone)), 2)
+
+    def test_the_registry_checks_the_added_date(self):
+        with self.assertRaises(assign.RegistryError):
+            registry({'login': 'bob', 'added': 'yesterday'})
+
+
+class LineStateTest(unittest.TestCase):
+    def test_a_volunteer_keeps_its_own_line_learning_and_ignores_the_home_runners(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / core.STATE_FILE).write_text(json.dumps({'version': 1, 'groups': {}, 'faculties': {'wcy': {'last_ok': 'home'}},
+                                                        'blocks': {'wcy': {'durations': [999]}}, 'pacing': {'wcy': 3.0}}))
+        state = core.State(tmp / core.STATE_FILE)
+        refresh.load_line_state(state, tmp / 'mine.json')
+        self.assertEqual((state.faculties, state.data['blocks'], state.data['pacing']), ({}, {}, {}))
+        state.data['pacing']['wcy'] = 1.5
+        refresh.save_line_state(state, tmp / 'mine.json')
+        again = core.State(tmp / core.STATE_FILE)
+        refresh.load_line_state(again, tmp / 'mine.json')
+        self.assertEqual(again.data['pacing'], {'wcy': 1.5})
+
+
 class StateMergeTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -194,6 +265,9 @@ class Harness(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
+        # The forks here are local paths, a transport the coordinator refuses for real forks.
+        protocols, collect.PROTOCOLS = collect.PROTOCOLS, ('https', 'file')
+        self.addCleanup(setattr, collect, 'PROTOCOLS', protocols)
         self.data = self.tmp / 'data'
         (self.data / 'timetables' / TID).mkdir(parents=True)
         (self.data / REL).write_bytes(SOURCE.encode('utf-8'))
@@ -363,6 +437,85 @@ class CollectTest(Harness):
         self.assertEqual(self.published(), SOURCE)
 
 
+class StaleVoteTest(Harness):
+    PEERS = ({'login': 'bob', 'trust': 'peer'}, {'login': 'carol', 'trust': 'peer'}, {'login': 'dave', 'trust': 'peer'})
+
+    def home_checked(self, moment):
+        (self.data / core.STATE_FILE).write_text(json.dumps(
+            {'version': 1, 'faculties': {}, 'groups': {CODE: {'term': TID, 'checked': moment.isoformat()}}}))
+
+    def test_votes_older_than_a_home_runner_check_never_overwrite_it(self):
+        reg = registry(*self.PEERS)
+        self.offer('bob', ended=NOW)
+        self.collect(reg, NOW)
+        self.home_checked(NOW + dt.timedelta(minutes=30))  # the home runner looked again after bob's crawl
+        self.offer('carol', ended=NOW + dt.timedelta(minutes=10))
+        later = NOW + dt.timedelta(minutes=40)
+        self.assertEqual(self.collect(reg, later)['changed'], [])
+        self.assertEqual(self.published(), SOURCE)
+        self.assertEqual(self.state()['strikes'], {})
+        self.assertNotIn(f'{CODE}@{TID}', self.state()['votes'])
+
+    def test_a_vote_from_before_the_plan_changed_is_not_a_strike(self):
+        reg = registry(*self.PEERS)
+        self.offer('dave', ics=changed_plan('old'), ended=NOW)  # saw the page before the faculty changed it
+        self.offer('bob', ended=NOW + dt.timedelta(hours=1))
+        self.offer('carol', ended=NOW + dt.timedelta(hours=1))
+        self.assertEqual(self.collect(reg, NOW + dt.timedelta(hours=1))['changed'], [f'{CODE}@{TID}'])
+        self.assertEqual(self.state()['strikes'], {})
+
+    def test_a_loser_while_the_winner_was_seen_is_struck_and_a_newer_vote_waits(self):
+        reg = registry(*self.PEERS, {'login': 'erin', 'trust': 'peer'})
+        self.offer('bob', ended=NOW)
+        self.offer('dave', ics=changed_plan('other'), ended=NOW + dt.timedelta(minutes=5))
+        self.offer('carol', ended=NOW + dt.timedelta(minutes=10))
+        self.offer('erin', ics=changed_plan('next'), ended=NOW + dt.timedelta(minutes=20))
+        self.collect(reg, NOW + dt.timedelta(minutes=21))
+        state = self.state()
+        self.assertEqual(list(state['strikes']), ['dave'])
+        self.assertEqual(list(state['votes'][f'{CODE}@{TID}'].values())[0]['voters'], {'erin': '2026-10-20T12:20:00'})
+
+
+class HealthTest(Harness):
+    def test_a_refused_bundle_is_remembered_and_its_author_told_why(self):
+        reg = registry({'login': 'bob', 'trust': 'peer'})
+        self.offer('bob', login='mallory')
+        self.assertIn('bob', self.collect(reg)['refused'])
+        self.assertIn('signed', self.state()['volunteers']['bob']['refused']['reason'])
+        again = self.collect(reg)
+        self.assertEqual((again['refused'], again['rows'][0]['result']), ({}, 'same'))
+        self.offer('bob', ended=NOW + dt.timedelta(minutes=1))
+        self.assertEqual(self.collect(reg, NOW + dt.timedelta(minutes=2))['read'], ['bob'])
+        self.assertNotIn('refused', self.state()['volunteers']['bob'])
+
+    def test_blocks_token_expiry_and_counts_are_published(self):
+        reg = registry({'login': 'alice', 'trust': 'trusted'})
+        self.offer('alice', token_expires='2026-11-01', faculties={'wcy': {'blocked': True}, 'wim': {'blocked': False}})
+        summary = self.collect(reg)
+        record = self.state()['volunteers']['alice']
+        self.assertEqual(record['blocked'], {'wcy': NOW.isoformat()})
+        self.assertEqual(record['token_expires'], '2026-11-01')
+        self.assertEqual(record['days'], {'2026-10-20': [1, 0, 1]})
+        table = collect.summary_table(summary, NOW, False)
+        self.assertIn('alice (trusted)', table)
+        self.assertIn('wygasa 2026-11-01', table)
+        self.offer('alice', ended=NOW + dt.timedelta(minutes=5), faculties={'wcy': {'blocked': False}})
+        self.collect(reg, NOW + dt.timedelta(minutes=6))
+        self.assertEqual(self.state()['volunteers']['alice']['blocked'], {})
+
+    def test_a_fork_serving_a_huge_pack_is_cut_off(self):
+        reg = registry({'login': 'bob', 'trust': 'peer'})
+        limit, collect.FETCH_LIMIT = collect.FETCH_LIMIT, 64 * 1024
+        self.addCleanup(setattr, collect, 'FETCH_LIMIT', limit)
+        self.push_files('bob', {'manifest.json': '{}', f'timetables/{TID}/HUGE.ics': os.urandom(400 * 1024)})
+        self.assertIn('grew past', self.collect(reg)['refused']['bob'])
+
+    def test_a_fork_on_another_transport_is_never_contacted(self):
+        collect.PROTOCOLS = ('https',)
+        self.offer('bob')
+        self.assertEqual(collect.gather(self.remote('bob'), {})[0], 'none')
+
+
 class RefusalTest(Harness):
     def setUp(self):
         super().setUp()
@@ -438,6 +591,217 @@ class RefusalTest(Harness):
                                                        'at': NOW.isoformat()}})
         self.assertEqual(self.collect(self.reg)['changed'], [])
         self.assertEqual(self.published(), SOURCE)
+
+
+class RegistryReaderTest(unittest.TestCase):
+    SHA = 'a' * 40
+    GOOD = json.dumps({'quorum': 2, 'volunteers': [{'login': 'alice', 'trust': 'trusted'}]}).encode()
+
+    def fake(self, verified=True, committer='kilerdevs', head=200, raw=None):
+        asked = []
+
+        def get(url, token=None):
+            asked.append(url)
+            if url.startswith(registry_reader.API):
+                body = {'sha': self.SHA, 'commit': {'verification': {'verified': verified}},
+                        'committer': {'login': committer}}
+                return head, json.dumps(body).encode()
+            return 200, self.GOOD if raw is None else raw
+        return get, asked
+
+    def test_a_verified_commit_by_an_editor_is_read_at_that_commit(self):
+        get, asked = self.fake(committer='KilerDevs')
+        reg, _, sha, who = registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=get)
+        self.assertEqual((reg['volunteers'][0]['login'], sha, who), ('alice', self.SHA, 'kilerdevs'))
+        self.assertEqual(asked[1], f'{registry_reader.RAW}/kilerdevs/PlanWAT/{self.SHA}/volunteers.json')
+
+    def test_unsigned_or_foreign_commits_and_bad_files_are_refused(self):
+        for get in (self.fake(verified=False)[0], self.fake(committer='mallory')[0], self.fake(raw=b'{"quorum": 1}')[0]):
+            with self.assertRaises(assign.RegistryError):
+                registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=get)
+
+    def test_a_missing_branch_and_an_outage_are_told_apart(self):
+        with self.assertRaises(registry_reader.Missing):
+            registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=self.fake(head=404)[0])
+        with self.assertRaises(registry_reader.Unavailable):
+            registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=self.fake(head=503)[0])
+
+
+class FakeResponse(io.BytesIO):
+    def __init__(self, body, headers=None, status=200):
+        super().__init__(json.dumps(body).encode())
+        self.headers, self.status = headers or {}, status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class TokenTest(unittest.TestCase):
+    def opener(self, body=None, headers=None, error=None):
+        def open_(req, timeout=None):
+            if error:
+                raise urllib.error.HTTPError(req.full_url, error, 'x', {}, None)
+            return FakeResponse(body or {'permissions': {'push': True}}, headers)
+        return open_
+
+    def test_a_classic_token_is_refused_without_asking_github(self):
+        problem, _ = bundle.token_report('alice/PlanWAT', 'ghp_abc', opener=None)
+        self.assertIn('classic', problem)
+
+    def test_a_working_token_reports_its_expiry(self):
+        hdr = {'github-authentication-token-expiration': '2026-11-01 12:00:00 UTC'}
+        self.assertEqual(bundle.token_report('alice/PlanWAT', 'github_pat_x', self.opener(headers=hdr)),
+                         ('', '2026-11-01T12:00:00'))
+
+    def test_no_push_rights_an_unseen_fork_and_a_dead_token_are_explained(self):
+        self.assertIn('Contents', bundle.token_report('a/P', 'github_pat_x', self.opener({'permissions': {'push': False}}))[0])
+        self.assertIn('cannot see', bundle.token_report('a/P', 'github_pat_x', self.opener(error=404))[0])
+        self.assertIn('expired', bundle.token_report('a/P', 'github_pat_x', self.opener(error=401))[0])
+
+
+class RunnerTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.cfg = runner.config({'PLANWAT_LOGIN': 'alice', 'PLANWAT_FORK_TOKEN': 'github_pat_x',
+                                  'PLANWAT_WORK': str(self.tmp)})
+        self.status = runner.Status(self.tmp)
+        for name, value in (('measure_offset', lambda: 0.0),):
+            patcher = mock.patch.object(runner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def with_registry(self, *volunteers, min_version='0.0.1'):
+        reg = registry(*volunteers, min_version=min_version)
+        raw = json.dumps({'quorum': 2, 'min_version': min_version, 'volunteers': list(volunteers)}).encode()
+        patcher = mock.patch.object(runner.registry, 'fetch_verified', lambda *a, **k: (reg, raw, 'b' * 40, 'kilerdevs'))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_somebody_not_registered_waits_and_is_shown_the_application(self):
+        self.with_registry({'login': 'bob'})
+        self.assertEqual(runner.run_pass(self.cfg, self.status), runner.POLL)
+        self.assertEqual(self.status.data['state'], 'not_registered')
+        self.assertIn('issues/new', self.status.data['join'])
+
+    def test_an_outdated_crawler_does_not_crawl(self):
+        self.with_registry({'login': 'alice'}, min_version='99.0.0')
+        self.assertEqual(runner.run_pass(self.cfg, self.status), runner.POLL)
+        self.assertEqual(self.status.data['state'], 'update_needed')
+
+    def test_a_benched_volunteer_does_not_crawl_and_the_verdict_is_logged(self):
+        self.with_registry({'login': 'alice'})
+        data = self.tmp / 'data'
+        data.mkdir()
+        (data / core.VOLUNTEER_STATE_FILE).write_text(json.dumps({'benched': {'Alice': NOW.isoformat()}, 'volunteers': {
+            'alice': {'read': 'x', 'ended': 'y', 'last': {'votes': 3, 'rejected': 1, 'reasons': ['lost too many events']},
+                      'days': {'2026-10-20': [3, 1, 2]}, 'token_expires': '2000-01-01T00:00:00'}}}))
+        with mock.patch.object(runner, 'sync_data', lambda *a: data):
+            self.assertEqual(runner.run_pass(self.cfg, self.status), runner.POLL)
+        self.assertEqual(self.status.data['state'], 'benched')
+        self.assertIn('2 accepted in 7 days', runner.describe_verdict(runner.verdict(
+            json.loads((data / core.VOLUNTEER_STATE_FILE).read_text()), 'alice')[0]))
+
+    def test_one_pass_per_window_starting_a_little_after_it_opens(self):
+        window = assign.window_of(NOW)
+        self.assertEqual(runner.next_wait(NOW, None), 0)
+        self.assertEqual(runner.next_wait(NOW, window - 1), 0)
+        pause = runner.next_wait(NOW, window)
+        opens = assign.window_start(window + 1)
+        self.assertTrue((opens - NOW).total_seconds() + 300 <= pause <= (opens - NOW).total_seconds() + 2100)
+
+    def test_the_health_check_follows_the_status_file(self):
+        self.assertEqual(runner.health(self.cfg), 1)
+        self.status.set(state='done')
+        self.assertEqual(runner.health(self.cfg), 0)
+        self.assertEqual(runner.health(self.cfg, core.now_utc() + dt.timedelta(hours=4)), 1)
+
+    def test_a_skewed_clock_is_corrected_for_the_whole_pass(self):
+        warnings = []
+        with mock.patch.dict(os.environ, {}):
+            runner.set_clock(600.0, warnings)
+            self.assertEqual(os.environ['PLANWAT_CLOCK_OFFSET'], '600')
+            skew = core.now_utc() - dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+            self.assertAlmostEqual(skew.total_seconds(), 600, delta=2)
+            runner.set_clock(5.0, warnings)
+            self.assertEqual(os.environ['PLANWAT_CLOCK_OFFSET'], '0')
+        self.assertEqual(len(warnings), 1)
+
+    def test_the_data_clone_is_fetched_incrementally(self):
+        upstream = self.tmp / 'up'
+        upstream.mkdir()
+        git('init', '-q', '-b', 'data', cwd=upstream)
+        (upstream / 'a').write_text('1')
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'add', '-A', cwd=upstream)
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'commit', '-qm', '1', cwd=upstream)
+        with mock.patch.object(runner, 'git', lambda *a, cwd=None, timeout=600: runner.subprocess.run(
+                ['git', *[str(upstream) if str(x).startswith('https://github.com/') else x for x in a]], cwd=cwd,
+                check=True, capture_output=True, text=True).stdout):
+            data = runner.sync_data(self.tmp, 'x/y', 1)
+            (data / 'stray').write_text('left behind by a crawl')
+            (upstream / 'a').write_text('2')
+            git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'commit', '-qam', '2', cwd=upstream)
+            runner.sync_data(self.tmp, 'x/y', 10)
+        self.assertEqual((data / 'a').read_text(), '2')
+        self.assertFalse((data / 'stray').exists())
+
+
+class WizardTest(unittest.TestCase):
+    def test_env_updates_keep_every_other_line(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        env = tmp / '.env'
+        env.write_text('# mine\nPLANWAT_CRAWLER_IMAGE=ghcr.io/x@sha256:abc\nPLANWAT_LOGIN=old\n# PLANWAT_FORK=x/y\n')
+        wizard.write_env(env, {'PLANWAT_LOGIN': 'alice', 'PLANWAT_FORK': 'alice/Fork', 'PLANWAT_FORK_TOKEN': 'github_pat_x',
+                               'PLANWAT_AUTO_UPDATE': None})
+        text = env.read_text()
+        self.assertEqual(text, '# mine\nPLANWAT_CRAWLER_IMAGE=ghcr.io/x@sha256:abc\nPLANWAT_LOGIN=alice\n'
+                               'PLANWAT_FORK=alice/Fork\nPLANWAT_FORK_TOKEN=github_pat_x\n')
+        self.assertEqual(env.stat().st_mode & 0o777, 0o600)
+
+    def test_a_non_interactive_setup_writes_env_from_flags(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        out = io.StringIO()
+        with mock.patch('sys.stdout', out):
+            code = wizard.main(['--env', str(tmp / '.env'), '--login', 'alice', '--token', 'github_pat_x',
+                                '--faculties', '', '--auto-update', 'off', '--skip-github-checks', '--non-interactive'])
+        self.assertEqual(code, 0)
+        self.assertEqual(wizard.read_env(tmp / '.env')[1],
+                         {'PLANWAT_LOGIN': 'alice', 'PLANWAT_FORK_TOKEN': 'github_pat_x', 'PLANWAT_AUTO_UPDATE': '0'})
+
+    def test_a_classic_token_is_refused_by_the_wizard(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        with mock.patch('sys.stdout', io.StringIO()), self.assertRaises(SystemExit):
+            wizard.main(['--env', str(tmp / '.env'), '--login', 'alice', '--token', 'ghp_x', '--faculties', '',
+                         '--auto-update', 'on', '--skip-github-checks', '--non-interactive'])
+
+    def test_the_links_are_prefilled(self):
+        self.assertIn('target_name=alice', wizard.token_url('alice', 'alice/PlanWAT'))
+        self.assertIn('contents=write', wizard.token_url('alice', 'alice/PlanWAT'))
+        url = wizard.issue_url('kilerdevs/PlanWAT', 'alice/PlanWAT', ['wcy'])
+        self.assertIn('template=volunteer.yml', url)
+        self.assertIn('fork=alice%2FPlanWAT', url)
+
+    def test_faculty_answers_are_classified(self):
+        self.assertEqual(doctor.classify(200, '<html>WAT</html>'), 'ok')
+        self.assertEqual(doctor.classify(404, ''), 'ok')
+        self.assertEqual(doctor.classify(200, 'Request unsuccessful. Incapsula incident ID: 1'), 'blocked')
+        self.assertEqual(doctor.classify(403, ''), 'blocked')
+        self.assertEqual(doctor.classify(None, ''), 'down')
+        self.assertEqual(set(doctor.faculty_hosts()), {'wlo', 'wel', 'wim', 'ioe', 'wcy', 'wml', 'wtc'})
+
+    def test_the_offline_doctor_runs_without_a_network(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        report = doctor.Report(io.StringIO())
+        doctor.run(runner.config({'PLANWAT_LOGIN': 'alice', 'PLANWAT_FORK_TOKEN': 'ghp_x', 'PLANWAT_WORK': str(tmp)}),
+                   report, offline=True)
+        self.assertEqual(report.failed, 1)  # the classic token
 
 
 class ManageTest(unittest.TestCase):

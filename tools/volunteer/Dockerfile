@@ -4,7 +4,7 @@
 # (crawler-image.yml); check one with `gh attestation verify oci://<image> --repo kilerdevs/PlanWAT`.
 FROM python:3.13-slim@sha256:57b29a7c050c4e679e4bea572e14b3965cf4b5839de2da49d55e49ffc4024f39
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/work
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/work PLANWAT_REGISTRY_EDITORS=kilerdevs
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates \
@@ -22,4 +22,7 @@ RUN chmod 0555 tools/volunteer/entrypoint.sh && find /app -type d -exec chmod 05
 
 USER 10003:10003
 VOLUME /work
+# Healthy while the loop keeps writing /work/status.json (every pass, and every 10 minutes while it waits).
+HEALTHCHECK --interval=5m --timeout=20s --start-period=10m --retries=2 \
+  CMD ["python", "/app/tools/volunteer/runner.py", "health"]
 ENTRYPOINT ["/app/tools/volunteer/entrypoint.sh"]

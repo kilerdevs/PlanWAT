@@ -3,6 +3,8 @@ name: Crawler image
 # Publishes the volunteer crawler and its egress proxy (docs/WOLONTARIUSZE.md) to ghcr.io on every release tag,
 # each with a build provenance attestation, so a volunteer can check that the image they run was built here,
 # from this tag, by this workflow: gh attestation verify oci://ghcr.io/kilerdevs/planwat-crawler:<tag> --repo kilerdevs/PlanWAT
+# Both images are built natively for amd64 and arm64 (Raspberry Pi) and published as one multi-arch tag; the
+# provenance is attested on that index digest, which is also what the installer pins.
 # Pull requests only build both images (no push), so a broken Dockerfile shows up before a release.
 on:
   push:
@@ -24,14 +26,21 @@ concurrency:
 
 jobs:
   image:
-    name: crawler images
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    name: crawler images (${{ matrix.arch }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Native builds on both architectures (no emulation): amd64 PCs and servers, arm64 Raspberry Pis.
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: write       # push to ghcr.io/kilerdevs/*
-      id-token: write       # sign the provenance (Sigstore, keyless)
-      attestations: write   # store the attestation with the repository
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build
@@ -41,41 +50,74 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          # Refuses to start without a login, and the crawler's own help works under the image's hardening.
-          if docker run --rm --read-only --cap-drop ALL planwat-crawler:ci 2>/dev/null; then
+          hard=(--rm --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp --tmpfs /work)
+          # Refuses to start without a login; the crawler, the bundler, the wizard and the offline doctor all
+          # work under the image's hardening; the health check fails until the loop has written its status.
+          if docker run "${hard[@]}" planwat-crawler:ci 2>/dev/null; then
             echo '::error::the image started without PLANWAT_LOGIN'; exit 1
           fi
-          docker run --rm --read-only --cap-drop ALL --entrypoint python planwat-crawler:ci \
-            /app/tools/refresh/refresh.py --help > /dev/null
-          docker run --rm --read-only --cap-drop ALL --entrypoint python planwat-crawler:ci \
-            /app/tools/volunteer/bundle.py --help > /dev/null
-      - name: Push
-        id: push
+          docker run "${hard[@]}" --entrypoint python planwat-crawler:ci /app/tools/refresh/refresh.py --help > /dev/null
+          docker run "${hard[@]}" --entrypoint python planwat-crawler:ci /app/tools/volunteer/bundle.py --help > /dev/null
+          docker run "${hard[@]}" planwat-crawler:ci setup --help > /dev/null
+          docker run "${hard[@]}" -e PLANWAT_LOGIN=ci -e PLANWAT_DRY_RUN=1 planwat-crawler:ci doctor --offline
+          if docker run "${hard[@]}" planwat-crawler:ci health; then
+            echo '::error::healthy without a status file'; exit 1
+          fi
+          docker run "${hard[@]}" --entrypoint python planwat-crawler:ci -c 'import curl_cffi, pymupdf'
+      - name: Push this architecture
         if: github.event_name != 'pull_request'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REF: ${{ github.ref_name }}
+          ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
           echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          tag="${REF#v}"
+          tag="${GITHUB_REF_NAME#v}"
           case "$GITHUB_REF" in refs/tags/v*) ;; *) tag="dev-${GITHUB_SHA::12}" ;; esac
           for name in planwat-crawler planwat-crawler-egress; do
-            image="ghcr.io/kilerdevs/$name"
-            docker tag "$name:ci" "$image:$tag"
-            docker push -q "$image:$tag"
-            case "$GITHUB_REF" in refs/tags/v*) docker tag "$name:ci" "$image:latest"; docker push -q "$image:latest" ;; esac
-            digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$image:$tag" | cut -d@ -f2)
-            echo "${name//-/_}=$digest" >> "$GITHUB_OUTPUT"
+            docker tag "$name:ci" "ghcr.io/kilerdevs/$name:$tag-$ARCH"
+            docker push -q "ghcr.io/kilerdevs/$name:$tag-$ARCH"
           done
+
+  publish:
+    name: multi-arch index and provenance
+    needs: image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write       # push to ghcr.io/kilerdevs/*
+      id-token: write       # sign the provenance (Sigstore, keyless)
+      attestations: write   # store the attestation with the repository
+    steps:
+      - name: Join both architectures under one tag
+        id: push
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          tag="${GITHUB_REF_NAME#v}"
+          tags=()
+          case "$GITHUB_REF" in
+            refs/tags/v*) tags=(-t "IMAGE:$tag" -t "IMAGE:latest") ;;
+            *) tag="dev-${GITHUB_SHA::12}"; tags=(-t "IMAGE:$tag") ;;
+          esac
+          for name in planwat-crawler planwat-crawler-egress; do
+            image="ghcr.io/kilerdevs/$name"
+            docker buildx imagetools create "${tags[@]//IMAGE/$image}" "$image:$tag-amd64" "$image:$tag-arm64"
+            digest=$(docker buildx imagetools inspect "$image:$tag" --format '{{json .Manifest}}' | jq -r .digest)
+            echo "${name//-/_}=$digest" >> "$GITHUB_OUTPUT"
+            echo "$image:$tag → $digest"
+          done
+      # The index digest is what a volunteer pins and verifies: gh attestation verify oci://<image>:<tag>
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        if: github.event_name != 'pull_request'
         with:
           subject-name: ghcr.io/kilerdevs/planwat-crawler
           subject-digest: ${{ steps.push.outputs.planwat_crawler }}
           push-to-registry: true
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        if: github.event_name != 'pull_request'
         with:
           subject-name: ghcr.io/kilerdevs/planwat-crawler-egress
           subject-digest: ${{ steps.push.outputs.planwat_crawler_egress }}
