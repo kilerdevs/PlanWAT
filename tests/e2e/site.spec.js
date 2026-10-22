@@ -506,9 +506,13 @@ test('share hands the page link to the system share sheet', async ({ page }) => 
 
 test('choice rows keep a clear gap before the block they introduce', async ({ page }) => {
   await openGroup(page);
-  const gap = (first, second) => page.evaluate(([a, b]) => {
-    return document.querySelector(b).getBoundingClientRect().top - document.querySelector(a).getBoundingClientRect().bottom;
-  }, [first, second]);
+  // measured at rest: a field that was just shown settles a few pixels into place
+  const gap = async (first, second) => {
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
+    return page.evaluate(([a, b]) => {
+      return document.querySelector(b).getBoundingClientRect().top - document.querySelector(a).getBoundingClientRect().bottom;
+    }, [first, second]);
+  };
 
   await pressTool(page, '#calBtn');
   await expect(page.locator('#calFile')).toBeVisible();
@@ -762,8 +766,10 @@ test('the list view and the tool sheets have no serious or critical accessibilit
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openGroup(page);
   const scan = async () => {
-    // a sheet still fading in reads as low contrast; wait for every finite animation to end
-    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
+    // a sheet still fading in reads as low contrast; wait for every finite animation to end and for an open sheet to be
+    // fully opaque (WebKit can report its fade as done a frame or two early)
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity)
+      && Array.prototype.every.call(document.querySelectorAll('dialog[open]'), (d) => getComputedStyle(d).opacity === '1'));
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
     return results.violations
       .filter((v) => v.impact === 'serious' || v.impact === 'critical')

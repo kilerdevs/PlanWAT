@@ -1335,7 +1335,9 @@
   .pm-panel h3 { margin: var(--sp-5) 0 var(--sp-2); }
   .pm-panel > h3:first-child { margin-top: var(--sp-2); }
   .pm-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-1) var(--sp-4); align-items: center; padding: var(--sp-4); border-radius: var(--r-card); background: var(--s3); }
-  .pm-big { display: flex; align-items: baseline; color: var(--c, var(--t1)); font-variant-numeric: tabular-nums; }
+  /* the score takes its colour from the scale (blue, grey, red); the light theme pulls it towards the text colour, since
+     the grey middle of the scale is too pale on a light card */
+  .pm-big { display: flex; align-items: baseline; color: color-mix(in srgb, var(--c, var(--t1)) var(--pm-ink, 100%), var(--t1)); font-variant-numeric: tabular-nums; }
   .pm-big b { font-size: 3.75rem; line-height: 1; font-weight: 700; letter-spacing: -0.04em; }
   .pm-herotext strong { display: block; font-size: var(--fs-17); line-height: 1.2; }
   .pm-herotext p { margin: 4px 0 0; font-size: var(--fs-13); color: var(--t2); }
