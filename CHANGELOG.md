@@ -137,8 +137,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   pominiętymi, stanem (zablokowany, zdegradowany, nadchodzący) i czasem oczekiwania na odblokowanie.
 - **Ukrywanie części przedmiotu** ([#31](https://github.com/kilerdevs/PlanWAT/issues/31)): w „Moich przedmiotach” przedmiot
   prowadzony w kilku formach rozwija się strzałką na wykłady, ćwiczenia, laboratoria itd. Każdą z nich można odznaczyć osobno,
-  np. przy zwolnieniu z ćwiczeń. Ukryte zajęcia znikają z widoków, statystyk i pobranego pliku .ics, a wcześniej zapisane
-  wybory całych przedmiotów działają jak dotąd.
+  np. przy zwolnieniu z ćwiczeń. Ukryte zajęcia znikają z widoków, statystyk, pobranego pliku .ics i dnia na mapie kampusu,
+  a wcześniej zapisane wybory całych przedmiotów działają jak dotąd.
 
 ### Zmieniono
 - **Mapa kampusu w całości z samej strony:** silnik MapLibre GL JS (te same bajty co wcześniej, sprawdzane tą samą sumą SRI), styl

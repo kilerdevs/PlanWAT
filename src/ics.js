@@ -325,6 +325,25 @@
     });
     return function (name, type) { return !!(whole[name] || part[name + '\u0000' + type]); };
   }
+  /* per subject, the types the list hides (all of them for a hidden name) */
+  function hiddenTypes(hidden, sub) {
+    if (hidden.indexOf(sub.name) >= 0) return sub.types.map(function (t) { return t.type; });
+    return hidden.filter(function (h) { return Array.isArray(h) && h[0] === sub.name; }).map(function (h) { return h[1]; });
+  }
+  function hidesAll(hidden, subjects) {
+    return subjects.every(function (sub) { return hiddenTypes(hidden, sub).length >= sub.types.length; });
+  }
+  /* a saved choice, kept to what this calendar still has (subjectsOf); one that would hide everything is dropped */
+  function hiddenFor(saved, subjects) {
+    if (!Array.isArray(saved)) return [];
+    var types = {};
+    subjects.forEach(function (sub) { types[sub.name] = sub.types.map(function (t) { return t.type; }); });
+    var kept = saved.filter(function (h) {
+      if (typeof h === 'string') return !!types[h];
+      return Array.isArray(h) && h.length === 2 && !!types[h[0]] && types[h[0]].indexOf(h[1]) >= 0;
+    });
+    return hidesAll(kept, subjects) ? [] : kept;
+  }
   /* the parsed calendar without the hidden classes */
   function withoutSubjects(parsed, hidden) {
     if (!hidden || !hidden.length) return parsed;
@@ -506,7 +525,8 @@
   }
 
   var PlanICS = { decode: decode, parse: parse, toPlan: toPlan, toIcs: toIcs, initialWeekIndex: initialWeekIndex,
-    subjectsOf: subjectsOf, withoutSubjects: withoutSubjects, filterText: filterText };
+    subjectsOf: subjectsOf, withoutSubjects: withoutSubjects, filterText: filterText,
+    hiddenFor: hiddenFor, hiddenTypes: hiddenTypes, hidesAll: hidesAll };
   if (typeof module === 'object' && module.exports) module.exports = PlanICS;
   else root.PlanICS = PlanICS;
 })(this);

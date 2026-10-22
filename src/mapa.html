@@ -667,7 +667,7 @@
   var dayMode = !!(group && date && GROUP_RE.test(group) && ISO_RE.test(date));
   if (dayMode) $('back').href = '../' + encodeURIComponent(group) + '/';
 
-  function renderDay(stops) {
+  function renderDay(stops, filtered) {
     var box = $('day');
     box.replaceChildren();
     var codes = {};
@@ -681,6 +681,7 @@
     var when = new Date(date + 'T12:00:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
     selection.appendChild(el('p', null, group + ' · ' + when + '. ' +
       (stops.length ? 'Zajęcia: ' + stops.length + ', budynki: ' + buildings.length + '. Wybierz zajęcia, a mapa przybliży budynek.' : 'Tego dnia nie ma zajęć w planie.')));
+    if (filtered) selection.appendChild(el('p', 'note', 'Bez zajęć ukrytych w „Moich przedmiotach”.'));
     if (!stops.length) return;
 
     var head = el('div', 'day-head');
@@ -719,8 +720,12 @@
     return fetch('../' + encodeURIComponent(group) + '/plan.ics', { credentials: 'same-origin' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
       .then(function (buf) {
-        var plan = PlanICS.toPlan(PlanICS.parse(PlanICS.decode(buf)));
-        renderDay(C.dayStops(plan, date));
+        var parsed = PlanICS.parse(PlanICS.decode(buf));
+        /* the classes hidden in the group's "Moje przedmioty" (same site, same storage) stay hidden here too */
+        var saved = null;
+        try { saved = JSON.parse(window.localStorage.getItem('planwat:hide:' + group)); } catch (e) { /* private mode */ }
+        var hidden = PlanICS.hiddenFor(saved, PlanICS.subjectsOf(parsed));
+        renderDay(C.dayStops(PlanICS.toPlan(PlanICS.withoutSubjects(parsed, hidden)), date), hidden.length > 0);
       })
       .catch(function () {
         $('day').replaceChildren(el('p', 'note', 'Nie udało się wczytać planu grupy ' + group + '.'));

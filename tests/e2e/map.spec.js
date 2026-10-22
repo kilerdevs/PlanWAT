@@ -147,6 +147,20 @@ test('rooms on the group page link to their building and a day opens its classes
   await expect(page.locator('#selection h1')).toContainText('Budynek');
 });
 
+test('classes hidden in "Moje przedmioty" stay hidden in the day on the map', async ({ page }) => {
+  // Thursday 15.10: Matematyka II (lecture), PE, a language and English (exercises)
+  await page.addInitScript(() => {
+    localStorage.setItem('planwat:hide:WCY26KY3S1', JSON.stringify(['Język angielski', ['Język obcy (II) międzywydziałowy', 'Ćwiczenia']]));
+  });
+  await open(page, '/mapa/?g=WCY26KY3S1&d=2026-10-15');
+  await expect(page.locator('#selection h1')).toHaveText('Twój dzień na kampusie');
+  const stops = page.locator('.stops [data-stop]');
+  await expect(stops).toHaveCount(2);
+  await expect(page.locator('.stops')).toContainText('Matematyka II');
+  await expect(page.locator('.stops')).not.toContainText('Język');
+  await expect(page.locator('#selection')).toContainText('Bez zajęć ukrytych w „Moich przedmiotach”.');
+});
+
 test('a bad group in the day link is ignored', async ({ page }) => {
   await open(page, '/mapa/?g=../../etc&d=2026-10-15');
   await expect(page.locator('#selection h1')).toHaveText('Mapa kampusu WAT');

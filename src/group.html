@@ -4453,26 +4453,11 @@
     var parts = location.pathname.split('/').filter(Boolean);
     return (parts[parts.length - 1] || '') + (planFile === 'plan.ics' ? '' : ':' + planFile);
   }
-  /* the saved choice, kept to what this calendar still has: a subject's name hides all of it, a [name, type] pair only
-     its classes of that type */
-  function hiddenFor(saved, subjects) {
-    if (!Array.isArray(saved)) return [];
-    var types = {};
-    subjects.forEach(function (sub) { types[sub.name] = sub.types.map(function (t) { return t.type; }); });
-    var kept = saved.filter(function (h) {
-      if (typeof h === 'string') return !!types[h];
-      return Array.isArray(h) && h.length === 2 && !!types[h[0]] && types[h[0]].indexOf(h[1]) >= 0;
-    });
-    return hidesAll(kept, subjects) ? [] : kept; /* never hide everything */
-  }
-  /* per subject, the types the list hides (all of them for a hidden name) */
-  function hiddenTypes(hidden, sub) {
-    if (hidden.indexOf(sub.name) >= 0) return sub.types.map(function (t) { return t.type; });
-    return hidden.filter(function (h) { return Array.isArray(h) && h[0] === sub.name; }).map(function (h) { return h[1]; });
-  }
-  function hidesAll(hidden, subjects) {
-    return subjects.every(function (sub) { return hiddenTypes(hidden, sub).length >= sub.types.length; });
-  }
+  /* the saved choice: a subject's name hides all of it, a [name, type] pair only its classes of that type (shared with
+     the campus map, in ics.js) */
+  function hiddenFor(saved, subjects) { return window.PlanICS.hiddenFor(saved, subjects); }
+  function hiddenTypes(hidden, sub) { return window.PlanICS.hiddenTypes(hidden, sub); }
+  function hidesAll(hidden, subjects) { return window.PlanICS.hidesAll(hidden, subjects); }
   /* "Ćwiczenia" -> "ćwiczenia", "Wykład" -> "wykłady": how a row under the subject names its classes */
   var TYPE_PLURAL = { 'Wykład': 'wykłady', 'Ćwiczenia': 'ćwiczenia', 'Laboratorium': 'laboratoria', 'Projekt': 'projekty',
     'Seminarium': 'seminaria', 'Egzamin': 'egzaminy', 'Zaliczenie': 'zaliczenia' };

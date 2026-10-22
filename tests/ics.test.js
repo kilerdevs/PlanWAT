@@ -314,6 +314,17 @@ test('a hidden [subject, type] pair drops only those classes, from the plan and 
   assert.ok(text.trim().endsWith('END:VCALENDAR'));
 });
 
+test('hiddenFor keeps only what the calendar still has, and never everything', () => {
+  const ev = (n, s, t) => event(['UID:' + n, 'DTSTART:20261015T100000', 'DTEND:20261015T113000', 'SUMMARY:' + s, 'CATEGORIES:' + t]);
+  const subjects = PlanICS.subjectsOf(PlanICS.parse(cal([...ev(1, 'Fizyka', 'Wykład'), ...ev(2, 'Fizyka', 'Ćwiczenia'), ...ev(3, 'Algebra', 'Wykład')])));
+  assert.deepEqual(PlanICS.hiddenFor([['Fizyka', 'Ćwiczenia'], 'Chemia', ['Fizyka', 'Lab'], 7, ['Algebra']], subjects), [['Fizyka', 'Ćwiczenia']]);
+  assert.deepEqual(PlanICS.hiddenFor(['Fizyka'], subjects), ['Fizyka']);
+  assert.deepEqual(PlanICS.hiddenFor(['Fizyka', ['Algebra', 'Wykład']], subjects), []);  // would hide every class
+  assert.deepEqual(PlanICS.hiddenFor(null, subjects), []);
+  assert.deepEqual(PlanICS.hiddenTypes(['Fizyka'], subjects[1]), ['Wykład', 'Ćwiczenia']);
+  assert.equal(PlanICS.hidesAll([['Fizyka', 'Wykład'], ['Fizyka', 'Ćwiczenia']], subjects), false);
+});
+
 test('physical education without a room is held at the SWF', () => {
   const text = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//t//t//PL', 'X-PLAN-GROUP:G',
