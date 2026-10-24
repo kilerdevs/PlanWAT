@@ -139,6 +139,21 @@
   .now-subject { margin-top: 4px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em; line-height: 1.28; overflow-wrap: anywhere; }
   .now-meta { margin-top: 2px; font-size: 0.8125rem; color: var(--t2); font-variant-numeric: tabular-nums; }
   .now-none .now-subject { color: var(--t2); font-weight: 500; }
+  /* a card's shape while its group's plan loads; it fades in only after 200 ms, so a quick or cached plan never flashes it */
+  .skel-card { position: relative; overflow: hidden; pointer-events: none; animation: skel-in var(--dur-fast) ease 200ms both; }
+  .skel-card .now-body > i { display: block; height: 10px; margin: 3px 0 4px; width: 30%; border-radius: 5px; background: var(--s3); }
+  .skel-card .now-body > i + i { height: 14px; margin: 8px 0 4px; width: 70%; }
+  .skel-card .now-body > i + i + i { height: 10px; margin: 5px 0 4px; width: 45%; }
+  .skel-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(var(--hl), 0.05), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 1.6s var(--ease-out) infinite;
+  }
+  @keyframes skel-in { from { opacity: 0; } }
+  @keyframes shimmer { to { transform: translateX(100%); } }
   .filters {
     display: flex;
     gap: 8px;
@@ -409,7 +424,7 @@
   }
   @media (pointer: coarse) { .kbd { display: none; } .chip { min-height: 44px; } }
   @media (prefers-reduced-motion: reduce) {
-    .dot { animation: none; }
+    .dot, .skel-card::after { animation: none; }
     .now-card, .star, .fac-sec summary .chev, .chip, .pick, .fac-sec::details-content { transition: none; }
     .chip:active, .pick:active { transform: none; }
   }
@@ -963,12 +978,14 @@
   /* ---------- what is on now in the favourite groups ---------- */
   var LIVE_MAX = 3;
   var plans = {};  /* group -> promise of its parsed plan, or null when it cannot be read */
+  var ready = {};  /* group -> true once its promise has settled */
   function loadPlan(g) {
     if (!plans[g]) {
       plans[g] = fetch(g + '/plan.ics', { credentials: 'same-origin' })
         .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
         .then(function (buf) { var P = window.PlanICS; return P.toPlan(P.parse(P.decode(buf))); })
-        .catch(function () { return null; });
+        .catch(function () { return null; })
+        .then(function (plan) { ready[g] = true; return plan; });
     }
     return plans[g];
   }
@@ -1010,6 +1027,14 @@
     if (cls) n.className = cls;
     if (text != null) n.textContent = text;
     return n;
+  }
+  function skelCard() {
+    var a = el('div', 'now-card skel-card');
+    a.setAttribute('aria-hidden', 'true');
+    a.appendChild(el('span', 'cap'));
+    var body = a.appendChild(el('span', 'now-body'));
+    for (var i = 0; i < 3; i++) body.appendChild(el('i'));
+    return a;
   }
   function card(g, plan, now) {
     var st = status(plan, now);
@@ -1058,11 +1083,18 @@
     var token = ++liveToken;
     $('liveTitle').textContent = favs.length ? 'Teraz w Twoich grupach' : 'Teraz w ostatniej grupie';
     if (!pool.length) { $('liveSec').hidden = true; return; }
+    var box = $('liveCards');
+    /* first load only: hold the cards' place while the plans come in; the minute refresh keeps the cards it has */
+    if (!box.firstChild && pool.some(function (g) { return !ready[g]; })) {
+      pool.forEach(function () { box.appendChild(skelCard()); });
+      box.setAttribute('aria-busy', 'true');
+      $('liveSec').hidden = false;
+    }
     Promise.all(pool.map(function (g) { return loadPlan(g).then(function (p) { return { g: g, plan: p }; }); })).then(function (res) {
       if (token !== liveToken) return;
       var now = new Date();
-      var box = $('liveCards');
       box.textContent = '';
+      box.removeAttribute('aria-busy');
       var n = 0;
       res.forEach(function (r) { if (r.plan) { box.appendChild(card(r.g, r.plan, now)); n++; } });
       $('liveSec').hidden = !n;

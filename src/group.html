@@ -507,7 +507,11 @@
   .week[data-dir="prev"] { --vt-x: -32px; }
   @keyframes week-in { from { opacity: 0; transform: translateX(var(--vt-x, 0px)); } }
 
-  /* loading skeleton (visible only until the script renders) */
+  /* loading skeleton (visible only until the script renders). It takes its space at once but fades in only after
+     200 ms, so a plan or file that arrives quickly (cache, fast network) never flashes it. */
+  .skel { animation: skel-in var(--dur-fast) ease 200ms both; }
+  @keyframes skel-in { from { opacity: 0; } }
+  .skel-col + .skel-col { display: none; }
   .skel span {
     position: relative;
     display: block;
@@ -527,6 +531,23 @@
     animation: shimmer 1.6s var(--ease-out) infinite;
   }
   @keyframes shimmer { to { transform: translateX(100%); } }
+  /* the same placeholder inside the tool sheets, shaped like what replaces it */
+  .skel-rows { margin-top: var(--sp-2); border-radius: var(--r-card); background: var(--s3); overflow: hidden; }
+  .skel-rows span, .skel-rows span:first-child { height: 40px; width: auto; margin: 0; border-radius: 0; background: none; }
+  .skel-rows span + span { border-top: 1px solid var(--line); }
+  .skel-rows span::before {
+    content: '';
+    position: absolute;
+    top: 15px; left: var(--sp-4);
+    width: 55%; height: 10px;
+    border-radius: 5px;
+    background: rgba(var(--hl), 0.08);
+  }
+  .skel-rows span:nth-child(even)::before { width: 40%; }
+  .skel-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--sp-2); margin-top: var(--sp-4); }
+  .skel-cards span, .skel-cards span:first-child { height: 76px; width: auto; margin: 0; border-radius: var(--r-card); background: var(--s3); }
+  .skel-hero span { height: 40px; margin-top: var(--sp-2); background: var(--s3); }
+  .skel-hero span:first-child { height: 96px; width: auto; margin: var(--sp-2) 0 var(--sp-3); border-radius: var(--r-card); }
 
   .day { margin-top: var(--sp-6); }
   .day:first-child, .session-banner + .day { margin-top: var(--sp-3); }
@@ -1684,6 +1705,9 @@
       padding-top: var(--sp-3);
     }
     .week .day, .week .group { display: contents; }
+    /* the loading skeleton spans the five day columns, like the week that replaces it */
+    .week .skel { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 12px; }
+    .week .skel-col + .skel-col { display: block; }
     .week .session-banner { grid-column: 1 / -1; grid-row: 1; margin: 0 0 var(--sp-3); }
     .week .week-notes { grid-column: 1 / -1; grid-row: 1; margin: 0 0 var(--sp-2); }
     .week-note { padding: 10px var(--sp-4); }
@@ -2037,7 +2061,13 @@
   </nav>
 
   <section class="week wrap" id="weekBody" aria-label="Zajęcia w wybranym tygodniu">
-    <div class="skel" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <div class="skel" aria-hidden="true">
+      <div class="skel-col"><span></span><span></span><span></span><span></span></div>
+      <div class="skel-col"><span></span><span></span><span></span></div>
+      <div class="skel-col"><span></span><span></span><span></span><span></span></div>
+      <div class="skel-col"><span></span><span></span></div>
+      <div class="skel-col"><span></span><span></span><span></span></div>
+    </div>
     <noscript><style>.skel{display:none}</style><p class="session-banner">Plan wymaga włączonego JavaScriptu.</p></noscript>
   </section>
 
@@ -3353,6 +3383,17 @@
   }
   function h3(parent, text) { return parent.appendChild(el('h3', null, text)); }
   function para(parent, text, cls) { return parent.appendChild(el('p', cls || null, text)); }
+  /* placeholder while a tool's data loads, shaped like what replaces it (kind: rows, cards or hero); the caller's
+     render clears it. Screen readers get the label, the shapes are hidden from them. */
+  function skeleton(parent, kind, label) {
+    var s = el('div', 'skel skel-' + kind);
+    s.setAttribute('aria-hidden', 'true');
+    for (var i = 0; i < (kind === 'cards' ? 6 : 4); i++) s.appendChild(el('span'));
+    parent.appendChild(s);
+    var p = parent.appendChild(el('p', 'vh', label));
+    p.setAttribute('role', 'status');
+    return s;
+  }
   function field(label, control) {
     var f = el('label', 'field');
     f.appendChild(el('span', null, label));
@@ -4685,7 +4726,7 @@
     }
     cmp.week = state.weekIndex;
     var render = function () { openTool('Porównaj grupy', drawCompare); };
-    openTool('Porównaj grupy', function (body) { para(body, 'Wczytywanie planów…', 'muted'); });
+    openTool('Porównaj grupy', function (body) { skeleton(body, 'rows', 'Wczytywanie planów…'); });
     getJSON('data/groups.json').then(function (list) { cmp.all = list.map(function (g) { return g[0]; }); }, noop).then(function () {
       return Promise.all(cmp.groups.map(function (g) {
         return cmp.plans[g] ? null : loadPlan(g).then(function (p) { cmp.plans[g] = p; }, function () { cmp.plans[g] = {}; });
@@ -4841,7 +4882,7 @@
         chk.appendChild(document.createTextNode('Tylko gdy nie mam wtedy zajęć'));
         body.appendChild(chk);
         cb.addEventListener('change', function () { opts.free = cb.checked; opts.limit = 40; draw(data); $('cuFree').focus(); });
-        if (!data) { para(body, 'Wczytywanie planów rocznika…', 'muted'); return; }
+        if (!data) { skeleton(body, 'rows', 'Wczytywanie planów rocznika…'); return; }
         if (data.error) { para(body, 'Nie udało się wczytać planów rocznika. Spróbuj ponownie później.', 'muted'); return; }
         var today = todayIso(), mins = nowMinutes();
         var found = PI.catchUp(data, me, state.byDate, subject, opts.type, today).filter(function (f) {
@@ -5120,7 +5161,7 @@
     }
     function render() {
       out.replaceChildren();
-      if (!data) { para(out, 'Wczytywanie rezerwacji sal…', 'muted'); return; }
+      if (!data) { skeleton(out, 'cards', 'Wczytywanie rezerwacji sal…'); return; }
       if (data.error) { para(out, 'Nie udało się wczytać danych o salach. Spróbuj ponownie później.', 'muted'); return; }
       var from = toMin(opts.time), range = PI.dataRange(data);
       var res = PI.freeRooms(data, opts.date, from, opts.dur, opts.later);
@@ -5606,7 +5647,7 @@
         $('toolBody').scrollTop = 0;
         if (key === 'map') drawLater();
       });
-      panels.you.appendChild(el('p', 'muted', 'Wczytywanie planów…'));
+      skeleton(panels.you, 'hero', 'Wczytywanie planów…');
       buildMapPanel(panels.map);
       panels.like.appendChild(el('h3', null, 'Znajdź plan pod swój rytm'));
       modeRow = choices('Szukam planu', 'pmMode', [['near', 'Najbardziej podobnego'], ['lighter', 'Lżejszego'], ['gaps', 'Z mniejszą liczbą okienek'],

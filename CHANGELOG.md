@@ -48,6 +48,14 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - „Sprawdzono” na stronie grupy uwzględnia także sprawdzenia wolontariuszy, a domowy runner pomija grupy, które
   wolontariusze właśnie potwierdzili.
 
+### Zmieniono
+- **Szkielety w trakcie wczytywania:** gdy dane jeszcze się wczytują, strona pokazuje zarys tego, co się pojawi, zamiast
+  pustego miejsca lub napisu „Wczytywanie…”. Dotyczy to karty „Teraz w Twoich grupach” na stronie głównej, wolnych sal,
+  porównania grup, „Gdzie odrobić”, mapy planów oraz listy zajęć dnia na mapie kampusu. Szkielet tygodnia na
+  szerokim ekranie zajmuje wszystkie kolumny dni. Szkielet od razu zajmuje miejsce, więc układ nie skacze. Pojawia się
+  dopiero po 200 ms, więc plan z pamięci podręcznej lub szybkiego łącza nie mignie. Wszystko to czyste CSS, bez dodatkowych
+  zapytań i timerów.
+
 ## [1.1.1] - 2026-10-22
 
 ### Zmieniono

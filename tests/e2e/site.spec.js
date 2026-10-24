@@ -332,6 +332,28 @@ test('with reduced motion the page still navigates and opens the sheet', async (
   await expect(page.locator('#weekSheet')).toBeVisible();
 });
 
+/* Hold every request matching `url` until the returned function is called. */
+async function holdRoute(page, url) {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route(url, async (route) => { await gate; await route.continue(); });
+  return release;
+}
+
+test('a slow plan holds the week in a skeleton as wide as the week, gone once the plan is in', async ({ page }) => {
+  const release = await holdRoute(page, '**/plan.ics');
+  await page.clock.setFixedTime(THURSDAY_1030);
+  await page.goto(GROUP);
+  const skel = page.locator('#weekBody .skel');
+  await expect(skel).toBeVisible();
+  // the five day columns on a wide screen, the single column on a phone
+  const [box, week] = await Promise.all([skel.boundingBox(), page.locator('#weekBody').boundingBox()]);
+  expect(box.width).toBeGreaterThan(week.width * 0.8);
+  release();
+  await expect(page.locator('.lesson').first()).toBeVisible();
+  await expect(skel).toHaveCount(0);
+});
+
 test('a calendar that cannot be loaded shows an error and disables navigation', async ({ page }) => {
   await page.route('**/plan.ics', (route) => route.fulfill({ status: 500, body: 'unavailable' }));
   await page.goto(GROUP);
@@ -692,6 +714,17 @@ test('the tools row has three tabs, moves with the arrow keys and remembers the 
   await expect(page.locator('#favBtn')).toBeHidden();
 });
 
+test('free rooms hold their place with skeleton cards while the room data loads', async ({ page }) => {
+  const release = await holdRoute(page, '**/data/rooms.json');
+  await openGroup(page);
+  await pressTool(page, '#roomsBtn');
+  await expect(tool(page).locator('#frResult .skel-cards')).toBeVisible();
+  await expect(tool(page).locator('#frResult [role="status"]')).toHaveText('Wczytywanie rezerwacji sal…');
+  release();
+  await expect(tool(page).locator('.fr-card').first()).toBeVisible();
+  await expect(tool(page).locator('.skel')).toHaveCount(0);
+});
+
 test('free rooms lists rooms with no class at the chosen time, with a day bar on each', async ({ page }) => {
   await openGroup(page);
   await pressTool(page, '#roomsBtn');
@@ -785,7 +818,7 @@ test('the list view and the tool sheets have no serious or critical accessibilit
   for (const id of ['#statsBtn', '#sessionBtn', '#roomsBtn', '#profileBtn', '#calBtn', '#extrasBtn', '#shareBtn']) {
     await pressTool(page, id);
     await expect(tool(page)).toBeVisible();
-    await expect(tool(page).locator('.muted', { hasText: 'Wczytywanie' })).toHaveCount(0);
+    await expect(tool(page).locator('.skel')).toHaveCount(0);
     expect(await scan(), id).toEqual([]);
     await page.keyboard.press('Escape');
     await expect(tool(page)).toBeHidden();
@@ -803,6 +836,20 @@ test('the front page shows what is on now in a favourite group', async ({ page }
   await expect(card).toContainText('314 S');
   await card.click();
   await expect(page).toHaveURL(ON_GROUP);
+});
+
+test('the front page holds a favourite group\'s card in place while its plan loads', async ({ page }) => {
+  const release = await holdRoute(page, '**/WCY26KY3S1/plan.ics');
+  await page.clock.setFixedTime(THURSDAY_1030);
+  await page.addInitScript(() => localStorage.setItem('planwat:favs', JSON.stringify(['WCY26KY3S1'])));
+  await page.goto('/');
+  await expect(page.locator('#liveSec')).toBeVisible();
+  await expect(page.locator('#liveCards .skel-card')).toHaveCount(1);
+  await expect(page.locator('#liveCards')).toHaveAttribute('aria-busy', 'true');
+  release();
+  await expect(page.locator('#liveCards a.now-card')).toHaveCount(1);
+  await expect(page.locator('#liveCards .skel-card')).toHaveCount(0);
+  await expect(page.locator('#liveCards')).not.toHaveAttribute('aria-busy');
 });
 
 test('a star on a group row adds it to the favourites, and the faculty chips filter the list', async ({ page }) => {

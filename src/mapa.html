@@ -195,6 +195,20 @@
   .day-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0; }
   .day-head .ctl { min-height: 34px; box-shadow: none; }
   .stops { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+  /* the day's stops while the group's plan loads; fades in only after 200 ms, so a cached plan never flashes it */
+  .skel { display: grid; gap: 6px; margin: 8px 0; animation: skel-in var(--dur-fast) ease 200ms both; }
+  .skel span { position: relative; height: 72px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--s2); overflow: hidden; }
+  .skel span::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+  @keyframes skel-in { from { opacity: 0; } }
+  @keyframes shimmer { to { transform: translateX(100%); } }
+  .vh { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .stops button {
     display: flex; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl);
     background: var(--s2); color: inherit; font: inherit; text-align: left; cursor: pointer;
@@ -274,6 +288,7 @@
   @media (prefers-reduced-motion: reduce) {
     .sheet > summary .hint .i, .sheet::details-content { transition: none; }
     :where(button.ctl, .chip, .stops button):active { transform: none; }
+    .skel span::after { animation: none; }
   }
 </style>
 </head>
@@ -989,6 +1004,12 @@
   function boot() {
     try { startMap(); } catch (e) { map = null; fallback(); }
     if (dayMode) {
+      var skel = el('div', 'skel');
+      skel.setAttribute('aria-hidden', 'true');
+      for (var i = 0; i < 3; i++) skel.appendChild(el('span'));
+      var busy = el('p', 'vh', 'Wczytywanie planu grupy…');
+      busy.setAttribute('role', 'status');
+      $('day').replaceChildren(skel, busy);
       loadDay().then(function () {
         if (!openDeepLink()) {
           var list = Object.keys(dayCodes).map(function (k) { return dayCodes[k]; });
