@@ -56,6 +56,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   dopiero po 200 ms, więc plan z pamięci podręcznej lub szybkiego łącza nie mignie. Wszystko to czyste CSS, bez dodatkowych
   zapytań i timerów.
 
+### Naprawiono
+- **Ruch na mapie kampusu:** krzywa `--ease-out` na stronie mapy wskazywała sama na siebie, więc przeglądarka ją
+  odrzucała. Przez to nie działały wejście nagłówka, wyszukiwarki i panelu ani płynne zwijanie panelu. Teraz ma tę samą
+  wartość co na pozostałych stronach.
+
 ## [1.1.1] - 2026-10-22
 
 ### Zmieniono
