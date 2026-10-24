@@ -954,6 +954,8 @@
   /* sideways scrollers fade the half-cut last element, so it reads as "swipe for more" */
   .fade-end[data-more="1"] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); }
   .tools .dl { margin-top: 0; border: 0; cursor: pointer; white-space: nowrap; }
+  /* the side panel's head, its scrim and the button that opens it exist on desktop only (see the 1080px block) */
+  .tools-head, .scrim, .toolsbtn { display: none; }
   /* phones: one row that scrolls sideways, so the Live card stays on the first screen */
   @media (max-width: 767px) {
     .toolpanel {
@@ -1689,7 +1691,80 @@
       grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
       align-items: end;
       gap: var(--sp-6);
+      padding-top: calc(env(safe-area-inset-top) + var(--sp-6));
+      padding-bottom: var(--sp-4);
+      /* raised over the sticky bar and the week while the tools panel is out; dropped only once it has slid away */
+      transition: z-index 0s linear var(--dur-base);
     }
+    .hero.tools-open { z-index: 35; transition: none; }
+    .hero:has(> .live[hidden]) { grid-template-columns: minmax(0, 1fr); }
+    /* a compact header, so the week starts on the first screen: the title block beside the Live card, and the
+       tools in a side panel opened from the view bar */
+    .title { font-size: var(--fs-40); letter-spacing: -0.035em; }
+    .sub { margin-top: var(--sp-1); font-size: var(--fs-17); }
+    .semprog { margin-top: var(--sp-4); }
+    .facts { margin-top: var(--sp-3); }
+    .viewbar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
+    .toolsbtn { display: inline-flex; margin-top: 0; border: 0; cursor: pointer; }
+    .tools {
+      position: fixed;
+      z-index: 2;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(380px, 100%);
+      margin: 0;
+      padding: calc(env(safe-area-inset-top) + var(--sp-4)) var(--sp-5) var(--sp-6);
+      align-content: start;
+      gap: var(--sp-4);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      background: var(--bg);
+      box-shadow: -1px 0 0 var(--line), -24px 0 80px rgba(0, 0, 0, 0.3);
+      animation: none;
+      transform: translateX(100%);
+      visibility: hidden;
+      transition: transform var(--dur-base) var(--ease-in), visibility 0s linear var(--dur-base);
+    }
+    .tools.open { transform: none; visibility: visible; transition: transform 420ms var(--ease-sheet); }
+    .tools-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+    .tools-head h2 { font-size: var(--fs-20); font-weight: 600; letter-spacing: -0.02em; }
+    .tools-head .round { width: 36px; height: 36px; }
+    .tools .tabs { max-width: none; }
+    .toolpanel {
+      flex-direction: column;
+      flex-wrap: nowrap;
+      gap: 0;
+      border-radius: var(--r-card);
+      background: var(--s2);
+      box-shadow: var(--edge), 0 0 0 1px var(--line);
+      overflow: hidden;
+    }
+    .tools .dl {
+      min-height: 48px;
+      padding: 12px var(--sp-4);
+      gap: var(--sp-3);
+      border-radius: 0;
+      background: none;
+      box-shadow: none;
+      font-size: var(--fs-15);
+      text-align: left;
+    }
+    .tools .dl:hover, .tools .dl:active { transform: none; background: var(--s3); }
+    .toolpanel > * + * { border-top: 1px solid var(--line); }
+    #installRow:not([hidden]) { display: grid; gap: var(--sp-1); padding-bottom: var(--sp-3); }
+    #installHint:not(:empty) { padding: 0 var(--sp-4); font-size: var(--fs-13); }
+    .scrim {
+      display: block;
+      position: fixed;
+      z-index: 1;
+      inset: 0;
+      background: var(--scrim);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-base);
+    }
+    .scrim.open { opacity: 1; visibility: visible; transition: opacity var(--dur-base) var(--ease-out); }
     /* The list is a single 720px column: centre the whole page on it (header included) instead of leaving it
        at the left edge of the wide week container. */
     body[data-view="list"] .wrap { max-width: calc(720px + var(--gl) + var(--gr)); }
@@ -1854,6 +1929,7 @@
     .month[data-dir] { --vt-x: 0px; }
     .view-in, .month-grid.is-entering, .month-head h2.is-entering, .bar-fill, .cols span { animation: none; }
     .notice, .toolpanel, .pm-panel, .field, table.data, .mysub-parts, .seg.has-pill::before, .tabs.has-pill::before { transition: none; }
+    .hero, .tools, .tools.open, .scrim, .scrim.open { transition: none; }
     ::view-transition-group(*) { animation-duration: 0s; }
   }
 
@@ -1955,6 +2031,7 @@
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
   <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-2.9 2.6-2.9 4"/><path d="M12 17.5h.01"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
 </svg>
 
@@ -1978,6 +2055,7 @@
         </dl>
       </div>
       <div class="tools enter d3" id="tools">
+      <div class="tools-head"><h2 id="toolsTitle">Narzędzia</h2><button class="round" id="toolsClose" type="button" aria-label="Zamknij narzędzia"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button></div>
       <div class="tabs" id="toolTabs" role="tablist" aria-label="Narzędzia planu">
         <button type="button" role="tab" id="tt-plan" data-tab="plan" aria-controls="tp-plan" aria-selected="true">Plan</button>
         <button type="button" role="tab" id="tt-export" data-tab="export" aria-controls="tp-export" aria-selected="false" tabindex="-1">Eksport</button>
@@ -2004,6 +2082,7 @@
         <button class="dl" id="profileBtn" type="button" aria-haspopup="dialog"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-scatter"/></svg>Mapa planów</button>
       </div>
       </div>
+      <div class="scrim" id="toolsScrim"></div>
       <div class="notice" id="offlineNotice" role="status" hidden>
         <svg class="i" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>
         <span class="notice-text">Jesteś offline. Widzisz plan zapisany w przeglądarce przy ostatniej wizycie.</span>
@@ -2047,6 +2126,7 @@
       <button type="button" data-view="list" aria-pressed="false">Lista</button>
       <button type="button" data-view="month" aria-pressed="false">Miesiąc</button>
     </div>
+    <button class="dl toolsbtn" id="toolsBtn" type="button" aria-expanded="false" aria-controls="tools"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-menu"/></svg>Narzędzia</button>
   </div>
 
   <nav class="bar enter d5" id="nav" aria-label="Nawigacja tygodni">
@@ -4974,7 +5054,7 @@
     initSheet();
 
     document.addEventListener('keydown', function (e) {
-      if (e.altKey || e.ctrlKey || e.metaKey || sheet.open || tool.open || $('tourSheet').open) return;
+      if (e.altKey || e.ctrlKey || e.metaKey || sheet.open || tool.open || $('tourSheet').open || $('tools').classList.contains('open')) return;
       if (state.view !== 'week' && e.key !== 'Escape') return;
       var tag = e.target && e.target.tagName;
       if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -5688,6 +5768,36 @@
     var KEY = 'planwat.toolTab', list = $('toolTabs');
     var showTool = wireTabs(list, function (key) { try { localStorage.setItem(KEY, key); } catch (e) { /* private mode */ } });
     try { var saved = localStorage.getItem(KEY); if (saved && saved !== 'plan') showTool(saved); } catch (e) { /* private mode */ }
+  })();
+  /* desktop: the tools slide in from the side, opened from the view bar (phones and tablets keep them under the title).
+     Esc, the scrim, the close button or moving focus elsewhere put them away; a sheet opened from them stays on top. */
+  (function () {
+    var panel = $('tools'), btn = $('toolsBtn'), scrim = $('toolsScrim');
+    function set(open, refocus) {
+      if (open === panel.classList.contains('open')) return;
+      panel.classList.toggle('open', open);
+      scrim.classList.toggle('open', open);
+      $('hero').classList.toggle('tools-open', open);
+      btn.setAttribute('aria-expanded', String(open));
+      if (open) panel.querySelector('[role="tab"][aria-selected="true"]').focus({ preventScroll: true });
+      else if (refocus) btn.focus({ preventScroll: true });
+    }
+    btn.addEventListener('click', function () { set(!panel.classList.contains('open')); });
+    $('toolsClose').addEventListener('click', function () { set(false, true); });
+    scrim.addEventListener('click', function () { set(false, true); });
+    panel.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !panel.classList.contains('open')) return;
+      e.stopPropagation();
+      set(false, true);
+    });
+    panel.addEventListener('focusout', function (e) {
+      var to = e.relatedTarget;
+      if (to && to !== btn && !panel.contains(to) && !to.closest('dialog')) set(false);
+    });
+    if (window.matchMedia) {
+      var wide = window.matchMedia('(min-width: 1080px)');
+      if (wide.addEventListener) wide.addEventListener('change', function () { set(false); });
+    }
   })();
   /* offline: the service worker keeps the last copy of this page and its plan; say that it is a saved copy */
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(function () {});

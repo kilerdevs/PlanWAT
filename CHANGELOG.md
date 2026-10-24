@@ -49,6 +49,16 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   wolontariusze właśnie potwierdzili.
 
 ### Zmieniono
+- **Plan na pierwszym ekranie komputera:** na szerokim ekranie (od 1080 px) nagłówek strony grupy jest niższy, a
+  tydzień zaczyna się ok. 340 px od góry zamiast 565 px. Narzędzia (Plan, Eksport, Analiza) wysuwają się z boku po
+  kliknięciu „Narzędzia” obok przełącznika widoku. Zamyka je Esc, kliknięcie obok albo ×. Telefony i tablety bez zmian.
+- **Proxy wyjściowe (egress) szybsze i odporniejsze:** pula odświeża się co 4 h, sprawdza równolegle do 240 kandydatów,
+  odrzuca strony blokad udające indeks wydziału i nie zamraża się na 4 h po nieudanym pobraniu list (ponowna próba po 5 min).
+  Awaria jednego wydziału nie wyłącza pozostałych, a hosty celowo kierowane bezpośrednio nie obciążają puli. Wolontariusz,
+  który ma wszystkie wydziały na liście bezpośredniej, nie pobiera list i nie sonduje nikogo.
+- **Bezpieczniejsze API egressu:** token przyjmowany jako `X-Token` albo `Authorization: Bearer` i sprawdzany przed odczytem
+  ciała (z limitem 256 KiB), nagłówki bezpieczeństwa i CSP na panelu oraz twarde limity połączeń. Produkcyjnie
+  `planzajec.wcy.wat.edu.pl` nie spada już na linię domową, gdy pula nie ma dla niego wyjścia (`EGRESS_FAIL_CLOSED`).
 - **Szkielety w trakcie wczytywania:** gdy dane jeszcze się wczytują, strona pokazuje zarys tego, co się pojawi, zamiast
   pustego miejsca lub napisu „Wczytywanie…”. Dotyczy to karty „Teraz w Twoich grupach” na stronie głównej, wolnych sal,
   porównania grup, „Gdzie odrobić”, mapy planów oraz listy zajęć dnia na mapie kampusu. Szkielet tygodnia na
@@ -57,6 +67,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Egress: błędy, które psuły tunele i panel:** SOCKS5 z adresem domenowym w odpowiedzi zjadał pierwszy znak nazwy i wisiał
+  do timeoutu, a nieznany typ adresu albo odmowa HTTP CONNECT kończą się teraz czystym błędem. Sonda Blackboxa mierzyła sam
+  eksporter zamiast GUI, a alert „host utknął w DIRECT” obejmował hosty celowo kierowane bezpośrednio. Raport rozpoczęty bez
+  zakończenia znika z panelu po 12 h, a `%BANNER%` w danych przebiegu nie psuje już osadzonego JSON-a.
 - **Ruch na mapie kampusu:** krzywa `--ease-out` na stronie mapy wskazywała sama na siebie, więc przeglądarka ją
   odrzucała. Przez to nie działały wejście nagłówka, wyszukiwarki i panelu ani płynne zwijanie panelu. Teraz ma tę samą
   wartość co na pozostałych stronach.

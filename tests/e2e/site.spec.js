@@ -25,9 +25,19 @@ async function openGroup(page, { at = THURSDAY_1030, path = GROUP } = {}) {
   return problems;
 }
 
-/* The tools row has three tabs (Plan, Eksport, Analiza): open the one that holds a button, then press it. */
+/* On desktop the tools sit in a side panel opened from "Narzędzia"; elsewhere they are under the title. */
+async function openTools(page) {
+  const open = page.locator('#toolsBtn');
+  if (await open.isVisible() && (await open.getAttribute('aria-expanded')) !== 'true') await open.click();
+}
+async function closeTools(page) {
+  if ((await page.locator('#toolsBtn').getAttribute('aria-expanded')) === 'true') await page.locator('#toolsClose').click();
+}
+/* The tools have three tabs (Plan, Eksport, Analiza): open the one that holds a button, then press it. */
 async function showTool(page, selector) {
   const button = page.locator(selector);
+  if (await button.isVisible()) return;
+  await openTools(page);
   if (await button.isVisible()) return;
   const tab = await button.evaluate((n) => n.closest('.toolpanel').id.replace('tp-', 'tt-'));
   await page.locator('#' + tab).click();
@@ -695,6 +705,7 @@ test('the plan map explains the coefficient and every number, tab by tab', async
 
 test('the tools row has three tabs, moves with the arrow keys and remembers the one used last', async ({ page }) => {
   await openGroup(page);
+  await openTools(page);
   const tabs = page.locator('#toolTabs [role="tab"]');
   await expect(tabs).toHaveText(['Plan', 'Eksport', 'Analiza']);
   await expect(page.locator('#tp-plan')).toBeVisible();
@@ -709,9 +720,40 @@ test('the tools row has three tabs, moves with the arrow keys and remembers the 
   await expect(page.locator('#tt-analysis')).toBeFocused();
   await expect(page.locator('#profileBtn')).toBeVisible();
   await page.reload();
+  await openTools(page);
   await expect(page.locator('#tt-analysis')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#profileBtn')).toBeVisible();
   await expect(page.locator('#favBtn')).toBeHidden();
+});
+
+test('on desktop the week starts on the first screen and the tools slide in from the side', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.startsWith('mobile'), 'phones keep the tools under the title');
+  await openGroup(page);
+  const box = await page.locator('#weekBody').boundingBox();
+  expect(box.y).toBeLessThan(page.viewportSize().height / 2);
+  const open = page.locator('#toolsBtn');
+  await expect(page.locator('#favBtn')).toBeHidden();
+  await open.click();
+  await expect(open).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#favBtn')).toBeVisible();
+  await expect(page.locator('#tt-plan')).toBeFocused();
+  await page.keyboard.press('ArrowRight'); // moves between the tabs, not the weeks
+  await expect(page.locator('#tt-export')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#weekLabel')).toHaveText('12.10–17.10');
+  await page.keyboard.press('Escape');
+  await expect(open).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#icsLink')).toBeHidden();
+  await expect(open).toBeFocused();
+  await open.click();
+  await page.locator('#toolsScrim').click({ position: { x: 20, y: 20 } });
+  await expect(page.locator('#icsLink')).toBeHidden();
+  /* a sheet opened from the panel comes up over it, and closing it leaves the panel where it was */
+  await pressTool(page, '#calBtn');
+  await expect(tool(page)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(tool(page)).toBeHidden();
+  await expect(page.locator('#calBtn')).toBeVisible();
+  await expect(page.locator('#calBtn')).toBeFocused();
 });
 
 test('free rooms hold their place with skeleton cards while the room data loads', async ({ page }) => {
@@ -1035,6 +1077,7 @@ test('"Moje przedmioty" hides a subject everywhere, remembers it, and the downlo
   expect(titles.filter((l) => l === 'SUMMARY:' + firstSubject || l.startsWith('SUMMARY:' + firstSubject + ' ('))).toEqual([]);
   expect(titles.some((l) => / \([^()]+\)$/.test(l))).toBe(true);
   expect(text).toContain('BEGIN:VCALENDAR');
+  await closeTools(page);
   await page.locator('#hiddenEdit').click();
   await page.getByRole('button', { name: 'Pokaż wszystkie' }).click();
   await expect(page.locator('#hiddenNotice')).toBeHidden();
@@ -1072,6 +1115,7 @@ test('"Moje przedmioty" can hide one kind of a subject\'s classes and keep the r
   await page.reload();
   await expect(page.locator('#hiddenText')).toContainText('Ukryto 1 rodzaj zajęć');
   await expect(ofSubject).toHaveCount(1);
+  await closeTools(page);
   await page.locator('#hiddenEdit').click();
   await expect(item.locator('.mysub-parts')).toBeVisible();  // opened where part of a subject is hidden
   expect(await item.locator('.mysub-head input').evaluate((n) => n.indeterminate)).toBe(true);
@@ -1152,7 +1196,7 @@ test('the first-visit tour opens once, pages with Dalej and is not repeated', as
   await page.reload();
   await page.waitForTimeout(2000);
   await expect(tour).toBeHidden();
-  await page.click('#tourBtn');
+  await pressTool(page, '#tourBtn');
   await expect(tour).toBeVisible();
   await page.click('#tourSkip');
   await expect(tour).toBeHidden();
