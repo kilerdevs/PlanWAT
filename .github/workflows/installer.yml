@@ -122,7 +122,9 @@ jobs:
       PLANWAT_CRAWLER_IMAGE: planwat-crawler:ci
       PLANWAT_EGRESS_IMAGE: planwat-crawler-egress:ci
       PLANWAT_LOGIN: planwat-ci-volunteer
-      PLANWAT_FORK_TOKEN: github_pat_ci_not_a_real_token
+      # Stands in for a volunteer's fork token (read-only here): the crawler reads the registry with it. A fake
+      # token falls back to anonymous API calls, which share the runner IP's 60/h limit and fail with a 403.
+      PLANWAT_FORK_TOKEN: ${{ github.token }}
       PLANWAT_SETUP_ARGS: --skip-github-checks --faculties= --auto-update off --non-interactive
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
