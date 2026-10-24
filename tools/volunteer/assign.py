@@ -25,7 +25,7 @@ BLOCK_HOURS = 6
 GRACE_HOURS = 24
 LOGIN_RE = re.compile(r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$')
 REPO_RE = re.compile(r'^[A-Za-z0-9._-]{1,100}$')
-VERSION_RE = re.compile(r'^\d+\.\d+\.\d+$')
+VERSION_RE = re.compile(r'^\d{1,9}\.\d{1,9}\.\d{1,9}$')  # bounded, so int() never chokes on a forged one
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?)?$')
 
 
@@ -35,7 +35,7 @@ class RegistryError(ValueError):
 
 def version_tuple(text):
     if not isinstance(text, str) or not VERSION_RE.match(text):
-        raise RegistryError(f'not a version: {text!r}')
+        raise RegistryError(f'not a version: {text!r:.40}')
     return tuple(int(p) for p in text.split('.'))
 
 

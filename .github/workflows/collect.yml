@@ -9,10 +9,13 @@ name: Collect volunteer crawls
 # uses it only when GitHub verifies its head commit as signed by one of REGISTRY_EDITORS below (registry.py, the
 # same check every volunteer crawler makes): that list is on
 # the protected default branch, so a token that can push branches (the refresh runner's, this job's) still cannot
-# make itself or anybody else trusted.
+# make itself or anybody else trusted. The registry commit a pass used is kept in volunteer-state.json, and the
+# next pass refuses a head that is not that commit or newer, so such a token cannot roll the branch back to an
+# older signed registry either (one from before somebody was suspended or removed).
 #
 # While the repository variable PLANWAT_COLLECT_LIVE is not 'true', every pass is a dry run: it logs what it
-# would accept and writes nothing. That is the rollout switch.
+# would accept, writes nothing and reports no bench. That is the rollout switch. A dispatched revert or unbench
+# is the owner's own command and writes regardless (an emergency revert must work with publishing switched off).
 on:
   schedule:
     - cron: '7,37 * * * *'
@@ -58,16 +61,25 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
+      # Shallow, like every checkout: a --revert fetches the rest of the history itself when it needs an older
+      # calendar (collect.prior_blob).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: data
+          path: data
       # The same verified reader every volunteer uses (tools/volunteer/registry.py): the head of the volunteers
       # branch must be a commit GitHub verifies as signed by one of REGISTRY_EDITORS, and the file is read at
-      # exactly that commit. Anything else stops the pass with an error instead of being used.
+      # exactly that commit. It must also be the commit the last pass used or a newer one (--after). Anything
+      # else stops the pass with an error instead of being used.
       - id: registry
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          after=$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["registry"]["sha"])' \
+            data/volunteer-state.json 2>/dev/null || true)
           set +e
           python src/tools/volunteer/registry.py --upstream "$GITHUB_REPOSITORY" --editors "$REGISTRY_EDITORS" \
-            --out registry/volunteers.json
+            --after "$after" --out registry/volunteers.json
           code=$?
           set -e
           if [ "$code" = 3 ]; then
@@ -80,11 +92,6 @@ jobs:
             exit 1
           fi
           echo 'found=true' >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.registry.outputs.found == 'true'
-        with:
-          ref: data
-          path: data
       - id: run
         if: steps.registry.outputs.found == 'true'
         env:
@@ -92,9 +99,11 @@ jobs:
           REVERT: ${{ inputs.revert }}
           SINCE: ${{ inputs.since }}
           UNBENCH: ${{ inputs.unbench }}
+          REGISTRY_SHA: ${{ steps.registry.outputs.sha }}
         run: |
           set -euo pipefail
-          args=(--registry registry/volunteers.json --data data)
+          # revert and unbench write even while LIVE is off: they are the owner's commands, not a pass.
+          args=(--registry registry/volunteers.json --data data --registry-sha "$REGISTRY_SHA")
           if [ -n "$REVERT" ]; then
             args+=(--revert "$REVERT" --since "$SINCE")
           elif [ -n "$UNBENCH" ]; then
@@ -132,8 +141,9 @@ jobs:
           done
           echo '::warning::the data branch moved under this pass; trying again on the next one'
           echo 'pushed=false' >> "$GITHUB_OUTPUT"
+      # Only a live pass benches anybody (a dry run writes no bench, so it would report the same login every time).
       - name: Report benched volunteers
-        if: steps.run.outputs.benched != ''
+        if: vars.PLANWAT_COLLECT_LIVE == 'true' && steps.run.outputs.benched != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BENCHED: ${{ steps.run.outputs.benched }}

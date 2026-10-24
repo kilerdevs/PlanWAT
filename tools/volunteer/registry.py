@@ -9,11 +9,14 @@ action in volunteer mode) read it through fetch_verified():
 
   1. GET /repos/<upstream>/commits/volunteers: the head commit, its signature verdict and its committer;
   2. refuse unless GitHub verified the signature and the committer is one of the editors;
-  3. download volunteers.json at exactly that commit (not at the branch, which could move in between);
-  4. check it with assign.check_registry.
+  3. with --after (the commit the reader used last), refuse unless the head is that commit or a descendant of it;
+  4. download volunteers.json at exactly that commit (not at the branch, which could move in between);
+  5. check it with assign.check_registry.
 
-So a token that can push branches still cannot change who is trusted or who checks what. Exit codes of the CLI:
-0 written, 1 GitHub unreachable (try later), 2 refused (unsigned, wrong signer, malformed), 3 no registry yet.
+So a token that can push branches still cannot change who is trusted or who checks what, and the coordinator, which
+keeps the commit it used in volunteer-state.json, refuses a force-push back to an older signed registry (one from
+before a volunteer was suspended or removed). Exit codes of the CLI: 0 written, 1 GitHub unreachable (try later),
+2 refused (unsigned, wrong signer, rolled back, malformed), 3 no registry yet.
 """
 import argparse
 import json
@@ -65,16 +68,27 @@ def editor_set(editors):
     return {e.strip().lower() for e in str(editors).replace(',', ' ').split() if e.strip()}
 
 
-def fetch_verified(upstream, editors, token=None, get=http_get):
-    """(registry, raw bytes, commit sha, committer) from a verified commit of an editor.
-    Raises Missing, Unavailable or assign.RegistryError (refused)."""
+def is_sha(text):
+    return isinstance(text, str) and len(text) in (40, 64) and all(c in '0123456789abcdef' for c in text)
+
+
+def api_get(get, url, token):
+    status, body = get(url, token)
+    if status == 401 and token:
+        # An expired or revoked token must not blind the crawler: the registry is public, so ask anonymously.
+        status, body = get(url, None)
+    return status, body
+
+
+def fetch_verified(upstream, editors, token=None, get=http_get, after=None):
+    """(registry, raw bytes, commit sha, committer) from a verified commit of an editor; with `after`, only when
+    that commit is `after` or a descendant of it. Raises Missing, Unavailable or assign.RegistryError (refused)."""
     allowed = editor_set(editors)
     if not allowed:
         raise assign.RegistryError('no registry editors configured')
-    status, body = get(f'{API}/repos/{upstream}/commits/{BRANCH}', token)
-    if status == 401 and token:
-        # An expired or revoked token must not blind the crawler: the registry is public, so ask anonymously.
-        status, body = get(f'{API}/repos/{upstream}/commits/{BRANCH}', None)
+    if after and not is_sha(after):
+        raise assign.RegistryError(f'the registry commit used last is not a commit id: {after!r}')
+    status, body = api_get(get, f'{API}/repos/{upstream}/commits/{BRANCH}', token)
     if status in (404, 422):
         raise Missing(f'{upstream} has no {BRANCH} branch')
     if status != 200:
@@ -86,11 +100,27 @@ def fetch_verified(upstream, editors, token=None, get=http_get):
         committer = ((head.get('committer') or {}).get('login') or '').lower()
     except (ValueError, KeyError, TypeError):
         raise Unavailable('GitHub answered something that is not a commit')
-    if not isinstance(sha, str) or len(sha) not in (40, 64) or any(c not in '0123456789abcdef' for c in sha):
+    if not is_sha(sha):
         raise Unavailable('GitHub answered a malformed commit id')
     if not verified or committer not in allowed:
         raise assign.RegistryError(f'{BRANCH} {sha[:12]} is not a verified commit by a registry editor '
                                    f'(verified={verified}, committer={committer or "-"})')
+    if after and after != sha:
+        # Every edit (manage.py) is a new commit on top of the last one, so the head only ever moves forward.
+        # An older signed commit is still signed: only its place in the history gives a rollback away.
+        status, body = api_get(get, f'{API}/repos/{upstream}/compare/{after}...{sha}?per_page=1', token)
+        if status == 404:
+            raise assign.RegistryError(f'{BRANCH} {sha[:12]} is not related to the registry used last '
+                                       f'({after[:12]}): refused as a rollback')
+        if status != 200:
+            raise Unavailable(f'GitHub answered {status} comparing {after[:12]} with {sha[:12]}')
+        try:
+            relation = json.loads(body)['status']
+        except (ValueError, KeyError, TypeError):
+            raise Unavailable('GitHub answered something that is not a comparison')
+        if relation != 'ahead':
+            raise assign.RegistryError(f'{BRANCH} {sha[:12]} is {relation} the registry used last ({after[:12]}), '
+                                       'not ahead of it: refused as a rollback')
     status, raw = get(f'{RAW}/{upstream}/{sha}/volunteers.json', None)
     if status != 200:
         raise Unavailable(f'volunteers.json at {sha[:12]}: HTTP {status}')
@@ -107,10 +137,11 @@ def main(argv=None):
     ap.add_argument('--editors', default=os.environ.get('PLANWAT_REGISTRY_EDITORS', DEFAULT_EDITORS),
                     help='logins whose signed commits may set the registry (comma or space separated)')
     ap.add_argument('--out', required=True, type=Path, help='write the verified volunteers.json here')
+    ap.add_argument('--after', default='', help='the registry commit used last: refuse a head that is not it or newer')
     args = ap.parse_args(argv)
     token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN') or None
     try:
-        _, raw, sha, committer = fetch_verified(args.upstream, args.editors, token)
+        _, raw, sha, committer = fetch_verified(args.upstream, args.editors, token, after=args.after or None)
     except Missing as err:
         print(f'no registry yet: {err}')
         return 3

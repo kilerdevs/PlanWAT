@@ -636,6 +636,216 @@ class RefusalTest(Harness):
         self.assertEqual(self.published(), SOURCE)
 
 
+class CoordinatorHardeningTest(Harness):
+    """The coordinator's answers to the audit: dry runs, benches, timestamps, malformed bundles, budgets, state."""
+    KEY = f'{CODE}@{TID}'
+
+    def seed_state(self, **fields):
+        (self.data / core.VOLUNTEER_STATE_FILE).write_text(json.dumps({'version': 1, **fields}))
+
+    def test_a_dry_run_reports_no_bench_and_the_workflow_files_no_issue(self):
+        reg = registry({'login': 'bob', 'trust': 'peer'}, {'login': 'carol', 'trust': 'peer'},
+                       {'login': 'liar', 'trust': 'peer'})
+        self.seed_state(strikes={'liar': [NOW.isoformat()] * collect.STRIKES})
+        self.offer('bob')
+        out = self.tmp / 'github-output'
+        with mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out)}):
+            (self.tmp / 'r.json').write_text(json.dumps({'quorum': 2, 'volunteers': reg['volunteers']}))
+            code = collect.main(['--registry', str(self.tmp / 'r.json'), '--data', str(self.data), '--dry-run',
+                                 '--now', NOW.isoformat(), '--url', str(self.forks / '{login}.git')])
+        self.assertEqual(code, 0)
+        self.assertIn('benched=\n', out.read_text())
+        self.assertEqual(self.collect(reg, dry_run=True)['benched'], [])
+        self.assertEqual(self.collect(reg)['benched'], ['liar'])
+        step = (ROOT / '.github' / 'workflows' / 'collect.yml').read_text().split('Report benched volunteers')[1]
+        self.assertIn("vars.PLANWAT_COLLECT_LIVE == 'true'", step.splitlines()[1])
+
+    def test_a_benched_volunteers_pending_votes_stop_counting(self):
+        reg = registry({'login': 'bob', 'trust': 'peer'}, {'login': 'carol', 'trust': 'peer'})
+        before = (NOW - dt.timedelta(minutes=10)).isoformat()
+        self.seed_state(benched={'bob': before}, votes={self.KEY: {core.plan_hash(changed_plan()): {
+            'voters': {'bob': before}, 'first': before}}})
+        self.offer('carol')
+        self.assertEqual(self.collect(reg)['changed'], [])
+        self.assertEqual(self.published(), SOURCE)
+        self.assertEqual(list(self.state()['votes'][self.KEY].values())[0]['voters'], {'carol': NOW.isoformat()})
+
+    def test_a_bench_survives_a_respelt_login(self):
+        reg = registry({'login': 'alice', 'trust': 'peer'})
+        self.seed_state(benched={'Alice': NOW.isoformat()}, strikes={'Alice': [NOW.isoformat()]})
+        self.offer('alice')
+        summary = self.collect(reg)
+        self.assertEqual((summary['read'], summary['rows']), ([], []))
+        self.assertEqual((list(self.state()['benched']), list(self.state()['strikes'])), (['alice'], ['alice']))
+
+    def test_a_peer_cannot_backdate_a_vote_to_strike_another(self):
+        reg = registry({'login': 'tara', 'trust': 'trusted'}, {'login': 'mallory', 'trust': 'peer'},
+                       {'login': 'bob', 'trust': 'peer'})
+        at = lambda minutes: (NOW + dt.timedelta(minutes=minutes)).isoformat()  # noqa: E731
+        plan = core.plan_hash(changed_plan())
+        self.offer('bob', ics=changed_plan('B'), ended=NOW + dt.timedelta(minutes=5))
+        self.offer('tara', ended=NOW + dt.timedelta(minutes=10))
+        self.offer('mallory', ended=NOW + dt.timedelta(minutes=30), started=at(0),
+                   groups={self.KEY: {'status': 'changed', 'plan': plan, 'at': at(1)}})
+        self.assertEqual(self.collect(reg, NOW + dt.timedelta(minutes=31))['changed'], [self.KEY])
+        self.assertEqual(self.state()['strikes'], {})
+
+    def test_a_claimed_vote_time_stays_inside_its_pass(self):
+        reg = registry({'login': 'bob', 'trust': 'peer'}, {'login': 'carol', 'trust': 'peer'})
+        plan = core.plan_hash(changed_plan())
+        self.offer('bob', ended=NOW, started=(NOW - dt.timedelta(minutes=30)).isoformat(),
+                   groups={self.KEY: {'status': 'changed', 'plan': plan, 'at': '2020-01-01T00:00:00'}})
+        self.collect(reg)
+        self.assertEqual(self.state()['votes'][self.KEY][plan]['voters'], {'bob': '2026-10-20T11:30:00'})
+        self.offer('bob', ended=NOW - dt.timedelta(hours=1))
+        self.assertIn('before the previous bundle', self.collect(reg)['refused']['bob'])
+        self.offer('bob', ended=NOW, started=(NOW + dt.timedelta(hours=1)).isoformat())
+        self.assertIn('start time', self.collect(reg)['refused']['bob'])
+
+    def test_a_malformed_manifest_is_refused_and_the_pass_goes_on(self):
+        reg = registry({'login': 'alice', 'trust': 'trusted'}, {'login': 'bob', 'trust': 'peer'})
+        self.offer('alice', version='9' * 5000 + '.0.0')
+        self.offer('bob')
+        summary = self.collect(reg)
+        self.assertIn('not a version', summary['refused']['alice'])
+        self.assertEqual(summary['read'], ['bob'])
+        deep = {'manifest.json': b'{"format": 1, "x": ' + b'[' * 200000 + b']' * 200000 + b'}'}
+        with self.assertRaises(collect.BundleError):
+            collect.check_manifest(reg['volunteers'][0], deep, reg, {}, NOW, {TID})
+        self.offer('alice', ended=NOW + dt.timedelta(minutes=1))
+        with mock.patch.object(collect, 'check_manifest', side_effect=RecursionError('deep')):
+            summary = self.collect(reg, NOW + dt.timedelta(minutes=2))
+        self.assertIn('unreadable manifest', summary['refused']['alice'])
+
+    def test_an_outage_is_not_a_missing_branch(self):
+        def failing(stderr):
+            error = subprocess.CalledProcessError(128, ['git'], b'', stderr)
+            return mock.patch.object(collect, 'git', side_effect=error)
+        with mock.patch.object(collect, 'git', side_effect=subprocess.TimeoutExpired(['git'], 30)):
+            self.assertEqual(collect.gather('https://github.com/bob/PlanWAT.git', {})[0], 'error')
+            row = self.collect(registry({'login': 'bob', 'trust': 'peer'}))['rows'][0]
+        self.assertEqual(row['result'], 'error')
+        self.assertTrue(row['why'])
+        with failing(b"fatal: unable to access 'https://github.com/bob/PlanWAT.git/': Could not resolve host"):
+            self.assertEqual(collect.gather('https://github.com/bob/PlanWAT.git', {})[0], 'error')
+        with failing(b"remote: Repository not found.\nfatal: repository 'https://github.com/x/y.git/' not found"):
+            self.assertEqual(collect.gather('https://github.com/bob/PlanWAT.git', {})[0], 'none')
+
+    def test_a_corrupt_state_stops_every_command_and_is_kept(self):
+        broken = b'{"version": 1, "votes": {'
+        (self.data / core.VOLUNTEER_STATE_FILE).write_bytes(broken)
+        (self.tmp / 'r.json').write_text(json.dumps({'quorum': 2, 'volunteers': [{'login': 'bob'}]}))
+        for extra in (['--unbench', 'bob'], ['--revert', 'bob', '--since', NOW.isoformat()], []):
+            with self.subTest(extra):
+                self.assertEqual(collect.main(['--registry', str(self.tmp / 'r.json'), '--data', str(self.data),
+                                               '--url', str(self.forks / '{login}.git'), *extra]), 2)
+                self.assertEqual((self.data / core.VOLUNTEER_STATE_FILE).read_bytes(), broken)
+        with self.assertRaises(collect.StateError):
+            self.collect(registry({'login': 'bob', 'trust': 'peer'}))
+
+    def test_revert_works_on_a_shallow_checkout(self):
+        reg = registry({'login': 'alice', 'trust': 'trusted'})
+        self.offer('alice')
+        self.collect(reg)
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'add', '-A', cwd=self.data)
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false',
+            'commit', '-q', '-m', 'accepted', cwd=self.data)
+        clone = self.tmp / 'clone'
+        git('clone', '-q', '--depth=1', f'file://{self.data}', str(clone), cwd=self.tmp)
+        prior = collect.load_state(clone / core.VOLUNTEER_STATE_FILE)['log'][0]['prior']
+        with self.assertRaises(subprocess.CalledProcessError):
+            git('cat-file', '-e', prior, cwd=clone)
+        keys = collect.revert(clone / core.VOLUNTEER_STATE_FILE, clone, 'alice', '2026-10-20T00:00:00', NOW)
+        self.assertEqual(keys, [self.KEY])
+        self.assertEqual((clone / REL).read_bytes().decode('utf-8'), SOURCE)
+
+    def test_only_known_faculties_are_published_as_blocked(self):
+        reg = registry({'login': 'alice', 'trust': 'trusted'})
+        self.offer('alice', faculties={'wcy': {'blocked': True}, 'zzzz': {'blocked': True}})
+        self.collect(reg)
+        self.assertEqual(self.state()['volunteers']['alice']['blocked'], {'wcy': NOW.isoformat()})
+
+    def test_a_pass_keeps_to_its_byte_budget_and_the_rest_go_first_next_time(self):
+        reg = registry({'login': 'bob', 'trust': 'peer'}, {'login': 'carol', 'trust': 'peer'})
+        for name, value in (('WORKERS', 1), ('PASS_BYTES', 1)):
+            self.addCleanup(setattr, collect, name, getattr(collect, name))
+            setattr(collect, name, value)
+        self.offer('bob')
+        self.offer('carol')
+        first = self.collect(reg)
+        self.assertEqual(len(first['read']), 1)
+        self.assertEqual(sorted(r['result'] for r in first['rows']), ['later', 'ok'])
+        second = self.collect(reg, NOW + dt.timedelta(minutes=1))
+        self.assertEqual(second['read'], [{'bob', 'carol'}.difference(first['read']).pop()])
+
+    def test_a_fork_is_fetched_at_most_so_often_a_day(self):
+        reg = registry({'login': 'bob', 'trust': 'peer'})
+        self.addCleanup(setattr, collect, 'FETCHES_PER_DAY', collect.FETCHES_PER_DAY)
+        collect.FETCHES_PER_DAY = 1
+        self.offer('bob')
+        self.assertEqual(self.collect(reg)['read'], ['bob'])
+        self.offer('bob', ended=NOW + dt.timedelta(minutes=1))
+        self.assertEqual(self.collect(reg, NOW + dt.timedelta(minutes=2))['rows'][0]['result'], 'later')
+        tomorrow = NOW.replace(hour=23, minute=59) + dt.timedelta(minutes=2)
+        self.offer('bob', ended=tomorrow)
+        self.assertEqual(self.collect(reg, tomorrow)['read'], ['bob'])
+
+    def test_a_tree_past_the_file_cap_is_refused_while_it_is_listed(self):
+        self.addCleanup(setattr, collect, 'MAX_FILES', collect.MAX_FILES)
+        collect.MAX_FILES = 2
+        files = {'manifest.json': '{}', **{f'timetables/{TID}/G{n}.ics': b'x' for n in range(5)}}
+        self.push_files('bob', files)
+        self.assertIn('too many files', self.collect(registry({'login': 'bob', 'trust': 'peer'}))['refused']['bob'])
+
+    def test_a_volunteer_who_left_the_registry_is_forgotten(self):
+        self.offer('alice')
+        self.collect(registry({'login': 'alice', 'trust': 'peer'}, {'login': 'bob', 'trust': 'peer'}))
+        self.assertIn('alice', self.state()['volunteers'])
+        collect.collect(registry({'login': 'bob', 'trust': 'peer'}), self.data, NOW, lambda v: self.remote(v['login']),
+                        registry_sha='b' * 40)
+        state = self.state()
+        self.assertNotIn('alice', state['volunteers'])
+        self.assertNotIn('alice', state['seen'])
+        self.assertEqual(state['votes'], {})
+        self.assertEqual(state['registry']['sha'], 'b' * 40)
+
+
+class RegistryRollbackTest(unittest.TestCase):
+    HEAD, LAST = 'a' * 40, 'c' * 40
+    GOOD = json.dumps({'quorum': 2, 'volunteers': [{'login': 'alice', 'trust': 'trusted'}]}).encode()
+
+    def fake(self, relation='ahead', status=200):
+        asked = []
+
+        def get(url, token=None):
+            asked.append(url)
+            if '/compare/' in url:
+                return status, json.dumps({'status': relation}).encode()
+            if url.startswith(registry_reader.API):
+                return 200, json.dumps({'sha': self.HEAD, 'commit': {'verification': {'verified': True}},
+                                        'committer': {'login': 'kilerdevs'}}).encode()
+            return 200, self.GOOD
+        return get, asked
+
+    def test_a_newer_registry_is_read_and_an_older_one_refused(self):
+        get, asked = self.fake()
+        registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=get, after=self.LAST)
+        self.assertIn(f'/compare/{self.LAST}...{self.HEAD}', asked[1])
+        for get in (self.fake('behind')[0], self.fake('diverged')[0], self.fake(status=404)[0]):
+            with self.assertRaises(assign.RegistryError):
+                registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=get, after=self.LAST)
+        with self.assertRaises(registry_reader.Unavailable):
+            registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=self.fake(status=502)[0],
+                                           after=self.LAST)
+
+    def test_the_same_registry_needs_no_comparison_and_a_bad_anchor_is_refused(self):
+        get, asked = self.fake('behind')
+        registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=get, after=self.HEAD)
+        self.assertFalse(any('/compare/' in url for url in asked))
+        with self.assertRaises(assign.RegistryError):
+            registry_reader.fetch_verified('kilerdevs/PlanWAT', 'kilerdevs', get=get, after='../../evil')
+
+
 class RegistryReaderTest(unittest.TestCase):
     SHA = 'a' * 40
     GOOD = json.dumps({'quorum': 2, 'volunteers': [{'login': 'alice', 'trust': 'trusted'}]}).encode()
