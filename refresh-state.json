@@ -1,7 +1,7 @@
 {
  "blocks": {
   "wat-edge": {
-   "blocked_at": "2026-10-24T18:34:46",
+   "blocked_at": "2026-10-24T19:06:19",
    "cause": "wall",
    "durations": [
     {
@@ -17,7 +17,7 @@
    ]
   },
   "wcy": {
-   "blocked_at": "2026-10-23T14:44:09",
+   "blocked_at": "2026-10-24T19:06:40",
    "cause": "wall",
    "durations": [
     {
@@ -64,7 +64,7 @@
    ]
   },
   "wml": {
-   "blocked_at": "2026-10-24T18:34:46",
+   "blocked_at": "2026-10-24T19:06:19",
    "cause": "wall",
    "durations": [
     {
@@ -85,7 +85,7 @@
    ]
   },
   "wtc": {
-   "blocked_at": "2026-10-24T18:34:47",
+   "blocked_at": "2026-10-24T19:06:20",
    "cause": "wall",
    "durations": []
   }
@@ -94,10 +94,10 @@
   "ioe": {
    "blocked_at": null,
    "last_count": 15,
-   "last_ok": "2026-10-24T18:34:39",
+   "last_ok": "2026-10-24T19:06:11",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T18:34:39",
+    "at": "2026-10-24T19:06:11",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -109,34 +109,33 @@
    }
   },
   "wcy": {
-   "blocked_at": null,
+   "blocked_at": "2026-10-24T19:06:40",
    "last_count": 155,
    "last_ok": "2026-10-24T16:28:36",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T18:34:53",
-    "blocked": false,
-    "cause": "listing",
+    "at": "2026-10-24T19:06:40",
+    "blocked": true,
+    "cause": "wall",
     "changed": 0,
     "checked": 0,
-    "degraded": true,
+    "degraded": false,
     "not_ready": 0,
-    "skipped": 0,
-    "term": "2026-27-zima"
+    "skipped": 0
    },
    "wait": {
-    "probes": 1,
-    "recovered": true,
-    "waited": 48
+    "probes": 5,
+    "recovered": false,
+    "waited": 1201
    }
   },
   "wel": {
    "blocked_at": null,
    "last_count": 158,
-   "last_ok": "2026-10-24T18:34:54",
+   "last_ok": "2026-10-24T19:06:33",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T18:34:54",
+    "at": "2026-10-24T19:06:33",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -150,10 +149,10 @@
   "wim": {
    "blocked_at": null,
    "last_count": 88,
-   "last_ok": "2026-10-24T18:34:39",
+   "last_ok": "2026-10-24T19:06:12",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T18:34:39",
+    "at": "2026-10-24T19:06:12",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -170,12 +169,12 @@
    }
   },
   "wlo": {
-   "blocked_at": "2026-10-24T18:34:46",
+   "blocked_at": "2026-10-24T19:06:19",
    "last_count": 131,
    "last_ok": "2026-10-24T16:16:42",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T18:34:46",
+    "at": "2026-10-24T19:06:19",
     "blocked": true,
     "cause": "wall",
     "changed": 0,
@@ -191,12 +190,12 @@
    }
   },
   "wml": {
-   "blocked_at": "2026-10-24T18:34:46",
+   "blocked_at": "2026-10-24T19:06:19",
    "last_count": 162,
    "last_ok": "2026-10-24T16:21:34",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T18:34:46",
+    "at": "2026-10-24T19:06:19",
     "blocked": true,
     "cause": "wall",
     "changed": 0,
@@ -212,12 +211,12 @@
    }
   },
   "wtc": {
-   "blocked_at": "2026-10-24T18:34:47",
+   "blocked_at": "2026-10-24T19:06:19",
    "last_count": 23,
    "last_ok": "2026-10-24T16:11:24",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T18:34:47",
+    "at": "2026-10-24T19:06:19",
     "blocked": true,
     "cause": "wall",
     "changed": 0,
@@ -6388,11 +6387,11 @@
  },
  "pacing": {
   "ioe": 1.0,
-  "wat-edge": 1.35,
-  "wcy": 1.3286025000000001,
-  "wim": 1.5943230000000004,
-  "wml": 1.9929037500000002,
-  "wtc": 1.5
+  "wat-edge": 1.8225000000000005,
+  "wcy": 1.9929037500000002,
+  "wim": 1.4348907000000004,
+  "wml": 2.9893556250000004,
+  "wtc": 2.25
  },
  "robots": {
   "ioe.wat.edu.pl": {
