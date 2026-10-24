@@ -23,7 +23,7 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
     najwyżej dwa zapytania na grupę na okno.
   - **Kiedy wynik trafia na stronę:** koordynator `collect.yml` przyjmuje plan od osoby zaufanej albo dopiero wtedy, gdy
     zgodzi się dwóch wolontariuszy. Każdy kalendarz przechodzi pełną walidację serwisu.
-  - **Rozliczalność:** każdy przyjęty wynik ma podpis, kto go dostarczył, i da się go cofnąć jednym poleceniem.
+  - **Rozliczalność:** przy każdym przyjętym wyniku widać login, kto go dostarczył, i da się go cofnąć jednym poleceniem.
   - **Panel uprawnień** (`python3 tools/volunteer/manage.py`): lokalna strona, na której opiekun dodaje i usuwa
     wolontariuszy, przełącza Zaufany / Równorzędny / Wstrzymany i wydziały, widzi ich stan u koordynatora (czy działają,
     wersja, odmowy, blokady, wygasające tokeny) i pokrycie wydziałów, i zapisuje
@@ -71,6 +71,31 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   do timeoutu, a nieznany typ adresu albo odmowa HTTP CONNECT kończą się teraz czystym błędem. Sonda Blackboxa mierzyła sam
   eksporter zamiast GUI, a alert „host utknął w DIRECT” obejmował hosty celowo kierowane bezpośrednio. Raport rozpoczęty bez
   zakończenia znika z panelu po 12 h, a `%BANNER%` w danych przebiegu nie psuje już osadzonego JSON-a.
+- **Nazwiska prowadzących w kalendarzach:** serwis sprawdzał nazwiska tylko w kilku polach wydarzenia, więc nazwisko
+  doklejone do nazwy przedmiotu (WTC: „Podstawy toksykologii plk dr …”) trafiało do publikowanego kalendarza. Teraz
+  kalendarz z tytułem przed nazwiskiem w dowolnym polu, z `ORGANIZER`/`ATTENDEE` albo z obcym opisem jest odrzucany,
+  `scrub_staff.py` takie fragmenty wycina, a parser legendy WTC nie dokleja już prowadzącego do przedmiotu.
+- **Crawlery wolontariuszy i koordynator** (audyt):
+  - **Głosy i stan:** głosy odsuniętego wolontariusza nie liczą się już do kworum, odsunięcia nie omija zmiana wielkości
+    liter w loginie, czas głosu nie może wyjść poza jego paczkę, a uszkodzony `volunteer-state.json` zatrzymuje
+    koordynatora zamiast zostać po cichu nadpisany. Przebieg próbny nie zakłada już publicznych zgłoszeń.
+  - **Odporność koordynatora:** zepsuty manifest odrzuca jedną paczkę zamiast całego przebiegu, przebieg ma budżet
+    pobierania (rozmiar, czas, liczba pobrań na fork), awaria sieci nie wygląda jak „brak gałęzi crawl”, a `revert`
+    działa na płytkim klonie gałęzi `data`.
+  - **Rejestr:** koordynator i crawler pamiętają ostatnio użyty commit rejestru i odrzucają starszą podpisaną wersję,
+    a crawler wypychający do innego forka niż ten z rejestru nie crawluje na próżno.
+  - **Crawler:** paczka, która nie dotarła do forka, kończy przebieg jako nieudany (z powodem w `status` i `doctor`),
+    wypychanie i kroki przebiegu mają limity czasu, a restart w trakcie okna wznawia przebieg bez ponownego pytania
+    wydziałów o już sprawdzone grupy.
+  - **Panel, doctor i instalatory:** świeży rejestr nie wymaga już nieistniejącej wersji crawlera, `uninstall` bez
+    odpowiedzi nic nie usuwa, nieudana aktualizacja zawsze się wycofuje, `doctor` wykrywa zatrzymany crawler, zły fork
+    i niedostępną gałąź `data`, a panel zgłasza błędy pobierania, uszkodzony rejestr i niezweryfikowany podpis.
+  - **CI:** instalator jest w CI aktualizowany, wycofywany i instalowany ze zweryfikowanych obrazów, a `:latest`
+    przesuwa tylko wydanie `vX.Y.Z`.
+- **Egress wolontariusza i panel produkcyjny:** prawdziwy tryb bez puli (`EGRESS_POOL=off`), `EGRESS_FAIL_CLOSED`
+  zawsze wygrywa z listą bezpośrednią, wymyślone hosty `*.wat.edu.pl` nie psują już stanu puli ani bezpiecznika, a
+  wyczerpane 429/5xx są zgłaszane i ponawiane jak blokada. Panel produkcyjny słucha domyślnie tylko na `127.0.0.1`, a
+  z ustawionym tokenem pełny `/api/status` i panel wymagają tokenu (sonda zdrowia dalej dostaje krótkie `ok`).
 - **Ruch na mapie kampusu:** krzywa `--ease-out` na stronie mapy wskazywała sama na siebie, więc przeglądarka ją
   odrzucała. Przez to nie działały wejście nagłówka, wyszukiwarki i panelu ani płynne zwijanie panelu. Teraz ma tę samą
   wartość co na pozostałych stronach.
