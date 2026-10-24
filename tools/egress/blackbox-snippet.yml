@@ -11,10 +11,10 @@ blackbox:
         method: GET
         # Fail when /api/status stops answering 2xx (matches EgressStatusDown alert).
         valid_status_codes: [200]
-        # Optional body check: the GUI always returns JSON with a "mode" key.
-        # Uncomment if your Blackbox version supports it:
+        # Optional body check: the GUI returns JSON with a "mode" key, or {"ok":true,...} when
+        # EGRESS_API_TOKEN is set and the probe sends no token. Uncomment if supported:
         # fail_if_body_not_matches_regexp:
-        #   - '"mode":'
+        #   - '"mode":|"ok":true'
         preferred_ip_protocol: ip4
 
 prometheus:

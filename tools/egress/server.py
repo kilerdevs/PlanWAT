@@ -14,10 +14,13 @@ per-destination policy instead of a static allowlist tunnel:
 
 When the pool has no healthy proxy, faculty traffic falls back to direct egress
 (PLANWAT_EGRESS_DIRECT_FALLBACK=1, the default) and the GUI shows DIRECT mode
-instead of ROTATING. Set it to 0 for DeadDropMGMT-style fail-closed.
+instead of ROTATING. Set it to 0 for DeadDropMGMT-style fail-closed; EGRESS_FAIL_CLOSED
+does the same for named hosts (FAIL-CLOSED in the GUI). EGRESS_POOL=off (volunteers)
+sends every faculty host direct and leaves the pool unused.
 
-Ports: 8888 forward proxy (inner network only), 8080 read-only status GUI + run
-reports (LAN). The runner POSTs a run summary to /api/run after each refresh and,
+Ports: 8888 forward proxy (inner network only), 8080 status GUI + run reports
+(host port bound to localhost by default; with EGRESS_API_TOKEN set, reads need the
+token too and browsers sign in at /login). The runner POSTs a run summary to /api/run after each refresh and,
 whenever a faculty answers with a block page through a pooled exit, a block notice
 to /api/block — the crawler sees what the CONNECT tunnel hides, so the proxy can
 demote that exit (see ProxyServer.demote_recent); the GUI shows pool health, mode,
@@ -42,6 +45,7 @@ import time
 import urllib.parse
 from calendar import timegm
 from collections import deque
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from statistics import median
@@ -74,6 +78,10 @@ DIRECT_EXACT = ('api.github.com',)
 # operator's own line serves them, so they go direct. wtc.wat.edu.pl is the canonical example.
 DIRECT_FACULTY = tuple(s.lower() for s in env('EGRESS_DIRECT_FACULTY', '').replace(',', ' ').split() if s)
 CHAIN_SUFFIXES = ('wat.edu.pl',)
+# EGRESS_POOL=off is the volunteer mode: every faculty host goes out directly and the pool is never
+# refreshed, probed or picked from. A mode, not a hand-copied host list that silently starts pool work
+# the day a faculty is added to faculty_targets() but not to the list.
+POOL_OFF = env('EGRESS_POOL', 'on').strip().lower() in ('0', 'off', 'false', 'no')
 
 CONNECT_TIMEOUT = 10
 TUNNEL_IDLE = 120
@@ -97,12 +105,24 @@ FAIL_CLOSED = frozenset(
 )
 
 
+def fail_closed_listed(host):
+    """True when `host` is named on the EGRESS_FAIL_CLOSED list (not the `all` switch)."""
+    h = (host or '').lower().rstrip('.')
+    return any(h == s or h.endswith('.' + s) for s in FAIL_CLOSED)
+
+
 def fail_closed(host):
     """True when `host` must not use direct fallback (its pool exits are the only route)."""
     h = (host or '').lower().rstrip('.')
     if FAIL_CLOSED_ALL:
         return any(h == s or h.endswith('.' + s) for s in CHAIN_SUFFIXES)
-    return any(h == s or h.endswith('.' + s) for s in FAIL_CLOSED)
+    return fail_closed_listed(h)
+
+
+def falls_back_direct(host):
+    """True when `host` may go out from this box's own line once the pool has no exit for it."""
+    return (not fail_closed(host)
+            and env('PLANWAT_EGRESS_DIRECT_FALLBACK', '1') in ('1', 'true', 'yes'))
 
 
 def faculty_targets(season=None):
@@ -132,22 +152,41 @@ def host_is_direct(host):
     return any(h == s or h.endswith('.' + s) for s in DIRECT_FACULTY)
 
 
+_LABEL_RE = re.compile(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?')
+
+
+def canonical_host(host):
+    """The one spelling every policy and pool key uses: lowercase, no trailing dot, DNS-valid.
+
+    '' for anything else (an over-long name, an empty or illegal label, an IP literal in
+    brackets): job code on the runner is untrusted, and a malformed or case-varied name must
+    neither reach the pool as a fresh key nor be blamed on the exits it was tried through.
+    """
+    h = (host or '').lower().rstrip('.')
+    if not h or len(h) > 253:
+        return ''
+    return h if all(_LABEL_RE.fullmatch(label) for label in h.split('.')) else ''
+
+
 def route(host):
     """'direct' | 'chain' | 'deny' for a destination hostname."""
-    h = (host or '').lower().rstrip('.')
-    if not h or h in ('localhost',) or h.startswith('127.') or h == '::1':
+    h = canonical_host(host)
+    if not h or h in ('localhost',) or h.startswith('127.'):
         return 'deny'
     if h in DIRECT_EXACT or any(h == s or h.endswith('.' + s) for s in DIRECT_SUFFIXES):
         return 'direct'
-    if host_is_direct(h):
+    # A host named on EGRESS_FAIL_CLOSED stays on the pool even if a direct list (or the
+    # volunteer mode) also names it: "never from the home line" must win over "go direct".
+    pinned = fail_closed_listed(h)
+    if host_is_direct(h) and not pinned:
         return 'direct'
     if any(h == s or h.endswith('.' + s) for s in CHAIN_SUFFIXES):
-        return 'chain'
+        return 'direct' if POOL_OFF and not pinned else 'chain'
     return 'deny'
 
 
 def split_target(target):
-    """('host', port) from CONNECT 'host:port'. None when malformed or off-limits."""
+    """('host', port) from CONNECT 'host:port', host canonical. None when malformed or off-limits."""
     if not target or '@' in target or '/' in target:
         return None
     host, _, port = target.rpartition(':')
@@ -155,6 +194,9 @@ def split_target(target):
         return None
     port = int(port)
     if port not in (80, 443):
+        return None
+    host = canonical_host(host)
+    if not host:
         return None
     return host, port
 
@@ -211,14 +253,18 @@ def _recv_exact(sock, n, timeout=10):
     return data
 
 
+class BadTarget(OSError):
+    """The destination itself is unusable; raised before any proxy is contacted."""
+
+
 def chain_connect(proxy_url, host, port, timeout=CONNECT_TIMEOUT):
     """Open `host:port` *through* the public proxy. Returns the tunnelled socket."""
     try:
         hb = host.encode('idna')
     except Exception:
-        raise OSError('bad hostname')
+        raise BadTarget('bad hostname')
     if len(hb) > 255:
-        raise OSError('hostname too long')
+        raise BadTarget('hostname too long')
     parts = urllib.parse.urlsplit(proxy_url)
     scheme, phost, pport = parts.scheme.lower(), parts.hostname, parts.port
     sock = socket.create_connection((phost, pport), timeout=timeout)
@@ -827,6 +873,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             start = _time.monotonic()
             try:
                 sock = chain_connect(proxy, host, port, timeout=6)
+            except BadTarget:
+                raise OSError('deny')  # the name failed here, not at the exit: blame no proxy
             except Exception as err:
                 print(f'chain via {proxy} failed: {err}', flush=True)
                 try:
@@ -845,7 +893,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def _fallback(self, host, port):
         if fail_closed(host):
             raise OSError('proxy_empty')  # this host must never leak the operator's line
-        if env('PLANWAT_EGRESS_DIRECT_FALLBACK', '1') in ('1', 'true', 'yes'):
+        if falls_back_direct(host):
             lock = getattr(self.server, 'fallbacks_lock', None)
             if lock is not None:
                 with lock:
@@ -917,9 +965,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 parts = urllib.parse.urlsplit(self.path)
                 if parts.scheme not in ('http',) or not parts.hostname:
                     return self._deny(400)  # only absolute-URI forwarding; origin-form is a client bug
-                host, port = parts.hostname, parts.port or 80
+                host, port = canonical_host(parts.hostname), parts.port or 80
             except ValueError:
                 return self._deny(400)  # malformed authority (bad port, brackets, …)
+            if not host:
+                return self._deny(400)
             if self.headers.get('Transfer-Encoding'):
                 return self._deny(400)  # chunked request bodies are not forwarded
             try:
@@ -1041,8 +1091,11 @@ class ProxyServer(BoundedThreadingHTTPServer):
 
         A WAF block page inside the tunnel is invisible to this proxy; the crawler reports
         it (POST /api/block) right after reading the response, so the newest tunnel to that
-        host is almost always the one to blame. Direct tunnels have no exit to demote.
+        host is almost always the one to blame. Direct tunnels have no exit to demote, and
+        when the newest tunnel was direct the block came through it, so no older exit is blamed.
+        Tunnels are remembered under the canonical host (split_target), so is the lookup.
         """
+        host = canonical_host(host)
         now = time.monotonic()
         with self.recent_lock:
             candidates = [(via, at) for h, via, at in reversed(self.recent) if h == host]
@@ -1298,7 +1351,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     return t;
   }
   function fade(el) { if (el) el.classList.toggle('more', el.scrollTop + el.clientHeight < el.scrollHeight - 2); }
-  function modeClass(mode) { mode = String(mode); return mode.indexOf('ROTATING') === 0 ? 'rot' : (mode.indexOf('DIRECT (pula') === 0 ? 'empty' : 'dir'); }
+  function modeClass(mode) { mode = String(mode); return mode.indexOf('ROTATING') === 0 ? 'rot' : ((mode.indexOf('DIRECT (pula') === 0 || mode.indexOf('FAIL-CLOSED') === 0) ? 'empty' : 'dir'); }
   function tile(v, l) { return '<div class="tile"><b>' + v + '</b><span>' + l + '</span></div>'; }
   function exitPill(exit) {
     if (exit == null) return '<span class="pill sm dim" title="raport bez kodu wyj\u015bcia">nieznany</span>';
@@ -1315,6 +1368,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     var label = mode;
     if (mode === 'ROTATING') label = 'tryb: rotujący';
     else if (String(mode).indexOf('DIRECT') === 0) label = 'tryb: bezpośredni' + (String(mode).indexOf('pusta') > -1 ? ' \u00b7 pula pusta' : '');
+    else if (String(mode).indexOf('FAIL-CLOSED') === 0) label = 'tryb: odmowa (fail-closed) \u00b7 pula pusta';
     $('mode-text').textContent = label;
   }
 
@@ -1568,7 +1622,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   function poll() {
     fetch('/api/status', { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (st) { $('stamp').textContent = 'aktualizacja ' + new Date().toLocaleTimeString('pl-PL'); render(st); })
+      .then(function (st) { if (st && st.auth === 'required') { location.reload(); return; } $('stamp').textContent = 'aktualizacja ' + new Date().toLocaleTimeString('pl-PL'); render(st); })
       .catch(function () { $('stamp').textContent = 'brak połączenia \u2014 ponawiam\u2026'; })
       .then(function () { setTimeout(poll, POLL); });
   }
@@ -1612,15 +1666,44 @@ def dashboard(status, nonce=''):
     return template.replace('%BOOT%', boot)
 
 
+def api_token():
+    """EGRESS_API_TOKEN; surrounding whitespace (a quoted .env value) is not part of it — the
+    crawler strips it before sending, so a padded value here would refuse every report."""
+    return env('EGRESS_API_TOKEN', '').strip()
+
+
 def _wants_auth():
-    return bool(env('EGRESS_API_TOKEN', ''))
+    return bool(api_token())
+
+
+GUI_COOKIE = 'egress_session'
+LOGIN_BODY_CAP = 4096
+
+
+def gui_session(token):
+    """The panel's browser cookie for `token`: derived, so the cookie never holds the API secret."""
+    return hmac.new(token.encode('utf-8', 'replace'), b'planwat-egress-gui', 'sha256').hexdigest()
+
+
+LOGIN_PAGE = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light"><title>PlanWAT egress</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:22rem;margin:15vh auto;padding:0 16px}
+input,button{font:inherit;padding:8px 12px;margin-top:8px;width:100%;box-sizing:border-box}
+.err{color:#d2453d}</style></head><body>
+<h1>PlanWAT egress</h1><p>Panel wymaga tokenu API (<code>EGRESS_API_TOKEN</code>).</p>%ERROR%
+<form method="post" action="/login"><input type="password" name="token" aria-label="token API"
+autocomplete="current-password" required autofocus><button type="submit">Wejdź</button></form>
+</body></html>'''
+LOGIN_CSP = ("default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; "
+             "base-uri 'none'; frame-ancestors 'none'")
 
 
 class GuiHandler(BaseHTTPRequestHandler):
     server_version = 'PlanWAT-Egress-GUI/1'
     timeout = 30
 
-    def _send(self, body, ctype='application/json', code=200, csp=None):
+    def _send(self, body, ctype='application/json', code=200, csp=None, extra=None):
         data = body if isinstance(body, bytes) else body.encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type', ctype + '; charset=utf-8')
@@ -1631,15 +1714,22 @@ class GuiHandler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-store')
         if csp:
             self.send_header('Content-Security-Policy', csp)
+        for key, value in (extra or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         try:
             self.wfile.write(data)
         except OSError:
             pass
 
-    def _check_token(self):
-        """Accept `X-Token: <token>` or `Authorization: Bearer <token>` (constant time)."""
-        want = env('EGRESS_API_TOKEN', '')
+    def _check_token(self, cookie=False):
+        """Accept `X-Token: <token>` or `Authorization: Bearer <token>` (constant time).
+
+        With `cookie`, a browser that signed in (POST /login) also passes on its session
+        cookie — for reads only: the POST API never takes a cookie, so no other page can
+        ride a signed-in browser into it.
+        """
+        want = api_token()
         if not want:
             return True
         got = self.headers.get('X-Token') or ''
@@ -1647,8 +1737,45 @@ class GuiHandler(BaseHTTPRequestHandler):
         if auth[:7].lower() == 'bearer ':
             got = auth[7:].strip()
         # Compare bytes: a non-ASCII header value must read as "wrong token", not raise.
-        return hmac.compare_digest(got.encode('utf-8', 'replace'),
-                                   want.encode('utf-8', 'replace'))
+        if hmac.compare_digest(got.encode('utf-8', 'replace'), want.encode('utf-8', 'replace')):
+            return True
+        if not cookie:
+            return False
+        jar = SimpleCookie()
+        try:
+            jar.load(self.headers.get('Cookie') or '')
+        except CookieError:
+            return False
+        morsel = jar.get(GUI_COOKIE)
+        return morsel is not None and hmac.compare_digest(
+            morsel.value.encode('utf-8', 'replace'), gui_session(want).encode('ascii'))
+
+    def _login_page(self, error='', code=200):
+        note = f'<p class="err">{error}</p>' if error else ''
+        return self._send(LOGIN_PAGE.replace('%ERROR%', note), 'text/html', code=code, csp=LOGIN_CSP)
+
+    def _login(self):
+        """Browser sign-in for the panel: the token in a form body, a derived session cookie back."""
+        want = api_token()
+        if not want:
+            return self._send(b'', 'text/plain', code=303, extra={'Location': '/'})
+        try:
+            length = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= LOGIN_BODY_CAP:
+            self.close_connection = True
+            return self._send('{"error":"bad length"}', code=400)
+        try:
+            body = self.rfile.read(length) if length else b''
+        except OSError:
+            self.close_connection = True
+            return self._send('{"error":"bad length"}', code=400)
+        got = (urllib.parse.parse_qs(body.decode('utf-8', 'replace')).get('token') or [''])[0].strip()
+        if not hmac.compare_digest(got.encode('utf-8', 'replace'), want.encode('utf-8', 'replace')):
+            return self._login_page('Zły token.', code=401)
+        cookie = f'{GUI_COOKIE}={gui_session(want)}; Path=/; HttpOnly; SameSite=Strict'
+        return self._send(b'', 'text/plain', code=303, extra={'Location': '/', 'Set-Cookie': cookie})
 
     def _read_body(self):
         try:
@@ -1675,8 +1802,12 @@ class GuiHandler(BaseHTTPRequestHandler):
         verified_total = sum(stats.get('verified', {}).values())
         if not getattr(pool, 'enabled', True):
             mode = 'DIRECT (wszystkie hosty)'
+        elif verified_total > 0:
+            mode = 'ROTATING'
+        elif any(not falls_back_direct(h) for h in getattr(pool, 'active_hosts', ())):
+            mode = 'FAIL-CLOSED (pula pusta)'  # a pooled host with no exit is refused, not sent direct
         else:
-            mode = 'ROTATING' if verified_total > 0 else 'DIRECT (pula pusta)'
+            mode = 'DIRECT (pula pusta)'
         lock = getattr(self.server.proxy_server, 'fallbacks_lock', None)
         if lock is not None:
             with lock:
@@ -1686,10 +1817,13 @@ class GuiHandler(BaseHTTPRequestHandler):
         host_modes = {}
         for h in self.server.pool.round2:
             n = stats.get('verified', {}).get(h, 0)
-            if host_is_direct(h):
-                host_mode = 'DIRECT (lista)'
+            if route(h) == 'direct':
+                host_mode = 'DIRECT (lista)' if host_is_direct(h) else 'DIRECT (bez puli)'
+            elif n:
+                host_mode = 'ROTATING'
             else:
-                host_mode = 'ROTATING' if n else 'DIRECT'
+                # No exit: either this box's own line carries it, or every request gets a 403.
+                host_mode = 'DIRECT' if falls_back_direct(h) else 'FAIL-CLOSED'
             host_modes[h] = {'mode': host_mode, 'verified': n, 'fallbacks': fallbacks.get(h, 0)}
         open_runs = (runs.open_snapshot() if hasattr(runs, 'open_snapshot')
                      else list(getattr(runs, 'open_runs', [])))
@@ -1711,11 +1845,21 @@ class GuiHandler(BaseHTTPRequestHandler):
                 'runs': runs.runs[::-1][:10]}
 
     def do_GET(self):
+        # With a token set, reads need it too (header, or the panel's session cookie).
+        authed = self._check_token(cookie=True)
         if self.path == '/api/status':
+            if not authed:
+                # Liveness only: healthchecks and probes keep their 200 without holding the
+                # secret, while the pool, its exits and the runs stay behind the token.
+                return self._send('{"ok":true,"auth":"required"}')
             return self._send(json.dumps(self.status(), ensure_ascii=False))
         if self.path == '/api/progress':
+            if not authed:
+                return self._send('{"error":"unauthorized"}', code=401)
             return self._send(json.dumps(_live(self.server).snapshot(), ensure_ascii=False))
         if self.path in ('/', '/index.html'):
+            if not authed:
+                return self._login_page()
             nonce = secrets.token_urlsafe(18)
             csp = ("default-src 'none'; script-src 'nonce-{n}'; "
                    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
@@ -1726,6 +1870,8 @@ class GuiHandler(BaseHTTPRequestHandler):
         return self._send('{"error":"not found"}', code=404)
 
     def do_POST(self):
+        if self.path == '/login':
+            return self._login()  # the body is the credential, so it is read before any check
         if self.path not in ('/api/run', '/api/progress', '/api/block', '/api/refresh'):
             self.close_connection = True  # a body may be waiting unread
             return self._send('{"error":"not found"}', code=404)
@@ -1764,13 +1910,16 @@ class GuiHandler(BaseHTTPRequestHandler):
                 report = json.loads(body.decode('utf-8'))
             except ValueError:
                 return self._send('{"error":"bad json"}', code=400)
-            host = str(report.get('host') or '').lower().rstrip('.') if isinstance(report, dict) else ''
+            host = canonical_host(str(report.get('host') or '')) if isinstance(report, dict) else ''
             if not host:
                 return self._send('{"error":"bad json"}', code=400)
             demoted = self.server.proxy_server.demote_recent(host)
             return self._send(json.dumps({'demoted': demoted}))
         # /api/refresh
         pool = self.server.pool
+        if not getattr(pool, 'enabled', True):
+            # Every host goes direct: no maintainer runs, so a 202 would promise work nobody does.
+            return self._send('{"error":"pool-disabled"}', code=409)
         lock = getattr(pool, '_refresh_lock', None)
         if lock is not None:
             if lock.locked() or getattr(pool, 'force_refresh', False):
@@ -1877,9 +2026,13 @@ def main():
     data = Path(env('EGRESS_DATA', '/data'))
     targets = faculty_targets()
     # The GUI still lists every faculty host, but only hosts that actually ride the pool
-    # are probed/refreshed. A volunteer deployment (every host in EGRESS_DIRECT_FACULTY)
-    # therefore performs no pool work at all.
-    active = [h for h in targets if route(h) == 'chain']
+    # are probed/refreshed. A volunteer deployment (EGRESS_POOL=off) performs no pool work
+    # at all, whatever faculty_targets() grows to.
+    active = [] if POOL_OFF else [h for h in targets if route(h) == 'chain']
+    for h in targets:
+        if host_is_direct(h) and fail_closed_listed(h):
+            print(f'WARNING: {h} is on EGRESS_DIRECT_FACULTY and EGRESS_FAIL_CLOSED; '
+                  f'fail-closed wins: it stays on the pool and never goes direct', flush=True)
     pool = ProxyPool(data / 'pool.json', targets, active_hosts=active,
                      max_probe=env_int('EGRESS_MAX_PROBE', 240))
     runs = RunLog(data / 'runs.json')
@@ -1887,6 +2040,9 @@ def main():
     gui_port = env_int('EGRESS_GUI_PORT', 8080)
     proxy_server = ProxyServer(('0.0.0.0', proxy_port), pool)
     gui = GuiServer(('0.0.0.0', gui_port), GuiHandler)
+    if not api_token():
+        print(f'WARNING: EGRESS_API_TOKEN is empty: the GUI API on :{gui_port} is open to anyone '
+              f'who reaches it; fine only while its host port is bound to localhost', flush=True)
     gui.pool, gui.runs, gui.proxy_server, gui.proxy_port = pool, runs, proxy_server, proxy_port
     gui.live = LiveRun()
     if pool.enabled:

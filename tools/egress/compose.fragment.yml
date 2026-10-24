@@ -26,15 +26,17 @@ services:
         max-file: "3"
     environment:
       EGRESS_DATA: /data
-      # Shared secret for POST /api/run, /api/block, /api/progress and /api/refresh.
-      # Set the same value on the runner's refresh action (or its compose env). Empty = no auth,
-      # which is fine only while the GUI port is bound to a trusted LAN / localhost.
+      # Shared secret for the GUI API: every POST (/api/run, /api/block, /api/progress, /api/refresh)
+      # and, once set, the reads too (the panel, /api/progress and the full /api/status; browsers sign
+      # in at /login, healthchecks still get a bare 200 from /api/status). Set the same value on the
+      # runner's refresh action (or its compose env). Empty = no auth: keep the port on localhost then.
       EGRESS_API_TOKEN: "${EGRESS_API_TOKEN:-}"
       # Fall back to direct egress when the pool is empty (fail-open, operator choice).
       # Set to 0 for DeadDropMGMT-style fail-closed (crawl stops instead).
       PLANWAT_EGRESS_DIRECT_FALLBACK: "1"
       # Exception to the fail-open rule: WCY is blocked from this box's own line and only
-      # reachable through the pool, so it must never leak direct.
+      # reachable through the pool, so it must never leak direct. A host named here stays on the
+      # pool even if EGRESS_DIRECT_FACULTY lists it too (the egress logs a warning at start).
       EGRESS_FAIL_CLOSED: "planzajec.wcy.wat.edu.pl"
       # Faculty hosts that bypass the pool and go out from this box's own line. The pool's
       # public exits answer them with WAF block pages (WTC the worst), while the home line
@@ -50,10 +52,11 @@ services:
     volumes:
       - egress-data:/data
     ports:
-      # LAN-only monitoring GUI (host port 18080: 8080 was taken by cAdvisor on the runner host).
-      # Bind tighter if the box is more exposed than a home LAN,
-      # e.g. "127.0.0.1:18080:8080" + an SSH tunnel.
-      - "18080:8080"
+      # Monitoring GUI (host port 18080: 8080 was taken by cAdvisor on the runner host), on localhost
+      # only: reach it over an SSH tunnel (ssh -L 18080:127.0.0.1:18080 <host>). To open it to the
+      # LAN, bind the LAN address instead ("<lan-ip>:18080:8080") and set EGRESS_API_TOKEN first.
+      # The runner reaches the GUI over the inner network, which this binding does not touch.
+      - "127.0.0.1:18080:8080"
     healthcheck:
       # Quoteless on purpose: compose+shell layers eat quotes. DNS + TCP to GitHub is what the
       # runner actually needs from this box; a listener-only check stays green through a DNS outage.

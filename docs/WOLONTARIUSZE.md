@@ -340,8 +340,9 @@ Zacznij od `planwat-crawler doctor`: przy każdym ✗ jest podpowiedź. Najczęs
   Instalator i aktualizacje sprawdzają je (`gh attestation verify --signer-workflow …/crawler-image.yml`) **zanim**
   cokolwiek w obrazie uruchomią, i przypinają obraz skrótem; aktualizacja, która nie wstaje, jest wycofywana.
 - Nie dostajesz żadnego sekretu projektu. Twój token działa tylko na Twój fork, tylko na zawartość.
-- Crawler nie ma trasy na zewnątrz poza proxy, które wpuszcza wyłącznie GitHub i `*.wat.edu.pl`, i nie otwiera
-  żadnego portu przychodzącego.
+- Crawler nie ma trasy na zewnątrz poza proxy, które wpuszcza wyłącznie GitHub (z magazynem artefaktów Actions na
+  `*.blob.core.windows.net`), PyPI i `*.wat.edu.pl` — pełna lista w [EGRESS.md](EGRESS.md) — i nie otwiera żadnego portu
+  przychodzącego.
 - Paczki są publiczne i podpisane Twoim loginem — to, co wysyłasz, widać i da się to audytować.
 - Rejestr, który decyduje, co crawlujesz, jest przyjmowany tylko z commita podpisanego przez opiekuna, więc nikt, kto
   przejmie gałąź `volunteers`, nie skieruje Twojego crawlera gdzie indziej.

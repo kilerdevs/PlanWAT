@@ -85,6 +85,9 @@ class Normalize(unittest.TestCase):
 
 
 R2 = {'example.test': ('https://example.test/index.xml', None)}
+# The pool keeps per-host verdicts only for the faculty hosts it knows, so tests that drive a real
+# faculty name through the proxy hand the pool that host too.
+R2_WLO = dict(R2, **{'wlo.wat.edu.pl': ('https://wlo.wat.edu.pl/planyzajec/zima/index.xml', None)})
 
 
 class PoolPick(unittest.TestCase):
@@ -142,12 +145,25 @@ class PoolPick(unittest.TestCase):
 
     def test_fails_penalize_ordering(self):
         self.pool.entries = {
-            'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 10,
+            'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 10, 'hosts': {}},
+            'http://b:2': {'status': 'ok', 'latency_ms': 500, 'fails': 0, 'hosts': {}},
+        }
+        self.assertEqual(self.pool.pick('example.test'), 'http://b:2')
+
+    def test_misses_at_another_host_never_sink_a_verified_exit(self):
+        two = dict(R2, **{'other.test': ('https://other.test/index.xml', None)})
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', two)
+        p.entries = {
+            'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
                            'hosts': {'example.test': {'ok': True, 'ms': 10}}},
             'http://b:2': {'status': 'ok', 'latency_ms': 500, 'fails': 0,
                            'hosts': {'example.test': {'ok': True, 'ms': 500}}},
         }
-        self.assertEqual(self.pool.pick('example.test'), 'http://b:2')
+        for _ in range(5):
+            p.mark('http://a:1', 'other.test', False)
+        self.assertEqual(p.entries['http://a:1']['fails'], 5)
+        self.assertEqual(p.pick('example.test'), 'http://a:1')  # its own verdict ranks it
+        self.assertEqual(p.pick('other.test'), 'http://b:2')  # ...while the host it missed rests it
 
     def test_stale_aliveness_sinks_below_fresh(self):
         import time
@@ -570,7 +586,7 @@ class WalkTest(unittest.TestCase):
 
     def test_open_walks_up_to_three(self):
         tmp = Path(tempfile.mkdtemp()) / 'pool.json'
-        p = pool.ProxyPool(tmp, R2)
+        p = pool.ProxyPool(tmp, R2_WLO)
         p.entries = {
             'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
                            'hosts': {self.HOST: {'ok': True, 'ms': 10}}},
@@ -607,7 +623,7 @@ class WalkTest(unittest.TestCase):
 
     def test_open_remembers_the_exit_for_block_reports(self):
         tmp = Path(tempfile.mkdtemp()) / 'pool.json'
-        p = pool.ProxyPool(tmp, R2)
+        p = pool.ProxyPool(tmp, R2_WLO)
         p.entries = {
             'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
                            'hosts': {self.HOST: {'ok': True, 'ms': 10}}},
@@ -629,7 +645,7 @@ class WalkTest(unittest.TestCase):
     def test_open_falls_back_after_all_fail(self):
         import socket as _sock
         tmp = Path(tempfile.mkdtemp()) / 'pool.json'
-        p = pool.ProxyPool(tmp, R2)
+        p = pool.ProxyPool(tmp, R2_WLO)
         p.entries = {
             'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
                            'hosts': {self.HOST: {'ok': True, 'ms': 10}}},
@@ -653,7 +669,7 @@ class WalkTest(unittest.TestCase):
 
     def test_connect_only_marks_success_once_bytes_flow(self):
         tmp = Path(tempfile.mkdtemp()) / 'pool.json'
-        p = pool.ProxyPool(tmp, R2)
+        p = pool.ProxyPool(tmp, R2_WLO)
         p.entries = {
             'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0, 'hosts': {}},
         }
@@ -676,7 +692,7 @@ class WalkTest(unittest.TestCase):
 
     def test_a_blackholed_exit_is_failed_after_the_tunnel(self):
         tmp = Path(tempfile.mkdtemp()) / 'pool.json'
-        p = pool.ProxyPool(tmp, R2)
+        p = pool.ProxyPool(tmp, R2_WLO)
         p.entries = {
             'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
                            'hosts': {self.HOST: {'ok': True, 'ms': 10}}},
@@ -712,7 +728,7 @@ class WalkTest(unittest.TestCase):
     def test_direct_fallback_still_works_for_other_hosts(self):
         import socket as _sock
         tmp = Path(tempfile.mkdtemp()) / 'pool.json'
-        p = pool.ProxyPool(tmp, R2)
+        p = pool.ProxyPool(tmp, R2_WLO)
         orig_create = _sock.create_connection
         sentinel = object()
         _sock.create_connection = lambda *a, **k: sentinel
@@ -1325,7 +1341,7 @@ class BlockDispatch(unittest.TestCase):
 
     def pool_with_verified(self):
         tmp = Path(tempfile.mkdtemp()) / 'pool.json'
-        p = pool.ProxyPool(tmp, R2)
+        p = pool.ProxyPool(tmp, R2_WLO)
         p.entries = {'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
                                     'hosts': {self.HOST: {'ok': True, 'ms': 10}}}}
         return p
@@ -1641,6 +1657,301 @@ class LiveRunTest(unittest.TestCase):
             self.assertIn('"run": "R"', page)  # the first snapshot is baked in
         finally:
             gui.shutdown()
+
+
+def start_gui(test_pool, proxy_server=None):
+    """A live GUI on a free port for `test_pool`; returns (server, base URL). Caller shuts it down."""
+    from types import SimpleNamespace
+    gui = server.GuiServer(('127.0.0.1', 0), server.GuiHandler)
+    gui.pool, gui.runs, gui.proxy_port = (test_pool, server.RunLog(Path(tempfile.mkdtemp()) / 'runs.json'),
+                                          8888)
+    gui.proxy_server = proxy_server or SimpleNamespace(fallbacks={}, blocks=0,
+                                                       fallbacks_lock=threading.Lock())
+    threading.Thread(target=gui.serve_forever, daemon=True).start()
+    return gui, f'http://127.0.0.1:{gui.server_address[1]}'
+
+
+class TokenEnv:
+    """Context manager: EGRESS_API_TOKEN set to `value` (None = unset), restored afterwards."""
+
+    def __init__(self, value):
+        self.value = value
+
+    def __enter__(self):
+        import os
+        self.prev = os.environ.get('EGRESS_API_TOKEN')
+        if self.value is None:
+            os.environ.pop('EGRESS_API_TOKEN', None)
+        else:
+            os.environ['EGRESS_API_TOKEN'] = self.value
+
+    def __exit__(self, *exc):
+        import os
+        if self.prev is None:
+            os.environ.pop('EGRESS_API_TOKEN', None)
+        else:
+            os.environ['EGRESS_API_TOKEN'] = self.prev
+
+
+class VolunteerMode(unittest.TestCase):
+    """EGRESS_POOL=off is a mode: every faculty host direct, the pool never used."""
+
+    def setUp(self):
+        saved = (server.POOL_OFF, server.DIRECT_FACULTY, server.FAIL_CLOSED_ALL, server.FAIL_CLOSED)
+        self.addCleanup(self.restore, saved)
+
+    @staticmethod
+    def restore(saved):
+        server.POOL_OFF, server.DIRECT_FACULTY, server.FAIL_CLOSED_ALL, server.FAIL_CLOSED = saved
+
+    def test_pool_off_sends_every_faculty_host_direct_even_one_nobody_listed(self):
+        server.POOL_OFF, server.DIRECT_FACULTY = True, ()
+        for host in list(server.faculty_targets()) + ['nowy.wat.edu.pl']:
+            self.assertEqual(server.route(host), 'direct', host)
+        self.assertEqual(server.route('evil.example'), 'deny')
+
+    def test_a_disabled_pool_never_hands_out_a_stale_exit(self):
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2, active_hosts=[])
+        p.entries = {'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
+                                    'hosts': {'example.test': {'ok': True, 'ms': 10}}}}
+        self.assertIsNone(p.pick('example.test'))
+        self.assertEqual(p.pick_many('example.test'), [])
+
+    def test_volunteer_compose_switches_the_pool_off_and_still_lists_every_host(self):
+        import json
+        import re
+        text = (ROOT / 'tools' / 'volunteer' / 'compose.volunteer.yml').read_text(encoding='utf-8')
+        self.assertRegex(text, r'(?m)^\s+EGRESS_POOL:\s*"off"\s*$')
+        # The list is what egress images older than EGRESS_POOL read: it must stay complete.
+        listed = re.search(r'(?m)^\s+EGRESS_DIRECT_FACULTY:\s*"([^"]*)"', text).group(1)
+        listed = set(listed.replace(',', ' ').split())
+        sources = json.loads((ROOT / 'tools' / 'refresh' / 'sources.json').read_text(encoding='utf-8'))
+        source_hosts = set(re.findall(r'https?://([^/"]+)', json.dumps(sources)))
+        self.assertLessEqual(set(server.faculty_targets()), listed)
+        self.assertLessEqual(source_hosts, listed)
+
+    def test_fail_closed_wins_over_the_direct_list(self):
+        server.DIRECT_FACULTY = ('planzajec.wcy.wat.edu.pl', 'wat.edu.pl')
+        server.FAIL_CLOSED_ALL, server.FAIL_CLOSED = False, frozenset({'planzajec.wcy.wat.edu.pl'})
+        self.assertEqual(server.route('planzajec.wcy.wat.edu.pl'), 'chain')
+        self.assertEqual(server.route('wlo.wat.edu.pl'), 'direct')  # listed, not pinned
+        server.POOL_OFF = True
+        self.assertEqual(server.route('planzajec.wcy.wat.edu.pl'), 'chain')  # refused, never direct
+
+    def test_fail_closed_all_leaves_the_direct_list_alone(self):
+        # `all` means every *chained* host; the operator's direct list still goes direct.
+        server.DIRECT_FACULTY = ('wtc.wat.edu.pl',)
+        server.FAIL_CLOSED_ALL, server.FAIL_CLOSED = True, frozenset()
+        self.assertEqual(server.route('wtc.wat.edu.pl'), 'direct')
+        self.assertEqual(server.route('wlo.wat.edu.pl'), 'chain')
+
+    def test_refresh_is_refused_when_there_is_no_pool(self):
+        import urllib.error
+        import urllib.request
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2, active_hosts=[])
+        gui, base = start_gui(p)
+        try:
+            req = urllib.request.Request(base + '/api/refresh', data=b'', method='POST')
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(req, timeout=5)
+            self.assertEqual(ctx.exception.code, 409)
+            self.assertFalse(p.force_refresh)
+        finally:
+            gui.shutdown()
+
+
+class HostHygiene(unittest.TestCase):
+    """Untrusted job code picks the CONNECT target: one spelling, valid names, no blame on exits."""
+
+    def test_canonical_host(self):
+        self.assertEqual(server.canonical_host('FOO.WAT.EDU.PL.'), 'foo.wat.edu.pl')
+        for bad in ('a' * 64 + '.wat.edu.pl', ('a' * 60 + '.') * 5 + 'wat.edu.pl', 'a..wat.edu.pl',
+                    '-a.wat.edu.pl', 'a_b.wat.edu.pl', '[::1]', '::1', ''):
+            self.assertEqual(server.canonical_host(bad), '', bad)
+
+    def test_connect_targets_are_canonical_and_long_names_refused(self):
+        self.assertEqual(server.split_target('WLO.WAT.EDU.PL.:443'), ('wlo.wat.edu.pl', 443))
+        self.assertIsNone(server.split_target('x' * 300 + '.wat.edu.pl:443'))
+        self.assertEqual(server.route('x' * 300 + '.wat.edu.pl'), 'deny')
+
+    def test_invented_hosts_neither_trip_the_breaker_nor_grow_the_pool(self):
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2)
+        p.entries = {'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
+                                    'hosts': {'example.test': {'ok': True, 'ms': 10}}}}
+        p.heal_event.clear()
+        for i in range(pool.BREAKER_N * 3):
+            p.mark('http://a:1', f'nope{i}.wat.edu.pl', False, live=True)
+        self.assertFalse(p.stats()['tripped'])
+        self.assertEqual(list(p.entries['http://a:1']['hosts']), ['example.test'])
+        self.assertEqual((p._host_fails, p._host_open), ({}, {}))
+        self.assertFalse(p.heal_event.is_set())
+        self.assertEqual(p.pick('example.test'), 'http://a:1')
+
+    def test_a_name_that_fails_locally_is_not_blamed_on_the_exit(self):
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_WLO)
+        p.entries = {'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
+                                    'hosts': {'wlo.wat.edu.pl': {'ok': True, 'ms': 10}}}}
+        orig = server.chain_connect
+        server.chain_connect = lambda *a, **k: (_ for _ in ()).throw(server.BadTarget('bad hostname'))
+        try:
+            from types import SimpleNamespace
+            handler = server.ProxyHandler.__new__(server.ProxyHandler)
+            handler.server = SimpleNamespace(pool=p, fallbacks={}, fallbacks_lock=threading.Lock(),
+                                             remember_tunnel=lambda h, v: None)
+            with self.assertRaises(OSError) as ctx:
+                handler._open('wlo.wat.edu.pl', 443)
+            self.assertEqual(str(ctx.exception), 'deny')
+            self.assertTrue(p.entries['http://a:1']['hosts']['wlo.wat.edu.pl']['ok'])
+            self.assertEqual(p.entries['http://a:1']['fails'], 0)
+        finally:
+            server.chain_connect = orig
+
+    def test_a_block_report_matches_the_tunnel_whatever_the_spelling(self):
+        from types import SimpleNamespace
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_WLO)
+        p.entries = {'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
+                                    'hosts': {'wlo.wat.edu.pl': {'ok': True, 'ms': 10}}}}
+        stub = SimpleNamespace(pool=p, recent_lock=threading.Lock(),
+                               recent=deque([('wlo.wat.edu.pl', 'http://a:1', time.monotonic())]))
+        self.assertEqual(server.ProxyServer.demote_recent(stub, 'WLO.wat.edu.pl.'), 'http://a:1')
+
+
+class PoolHealing(unittest.TestCase):
+    def test_thin_coverage_does_not_chain_refreshes_back_to_back(self):
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2)
+        p.entries = {f'http://n{i}:1': {'status': 'ok', 'hosts': {}} for i in range(40)}
+        p.last_refresh = time.time() - 30
+        self.assertFalse(p.needs_refresh())  # thin (0 verified), but refreshed seconds ago
+        p.last_refresh = time.time() - pool.HEAL_MIN_GAP_S - 1
+        self.assertTrue(p.needs_refresh())
+
+    def test_heal_kick_only_for_hosts_the_pool_maintains(self):
+        two = dict(R2, **{'other.test': ('https://other.test/index.xml', None)})
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', two, active_hosts=['example.test'])
+        p.heal_event.clear()
+        p.mark('http://a:1', 'other.test', False, live=True)
+        self.assertFalse(p.heal_event.is_set())
+        p.mark('http://a:1', 'example.test', False, live=True)
+        self.assertTrue(p.heal_event.is_set())
+
+    def test_a_cooldown_survives_a_reboot_on_the_wall_clock(self):
+        import json
+        path = Path(tempfile.mkdtemp()) / 'pool.json'
+        ahead = time.monotonic() + 10 ** 6  # stamped by a previous boot with a longer uptime
+        path.write_text(json.dumps({'version': pool.POOL_VERSION, 'entries': {
+            'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0, 'last_checked_mono': ahead,
+                           'hosts': {'example.test': {'ok': False, 'checked': time.time() - 3600,
+                                                      'checked_mono': ahead}}}}}), encoding='utf-8')
+        p = pool.ProxyPool(path, R2)
+        self.assertNotIn('checked_mono', p.entries['http://a:1']['hosts']['example.test'])
+        self.assertEqual(p.pick('example.test'), 'http://a:1')  # the 10-minute cooldown is over
+
+
+class GuiAuth(unittest.TestCase):
+    """With a token set, reads are behind it too; health probes keep a bare 200."""
+
+    def test_padded_token_in_the_environment_still_matches_the_crawler(self):
+        with TokenEnv('  sekret \n'):
+            h = server.GuiHandler.__new__(server.GuiHandler)
+            h.headers = refresh.egress_headers()
+            self.assertTrue(h._check_token())
+
+    def test_status_is_liveness_only_without_the_token(self):
+        import json
+        import urllib.error
+        import urllib.request
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2)
+        p.entries = {'http://8.8.8.8:8080': {'status': 'ok', 'hosts': {}}}
+        with TokenEnv('sekret'):
+            gui, base = start_gui(p)
+            try:
+                with urllib.request.urlopen(base + '/api/status', timeout=5) as r:
+                    self.assertEqual(json.loads(r.read().decode('utf-8')),
+                                     {'ok': True, 'auth': 'required'})
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(base + '/api/progress', timeout=5)
+                self.assertEqual(ctx.exception.code, 401)
+                with urllib.request.urlopen(base + '/', timeout=5) as r:
+                    page = r.read().decode('utf-8')
+                self.assertIn('action="/login"', page)
+                self.assertNotIn('8.8.8.8', page)
+                req = urllib.request.Request(base + '/api/status', headers={'X-Token': 'sekret'})
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    self.assertIn('pool', json.loads(r.read().decode('utf-8')))
+            finally:
+                gui.shutdown()
+
+    def test_browser_login_sets_a_cookie_that_opens_reads_but_not_the_api(self):
+        import http.client
+        import json
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2)
+        with TokenEnv('sekret'):
+            gui, _ = start_gui(p)
+            host, port = gui.server_address
+            try:
+                def call(method, path, body=None, headers=None):
+                    conn = http.client.HTTPConnection(host, port, timeout=5)
+                    conn.request(method, path, body=body, headers=headers or {})
+                    resp = conn.getresponse()
+                    data = resp.read()
+                    conn.close()
+                    return resp, data
+                form = {'Content-Type': 'application/x-www-form-urlencoded'}
+                resp, _ = call('POST', '/login', 'token=zle', form)
+                self.assertEqual(resp.status, 401)
+                resp, _ = call('POST', '/login', 'token=sekret', form)
+                self.assertEqual((resp.status, resp.getheader('Location')), (303, '/'))
+                cookie = resp.getheader('Set-Cookie')
+                self.assertIn('HttpOnly', cookie)
+                self.assertIn('SameSite=Strict', cookie)
+                self.assertNotIn('sekret', cookie)  # derived, never the API secret itself
+                jar = {'Cookie': cookie.split(';', 1)[0]}
+                resp, data = call('GET', '/api/status', headers=jar)
+                self.assertIn('pool', json.loads(data.decode('utf-8')))
+                resp, data = call('GET', '/', headers=jar)
+                self.assertIn(b'mode-pill', data)
+                resp, _ = call('POST', '/api/run', '{"exit": 0}',
+                               dict(jar, **{'Content-Type': 'application/json'}))
+                self.assertEqual(resp.status, 401)  # the POST API takes the token, not a cookie
+            finally:
+                gui.shutdown()
+
+    def test_no_token_keeps_the_lan_behaviour(self):
+        import json
+        import urllib.request
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2)
+        with TokenEnv(None):
+            gui, base = start_gui(p)
+            try:
+                with urllib.request.urlopen(base + '/api/status', timeout=5) as r:
+                    self.assertIn('pool', json.loads(r.read().decode('utf-8')))
+            finally:
+                gui.shutdown()
+
+
+class StatusHonesty(unittest.TestCase):
+    """A fail-closed host with no exit is refused (403), so the GUI must not call it DIRECT."""
+
+    def test_a_fail_closed_host_without_exits_reads_fail_closed(self):
+        import json
+        import urllib.request
+        wcy = 'planzajec.wcy.wat.edu.pl'
+        targets = {wcy: ('https://planzajec.wcy.wat.edu.pl/pl/rozklad', b'grupa_id=wcy'),
+                   'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', b'<?xml')}
+        saved = (server.DIRECT_FACULTY, server.FAIL_CLOSED_ALL, server.FAIL_CLOSED)
+        server.DIRECT_FACULTY = ('wtc.wat.edu.pl',)
+        server.FAIL_CLOSED_ALL, server.FAIL_CLOSED = False, frozenset({wcy})
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', targets, active_hosts=[wcy])
+        gui, base = start_gui(p)
+        try:
+            with TokenEnv(None), urllib.request.urlopen(base + '/api/status', timeout=5) as r:
+                st = json.loads(r.read().decode('utf-8'))
+            self.assertEqual(st['mode'], 'FAIL-CLOSED (pula pusta)')
+            self.assertEqual(st['hosts'][wcy]['mode'], 'FAIL-CLOSED')
+            self.assertEqual(st['hosts']['wtc.wat.edu.pl']['mode'], 'DIRECT (lista)')
+        finally:
+            gui.shutdown()
+            server.DIRECT_FACULTY, server.FAIL_CLOSED_ALL, server.FAIL_CLOSED = saved
 
 
 if __name__ == '__main__':
