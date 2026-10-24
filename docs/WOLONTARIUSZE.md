@@ -121,9 +121,11 @@ planwat-crawler update --channel stable  # powrót na wydania (Windows: planwat-
 
 Dopóki żadne wydanie nie zawiera crawlera wolontariusza, kanał `stable` mówi to wprost i odsyła do `--channel dev`.
 
-**Token.** Crawler wypycha paczki tokenem fine-grained, który widzi **wyłącznie Twój fork** (Contents: Read and write,
-nic więcej). Instalator otwiera wypełniony formularz; Ty wybierasz tylko repozytorium (swój fork) i klikasz Generate.
-Token klasyczny (`ghp_…`) albo token `gh auth login` (`gho_…`) jest odrzucany: sięga do wszystkich Twoich repozytoriów.
+**Token.** Crawler wypycha paczki tokenem fine-grained, który powinien widzieć **wyłącznie Twój fork** (Contents: Read
+and write, nic więcej). Instalator otwiera wypełniony formularz; Ty wybierasz tylko repozytorium (swój fork) i klikasz
+Generate. Token klasyczny (`ghp_…`) albo token `gh auth login` (`gho_…`) jest odrzucany: sięga do wszystkich Twoich
+repozytoriów. Crawler sprawdza, że token może pisać do forka, ale nie sprawdzi, czy nie obejmuje też innych
+repozytoriów, więc w formularzu zostaw „Only select repositories” z samym forkiem.
 Token służy też do weryfikacji obrazów, dlatego instalator pyta o niego przed uruchomieniem czegokolwiek z obrazu.
 Gdy zbliża się jego wygaśnięcie (14 dni), crawler, `planwat-crawler doctor` i panel opiekuna to pokażą; nowy wklejasz
 przez `planwat-crawler setup`.
@@ -294,7 +296,12 @@ timetables/2026-27-zima/WCY26KY3S1.ics      tylko kalendarze, które się zmieni
 publiczny), tylko skonwertowane kalendarze, w których nazwisk nie ma (`build.load_term` odrzuca każdy kalendarz z
 `CONTACT`, `ORGANIZER`, `ATTENDEE` albo `Prowadzący:` gdziekolwiek w pliku, z tytułem przed nazwiskiem (np. „dr inż.
 Kowalski”) w tytule zajęć, opisie, sali czy nagłówku kalendarza oraz z opisem, w którym jest coś poza rodzajem zajęć,
-`Uwaga:` i `Grupy:`). Publiczne są: Twój login, czasy przebiegów i to, które grupy sprawdziłeś.
+`Uwaga:` i `Grupy:`). Publiczne są (w paczce na forku i w `volunteer-state.json` na gałęzi `data`): Twój
+login, czasy przebiegów, które grupy sprawdziłeś i z jakim wynikiem, wersja crawlera, powód ostatniej odmowy, wydziały,
+które Cię blokowały, data wygaśnięcia tokenu (sam token nigdy) i dzienne liczniki głosów. Gdy opiekun usunie Cię z
+rejestru, następny przebieg koordynatora usuwa Twój wpis z `volunteer-state.json`; login zostaje tylko w polu `by`
+grup, które pomogłeś przyjąć (do ich następnego przyjęcia), i w dzienniku przyjęć (do 30 dni). Wcześniejsze wersje
+pliku zostają w historii gałęzi `data`.
 
 ## Jak sprawdzić, że działa
 
@@ -352,13 +359,17 @@ Zacznij od `planwat-crawler doctor`: przy każdym ✗ jest podpowiedź. Najczęs
 - Obraz jest budowany publicznie z tagu wydania (natywnie dla amd64 i arm64) i ma poświadczenie pochodzenia.
   Instalator i aktualizacje sprawdzają je (`gh attestation verify --signer-workflow …/crawler-image.yml`) **zanim**
   cokolwiek w obrazie uruchomią, i przypinają obraz skrótem; aktualizacja, która nie wstaje, jest wycofywana.
-- Nie dostajesz żadnego sekretu projektu. Twój token działa tylko na Twój fork, tylko na zawartość.
+- Nie dostajesz żadnego sekretu projektu. Twój token potrzebuje tylko Twojego forka i tylko zawartości; zakres
+  wybierasz Ty przy jego tworzeniu (crawler odrzuca tokeny klasyczne, ale zakresu fine-grained nie sprawdzi).
 - Crawler nie ma trasy na zewnątrz poza proxy, które wpuszcza wyłącznie GitHub (z magazynem artefaktów Actions na
   `*.blob.core.windows.net`), PyPI i `*.wat.edu.pl` — pełna lista w [EGRESS.md](EGRESS.md) — i nie otwiera żadnego portu
   przychodzącego.
-- Paczki są publiczne i podpisane Twoim loginem — to, co wysyłasz, widać i da się to audytować.
+- Paczki są publiczne i opisane Twoim loginem — to, co wysyłasz, widać i da się to audytować. To nie podpis
+  kryptograficzny: koordynator przypisuje Ci paczkę, bo leży na gałęzi `crawl` Twojego forka, więc każdy, kto może
+  pisać do forka (Ty, Twój token, współpracownik forka), może wysłać paczkę w Twoim imieniu. Chroń token jak hasło.
 - Rejestr, który decyduje, co crawlujesz, jest przyjmowany tylko z commita podpisanego przez opiekuna, więc nikt, kto
-  przejmie gałąź `volunteers`, nie skieruje Twojego crawlera gdzie indziej.
+  przejmie gałąź `volunteers`, nie podsunie Twojemu crawlerowi rejestru, którego opiekun nie podpisał (cofnięcie gałęzi
+  do starszej podpisanej wersji odrzuca koordynator; Twój crawler sam tego nie sprawdza).
 
 ### Dla serwisu
 
@@ -374,15 +385,25 @@ Zacznij od `planwat-crawler doctor`: przy każdym ✗ jest podpowiedź. Najczęs
 - **Stare głosy nie nadpisują nowszego planu.** Głos oddany przed ostatnim zaufanym sprawdzeniem grupy (domowego
   runnera albo przyjętego kworum) jest pomijany, więc wolne kworum nie cofnie świeższego kalendarza.
 - **Uczciwe niezgodności nie są karane.** Przegrany głos to „niezgodność” tylko wtedy, gdy oddano go, kiedy zwycięski
-  plan już był widoczny; kto widział stronę przed zmianą na wydziale, nie dostaje kary.
+  plan już był widoczny; kto widział stronę przed zmianą na wydziale, nie dostaje kary. Czas głosu to deklaracja
+  wolontariusza, więc koordynator trzyma go w granicach przebiegu z paczki (i nie wcześniej niż koniec poprzedniej
+  paczki), a gdy za zwycięskim planem głosował ktoś zaufany, o tym, kiedy plan był widoczny, decydują tylko czasy
+  zaufanych: pojedynczy `peer` nie cofnie swojego czasu, żeby ukarać kogoś innego.
+- **Odsunięty nie głosuje.** Odsunięcie usuwa też jego głosy oczekujące w innych grupach.
 - **Głos „bez zmian” nigdy nie blokuje zmiany**, którą potwierdziło kworum, więc nie da się zamrozić planu fałszywym
   „nic się nie zmieniło”.
 - **Koordynator nie wykonuje niczego z forków.** Najpierw pyta `ls-remote` (paczka bez zmian albo już odrzucona nie
   jest pobierana drugi raz), potem czyta bloby gitem bez checkoutu: tylko HTTPS, bez hooków, z limitem rozmiaru pliku
   na samym pobieraniu (`RLIMIT_FSIZE`), z limitami rozmiaru i listą dozwolonych ścieżek. Jego token nie może
   uruchamiać workflowów ani zmieniać `master`.
+- **Koordynator ma budżet.** Jeden przebieg pobiera najwyżej 400 MB i po 10 minutach nie zaczyna nowych pobrań
+  (reszta czeka na następny przebieg, najdawniej pobierani pierwsi), w pamięci trzyma naraz tylko kilka paczek, a fork
+  jednej osoby pobiera najwyżej 24 razy na dobę. Paczka, która wywraca sprawdzanie (zła wersja, zbyt głęboki JSON),
+  jest odrzucana, a przebieg idzie dalej.
 - **Czego to nie rozwiązuje:** wolontariusz nie może *udowodnić*, że strona pochodzi z WAT. Wymagałoby to
-  notaryzacji TLS, a to tutaj przesada. Obroną jest kworum, tożsamość z rejestru i rozliczalność.
+  notaryzacji TLS, a to tutaj przesada. Obroną jest kworum, tożsamość z rejestru i rozliczalność. Tak samo czasy w
+  paczce są deklaracją: gdy za planem głosowali sami `peer`owie, jeden z nich może przesunąć swój czas w obrębie
+  własnego przebiegu.
 
 Szczegóły modelu zagrożeń: [SECURITY.md](../SECURITY.md).
 
@@ -421,17 +442,21 @@ Panel słucha tylko na `127.0.0.1`, wymaga tokenu z adresu i odrzuca żądania z
 **Dlaczego to bezpieczne bez PR:** koordynator bierze rejestr tylko z commita, który GitHub weryfikuje jako podpisany
 przez osobę z listy `REGISTRY_EDITORS` w `collect.yml`. Ta lista leży na chronionym `master`, więc token, który może
 wypychać gałęzie (domowego runnera albo samego koordynatora), nie nada nikomu zaufania. Inny commit na gałęzi
-`volunteers` zatrzymuje koordynatora z błędem, zamiast zostać użyty. Dla porządku chroń też samą gałąź (Settings →
-Rules → New branch ruleset, cel `volunteers`: ogranicz aktualizacje do siebie, zablokuj force push i usuwanie,
-wymagaj podpisanych commitów).
+`volunteers` zatrzymuje koordynatora z błędem, zamiast zostać użyty. Tak samo cofnięcie gałęzi (force push) do
+starszego, choć podpisanego commita: koordynator zapisuje w `volunteer-state.json` commit rejestru, którego użył, i
+przyjmuje tylko ten sam albo nowszy. Jeśli kiedyś celowo przepiszesz historię `volunteers`, zrób po tym jeszcze jeden
+zapis w panelu na wierzchu commita z pola `registry.sha` albo usuń to pole z `volunteer-state.json`. Chroń też samą
+gałąź (Settings → Rules → New branch ruleset, cel `volunteers`: ogranicz aktualizacje do siebie, zablokuj force push i
+usuwanie, wymagaj podpisanych commitów): token, który pisze na `data`, mógłby podmienić i zapisany commit.
 
 ### Pozostałe przełączniki
 
 - **Przyjęcie wolontariusza:** po zgłoszeniu dopisz go w panelu (domyślnie jako równorzędnego). `CODEOWNERS` wymaga
   Twojej recenzji dla całego kodu crawlowania.
 - **Włączenie publikowania:** dopóki zmienna repozytorium `PLANWAT_COLLECT_LIVE` nie ma wartości `true`, każdy
-  przebieg `collect.yml` jest próbny: loguje, co by przyjął, i niczego nie zapisuje. Settings → Secrets and
-  variables → Actions → Variables.
+  przebieg `collect.yml` jest próbny: loguje, co by przyjął, niczego nie zapisuje i nie otwiera issue o odsunięciu.
+  Ręczne `revert` i `unbench` (Run workflow) to Twoje polecenia i zapisują zawsze, także przy wyłączonym
+  publikowaniu, żeby awaryjne cofnięcie działało. Settings → Secrets and variables → Actions → Variables.
 - **Ustawienia rejestru** (w panelu, sekcja „Zasady głosowania”):
   - `quorum` (2–5) — ilu `peer`ów musi się zgodzić;
   - `window_hours` (2–48) — jak długo głosy są ważne;
@@ -448,6 +473,9 @@ wymagaj podpisanych commitów).
   potwierdzone przez wolontariuszy pomija, bo `core.State` uwzględnia przyjęte stemple z `volunteer-state.json`.
 - **Konflikty:** domowy runner i koordynator piszą różne pliki stanu. Jeśli w tej samej chwili zmienią ten sam
   kalendarz, koordynator ustępuje i liczy głosy ponownie w następnym przebiegu.
+- **Uszkodzony `volunteer-state.json`** (nie da się go odczytać) zatrzymuje każdy przebieg, `revert` i `unbench` z
+  błędem, zamiast zostać nadpisany pustym stanem. Przywróć plik z historii gałęzi `data` (albo usuń go, by zacząć od
+  zera: przepadną głosy, niezgodności, odsunięcia i dziennik do `revert`).
 
 ## Rezygnacja
 
@@ -455,6 +483,7 @@ wymagaj podpisanych commitów).
    wyłącz workflow w forku.
 2. Usuń token (Settings → Developer settings → Fine-grained tokens → Delete).
 3. Usuń gałąź `crawl` z forka, jeśli chcesz.
-4. Napisz w swoim zgłoszeniu — opiekun usunie Cię z rejestru.
+4. Napisz w swoim zgłoszeniu — opiekun usunie Cię z rejestru, a następny przebieg koordynatora usunie Twój wpis z
+   `volunteer-state.json` (zob. „Prywatność” wyżej).
 
 Dziękujemy!
