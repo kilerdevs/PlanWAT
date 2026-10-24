@@ -1,8 +1,8 @@
 {
  "blocks": {
   "wat-edge": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-10-24T18:34:46",
+   "cause": "wall",
    "durations": [
     {
      "at_iso": "2026-10-16T15:35:04",
@@ -64,8 +64,8 @@
    ]
   },
   "wml": {
-   "blocked_at": "2026-10-23T14:47:20",
-   "cause": "flaky",
+   "blocked_at": "2026-10-24T18:34:46",
+   "cause": "wall",
    "durations": [
     {
      "at_iso": "2026-10-15T19:54:58",
@@ -85,7 +85,7 @@
    ]
   },
   "wtc": {
-   "blocked_at": "2026-10-17T09:16:57",
+   "blocked_at": "2026-10-24T18:34:47",
    "cause": "wall",
    "durations": []
   }
@@ -94,14 +94,14 @@
   "ioe": {
    "blocked_at": null,
    "last_count": 15,
-   "last_ok": "2026-10-24T16:10:55",
+   "last_ok": "2026-10-24T18:34:39",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T16:10:55",
+    "at": "2026-10-24T18:34:39",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 15,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
@@ -114,14 +114,14 @@
    "last_ok": "2026-10-24T16:28:36",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T16:28:36",
+    "at": "2026-10-24T18:34:53",
     "blocked": false,
-    "cause": null,
+    "cause": "listing",
     "changed": 0,
-    "checked": 155,
-    "degraded": false,
-    "not_ready": 38,
-    "skipped": 1,
+    "checked": 0,
+    "degraded": true,
+    "not_ready": 0,
+    "skipped": 0,
     "term": "2026-27-zima"
    },
    "wait": {
@@ -133,14 +133,14 @@
   "wel": {
    "blocked_at": null,
    "last_count": 158,
-   "last_ok": "2026-10-24T16:24:15",
+   "last_ok": "2026-10-24T18:34:54",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T16:24:15",
+    "at": "2026-10-24T18:34:54",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 158,
+    "checked": 3,
     "degraded": false,
     "not_ready": 0,
     "skipped": 3,
@@ -150,14 +150,14 @@
   "wim": {
    "blocked_at": null,
    "last_count": 88,
-   "last_ok": "2026-10-24T16:18:11",
+   "last_ok": "2026-10-24T18:34:39",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T16:18:11",
+    "at": "2026-10-24T18:34:39",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 88,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
@@ -170,64 +170,61 @@
    }
   },
   "wlo": {
-   "blocked_at": null,
+   "blocked_at": "2026-10-24T18:34:46",
    "last_count": 131,
    "last_ok": "2026-10-24T16:16:42",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T16:16:42",
-    "blocked": false,
-    "cause": null,
+    "at": "2026-10-24T18:34:46",
+    "blocked": true,
+    "cause": "wall",
     "changed": 0,
-    "checked": 131,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
-    "skipped": 0,
-    "term": "2026-27-zima"
+    "skipped": 0
    },
    "wait": {
     "probes": 5,
-    "recovered": true,
-    "waited": 1205
+    "recovered": false,
+    "waited": 1800
    }
   },
   "wml": {
-   "blocked_at": null,
+   "blocked_at": "2026-10-24T18:34:46",
    "last_count": 162,
    "last_ok": "2026-10-24T16:21:34",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T16:21:34",
-    "blocked": false,
-    "cause": null,
+    "at": "2026-10-24T18:34:46",
+    "blocked": true,
+    "cause": "wall",
     "changed": 0,
-    "checked": 162,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
-    "skipped": 3,
-    "term": "2026-27-zima"
+    "skipped": 0
    },
    "wait": {
-    "probes": 1,
-    "recovered": true,
-    "waited": 72
+    "probes": 5,
+    "recovered": false,
+    "waited": 1800
    }
   },
   "wtc": {
-   "blocked_at": null,
+   "blocked_at": "2026-10-24T18:34:47",
    "last_count": 23,
    "last_ok": "2026-10-24T16:11:24",
    "run": {
     "ahead": false,
-    "at": "2026-10-24T16:11:24",
-    "blocked": false,
-    "cause": null,
+    "at": "2026-10-24T18:34:47",
+    "blocked": true,
+    "cause": "wall",
     "changed": 0,
-    "checked": 23,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
-    "skipped": 1,
-    "term": "2026-27-zima"
+    "skipped": 0
    },
    "wait": {
     "probes": 5,
@@ -6391,11 +6388,11 @@
  },
  "pacing": {
   "ioe": 1.0,
-  "wat-edge": 1.0,
+  "wat-edge": 1.35,
   "wcy": 1.3286025000000001,
-  "wim": 1.7714700000000003,
-  "wml": 1.3286025000000001,
-  "wtc": 1.0
+  "wim": 1.5943230000000004,
+  "wml": 1.9929037500000002,
+  "wtc": 1.5
  },
  "robots": {
   "ioe.wat.edu.pl": {
