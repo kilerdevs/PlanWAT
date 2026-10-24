@@ -61,7 +61,7 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          hard=(--rm --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp --tmpfs /work)
+          hard=(--rm --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp --tmpfs /work:uid=10003,gid=10003)
           # Refuses to start without a login; the crawler, the bundler, the wizard and the offline doctor all
           # work under the image's hardening; the health check fails until the loop has written its status.
           if docker run "${hard[@]}" planwat-crawler:ci 2>/dev/null; then
