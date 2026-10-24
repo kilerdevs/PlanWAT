@@ -499,6 +499,16 @@ class PublicRoomTest(unittest.TestCase):
             self.assertEqual(wlo2ics.public_room(room), room)
 
 
+class WtcLegend(unittest.TestCase):
+    def test_a_teacher_on_the_subjects_own_line_is_not_part_of_its_name(self):
+        from drivers.wtc import legend2
+        self.assertEqual(legend2.split_name_teachers(['Podstawy toksykologii plk dr Wachna Piotr'])[:2],
+                         ('Podstawy toksykologii', [['Wachna', 'Piotr']]))
+        self.assertEqual(legend2.split_name_teachers(['Inżynieria chemiczna', 'dr inż. Nowak Jan'])[:2],
+                         ('Inżynieria chemiczna', [['Nowak', 'Jan']]))
+        self.assertEqual(legend2.split_name_teachers(['Matematyka st. 2 Analiza'])[0], 'Matematyka st. 2 Analiza')
+
+
 class WtcDiscovery(unittest.TestCase):
     def discover(self, body, headers=None):
         driver = wtc.Driver('wtc', WTC_CFG, TODAY)

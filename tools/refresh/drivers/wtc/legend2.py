@@ -23,7 +23,7 @@ from . import ir as IR
 ROMAN = {'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'}
 
 DEG = {'dr', 'hab', 'inż', 'inz', 'mgr', 'prof', 'lic', 'med',
-       'gen', 'bryg', 'ppłk', 'płk', 'mjr', 'por', 'ppor', 'kpr',
+       'gen', 'bryg', 'ppłk', 'płk', 'pplk', 'plk', 'mjr', 'por', 'ppor', 'kpr',
        'chor', 'mł', 'ml', 'rez', 'sierż', 'sierz', 'plut', 'st',
        'lek', 'kpt', 'mat', 'bosm', 'ogn', 'sekc', 'chorąży'}
 
@@ -118,6 +118,22 @@ def is_deg_start(word):
     return bool(parts) and all(p.lower() in DEG for p in parts)
 
 
+# Titles that never end a subject name, so a run of them mid-line starts a teacher glued onto the subject's line.
+LEAD = {'dr', 'hab', 'prof', 'mgr', 'inż', 'inz', 'płk', 'plk', 'ppłk', 'pplk', 'mjr', 'kpt', 'gen', 'bryg', 'ppor'}
+
+
+def glued_teacher(toks):
+    """Where a teacher starts inside a subject's line ('Podstawy toksykologii plk dr Wachna Piotr' -> 2), or 0."""
+    for i in range(1, len(toks)):
+        j = i
+        while j < len(toks) and is_deg_start(toks[j]):
+            j += 1
+        if (j > i and j < len(toks) and toks[j][:1].isupper()
+                and any(p.lower() in LEAD for t in toks[i:j] for p in t.split('.') if p)):
+            return i
+    return 0
+
+
 def frag_line(toks):
     """Truncated-fragment line (page-break debris): only tiny tokens."""
     return len(toks) >= 3 and all(len(t) <= 3 for t in toks)
@@ -130,7 +146,12 @@ def split_name_teachers(lines):
     notes = []
     dropped = []
     cur = None
+    split = []
     for ln in lines:
+        toks = ln.split()
+        cut = glued_teacher(toks)
+        split += [' '.join(toks[:cut]), ' '.join(toks[cut:])] if cut else [ln]
+    for ln in split:
         toks = ln.split()
         if not toks:
             continue
