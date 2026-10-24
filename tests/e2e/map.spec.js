@@ -161,6 +161,18 @@ test('classes hidden in "Moje przedmioty" stay hidden in the day on the map', as
   await expect(page.locator('#selection')).toContainText('Bez zajęć ukrytych w „Moich przedmiotach”.');
 });
 
+test('the day on the map holds the stop list in a skeleton while the group plan loads', async ({ page }) => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route('**/WCY26KY3S1/plan.ics', async (route) => { await gate; await route.continue(); });
+  await open(page, '/mapa/?g=WCY26KY3S1&d=2026-10-15');
+  await expect(page.locator('#day .skel')).toBeVisible();
+  await expect(page.locator('#day [role="status"]')).toHaveText('Wczytywanie planu grupy…');
+  release();
+  await expect(page.locator('.stops [data-stop]').first()).toBeVisible();
+  await expect(page.locator('#day .skel')).toHaveCount(0);
+});
+
 test('a bad group in the day link is ignored', async ({ page }) => {
   await open(page, '/mapa/?g=../../etc&d=2026-10-15');
   await expect(page.locator('#selection h1')).toHaveText('Mapa kampusu WAT');

@@ -64,6 +64,8 @@ test('an install button appears when the browser offers installation, and asks i
     e.prompt = () => { window.__prompted++; return Promise.resolve(); };
     window.dispatchEvent(e);
   });
+  const tools = page.locator('#toolsBtn'); // on desktop the tools sit in a side panel
+  if (await tools.isVisible()) await tools.click();
   await expect(page.locator('#installBtn')).toBeVisible();
   await page.locator('#installBtn').click();
   expect(await page.evaluate(() => window.__prompted)).toBe(1);

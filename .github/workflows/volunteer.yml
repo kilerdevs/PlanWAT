@@ -1,0 +1,40 @@
+name: Volunteer crawl
+
+# The second way to volunteer (docs/WOLONTARIUSZE.md): a self-hosted runner on your fork of PlanWAT crawls your
+# share of the groups and pushes the bundle to your fork's `crawl` branch. Runs only in forks, never here; the
+# project's own crawl is refresh.yml. Register the runner on your fork with the label `planwat-volunteer`, enable
+# Actions in the fork, and make sure your login is in the project's volunteers.json.
+#
+# Like the Docker crawler, one pass per two-hour assignment window (they open at even UTC hours): it starts 20
+# minutes in (inside the 5-35 the Docker crawler uses, with room for GitHub's schedule delays) and stops after
+# 75 minutes at most, so it ends before the next window opens and never overlaps another pass of the same groups.
+on:
+  schedule:
+    - cron: '20 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: volunteer-crawl
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    if: github.repository != 'kilerdevs/PlanWAT'
+    runs-on: [self-hosted, planwat-volunteer]
+    timeout-minutes: 110
+    permissions:
+      contents: write   # the crawl branch of this fork, nothing else
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+          persist-credentials: false
+      - uses: ./src/.github/actions/refresh
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          mode: volunteer
+          profile: hosted
+          max-minutes: '75'

@@ -19,7 +19,7 @@ on:
   # contents:write token and, on purpose, has no permission to start workflows itself). This trigger runs the
   # workflow from the default branch and needs nothing from the refresh run but its end.
   workflow_run:
-    workflows: ['Refresh timetables', 'Update campus map']
+    workflows: ['Refresh timetables', 'Collect volunteer crawls', 'Update campus map']
     types: [completed]
   workflow_dispatch:
 
@@ -105,6 +105,7 @@ jobs:
           for tree in prod devsrc; do
             if [ -d data/timetables ]; then cp -r data/timetables/. "$tree/timetables/"; fi
             if [ -f data/refresh-state.json ]; then cp data/refresh-state.json "$tree/refresh-state.json"; fi
+            if [ -f data/volunteer-state.json ]; then cp data/volunteer-state.json "$tree/volunteer-state.json"; fi
           done
           echo "overlaid $(find data/timetables -name '*.ics' | wc -l) refreshed calendars"
       # The monthly campus map (see map.yml) lives on the `map` branch. It replaces a tree's src/map/ only when it was

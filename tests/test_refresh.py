@@ -1,6 +1,7 @@
 """Offline tests of the timetable refresh (tools/refresh): no network, fixtures are real crawled pages."""
 import datetime as dt
 import importlib.util
+import json
 import os
 import shutil
 import sys
@@ -324,6 +325,27 @@ class Run(unittest.TestCase):
         self.assertIn(base + 'WLO26AX1S1.htm', session.seen)
         self.assertNotIn(base + 'WLO99ZZ9S9.htm', session.seen)
 
+    def test_a_resumed_run_skips_what_it_already_checked_since_the_cut(self):
+        page_url = 'https://example.test/plan/zima/WLO26AX1S1.htm'
+        self.run_once()  # checked just now, then cut off
+        before = (core.now_utc() - dt.timedelta(hours=1)).isoformat()
+        _, session = self.run_once(extra=['--resume-since', before])
+        self.assertNotIn(page_url, session.seen)
+        later = (core.now_utc() + dt.timedelta(hours=1)).isoformat()
+        _, session = self.run_once(extra=['--resume-since', later])
+        self.assertIn(page_url, session.seen)
+
+    def test_a_resumed_run_still_reports_what_it_checked_before_the_cut(self):
+        outcomes = self.tmp / 'outcomes.json'
+        outcomes.with_name('outcomes.json.partial').write_text(json.dumps({
+            'WLO26AX1S1@2026-27-zima': {'status': 'unchanged', 'at': '2026-10-24T14:10:00'},
+            'WLO26AX2S1@2026-27-zima': {'status': 'changed', 'at': '2026-10-24T11:50:00'}}), encoding='utf-8')
+        args = refresh.parse(['--out', str(self.tmp), '--outcomes', str(outcomes),
+                              '--resume-since', '2026-10-24T14:00:00'])
+        self.assertEqual(list(args.outcomes_log), ['WLO26AX1S1@2026-27-zima'])  # an older window's is dropped
+        fresh = refresh.parse(['--out', str(self.tmp), '--outcomes', str(outcomes)])
+        self.assertEqual(fresh.outcomes_log, {})
+
     def test_not_modified_revalidates_without_rewriting(self):
         self.run_once()
         first = self.ics().read_bytes()
@@ -388,6 +410,26 @@ class Run(unittest.TestCase):
         (changed, blocked, complete), session = self.run_once(routes)
         self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
         self.assertEqual(len([u for u in session.seen if u.endswith('index.xml')]), 2)
+
+    def test_exhausted_transients_are_reported_and_retried_on_a_fresh_connection(self):
+        # A 429/5xx wall that outlasts --retries is a block response like any other: the exit
+        # that carried it is reported and the page rides a fresh connection (--block-retries).
+        reported = []
+        orig = refresh.post_block_report
+        refresh.post_block_report = lambda host, url=None, timeout=5: reported.append(host)
+        self.addCleanup(setattr, refresh, 'post_block_report', orig)
+        page_url = 'https://example.test/plan/zima/WLO26AX1S1.htm'
+        routes = dict(self.routes)
+        routes[page_url] = [Resp(429, b'')] * 4 + [Resp(200, page('WLO26AX1S1.htm'))]
+        (changed, blocked, complete), session = self.run_once(routes)
+        self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
+        self.assertEqual(reported, ['example.test'])
+        routes[page_url] = Resp(429, b'')
+        reported.clear()
+        (changed, blocked, complete), session = self.run_once(routes, extra=['--retries', '0'])
+        self.assertEqual((changed, blocked, complete), ([], True, False))
+        self.assertEqual(len([u for u in session.seen if u == page_url]), 3)  # 1 + 2 retries
+        self.assertEqual(reported, ['example.test'] * 3)
 
     def test_a_block_response_is_reported_so_the_egress_demotes_the_exit(self):
         reported = []
@@ -455,6 +497,16 @@ class PublicRoomTest(unittest.TestCase):
     def test_ordinary_rooms_are_untouched(self):
         for room in ('314 S', '1.9/ 16;1.10/ 16', 'aula/ 135', '7a-b Bibl.', '', None):
             self.assertEqual(wlo2ics.public_room(room), room)
+
+
+class WtcLegend(unittest.TestCase):
+    def test_a_teacher_on_the_subjects_own_line_is_not_part_of_its_name(self):
+        from drivers.wtc import legend2
+        self.assertEqual(legend2.split_name_teachers(['Podstawy toksykologii plk dr Wachna Piotr'])[:2],
+                         ('Podstawy toksykologii', [['Wachna', 'Piotr']]))
+        self.assertEqual(legend2.split_name_teachers(['Inżynieria chemiczna', 'dr inż. Nowak Jan'])[:2],
+                         ('Inżynieria chemiczna', [['Nowak', 'Jan']]))
+        self.assertEqual(legend2.split_name_teachers(['Matematyka st. 2 Analiza'])[0], 'Matematyka st. 2 Analiza')
 
 
 class WtcDiscovery(unittest.TestCase):
@@ -1042,8 +1094,11 @@ class ExhaustionCause(unittest.TestCase):
         return result, state
 
     def test_http_transients_exhaust_as_a_wall(self):
-        session = ScriptedSession([Resp(200, INDEX.encode())] + [Resp(503, b'x')] * 10)
+        # robots.txt, then 4 tries per attempt (--retries 3) on each of 1 + 2 fresh connections
+        # (--block-retries 2).
+        session = ScriptedSession([Resp(200, INDEX.encode())] + [Resp(503, b'x')] * 13)
         (changed, blocked, complete), state = self.faculty(session)
+        self.assertEqual(session.script, [])
         self.assertEqual((changed, blocked, complete), ([], True, False))
         run = state.faculties['wlo']['run']
         self.assertEqual(run['cause'], 'wall')

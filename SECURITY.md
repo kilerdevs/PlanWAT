@@ -12,14 +12,18 @@
 
 </div>
 
-PlanWAT to publiczna strona statyczna bez kont i bez przechowywanych danych osobowych. Cele bezpieczeństwa są trzy: w
+PlanWAT to publiczna strona statyczna bez kont i bez danych osobowych odwiedzających. Jedyny wyjątek to wolontariusze,
+którzy crawlują plany: ich loginy GitHub i przebiegi są publiczne (zob.
+[docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md#co-trafia-do-paczki)). Cele bezpieczeństwa są trzy: w
 przeglądarce odwiedzającego ma działać wyłącznie jej własny kod, plik kalendarza nie może wstrzyknąć znaczników ani
 skryptu, a samodzielnie hostowany obraz ma udostępniać tylko zbudowane pliki.
 
 > [!NOTE]
-> Najlepszy sposób ochrony danych to ich nie zbierać. PlanWAT nie ma formularza logowania, nie prosi o adres e-mail ani o
-> żadne inne dane osobowe i nie ma gdzie ich zapisać. Gdyby ktoś w imieniu PlanWAT o nie prosił, to szemrane zachowanie, o którym
-> warto nas zawiadomić.
+> Najlepszy sposób ochrony danych to ich nie zbierać. PlanWAT nie ma formularza logowania, nie prosi odwiedzających o adres
+> e-mail ani o żadne inne dane osobowe i nie ma gdzie ich zapisać. Gdyby ktoś w imieniu PlanWAT o nie prosił, to szemrane
+> zachowanie, o którym warto nas zawiadomić. Koordynator wolontariuszy publikuje w `volunteer-state.json` na gałęzi `data`
+> tylko to, co wolontariusze sami wysyłają w paczkach (login, czasy, sprawdzone grupy, wersję, blokady, datę wygaśnięcia
+> tokenu), i usuwa wpis osoby, która opuściła rejestr.
 
 ## Spis treści
 
@@ -83,9 +87,13 @@ okno przed publicznym ujawnieniem (zwyczajowo 90 dni).
 | `deploy/nginx.conf`, `Dockerfile`, `docker-compose.yml` | Serwowany plik, który nie powinien, brakujące nagłówki, uprawnienia lub zapis w kontenerze |
 | `.github/workflows/` | Wstrzyknięcie do workflowu, nadmierne uprawnienia tokenu, nieprzypięty kod firm trzecich |
 | `tools/refresh/`, `tools/egress/` | Ucieczka z izolacji runnera, wyciek tokenu, żądania poza listą dozwolonych hostów |
+| `tools/volunteer/`, gałąź `volunteers`, `collect.yml`, `install.sh`, `install.ps1` | Paczka wolontariusza, która publikuje plan bez kworum, nadpisuje nowszy plan starszymi głosami, wykonuje kod u koordynatora, zapełnia jego dysk przed sprawdzeniem rozmiaru, czyta lub zapisuje poza listą ścieżek, podszywa się pod innego wolontariusza, odtwarza starą paczkę, zatrzymuje cały przebieg koordynatora albo sfałszowanym czasem głosu karze innego wolontariusza; rejestr przyjęty (przez koordynatora albo crawler) bez zweryfikowanego podpisu opiekuna albo cofnięty u koordynatora do starszej podpisanej wersji; panel `manage.py` osiągalny spoza `127.0.0.1` albo bez tokenu; obraz crawlera, który wychodzi poza GitHub i `*.wat.edu.pl`; instalator albo aktualizacja, które uruchamiają obraz bez sprawdzonego poświadczenia pochodzenia, przyjmują token klasyczny albo OAuth (szerszy niż fork) albo zostawiają go czytelnym dla innych użytkowników |
 
 ### Poza zakresem
 
+- **Zmowa zatwierdzonych wolontariuszy** w liczbie równej kworum albo osoba z poziomem `trusted`, która dostarcza błędne
+  plany: to znane ograniczenie modelu zaufania (zob. [docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md#bezpieczeństwo)),
+  obsługiwane cofnięciem i odsunięciem, nie podatność.
 - **Błędne dane planu** (sala lub godzina): otwórz zamiast tego
   [zgłoszenie planu](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml).
 - Nagłówki, których GitHub Pages nie potrafi wysłać (`X-Frame-Options`, `frame-ancestors`, …): udokumentowane wraz ze

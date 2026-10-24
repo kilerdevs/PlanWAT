@@ -25,9 +25,12 @@ coarse progress (run/faculty/tick/done/wait events, ticks throttled) to the egre
 PLANWAT_EGRESS_PROGRESS; the GUI turns them into a progress bar and a finish estimate. Nothing half-converted
 is published, the old calendars stay. A merely transient fetch (transport error, 408/425/429/500/502/503/504,
 an empty 200) is retried a few times with exponential backoff first (--retries/--retry-backoff); exhaustion
-raises core.Blocked for HTTP transients (a wall) and the transport error itself for flakiness, so the run
-learns the cause.
-Exit codes: 0 done, 3 blocked, 4 incomplete.
+raises core.Blocked for HTTP transients (a block response: reported and retried on a fresh connection like
+any other, then a wall) and the transport error itself for flakiness, so the run learns the cause.
+With --assign volunteers.json --as <login> it runs as a volunteer crawler (see docs/WOLONTARIUSZE.md): only the
+groups assigned to that login this window are checked, at the volunteer pace, and --outcomes records what each
+check found for tools/volunteer/bundle.py.
+Exit codes: 0 done, 2 bad arguments, 3 blocked, 4 incomplete.
 With GITHUB_OUTPUT set, `blocked`, `incomplete` and `changed` are exported for the workflow.
 """
 import argparse
@@ -42,10 +45,12 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / 'volunteer'))
+import assign  # noqa: E402
 import core  # noqa: E402
 import drivers  # noqa: E402
 
-PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (1.5, 4.0)}  # seconds between pages
+PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (1.5, 4.0), 'volunteer': (4.0, 9.0)}  # seconds between pages
 # WLO and WEL share one Incapsula policy (cookies for .wat.edu.pl): crawling either too fast blocks both home
 # addresses for hours. The ranges above are for the home line with one request at a time per host; a block
 # response now costs a reported retry on a fresh exit before it counts as a wall (--block-retries), and the
@@ -55,6 +60,20 @@ PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (1.5, 4.0)}  # seconds between p
 
 def log(msg):
     print(msg, flush=True)
+
+
+def egress_headers():
+    """JSON + credentials for every report to the egress GUI.
+
+    The proxy accepts `Authorization: Bearer` and `X-Token`; sending both keeps older
+    egress builds working while the documented Bearer form is always present.
+    """
+    headers = {'Content-Type': 'application/json'}
+    token = os.environ.get('EGRESS_API_TOKEN', '').strip()
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+        headers['X-Token'] = token
+    return headers
 
 
 # Statuses worth one more try: the host is wobbling, not walling us out.
@@ -103,7 +122,7 @@ def post_run_report(report, url=None, timeout=10):
         return
     try:
         req = urllib.request.Request(url, data=json.dumps(report).encode('utf-8'),
-                                     headers={'Content-Type': 'application/json'}, method='POST')
+                                     headers=egress_headers(), method='POST')
         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout).read()
     except Exception as err:
         log(f'run report not delivered ({err}); continuing')
@@ -135,7 +154,7 @@ def post_block_report(host, url=None, timeout=5):
     import urllib.request
     try:
         req = urllib.request.Request(url, data=json.dumps({'host': host}).encode('utf-8'),
-                                     headers={'Content-Type': 'application/json'}, method='POST')
+                                     headers=egress_headers(), method='POST')
         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout).read()
     except Exception:
         pass  # the demotion is a nice-to-have; the retry path works without it
@@ -169,7 +188,7 @@ class Progress:
     def _deliver(self, payload):
         import urllib.request
         req = urllib.request.Request(self.url, data=json.dumps(payload).encode('utf-8'),
-                                     headers={'Content-Type': 'application/json'}, method='POST')
+                                     headers=egress_headers(), method='POST')
         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=self.timeout).read()
 
     def send(self, event, **fields):
@@ -186,7 +205,7 @@ class Progress:
                 self.quiet = True
             return False
 
-    def tick(self, slot, done, total):
+    def tick(self, slot, done, total, **fields):
         """A progress sample for `slot`, sent at most once per `throttle` seconds."""
         if not self.url:
             return False
@@ -195,7 +214,7 @@ class Progress:
             if now - self.last_sent.get(slot, float('-inf')) < self.throttle:
                 return False
             self.last_sent[slot] = now
-        return self.send('tick', slot=slot, done=done, total=total)
+        return self.send('tick', slot=slot, done=done, total=total, **fields)
 
 
 def wait_for_recovery(name, probe, model, budget, max_probes=5, sleep=time.sleep, clock=time.monotonic):
@@ -360,6 +379,57 @@ def noted_quiet(entry):
         entry['streak'] = 1
 
 
+def accepted_checked(state, code, tid):
+    """The coordinator's last accepted check of `code` in term `tid` ('' when none)."""
+    entry = state.accepted.get(f'{code}@{tid}')
+    stamp = entry.get('checked') if isinstance(entry, dict) else None
+    return stamp if isinstance(stamp, str) else ''
+
+
+# What a crawl learns about its own line (per-faculty runs, learned block durations, AIMD pacing). A volunteer
+# keeps these in its own file (--faculty-state): the data branch it starts from carries the home runner's numbers.
+LINE_KEYS = ('faculties', 'blocks', 'pacing')
+
+
+def load_line_state(state, path):
+    try:
+        mine = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        mine = {}
+    for k in LINE_KEYS:
+        state.data[k] = mine[k] if isinstance(mine, dict) and isinstance(mine.get(k), dict) else {}
+
+
+def save_line_state(state, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix('.tmp')
+    tmp.write_text(json.dumps({k: state.data.get(k, {}) for k in LINE_KEYS}, ensure_ascii=False, indent=1) + '\n',
+                   encoding='utf-8')
+    tmp.replace(path)
+
+
+def note_outcome(args, code, tid, status):
+    """Record what a volunteer's check of `code` found (bundle.py turns these into votes)."""
+    outcomes = getattr(args, 'outcomes_log', None)
+    if outcomes is not None:
+        outcomes[f'{code}@{tid}'] = {'status': status, 'at': core.now_utc().isoformat()}
+
+
+def partial_outcomes(args):
+    """Where the outcomes so far are kept at each checkpoint, so a resumed run still reports them."""
+    return args.outcomes.with_name(args.outcomes.name + '.partial')
+
+
+def save_partial_outcomes(args):
+    if getattr(args, 'outcomes', None) and args.outcomes_log is not None:
+        path = partial_outcomes(args)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(args.outcomes_log, ensure_ascii=False) + '\n', encoding='utf-8')
+        tmp.replace(path)
+
+
 def noted_change(entry):
     """The plan really moved: the group is hot again and is checked every pass."""
     entry['streak'] = 0
@@ -434,7 +504,18 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
     # Stalest first: a run cut short by --max-minutes, --limit or a block refreshes the groups
     # unseen the longest. Never-checked ('') sorts before any ISO timestamp; the code breaks ties
     # so the order is deterministic. The limit slices after the sort, keeping the stalest N.
-    todo.sort(key=lambda i: (state.groups.get(key(i.code), {}).get('checked', ''), i.code))
+    # A check the volunteer coordinator accepted counts as a sighting too.
+    todo.sort(key=lambda i: (max(state.groups.get(key(i.code), {}).get('checked', '') or '',
+                                 accepted_checked(state, i.code, tid)), i.code))
+    if getattr(args, 'registry', None):
+        # A volunteer checks only its own share of this window (tools/volunteer/assign.py), among the volunteers
+        # the coordinator last heard from.
+        todo = [i for i in todo if assign.is_assigned(args.registry, args.login, name, i.code, tid, args.window,
+                                                      getattr(args, 'health', None))]
+    if getattr(args, 'resume_since', None):
+        # A resumed run (a volunteer pass cut off mid-window): what it checked before the cut is not asked again,
+        # even where the faculty's cadence would already call it stale.
+        todo = [i for i in todo if (state.groups.get(key(i.code), {}).get('checked') or '') < args.resume_since]
     if args.limit:
         todo = todo[:args.limit]
     log(f'[{name}] {len(items)} groups, {len(items) - len(todo)} fresh, {len(todo)} to check (term {tid})')
@@ -446,7 +527,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
     not_ready = 0
     for n, item in enumerate(todo, 1):
         if progress is not None:
-            progress.tick(slot, n - 1, len(todo))
+            progress.tick(slot, n - 1, len(todo), faculty=name, lane=group, ahead=ahead, term=tid)
         if args.max_minutes and (clock() - started) / 60 > args.max_minutes:
             log(f'[{name}] time budget used up after {n - 1} groups')
             return changed, False, False
@@ -454,6 +535,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             sleep(random.uniform(args.delay[0] * mult, args.delay[1] * mult))
         if n % 25 == 0 and not args.dry_run:
             state.save()  # checkpoint every 25 checks, however they end (a 304 or an unchanged hash included)
+            save_partial_outcomes(args)  # and what they found, which a resumed run still has to report
         entry = state.groups.setdefault(key(item.code), {})
         # A block response is reported to the egress (which demotes the exit that carried it) and
         # retried on a fresh connection: with a rotating egress each attempt rides another exit, so
@@ -465,6 +547,14 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
                                    retries=args.retries, backoff=args.retry_backoff, sleep=sleep)
                 checked += 1
             except core.Blocked as err:
+                # Exhausted 429/5xx/empty 200s are a block response too: report the exit that
+                # carried them and ride a fresh connection before calling it a wall.
+                post_block_report(host)
+                if attempt < attempts:
+                    log(f'[{name}] {item.code}: block response ({err}); '
+                        f'riding a fresh connection ({attempt + 1}/{attempts})')
+                    sleep(random.uniform(2.0, 4.0) * attempt)
+                    continue
                 log(f'[{name}] BLOCKED on {item.code}: {err}')
                 fac['blocked_at'] = core.now_utc().isoformat()
                 fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
@@ -502,17 +592,20 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             remember_validators(entry, r)
             entry['checked'] = core.now_utc().isoformat()
             noted_quiet(entry)
+            note_outcome(args, item.code, tid, 'unchanged')
             continue
         raw = r.content
         text = raw.decode('utf-8', errors='replace')
         if r.status_code == 404:
             log(f'[{name}] {item.code}: gone (404), keeping the old calendar')
+            note_outcome(args, item.code, tid, 'gone')
             continue
         if not driver.page_ok(text):
             if getattr(driver, 'not_ready', None) and driver.not_ready(text):
                 not_ready += 1
                 log(f'[{name}] {item.code}: not ready for {tid} yet (the faculty still shows '
                     f'another semester); keeping the old calendar')
+                note_outcome(args, item.code, tid, 'not_ready')
                 continue
             log(f'[{name}] {item.code}: not a timetable page, skipped')
             failed += 1
@@ -524,6 +617,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if old is not None and entry.get('hash') == digest:
             entry['checked'] = core.now_utc().isoformat()
             noted_quiet(entry)
+            note_outcome(args, item.code, tid, 'unchanged')
             continue
         try:
             ics = core.to_crlf(driver.convert(item, raw))
@@ -555,6 +649,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         entry.update(hash=digest, checked=core.now_utc().isoformat(), term=tid)
         if core.same_plan(old, ics):
             noted_quiet(entry)
+            note_outcome(args, item.code, tid, 'unchanged')
             continue
         entry['changed'] = entry['checked']
         entry['streak'] = 0
@@ -563,6 +658,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         if not args.dry_run:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(ics.encode('utf-8'))
+            note_outcome(args, item.code, tid, 'changed')
     # Skips (unreadable pages, failed conversions, rejected calendars) against responses
     # received: too many means the site is half-broken, not the plans half-changed. Pages
     # that are merely "not ready" (the faculty still shows another semester) are expected
@@ -616,7 +712,33 @@ def parse(argv=None):
                     help='policy groups crawled side by side (1 = strictly one faculty at a time)')
     ap.add_argument('--block-probes', type=int, default=5,
                     help='recovery probes per block (one cheap index fetch each)')
+    ap.add_argument('--assign', type=Path, help='volunteer mode: the registry (volunteers.json)')
+    ap.add_argument('--as', dest='login', default='', help='volunteer mode: your GitHub login in the registry')
+    ap.add_argument('--outcomes', type=Path, help='write what each check found here (JSON, for bundle.py)')
+    ap.add_argument('--faculty-state', type=Path,
+                    help="keep this line's learned pacing and block durations here instead of in the data checkout")
+    ap.add_argument('--resume-since', default='',
+                    help='skip every group checked at or after this UTC time (YYYY-MM-DDTHH:MM:SS): resuming a run')
     args = ap.parse_args(argv)
+    args.registry, args.window, args.health = None, None, None
+    args.outcomes_log = {} if (args.outcomes or args.assign) else None
+    if args.resume_since and args.outcomes and args.outcomes_log is not None:
+        # The groups the resumed run skips were checked before the cut: their outcomes come from its checkpoint.
+        try:
+            kept = json.loads(partial_outcomes(args).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            kept = {}
+        args.outcomes_log.update({k: v for k, v in (kept if isinstance(kept, dict) else {}).items()
+                                  if isinstance(v, dict) and str(v.get('at') or '') >= args.resume_since})
+    if args.assign:
+        if not args.login:
+            ap.error('--assign needs --as <login>')
+        try:
+            args.registry = assign.load_registry(args.assign)
+        except (OSError, ValueError) as err:
+            ap.error(f'cannot read the registry {args.assign}: {err}')
+        # Volunteers crawl at the gentle pace, whatever profile was asked for: many lines add up.
+        args.profile = 'volunteer'
     args.delay = PROFILES[args.profile]
     return args
 
@@ -698,13 +820,16 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
             return False
 
     if progress is not None:
-        progress.send('wait_start', lane=group, faculties=[n for n, _ in deferred],
-                      budget=round(wait_budget))
+        wait_slots = [f'{n}~{core.term_id(coming)}' if (main_ok and coming) else n
+                      for n, main_ok in deferred]
+        progress.send('wait_start', id=group, lane=group, faculties=[n for n, _ in deferred],
+                      slots=wait_slots, budget=round(wait_budget))
     recovered, waited, probes = wait_for_recovery(group, probe, model, wait_budget,
                                                    args.block_probes, sleep, clock)
     if progress is not None:
-        progress.send('wait_end', lane=group, faculties=[n for n, _ in deferred],
-                      waited=round(waited), probes=probes, recovered=recovered)
+        progress.send('wait_end', id=group, lane=group, faculties=[n for n, _ in deferred],
+                      slots=wait_slots, waited=round(waited), probes=probes,
+                      recovered=recovered)
     tallies['waited'] = waited
     for name, main_ok in deferred:
         fac = state.faculties.setdefault(name, {})
@@ -747,6 +872,21 @@ def plan_lanes(wanted):
     return list(lanes.values())
 
 
+def write_outcomes(args, started, wanted, sources, state):
+    """What this run found, group by group, for tools/volunteer/bundle.py."""
+    faculties = {}
+    for n in wanted:
+        run = state.faculties.get(n, {}).get('run', {}) if n in sources else {}
+        faculties[n] = {'blocked': bool(run.get('blocked')), 'cause': run.get('cause')}
+    report = {'started': started, 'ended': core.now_utc().isoformat(), 'login': args.login,
+              'window': args.window, 'dry_run': args.dry_run,
+              'groups': dict(sorted((args.outcomes_log or {}).items())),
+              'faculties': faculties}
+    args.outcomes.parent.mkdir(parents=True, exist_ok=True)
+    args.outcomes.write_text(json.dumps(report, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+    partial_outcomes(args).unlink(missing_ok=True)
+
+
 def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monotonic):
     args = parse(argv)
     today = today or core.now_utc().date()
@@ -754,11 +894,23 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     sources = json.loads((HERE / 'sources.json').read_text(encoding='utf-8'))
     named = [f for f in args.faculty.split(',') if f]
     wanted = named or [f for f, c in sources.items() if c.get('enabled')]
+    if args.registry:
+        me = assign.find(args.registry, args.login)
+        if me is None or me['trust'] == 'suspended':
+            log(f'{args.login} is not an active volunteer in {args.assign}')
+            return 2
+        if me['faculties']:
+            wanted = [f for f in wanted if f in me['faculties']]
+        args.window = assign.window_of(core.now_utc())
+        args.health = assign.load_health(Path(args.out) / core.VOLUNTEER_STATE_FILE)
+        log(f'volunteer {me["login"]} ({me["trust"]}), window {args.window}: {", ".join(wanted) or "nothing"}')
     unknown = [f for f in wanted if f not in sources]
     if unknown:
         log(f'unknown faculty: {", ".join(unknown)}')
         return 2
     state = core.State(Path(args.out) / core.STATE_FILE)
+    if args.faculty_state:
+        load_line_state(state, args.faculty_state)
     model = core.BlockModel(state.data)
     coming = core.upcoming_reference(today)
     lanes = plan_lanes(wanted)
@@ -803,7 +955,11 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
             'forcing incomplete so the run gets attention')
     if not args.dry_run:
         state.save()
+    if args.faculty_state:
+        save_line_state(state, args.faculty_state)
     exit_code = 3 if blocked else 4 if incomplete else 0
+    if args.outcomes:
+        write_outcomes(args, started, wanted, sources, state)
     export(blocked=blocked, incomplete=incomplete, changed=len(tallies['changed']),
            degraded=degraded_any)
     log(f'changed: {len(tallies["changed"])}; blocked: {blocked}; incomplete: {incomplete}')

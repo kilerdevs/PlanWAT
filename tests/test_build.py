@@ -771,6 +771,56 @@ class BuildManyGroupsTest(unittest.TestCase):
                 with self.assertRaisesRegex(build.BuildError, 'must not name staff'):
                     build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
 
+    def assert_refused(self, old, new, message='must not name staff'):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        path = self.tt / '2026-27-zima' / 'WCY26KY3S1.ics'
+        text = path.read_text(encoding='utf-8')
+        self.assertIn(old, text)
+        path.write_text(text.replace(old, new, 1), encoding='utf-8', newline='')
+        with self.assertRaisesRegex(build.BuildError, message):
+            build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
+    def test_staff_outside_the_events_own_lines_is_refused_too(self):
+        # the whole file is published: the calendar header and nested components count as much as the event
+        for old, new in (('VERSION:2.0', 'VERSION:2.0\r\nCONTACT:Jan Kowalski'),
+                         ('VERSION:2.0', 'VERSION:2.0\r\nX-WR-CALDESC:Plan grupy\\nProwadzący: Jan Kowalski'),
+                         ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nORGANIZER;CN=Jan Kowalski:mailto:jk@example.com'),
+                         ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nATTENDEE;CN=Jan Kowalski:mailto:jk@example.com'),
+                         ('END:VEVENT', 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT5M\r\n'
+                                        'DESCRIPTION:Prowadzący: Jan Kowalski\r\nEND:VALARM\r\nEND:VEVENT')):
+            with self.subTest(new=new):
+                self.assert_refused(old, new)
+
+    def test_a_title_before_a_name_in_any_shown_text_is_refused(self):
+        for old, new in (('SUMMARY:Matematyka', 'SUMMARY:Podstawy toksykologii plk dr Wachna Piotr'),
+                         ('SUMMARY:Matematyka', 'SUMMARY:dr Jan Kowalski'),
+                         ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nCATEGORIES:Wykład - mgr inż. Kowalski'),
+                         ('VERSION:2.0', 'VERSION:2.0\r\nX-WR-CALNAME:Plan prof. Kowalskiego'),
+                         ('X-PLAN-FACULTY:Cybernetyki', 'X-PLAN-FACULTY:Cybernetyki (dziekan dr hab. Kowalski)'),
+                         ('END:VEVENT', 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT5M\r\n'
+                                        'DESCRIPTION:Matematyka\\, dr Kowalski\r\nEND:VALARM\r\nEND:VEVENT')):
+            with self.subTest(new=new):
+                self.assert_refused(old, new, 'names a person')
+
+    def test_a_description_holds_only_the_type_a_note_and_the_groups(self):
+        # a bare name has no title to catch: whatever is not an "Uwaga:" note or the "Grupy:" list must be a category
+        for description in ('Jan Kowalski', 'Wykład\\nJan Kowalski', 'Wykład\\nGrupy: Jan Kowalski',
+                            'Wykład\\nUwaga: dr Jan Kowalski'):
+            with self.subTest(description=description):
+                self.assert_refused('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nCATEGORIES:Wykład\r\nDESCRIPTION:' + description)
+
+    def test_the_descriptions_the_converters_write_pass(self):
+        self.add('2026-27-zima', 'WCY26KY3S1', calendar(
+            'WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05',
+            'CATEGORIES:Wykład\r\nDESCRIPTION:Wykład\\nUwaga: 50% T3Ć\\, T5.4Ć\\nGrupy: WLO26NF1S1\\, 2PL/12KP\\, S.WOJ23'))
+        build.build(self.tt, self.tmp / 'site', today=D(2026, 10, 15), nginx_conf=None)
+
+    def test_subjects_and_types_are_not_mistaken_for_people(self):
+        for text in ('Prowadzenie negocjacji', 'XWychowanie fizyczne', 'Język angielski', 'Podstawy toksykologii',
+                     'Studium Szkol. Wojs.', 'Zaliczenie poprawkowe  lab.', 'Zp. Ćw', 'Plan zajęć WCY26KY3S1',
+                     'Nieoficjalny plan zajęć WLO26NF1S1 (WLO Plansoft)', 'Mechatroniki, Uzbrojenia i Lotnictwa'):
+            self.assertIsNone(build._TITLED.search(text), text)
+
     def test_a_location_that_names_a_person_is_refused(self):
         for room in (r'dr inż. Nazwisko Imie\, 255 S', r'mgr inż. Nazwisko Imie\;mgr Inny Osoba\, 3/ 23A', 'prof. dr hab. Nazwisko Imie',
                      'ANazwisko', r'ANazwisko\;314 S', '�Nazwisko', 'ANazwisko-Drugie'):
@@ -788,7 +838,7 @@ class BuildManyGroupsTest(unittest.TestCase):
 
     def test_a_subject_that_merely_starts_with_prowadzenie_is_fine(self):
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05',
-                                                          'DESCRIPTION:Wykład'))
+                                                          'CATEGORIES:Wykład\r\nDESCRIPTION:Wykład'))
         path = self.tt / '2026-27-zima' / 'WCY26KY3S1.ics'
         path.write_text(path.read_text(encoding='utf-8').replace('SUMMARY:Matematyka', 'SUMMARY:Prowadzenie negocjacji'),
                         encoding='utf-8', newline='')
@@ -1096,7 +1146,7 @@ class ScrubStaffTest(unittest.TestCase):
 
     def test_unfolds_before_scrubbing_so_folded_names_are_caught(self):
         before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
-                  'SUMMARY:Matematyka\r\nDESCRIPTION:Wykład\\nProwadzący: Aleksandra Dłu\r\n'
+                  'SUMMARY:Matematyka\r\nCATEGORIES:Wykład\r\nDESCRIPTION:Wykład\\nProwadzący: Aleksandra Dłu\r\n'
                   ' gosz imię\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
         after, removed = scrub_staff.scrub_text(before)
         self.assertTrue(removed)
@@ -1104,9 +1154,39 @@ class ScrubStaffTest(unittest.TestCase):
         self.assertIn('DESCRIPTION:Wykład', after)
 
     def test_a_clean_crlf_calendar_is_byte_stable(self):
-        before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
-                  'SUMMARY:Matematyka\r\nDESCRIPTION:Wykład\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
+        before = ('BEGIN:VCALENDAR\r\nX-WR-CALNAME:Plan zajęć WLO1\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
+                  'SUMMARY:Matematyka\r\nCATEGORIES:Wykład\r\nDESCRIPTION:Wykład\\nUwaga: 50%\\nGrupy: WLO1\\, WLO2\r\n'
+                  'END:VEVENT\r\nEND:VCALENDAR\r\n')
         self.assertIsNone(scrub_staff.scrub_text(before))
+
+    def test_names_outside_contact_and_instructor_lines_go_too(self):
+        before = ('BEGIN:VCALENDAR\r\nCONTACT:Jan\r\n  Kowalski\r\nX-WR-CALDESC:Plan grupy WLO1 dr Jan Kowalski\r\n'
+                  'BEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
+                  'SUMMARY:Podstawy toksykologii plk dr Wachna Piotr\r\nCATEGORIES:Wykład\r\n'
+                  'ORGANIZER;CN=Jan Kowalski:mailto:jk@example.com\r\n'
+                  'DESCRIPTION:Wykład\\nJan Kowalski\\nUwaga: mgr Kowalski\\nGrupy: WLO1\\, WLO2\r\n'
+                  'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT5M\r\nDESCRIPTION:Matematyka\r\nEND:VALARM\r\n'
+                  'END:VEVENT\r\nEND:VCALENDAR\r\n')
+        after, removed = scrub_staff.scrub_text(before)
+        self.assertTrue(removed)
+        self.assertNotIn('owalski', after)
+        self.assertNotIn('Wachna', after)
+        self.assertNotIn('CONTACT', after)
+        self.assertIn('\r\nX-WR-CALDESC:Plan grupy WLO1\r\n', after)
+        self.assertIn('\r\nSUMMARY:Podstawy toksykologii\r\n', after)
+        self.assertIn('\r\nDESCRIPTION:Wykład\\nGrupy: WLO1\\, WLO2\r\n', after)
+        self.assertIn('\r\nDESCRIPTION:Matematyka\r\n', after)  # an alarm's text is not an event's DESCRIPTION
+        ok, why = scrub_staff.verify('probe', before, after)
+        self.assertTrue(ok, why)
+
+    def test_a_summary_that_is_only_a_name_is_refused_not_written(self):
+        before = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261005T080000\r\n'
+                  'SUMMARY:dr Jan Kowalski\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
+        after, removed = scrub_staff.scrub_text(before)
+        self.assertNotIn('owalski', after)
+        ok, why = scrub_staff.verify('probe', before, after)
+        self.assertFalse(ok)
+        self.assertIn('SUMMARY', why)
 
     def test_lf_endings_are_normalized_without_touching_content(self):
         before = ('BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:a\nDTSTART:20261005T080000\n'

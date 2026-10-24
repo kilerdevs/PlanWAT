@@ -47,18 +47,34 @@ LIST_SOURCES = (
 
 # Round 1: neutral aliveness target (same tile DeadDropMGMT probes).
 ROUND1_URL = 'https://a.tile.openstreetmap.org/13/4051/2749.png'
+ROUND1_MAGIC = b'\x89PNG\r\n\x1a\n'
 
 SUPPORTED_SCHEMES = ('http', 'socks5', 'socks4')
-FAIL_COOLDOWN = 15 * 60  # a failed proxy sits out this long before it may be picked again
+FAIL_COOLDOWN = 10 * 60  # a failed proxy sits out this long before it may be picked again
 PRUNE_AFTER = 24 * 3600  # entries failing this long are dropped to make room for fresh ones
 MAX_ENTRIES = 2000  # hard cap on pool size; oldest-checked fails are dropped first
 LATENCY_CUTOFF_MS = 6000  # probe_alive passes only below this
-PER_SOURCE_CAP = 60  # max candidates kept per list source
+PER_SOURCE_CAP = 80  # max candidates kept per list source
 REFRESH_DEADLINE_S = 540  # cooperative refresh deadline (checked between phases)
-STALE_REPROBE_N = 60  # oldest-checked global-ok entries re-probed at thin hosts
+STALE_REPROBE_N = 90  # oldest-checked global-ok entries re-probed at thin hosts
 BREAKER_N = 10  # >=N global failures ...
 BREAKER_WINDOW_S = 60  # ... in 60 s trips the breaker ...
 BREAKER_HOLD_S = 60  # ... for 60 s (picks return empty; any mark-ok clears)
+HOST_BREAKER_N = 8  # >=N live failures for one host ...
+HOST_BREAKER_WINDOW_S = 120  # ... in 120 s stop offering exits for it ...
+HOST_BREAKER_HOLD_S = 120  # ... for 120 s (a live success clears immediately)
+RETRY_AFTER_S = 5 * 60  # after a total list-fetch failure, retry soon instead of freezing for max_age
+HEAL_MIN_GAP_S = 10 * 60  # thin coverage alone re-runs a refresh at most this often (max_age still applies)
+MIN_ROUND2_CAP = 12
+
+# WAF/captive-portal bodies can be HTTP 200 with plenty of bytes. A probe that lands on
+# one must not count as "this proxy reaches the faculty".
+BLOCK_MARKERS = (
+    b'incapsula', b'request unsuccessful', b'access denied',
+    b'attention required! | cloudflare', b'cf-error-details',
+    b'cloudflare ray id', b'cf-browser-verification', b'__cf_chl',
+    b'captcha-delivery', b'are you a robot', b'zablokowan',
+)
 
 
 def parse_proxy_url(raw):
@@ -100,7 +116,8 @@ def parse_proxy_url(raw):
             return None
     except ValueError:
         return None  # a hostname, not an IP: free lists are IP-based, skip DNS games
-    return f'{scheme}://{parts.hostname}:{port}'
+    host = f'[{parts.hostname}]' if ip.version == 6 else parts.hostname
+    return f'{scheme}://{host}:{port}'
 
 
 def normalize_list(text, kind, scheme='http'):
@@ -167,28 +184,40 @@ def _ewma(old, new):
 class ProxyPool:
     """Thread-safe pool: refresh (fetch lists + Round 1/2 probes), per-host pick, mark, persist."""
 
-    def __init__(self, path, round2, max_probe=150, probe_timeout=8, max_age=6 * 3600,
-                 min_alive=25, min_verified=5):
+    def __init__(self, path, round2, max_probe=150, probe_timeout=8, max_age=4 * 3600,
+                 min_alive=25, min_verified=5, active_hosts=None):
         # round2: {hostname: (url, marker_bytes)} — the per-faculty verification targets.
+        # active_hosts: the subset that actually rides the pool (all by default). Hosts in
+        # EGRESS_DIRECT_FACULTY are filtered out by the server, so a volunteer deployment
+        # never fetches proxy lists or probes anybody.
         self.path = Path(path)
         self.round2 = dict(round2)
+        self.active_hosts = [h for h in self.round2 if active_hosts is None or h in active_hosts]
         self.max_probe = max_probe
         self.probe_timeout = probe_timeout
         self.max_age = max_age
         self.min_alive = min_alive
         self.min_verified = min_verified
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+        self._save_lock = threading.Lock()
         self.entries = {}  # url -> {status, latency_ms, fails, last_checked, source, hosts: {h: {...}}}
         self.last_refresh = None
         self.last_error = None
+        self.retry_after = 0.0
         self._last_save = 0
         self.heal_event = threading.Event()
         self.force_refresh = False
         self._refresh_lock = threading.Lock()
         self._fail_times = deque()
         self._breaker_until = 0.0
+        self._host_fails = {}  # host -> deque of live-failure monotonic stamps
+        self._host_open = {}   # host -> monotonic until which it is not offered
         self._rotor = {}  # host -> rotation cursor over the verified tier (see pick_many)
         self.load()
+
+    @property
+    def enabled(self):
+        return bool(self.active_hosts)
 
     # -- persistence -----------------------------------------------------
     def load(self):
@@ -196,17 +225,59 @@ class ProxyPool:
             data = json.loads(self.path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             return
-        if isinstance(data, dict) and data.get('version') == POOL_VERSION:
-            self.entries = data.get('entries', {})
-            self.last_refresh = data.get('last_refresh')
+        if not isinstance(data, dict) or data.get('version') != POOL_VERSION:
+            return
+        entries = data.get('entries')
+        if not isinstance(entries, dict):
+            return
+        clean = {}
+        for url, entry in entries.items():
+            if not isinstance(url, str) or not isinstance(entry, dict):
+                continue  # a corrupted line must never crash pick()
+            hosts = entry.get('hosts')
+            if not isinstance(hosts, dict):
+                hosts = {}
+            # Old/hand-edited pool files may carry strings where numbers belong; sorting a
+            # mixed list or subtracting a string raises inside pick()/stats(), so coerce
+            # or drop every field the selection path reads.
+            hosts = {h: hv for h, hv in hosts.items()
+                     if isinstance(h, str) and isinstance(hv, dict)}
+            entry = dict(entry, hosts=hosts)
+            for field in ('latency_ms', 'last_checked'):
+                if field in entry and not isinstance(entry[field], (int, float)):
+                    entry.pop(field, None)
+            if not isinstance(entry.get('fails'), int):
+                entry['fails'] = 0
+            # Monotonic stamps are only comparable within one boot: after a reboot an old one sits
+            # ahead of the clock and would hold its entry in cooldown for the old uptime. Drop them;
+            # the wall-clock `checked` carries the cooldown across restarts.
+            entry.pop('last_checked_mono', None)
+            for hv in hosts.values():
+                hv.pop('checked_mono', None)
+                for field in ('ms', 'checked'):
+                    if field in hv and not isinstance(hv[field], (int, float)):
+                        hv.pop(field, None)
+                if not isinstance(hv.get('ok'), bool):
+                    hv['ok'] = False
+            clean[url] = entry
+        self.entries = clean
+        self.last_refresh = data.get('last_refresh')
+        if not isinstance(self.last_refresh, (int, float)):
+            self.last_refresh = None
 
     def save(self):
+        with self._save_lock:
+            self._write_payload()
+
+    def _write_payload(self):
+        """Serialize a consistent snapshot; callers hold `_save_lock`."""
         try:
+            with self.lock:
+                payload = json.dumps({'version': POOL_VERSION, 'entries': self.entries,
+                                      'last_refresh': self.last_refresh,
+                                      'saved': time.time()}, indent=1, sort_keys=True)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_suffix('.tmp')
-            payload = json.dumps({'version': POOL_VERSION, 'entries': self.entries,
-                                  'last_refresh': self.last_refresh,
-                                  'saved': time.time()}, indent=1, sort_keys=True)
             with open(tmp, 'w', encoding='utf-8') as f:
                 f.write(payload)
                 f.flush()
@@ -219,13 +290,19 @@ class ProxyPool:
             pass
 
     def _save_throttled(self, force=False):
-        if force or time.time() - self._last_save > 30:
-            self._last_save = time.time()
-            self.save()
+        with self._save_lock:
+            now = time.time()
+            if not force and now - self._last_save <= 30:
+                return
+            self._last_save = now
+            self._write_payload()
 
     # -- circuit breaker -------------------------------------------------
-    def _tripped(self):
-        return time.monotonic() < self._breaker_until
+    def _tripped(self, host=None):
+        now = time.monotonic()
+        if now < self._breaker_until:
+            return True
+        return bool(host) and now < self._host_open.get(host, 0.0)
 
     # -- selection (the maps_pick_proxy() equivalent, per host) ------------
     def verified(self, host):
@@ -237,13 +314,14 @@ class ProxyPool:
                  if e.get('hosts', {}).get(host, {}).get('ok')),
                 key=lambda c: c['via_ms'] if c['via_ms'] is not None else 10 ** 9)
 
-    def _candidate_key(self, e, ms, now):
+    def _candidate_key(self, e, ms, now, fails=None):
         base = ms if ms is not None else 10 ** 9
         # Stale aliveness is worthless with free proxies (entries die or change hands hourly):
         # an entry unchecked for 3 h sinks below a fresh slow one. Missing timestamps count
         # as fresh (legacy entries).
         age = max(0.0, now - e.get('last_checked', now))
-        return base + e.get('fails', 0) * 30000 + min(300000.0, age * 100.0)
+        fails = e.get('fails', 0) if fails is None else fails
+        return base + fails * 30000 + min(300000.0, age * 100.0)
 
     def _pick_ranked(self, host):
         """[(key, url)] of eligible candidates for host, sorted best-first."""
@@ -261,7 +339,9 @@ class ProxyPool:
                     continue  # fallback to wall when mono missing
                 hv = None  # cooldown over: treat as untried again
             if hv is not None and hv.get('ok'):
-                key = (0, self._candidate_key(e, hv.get('ms'), now_wall))
+                # Verified for this host: its own verdict ranks it. The entry-wide fail count
+                # also holds misses at other faculties, which say nothing about this one.
+                key = (0, self._candidate_key(e, hv.get('ms'), now_wall, fails=0))
             elif e.get('status') == 'ok':
                 key = (1, self._candidate_key(e, e.get('latency_ms'), now_wall))
             else:
@@ -275,8 +355,8 @@ class ProxyPool:
         offered optimistically (the server verifies on use); host-failed ones sit out
         their cooldown. None when nobody qualifies — the caller falls back to direct."""
         with self.lock:
-            if self._tripped():
-                return None
+            if not self.enabled or self._tripped(host):
+                return None  # disabled: a stale pool.json must never hand out an exit
             ranked = self._pick_ranked(host)
             return ranked[0][1] if ranked else None
 
@@ -289,7 +369,7 @@ class ProxyPool:
         and the exits' reputations survive; unverified globally-alive proxies stay the tail.
         """
         with self.lock:
-            if self._tripped():
+            if not self.enabled or self._tripped(host):
                 return []
             ranked = self._pick_ranked(host)
             verified = [url for key, url in ranked if key[0] == 0]
@@ -303,52 +383,74 @@ class ProxyPool:
     def mark(self, url, host, ok, latency_ms=None, live=False):
         """Record one use through `url` for `host` (the osm_proxy_mark() equivalent).
 
-        Only LIVE traffic (live=True, from the proxy server) feeds the circuit breaker:
+        Only LIVE traffic (live=True, from the proxy server) feeds the circuit breakers:
         background probes fail constantly on walled hosts and must never trip the
-        request path.
+        request path. Failures are tracked globally and per host; a success resets the
+        entry's failure count so an old bad spell cannot sink it forever.
+
+        Per-host verdicts, breakers and heal-kicks are kept only for the faculty hosts the
+        pool knows (round2): any other *.wat.edu.pl name comes from untrusted job code, and
+        inventing names must neither grow the maps without bound nor trip the breaker that
+        guards the real crawl. Such a use still counts on the entry's own fail tally.
         """
         now_wall = time.time()
         now_mono = time.monotonic()
+        save_now = False
+        managed = host in self.round2
         with self.lock:
             e = self.entries.setdefault(url, {'fails': 0, 'hosts': {}})
             e['last_checked'] = now_wall
             e['last_checked_mono'] = now_mono
-            hv = e.setdefault('hosts', {}).setdefault(host, {})
+            hosts = e.setdefault('hosts', {})
+            hv = hosts.setdefault(host, {}) if managed else {}
             before = hv.get('ok')
             hv['checked'] = now_wall
             hv['checked_mono'] = now_mono
             if ok:
                 hv.update(ok=True, ms=latency_ms)
-                if e.get('status') != 'ok':
-                    e.update(status='ok', fails=0)
+                e['status'] = 'ok'
+                e['fails'] = 0  # decay completely: a recovered exit starts clean
                 if latency_ms is not None:
                     e['latency_ms'] = _ewma(e.get('latency_ms'), latency_ms)
-                if live:
+                if live and managed:
                     self._fail_times.clear()
                     self._breaker_until = 0.0
+                    self._host_fails.pop(host, None)
+                    self._host_open.pop(host, None)
             else:
                 hv['ok'] = False
                 e['fails'] = e.get('fails', 0) + 1
-                if live:
+                if live and managed:
                     self._fail_times.append(now_mono)
                     while self._fail_times and now_mono - self._fail_times[0] > BREAKER_WINDOW_S:
                         self._fail_times.popleft()
                     if len(self._fail_times) >= BREAKER_N:
                         self._breaker_until = now_mono + BREAKER_HOLD_S
-            # heal-kick: thin host coverage wakes the maintainer promptly.
-            try:
-                cnt = sum(1 for _e in self.entries.values()
-                          if _e.get('hosts', {}).get(host, {}).get('ok'))
-                if cnt < self.min_verified:
-                    self.heal_event.set()
-            except Exception:
-                pass
-            self._save_throttled(force=hv.get('ok') != before)
+                    fails = self._host_fails.setdefault(host, deque())
+                    fails.append(now_mono)
+                    while fails and now_mono - fails[0] > HOST_BREAKER_WINDOW_S:
+                        fails.popleft()
+                    if len(fails) >= HOST_BREAKER_N:
+                        self._host_open[host] = now_mono + HOST_BREAKER_HOLD_S
+                        fails.clear()
+            # heal-kick: thin coverage of a host the pool maintains wakes the maintainer promptly
+            # (needs_refresh still spaces coverage-driven refreshes by HEAL_MIN_GAP_S).
+            if host in self.active_hosts:
+                try:
+                    cnt = sum(1 for _e in self.entries.values()
+                              if _e.get('hosts', {}).get(host, {}).get('ok'))
+                    if cnt < self.min_verified:
+                        self.heal_event.set()
+                except Exception:
+                    pass
+            save_now = managed and hv.get('ok') != before
+        self._save_throttled(force=save_now)
 
     def mark_alive(self, url, ok, latency_ms=None):
         """Record a Round 1 (neutral) probe result."""
         now_wall = time.time()
         now_mono = time.monotonic()
+        save_now = False
         with self.lock:
             e = self.entries.setdefault(url, {'fails': 0, 'hosts': {}})
             before = e.get('status')
@@ -363,13 +465,14 @@ class ProxyPool:
                 # A failed re-probe revokes aliveness outright: a dead entry must never be
                 # offered optimistically to a new host (host-verified picks are unaffected).
                 e['status'] = 'fail'
-            self._save_throttled(force=e.get('status') != before)
+            save_now = e.get('status') != before
+        self._save_throttled(force=save_now)
 
     # -- coverage / healing -------------------------------------------------
     def coverage(self):
         """{host: verified-count} + alive total — what the GUI and the healer look at."""
         with self.lock:
-            cov = {h: 0 for h in self.round2}
+            cov = {h: 0 for h in self.active_hosts}
             alive = 0
             for e in self.entries.values():
                 if e.get('status') == 'ok':
@@ -381,6 +484,7 @@ class ProxyPool:
 
     def stats(self):
         cov, alive = self.coverage()
+        now = time.monotonic()
         with self.lock:
             by_status = {}
             for e in self.entries.values():
@@ -393,15 +497,25 @@ class ProxyPool:
                 p95 = lats[min(len(lats) - 1, int(len(lats) * 0.95))]
             else:
                 p50, p95 = None, None
-            tripped = time.monotonic() < self._breaker_until
+            tripped = now < self._breaker_until
+            hosts_tripped = sum(1 for until in self._host_open.values() if until > now)
             return {'total': len(self.entries), 'by_status': by_status, 'alive': alive,
                     'verified': cov, 'median_ok_ms': med, 'p50_ok_ms': p50, 'p95_ok_ms': p95,
-                    'tripped': tripped,
+                    'tripped': tripped, 'hosts_tripped': hosts_tripped,
                     'last_refresh': self.last_refresh, 'last_error': self.last_error}
 
     def needs_refresh(self):
-        if not self.last_refresh or time.time() - self.last_refresh > self.max_age:
+        if not self.enabled:
+            return False  # every host is direct: there is no pool to maintain
+        now = time.time()
+        if self.retry_after > now:
+            return False  # a failed list fetch gets a short pause, not a full max_age freeze
+        if not self.last_refresh or now - self.last_refresh > self.max_age:
             return True
+        if now - self.last_refresh < HEAL_MIN_GAP_S:
+            # Just refreshed: thin coverage (a WAF-walled host stays thin) must not chain one
+            # full list fetch + probe round straight into the next. POST /api/refresh still can.
+            return False
         cov, alive = self.coverage()
         return alive < self.min_alive or any(n < self.min_verified for n in cov.values())
 
@@ -431,31 +545,49 @@ class ProxyPool:
                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) PlanWAT-healthcheck'})
         return r, int((time.monotonic() - start) * 1000)
 
+    @staticmethod
+    def _is_block_page(content):
+        low = (content or b'')[:32768].lower()
+        return any(marker in low for marker in BLOCK_MARKERS)
+
     def probe_alive(self, url):
         """Round 1: neutral page, 200 = the proxy works. Returns ms or None."""
         try:
             r, ms = self.fetch_via(url, ROUND1_URL, self.probe_timeout)
             if ms is not None and ms > LATENCY_CUTOFF_MS:
                 return None
-            return ms if r.status_code == 200 and len(r.content) > 1000 else None
+            body = r.content or b''
+            if r.status_code != 200 or len(body) < 1000:
+                return None
+            # A captive/error page served as 200 is alive but useless for chaining.
+            return ms if body.startswith(ROUND1_MAGIC) and not self._is_block_page(body) else None
         except Exception:
             return None
 
     def probe_host(self, url, host):
-        """Round 2: the faculty's own index through the proxy. Returns ms or None."""
+        """Round 2: the faculty's own index through the proxy. Returns ms or None.
+
+        A 200 + byte count is not enough: WAF block pages are large 200s. Every target
+        now carries a positive marker, and known block-page markers veto the probe.
+        """
         target, marker = self.round2[host]
         try:
             r, ms = self.fetch_via(url, target, self.probe_timeout)
-            if r.status_code != 200 or len(r.content) < 500:
+            body = r.content or b''
+            if r.status_code != 200 or len(body) < 500 or self._is_block_page(body):
                 return None
-            return ms if marker is None or marker in r.content[:400] else None
+            if marker is not None and marker.lower() not in body[:262144].lower():
+                return None
+            return ms
         except Exception:
             return None
 
-    def refresh(self, fetcher=None, workers=20, round2_cap=40):
+    def refresh(self, fetcher=None, workers=32, round2_cap=56):
         """Fetch the lists, Round-1 the new candidates, Round-2 the survivors at
         under-covered hosts. Dead entries are replaced by fresh ones (prune first)."""
         import random
+        if not self.enabled:
+            return 0, 0, 0  # every faculty host is direct: nothing to discover or probe
         start_mono = time.monotonic()
         self.prune()
 
@@ -501,6 +633,13 @@ class ProxyPool:
                 if over > 0:
                     # drop oldest fresh tail (fresh already shuffled later; trim head room here)
                     fresh = fresh[:len(fresh) - over]
+        if not any(fetched.values()):
+            # Every list source failed (or returned nothing). Do not stamp last_refresh:
+            # that would freeze the maintainer for max_age with a dead pool. Retry soon.
+            self.last_error = self.last_error or 'all proxy list sources returned nothing'
+            self.retry_after = time.time() + RETRY_AFTER_S
+            cov, alive_n = self.coverage()
+            return alive_n, 0, 0
         random.shuffle(fresh)
         fresh = fresh[:self.max_probe]
         alive = []
@@ -520,6 +659,7 @@ class ProxyPool:
                     alive.append(url)
         if time.monotonic() - start_mono > REFRESH_DEADLINE_S:
             self.last_refresh = time.time()
+            self.retry_after = 0.0
             cov, alive_n = self.coverage()
             self.last_error = None if alive_n else (self.last_error or 'no candidate passed Round 1')
             self.save()
@@ -539,7 +679,7 @@ class ProxyPool:
                 if time.monotonic() - start_mono > REFRESH_DEADLINE_S:
                     break
                 deficit = self.min_verified - cov.get(host, 0)
-                cap = min(round2_cap, max(10, deficit * 10))
+                cap = min(round2_cap, max(MIN_ROUND2_CAP, deficit * 10))
                 random.shuffle(alive)
                 cands = []
                 seen_jobs = set()
@@ -568,6 +708,7 @@ class ProxyPool:
                     if url:
                         verified += 1
         self.last_refresh = time.time()
+        self.retry_after = 0.0
         cov, alive_n = self.coverage()
         self.last_error = None if alive_n else (self.last_error or 'no candidate passed Round 1')
         self.save()

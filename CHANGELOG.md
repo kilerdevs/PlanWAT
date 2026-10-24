@@ -15,6 +15,100 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+### Dodano
+- **Crawlery wolontariuszy** ([docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md)):
+  - **Kto i jak:** zaproszone osoby z rejestru na gałęzi `volunteers` mogą odświeżać plany ze swojego łącza, obrazem Docker
+    (`ghcr.io/kilerdevs/planwat-crawler` z poświadczeniem pochodzenia) albo runnerem na własnym forku.
+  - **Przydział:** każdy sprawdza tylko swoją część grup. Przydział zmienia się co 2 godziny, a strona wydziału dostaje
+    najwyżej dwa zapytania na grupę na okno.
+  - **Kiedy wynik trafia na stronę:** koordynator `collect.yml` przyjmuje plan od osoby zaufanej albo dopiero wtedy, gdy
+    zgodzi się dwóch wolontariuszy. Każdy kalendarz przechodzi pełną walidację serwisu.
+  - **Rozliczalność:** przy każdym przyjętym wyniku widać login, kto go dostarczył, i da się go cofnąć jednym poleceniem.
+  - **Panel uprawnień** (`python3 tools/volunteer/manage.py`): lokalna strona, na której opiekun dodaje i usuwa
+    wolontariuszy, przełącza Zaufany / Równorzędny / Wstrzymany i wydziały, widzi ich stan u koordynatora (czy działają,
+    wersja, odmowy, blokady, wygasające tokeny) i pokrycie wydziałów, i zapisuje
+    zmianę jednym podpisanym commitem. Działa po najwyżej 30 minutach, bez wydania. Koordynator przyjmuje rejestr tylko z
+    commita zweryfikowanego jako podpisany przez opiekuna.
+  - **Instalacja jednym poleceniem** na Linuksie (Debian, Ubuntu, Raspberry Pi OS, Fedora, RHEL, Arch, openSUSE, WSL2),
+    macOS i Windows: instalator doinstalowuje Dockera i GitHub CLI, prowadzi przez fork i token (wypełnione linki),
+    sprawdza pochodzenie obrazów, zanim cokolwiek w nich uruchomi, sprawdza, które wydziały odpowiadają z łącza, daje
+    wypełnione zgłoszenie i startuje crawler. Potem polecenie `planwat-crawler` (`status`, `logs`, `doctor`, `setup`,
+    `update`, `uninstall`…).
+  - **Codzienne, zweryfikowane aktualizacje** z wycofaniem, gdy nowa wersja nie wstaje; można z nich zrezygnować
+    (`planwat-crawler autoupdate off`).
+  - **Crawler sam o siebie dba:** poprawia rozjechany zegar, nie crawluje, gdy paczka i tak zostałaby odrzucona (brak
+    w rejestrze, odsunięcie, stara wersja), dociąga dane przyrostowo, pamięta tempo i blokady swojego łącza, robi jeden
+    przebieg na okno przydziału i mówi w `status` / `doctor`, co koordynator powiedział o jego ostatniej paczce.
+  - **Mądrzejszy przydział:** grupy wolontariusza, który przestał wysyłać paczki albo którego łącze blokuje wydział,
+    same przechodzą do innych.
+  - **Obrazy dla amd64 i arm64** (Raspberry Pi).
+  - **Ochrona przed błędami:** wolontariusz, którego wyniki stale nie zgadzają się z innymi, jest automatycznie
+    odsuwany, ale tylko za niezgodność z planem, który wszyscy już widzieli; głosy starsze niż ostatnie zaufane
+    sprawdzenie grupy nigdy nie nadpisują nowszego planu.
+- „Sprawdzono” na stronie grupy uwzględnia także sprawdzenia wolontariuszy, a domowy runner pomija grupy, które
+  wolontariusze właśnie potwierdzili.
+
+### Zmieniono
+- **Plan na pierwszym ekranie komputera:** na szerokim ekranie (od 1080 px) nagłówek strony grupy jest niższy, a
+  tydzień zaczyna się ok. 340 px od góry zamiast 565 px. Narzędzia (Plan, Eksport, Analiza) wysuwają się z boku po
+  kliknięciu „Narzędzia” obok przełącznika widoku. Zamyka je Esc, kliknięcie obok albo ×. Telefony i tablety bez zmian.
+- **Proxy wyjściowe (egress) szybsze i odporniejsze:** pula odświeża się co 4 h, sprawdza równolegle do 240 kandydatów,
+  odrzuca strony blokad udające indeks wydziału i nie zamraża się na 4 h po nieudanym pobraniu list (ponowna próba po 5 min).
+  Awaria jednego wydziału nie wyłącza pozostałych, a hosty celowo kierowane bezpośrednio nie obciążają puli. Wolontariusz,
+  który ma wszystkie wydziały na liście bezpośredniej, nie pobiera list i nie sonduje nikogo.
+- **Bezpieczniejsze API egressu:** token przyjmowany jako `X-Token` albo `Authorization: Bearer` i sprawdzany przed odczytem
+  ciała (z limitem 256 KiB), nagłówki bezpieczeństwa i CSP na panelu oraz twarde limity połączeń. Produkcyjnie
+  `planzajec.wcy.wat.edu.pl` nie spada już na linię domową, gdy pula nie ma dla niego wyjścia (`EGRESS_FAIL_CLOSED`).
+- **Szkielety w trakcie wczytywania:** gdy dane jeszcze się wczytują, strona pokazuje zarys tego, co się pojawi, zamiast
+  pustego miejsca lub napisu „Wczytywanie…”. Dotyczy to karty „Teraz w Twoich grupach” na stronie głównej, wolnych sal,
+  porównania grup, „Gdzie odrobić”, mapy planów oraz listy zajęć dnia na mapie kampusu. Szkielet tygodnia na
+  szerokim ekranie zajmuje wszystkie kolumny dni. Szkielet od razu zajmuje miejsce, więc układ nie skacze. Pojawia się
+  dopiero po 200 ms, więc plan z pamięci podręcznej lub szybkiego łącza nie mignie. Wszystko to czyste CSS, bez dodatkowych
+  zapytań i timerów.
+
+### Naprawiono
+- **Egress: błędy, które psuły tunele i panel:** SOCKS5 z adresem domenowym w odpowiedzi zjadał pierwszy znak nazwy i wisiał
+  do timeoutu, a nieznany typ adresu albo odmowa HTTP CONNECT kończą się teraz czystym błędem. Sonda Blackboxa mierzyła sam
+  eksporter zamiast GUI, a alert „host utknął w DIRECT” obejmował hosty celowo kierowane bezpośrednio. Raport rozpoczęty bez
+  zakończenia znika z panelu po 12 h, a `%BANNER%` w danych przebiegu nie psuje już osadzonego JSON-a.
+- **Nazwiska prowadzących w kalendarzach:** serwis sprawdzał nazwiska tylko w kilku polach wydarzenia, więc nazwisko
+  doklejone do nazwy przedmiotu (WTC: „Podstawy toksykologii plk dr …”) trafiało do publikowanego kalendarza. Teraz
+  kalendarz z tytułem przed nazwiskiem w dowolnym polu, z `ORGANIZER`/`ATTENDEE` albo z obcym opisem jest odrzucany,
+  `scrub_staff.py` takie fragmenty wycina, a parser legendy WTC nie dokleja już prowadzącego do przedmiotu.
+- **Crawlery wolontariuszy i koordynator** (audyt):
+  - **Głosy i stan:** głosy odsuniętego wolontariusza nie liczą się już do kworum, odsunięcia nie omija zmiana wielkości
+    liter w loginie, czas głosu nie może wyjść poza jego paczkę, a uszkodzony `volunteer-state.json` zatrzymuje
+    koordynatora zamiast zostać po cichu nadpisany. Przebieg próbny nie zakłada już publicznych zgłoszeń.
+  - **Odporność koordynatora:** zepsuty manifest odrzuca jedną paczkę zamiast całego przebiegu, przebieg ma budżet
+    pobierania (rozmiar, czas, liczba pobrań na fork), awaria sieci nie wygląda jak „brak gałęzi crawl”, a `revert`
+    działa na płytkim klonie gałęzi `data`.
+  - **Rejestr:** koordynator i crawler pamiętają ostatnio użyty commit rejestru i odrzucają starszą podpisaną wersję,
+    a crawler wypychający do innego forka niż ten z rejestru nie crawluje na próżno.
+  - **Crawler:** paczka, która nie dotarła do forka, kończy przebieg jako nieudany (z powodem w `status` i `doctor`),
+    wypychanie i kroki przebiegu mają limity czasu, a restart w trakcie okna wznawia przebieg bez ponownego pytania
+    wydziałów o już sprawdzone grupy.
+  - **Panel, doctor i instalatory:** świeży rejestr nie wymaga już nieistniejącej wersji crawlera, `uninstall` bez
+    odpowiedzi nic nie usuwa, nieudana aktualizacja zawsze się wycofuje, `doctor` wykrywa zatrzymany crawler, zły fork
+    i niedostępną gałąź `data`, a panel zgłasza błędy pobierania, uszkodzony rejestr i niezweryfikowany podpis.
+  - **CI:** instalator jest w CI aktualizowany, wycofywany i instalowany ze zweryfikowanych obrazów, a `:latest`
+    przesuwa tylko wydanie `vX.Y.Z`.
+- **Egress wolontariusza i panel produkcyjny:** prawdziwy tryb bez puli (`EGRESS_POOL=off`), `EGRESS_FAIL_CLOSED`
+  zawsze wygrywa z listą bezpośrednią, wymyślone hosty `*.wat.edu.pl` nie psują już stanu puli ani bezpiecznika, a
+  wyczerpane 429/5xx są zgłaszane i ponawiane jak blokada. Panel produkcyjny słucha domyślnie tylko na `127.0.0.1`, a
+  z ustawionym tokenem pełny `/api/status` i panel wymagają tokenu (sonda zdrowia dalej dostaje krótkie `ok`).
+- **Ruch na mapie kampusu:** krzywa `--ease-out` na stronie mapy wskazywała sama na siebie, więc przeglądarka ją
+  odrzucała. Przez to nie działały wejście nagłówka, wyszukiwarki i panelu ani płynne zwijanie panelu. Teraz ma tę samą
+  wartość co na pozostałych stronach.
+
+## [1.1.1] - 2026-10-22
+
+### Zmieniono
+- **Rodzaj zajęć w tytule wydarzenia** (pomysł z [#34](https://github.com/kilerdevs/PlanWAT/pull/34)): w subskrybowanych
+  i pobieranych kalendarzach (`plan.ics`, `plan-przypomnienia.ics`, plik z „Kalendarza” i z „Moich przedmiotów”) tytuł to
+  „Matematyka I (Wykład)” zamiast „Matematyka I”, więc Google Calendar i iPhone pokazują rodzaj od razu. Dopisek powstaje przy
+  budowie z `CATEGORIES`, a pliki w `timetables/` się nie zmieniają. Strona zdejmuje go przy czytaniu, więc kolory, „Moje
+  przedmioty”, statystyki i liczniki nadal grupują po przedmiocie. Subskrypcje dostaną nowe tytuły przy najbliższej synchronizacji.
+
 ## [1.1.0] - 2026-10-22
 
 ### Dodano
@@ -209,11 +303,6 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   - na stronie głównej wydziały zwijają się płynnie, a wyszukiwarka grup także się chowa z animacją.
 
   Przyciski reagują na dotyk, a ruch ustępuje całkowicie przy „ogranicz ruch” w systemie.
-- **Rodzaj zajęć w tytule wydarzenia** (pomysł z [#34](https://github.com/kilerdevs/PlanWAT/pull/34)): w subskrybowanych
-  i pobieranych kalendarzach (`plan.ics`, `plan-przypomnienia.ics`, plik z „Kalendarza” i z „Moich przedmiotów”) tytuł to
-  „Matematyka I (Wykład)” zamiast „Matematyka I”, więc Google Calendar i iPhone pokazują rodzaj od razu. Dopisek powstaje przy
-  budowie z `CATEGORIES`, a pliki w `timetables/` się nie zmieniają. Strona zdejmuje go przy czytaniu, więc kolory, „Moje
-  przedmioty”, statystyki i liczniki nadal grupują po przedmiocie. Subskrypcje dostaną nowe tytuły przy najbliższej synchronizacji.
 
 ### Naprawiono
 - **Kontrast w jasnym motywie:** daty minionych dni, opis dnia w kolumnie „Dziś” i plakietka „Dziś” miały kontrast 4,0–4,4:1,
@@ -297,6 +386,7 @@ Pierwsze publiczne wydanie.
 - CI: testy czytnika kalendarza z progami pokrycia, testy budowy, testy przeglądarkowe Playwright (Chromium, Firefox, WebKit;
   pulpit i telefon) ze skanem WCAG axe, skan obrazu Docker (Grype) i test dymny, CodeQL oraz Dependabot.
 
-[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/kilerdevs/PlanWAT/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/kilerdevs/PlanWAT/releases/tag/v1.0.0

@@ -1,0 +1,56 @@
+name: Volunteer crawler
+description: Offer to run a crawler that keeps the timetables up to date (Zgłoszenie wolontariusza)
+title: "[Volunteer]: "
+labels: ["volunteer"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping! Read [docs/WOLONTARIUSZE.md](https://github.com/kilerdevs/PlanWAT/blob/HEAD/docs/WOLONTARIUSZE.md)
+        first. The installer (`install.sh` / `install.ps1`) fills this form in for you. The maintainer adds you to the
+        registry (the `volunteers` branch) and sets your trust level; your crawler, already running and waiting,
+        gets its first assignments within half an hour after that.
+
+  - type: input
+    id: fork
+    attributes:
+      label: Your fork
+      description: The repository your crawler pushes its `crawl` branch to. It must belong to your account.
+      placeholder: your-login/PlanWAT
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How will you run it?
+      options:
+        - Docker (compose.volunteer.yml)
+        - Self-hosted runner on my fork (volunteer.yml)
+    validations:
+      required: true
+
+  - type: input
+    id: faculties
+    attributes:
+      label: Faculties
+      description: Leave empty for all. Name only the ones your connection can reach, e.g. "wcy".
+      placeholder: wcy, wel
+
+  - type: textarea
+    id: where
+    attributes:
+      label: Where does it run?
+      description: Roughly (home line, university network, a VPS…) and how many hours a day it is on. No addresses.
+
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Ground rules
+      options:
+        - label: I will run the published image or the project's workflow unmodified, and keep it updated.
+          required: true
+        - label: I will not lower the pacing or crawl groups outside my assignment.
+          required: true
+        - label: I understand my bundles are public in my fork and attributed to my login.
+          required: true

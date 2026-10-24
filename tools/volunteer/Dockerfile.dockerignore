@@ -1,0 +1,10 @@
+# The crawler image's own build context (BuildKit reads <Dockerfile>.dockerignore before the root .dockerignore,
+# which is the site image's). Only what tools/volunteer/Dockerfile copies.
+*
+!package.json
+!build.py
+!profiles.py
+!tools/refresh/
+!tools/volunteer/
+**/__pycache__
+**/*.pyc

@@ -1,0 +1,263 @@
+name: Volunteer installer
+
+# The one-command installers of the volunteer crawler (tools/volunteer/install.sh for Linux and macOS,
+# install.ps1 for Windows; docs/WOLONTARIUSZE.md). Everything here runs on GitHub's runners: linting, the
+# detect-and-plan mode on every supported system family, one full install on Ubuntu with images built from
+# this commit (provenance cannot be verified for those, so that run uses --no-verify) that is then updated, and
+# rolled back from a crawler that keeps crashing and from an update compose cannot start, and one install of the
+# published, attested dev images with the real verification and digest pinning. Not covered: a full install on
+# macOS (Colima needs nested virtualisation the runners lack) and on Windows (no Linux containers there).
+on:
+  push:
+    branches: [dev]
+    paths:
+      - tools/volunteer/**
+      - .github/workflows/installer.yml
+  pull_request:
+    paths:
+      - tools/volunteer/**
+      - tools/refresh/**
+      - tools/egress/**
+      - .github/workflows/installer.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: shellcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: shellcheck --shell=sh tools/volunteer/install.sh tools/volunteer/entrypoint.sh
+
+  plan:
+    name: plan on ${{ matrix.image || matrix.os }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.image }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, image: 'debian:12', family: debian }
+          - { os: ubuntu-24.04, image: 'ubuntu:24.04', family: ubuntu }
+          - { os: ubuntu-24.04, image: 'fedora:41', family: fedora }
+          - { os: ubuntu-24.04, image: 'rockylinux:9', family: rhel }
+          - { os: ubuntu-24.04, image: 'archlinux:latest', family: arch }
+          - { os: ubuntu-24.04, image: 'opensuse/tumbleweed:latest', family: suse }
+          - { os: ubuntu-24.04-arm, image: 'debian:12', family: debian }
+          - { os: macos-14, family: macos }
+    steps:
+      - name: Tools the script itself relies on (awk is missing from some minimal images)
+        if: matrix.image
+        shell: sh
+        run: command -v awk >/dev/null 2>&1 || zypper -n in gawk || pacman -Sy --noconfirm gawk
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Detect and plan, change nothing
+        shell: sh
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: |
+          set -eu
+          out=$(PLANWAT_HOME=/tmp/planwat PLANWAT_BIN=/tmp/planwat-bin sh tools/volunteer/install.sh --check)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q "($FAMILY" || { echo "::error::expected family $FAMILY"; exit 1; }
+          [ ! -e /tmp/planwat/.env ] || { echo '::error::--check wrote files'; exit 1; }
+          dev=$(PLANWAT_HOME=/tmp/planwat PLANWAT_BIN=/tmp/planwat-bin sh tools/volunteer/install.sh --check --channel dev)
+          printf '%s\n' "$dev" | grep -q 'kanał: dev' || { echo '::error::the dev channel was not picked'; exit 1; }
+
+  windows:
+    name: Windows script
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Parses in Windows PowerShell 5.1 and PowerShell 7
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/tools/volunteer/install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+          powershell.exe -NoProfile -Command "`$e=`$null; [System.Management.Automation.Language.Parser]::ParseFile('$PWD\tools\volunteer\install.ps1',[ref]`$null,[ref]`$e) | Out-Null; if (`$e) { `$e; exit 1 }"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          # The runner image usually ships it; the gallery download is flaky, so it is only a retried fallback.
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            foreach ($try in 1..4) {
+              try { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction Stop; break }
+              catch { if ($try -eq 4) { throw }; Start-Sleep -Seconds (15 * $try) }
+            }
+          }
+          # Write-Host is deliberate (terminal lines that must never become part of a function's result).
+          $found = Invoke-ScriptAnalyzer -Path tools/volunteer/install.ps1 -Severity Error,Warning `
+            -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions,PSUseSingularNouns
+          $found | Format-Table -AutoSize | Out-String | Write-Output
+          if ($found | Where-Object Severity -eq 'Error') { exit 1 }
+      - name: Detect and plan, change nothing
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/volunteer/install.ps1 -Check
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $dev = powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/volunteer/install.ps1 -Check -Channel dev | Out-String
+          # ASCII only: 5.1 reads this step as ANSI, so match the channel label without its diacritic.
+          if ($dev -notmatch 'kana[^:]*: dev') { Write-Output $dev; exit 1 }
+
+  install:
+    name: full install, update and rollback (Ubuntu, images from this commit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PLANWAT_HOME: /tmp/planwat
+      PLANWAT_BIN: /tmp/planwat-bin
+      PLANWAT_INSTALL_SOURCE: ${{ github.workspace }}
+      PLANWAT_CRAWLER_IMAGE: planwat-crawler:ci
+      PLANWAT_EGRESS_IMAGE: planwat-crawler-egress:ci
+      PLANWAT_LOGIN: planwat-ci-volunteer
+      # Stands in for a volunteer's fork token (read-only here): the crawler reads the registry with it. A fake
+      # token falls back to anonymous API calls, which share the runner IP's 60/h limit and fail with a 403.
+      PLANWAT_FORK_TOKEN: ${{ github.token }}
+      PLANWAT_SETUP_ARGS: --skip-github-checks --faculties= --auto-update off --non-interactive
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the images
+        run: |
+          docker build -f tools/volunteer/Dockerfile -t planwat-crawler:ci .
+          docker build -f tools/egress/Dockerfile.egress -t planwat-crawler-egress:ci tools/egress
+      - name: Install
+        run: sh tools/volunteer/install.sh --yes --no-verify --no-start --version 0.0.0
+      - name: What it left behind
+        run: |
+          set -eu
+          env_file="$PLANWAT_HOME/.env"
+          test "$(stat -c %a "$env_file")" = 600
+          grep -qx 'PLANWAT_LOGIN=planwat-ci-volunteer' "$env_file"
+          grep -qx 'PLANWAT_AUTO_UPDATE=0' "$env_file"
+          grep -qx 'PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci' "$env_file"
+          test -x "$PLANWAT_BIN/planwat-crawler"
+          "$PLANWAT_BIN/planwat-crawler" version
+          "$PLANWAT_BIN/planwat-crawler" doctor --offline || true
+      - name: Start, report, schedule, stop
+        run: |
+          set -eu
+          cmd="$PLANWAT_BIN/planwat-crawler"
+          "$cmd" start
+          # Not in the registry (or no registry yet): the crawler must say so and wait instead of crawling or crashing.
+          waiting='wpis do rejestru|no volunteer registry yet'
+          for i in $(seq 1 30); do
+            if "$cmd" status 2>&1 | tee /tmp/status.txt | grep -Eq "$waiting"; then break; fi
+            sleep 5
+          done
+          cat /tmp/status.txt
+          grep -Eq "$waiting" /tmp/status.txt
+          docker compose --project-name planwat-crawler ps
+          "$cmd" autoupdate on
+          systemctl list-timers --all | grep -q planwat-crawler-update
+          "$cmd" autoupdate off
+          if systemctl list-timers --all | grep -q planwat-crawler-update; then
+            echo '::error::the update timer is still there'; exit 1
+          fi
+      - name: Update, and roll back what does not come up
+        env:
+          PLANWAT_UPDATE_SETTLE: '30'
+        run: |
+          set -eu
+          cmd="$PLANWAT_BIN/planwat-crawler"
+          env_file="$PLANWAT_HOME/.env"
+          docker tag planwat-crawler:ci planwat-crawler:ci-next
+          docker tag planwat-crawler-egress:ci planwat-crawler-egress:ci-next
+          # A crawler that exits at once, so Docker keeps restarting it.
+          printf 'FROM planwat-crawler:ci\nENTRYPOINT ["false"]\n' | docker build -q -t planwat-crawler:broken -
+          # 1. A working update: new pins, the previous ones kept for a rollback, the new version recorded.
+          PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci-next PLANWAT_EGRESS_IMAGE=planwat-crawler-egress:ci-next \
+            "$cmd" update --no-verify --version 0.0.1
+          grep -qx 'PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci-next' "$env_file"
+          grep -qx 'PLANWAT_PREVIOUS_CRAWLER_IMAGE=planwat-crawler:ci' "$env_file"
+          grep -qx 'PLANWAT_VERSION=0.0.1' "$env_file"
+          # 2. A crawler that crash-loops passes `compose up` but not the check after it: rolled back.
+          if PLANWAT_CRAWLER_IMAGE=planwat-crawler:broken PLANWAT_EGRESS_IMAGE=planwat-crawler-egress:ci-next \
+              "$cmd" update --no-verify --version 0.0.2; then
+            echo '::error::a crash-looping crawler was accepted'; exit 1
+          fi
+          grep -qx 'PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci-next' "$env_file"
+          grep -qx 'PLANWAT_VERSION=0.0.1' "$env_file"
+          # 3. An image that cannot even be pulled makes `compose up` itself fail: rolled back as well.
+          if PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci-next PLANWAT_EGRESS_IMAGE=planwat-crawler-egress:missing \
+              "$cmd" update --no-verify --version 0.0.3; then
+            echo '::error::an update compose could not start was accepted'; exit 1
+          fi
+          grep -qx 'PLANWAT_EGRESS_IMAGE=planwat-crawler-egress:ci-next' "$env_file"
+          grep -qx 'PLANWAT_VERSION=0.0.1' "$env_file"
+          # After each rollback the previous version runs again.
+          sleep 10
+          docker compose --project-name planwat-crawler ps
+          test "$(docker compose --project-name planwat-crawler ps --status running --services | sort | tr '\n' ' ')" = 'crawler egress '
+      - name: Crawler and egress logs
+        if: failure()
+        run: docker compose --project-name planwat-crawler logs --no-color --tail 200 || true
+      - name: Uninstall
+        run: |
+          set -eu
+          # No answer (EOF, a pipe) is never a yes to deleting everything.
+          if echo | "$PLANWAT_BIN/planwat-crawler" uninstall; then
+            echo '::error::uninstall went ahead without an explicit yes'; exit 1
+          fi
+          test -e "$PLANWAT_HOME/.env"
+          "$PLANWAT_BIN/planwat-crawler" uninstall --yes
+          test ! -e "$PLANWAT_HOME"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=planwat-crawler)"
+
+  verified:
+    name: verified install (Ubuntu, published dev images)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      attestations: read    # gh attestation verify reads the public attestations of the images
+    env:
+      PLANWAT_HOME: /tmp/planwat
+      PLANWAT_BIN: /tmp/planwat-bin
+      PLANWAT_INSTALL_SOURCE: ${{ github.workspace }}
+      PLANWAT_LOGIN: planwat-ci-volunteer
+      PLANWAT_SETUP_ARGS: --skip-github-checks --faculties= --auto-update off --non-interactive
+      PLANWAT_UPDATE_SETTLE: '30'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install without --no-verify
+        env:
+          # Stands in for a volunteer's fork token: the installer verifies the images with it.
+          PLANWAT_FORK_TOKEN: ${{ github.token }}
+        run: sh tools/volunteer/install.sh --yes --channel dev
+      - name: Pinned by digest after the provenance check
+        run: |
+          set -eu
+          env_file="$PLANWAT_HOME/.env"
+          grep -Eqx 'PLANWAT_CRAWLER_IMAGE=ghcr.io/kilerdevs/planwat-crawler@sha256:[0-9a-f]{64}' "$env_file"
+          grep -Eqx 'PLANWAT_EGRESS_IMAGE=ghcr.io/kilerdevs/planwat-crawler-egress@sha256:[0-9a-f]{64}' "$env_file"
+          grep -qx 'PLANWAT_CHANNEL=dev' "$env_file"
+      - name: Update (verified again), and a failing one changes nothing
+        run: |
+          set -eu
+          env_file="$PLANWAT_HOME/.env"
+          "$PLANWAT_BIN/planwat-crawler" update
+          before=$(grep '_IMAGE=' "$env_file")
+          # No such release: nothing to pull, so nothing may change.
+          if "$PLANWAT_BIN/planwat-crawler" update --channel stable --version 0.0.1; then
+            echo '::error::an update without images went through'; exit 1
+          fi
+          test "$(grep '_IMAGE=' "$env_file")" = "$before"
+          grep -qx 'PLANWAT_CHANNEL=dev' "$env_file"
+      - name: Crawler and egress logs
+        if: failure()
+        run: docker compose --project-name planwat-crawler logs --no-color --tail 200 || true
+      - name: Uninstall
+        run: |
+          "$PLANWAT_BIN/planwat-crawler" uninstall --yes

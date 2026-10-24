@@ -298,6 +298,10 @@ grupy i linkiem do oficjalnego planu.
 - Opublikowane kalendarze **nie zawierają danych kadry**: konwertery nie zapisują ani nazwisk, ani tytułów, a `build.py`
   odrzuca każdy kalendarz, który by je miał.
 
+- **Wolontariusze** mogą uruchamiać własne crawlery (instalacja jednym poleceniem na Linuksie, macOS i Windows, albo runner
+  na swoim forku). Ich wyniki trafiają na stronę dopiero po weryfikacji: od osoby zaufanej albo gdy zgodzi się dwóch
+  wolontariuszy. Jak dołączyć: [docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md).
+
 Szczegóły, w tym model zagrożeń dla samego runnera, opisuje [docs/REFRESH.md](docs/REFRESH.md).
 
 ---
@@ -339,6 +343,7 @@ Jak przenieść własną domenę na Pages i jak odtworzyć nagłówki, których 
 | [docs/ICS-FORMAT.md](docs/ICS-FORMAT.md) | Format kalendarza, który czyta PlanWAT |
 | [docs/REFRESH.md](docs/REFRESH.md) | Automatyczna aktualizacja planów i model zagrożeń runnera |
 | [docs/EGRESS.md](docs/EGRESS.md) | Proxy wyjściowe runnera |
+| [docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md) | Crawlery wolontariuszy: dołączanie, uruchomienie, zasady, model zaufania |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | GitHub Pages, Docker, domena i nagłówki |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Jak współtworzyć projekt |
 | [SECURITY.md](SECURITY.md) | Zgłaszanie podatności |

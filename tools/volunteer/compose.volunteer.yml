@@ -1,0 +1,93 @@
+# The volunteer crawler with a default-deny egress (docs/WOLONTARIUSZE.md).
+#
+# The installer (tools/volunteer/install.sh, install.ps1) sets this up and keeps it updated. By hand:
+#   cp tools/volunteer/compose.volunteer.yml compose.yml
+#   docker compose run --rm -v "$PWD:/config" crawler setup      (writes .env)
+#   docker compose up -d
+#
+# The images are referenced by digest once the installer (or `planwat-crawler update`) has verified their
+# provenance: PLANWAT_CRAWLER_IMAGE / PLANWAT_EGRESS_IMAGE in .env. Without them the latest release tag is used.
+#
+# The crawler sits on an internal network with no route out; its only exit is the egress proxy, which lets
+# GitHub (with its file storage), PyPI and the faculty sites through and answers everything else with 403
+# (tools/egress/server.py, DIRECT_SUFFIXES). Nothing listens on the host
+# except the egress status page, bound to localhost.
+services:
+  crawler:
+    image: ${PLANWAT_CRAWLER_IMAGE:-ghcr.io/kilerdevs/planwat-crawler:latest}
+    restart: unless-stopped
+    init: true   # a real PID 1: `docker compose stop` ends the crawl cleanly instead of after a 10 s kill
+    env_file:
+      - path: .env
+        required: false   # the setup wizard runs before .env exists
+    environment:
+      HTTP_PROXY: http://egress:8888
+      HTTPS_PROXY: http://egress:8888
+      http_proxy: http://egress:8888
+      https_proxy: http://egress:8888
+      NO_PROXY: egress,localhost,127.0.0.1
+      # The crawler reports block pages and live progress to the egress (its status page shows them).
+      PLANWAT_EGRESS_BLOCK: http://egress:8080/api/block
+      PLANWAT_EGRESS_PROGRESS: http://egress:8080/api/progress
+      PLANWAT_EGRESS_STATUS: http://egress:8080/api/run
+      PLANWAT_EGRESS_HEALTH: http://egress:8080/api/status
+      EGRESS_API_TOKEN: "${EGRESS_API_TOKEN:-}"
+    read_only: true
+    user: "10003:10003"
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 768m
+    pids_limit: 128
+    tmpfs:
+      - /tmp:size=256m,mode=1777,noexec,nosuid,nodev
+    volumes:
+      - work:/work
+    networks: [inner]
+    depends_on:
+      egress:
+        condition: service_healthy
+
+  egress:
+    image: ${PLANWAT_EGRESS_IMAGE:-ghcr.io/kilerdevs/planwat-crawler-egress:latest}
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/status', timeout=5)"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 256m
+    pids_limit: 256
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    environment:
+      EGRESS_DATA: /data
+      # Must match the crawler's EGRESS_API_TOKEN. Empty keeps the API open on the
+      # localhost-bound status port; set it in .env when the box is shared.
+      EGRESS_API_TOKEN: "${EGRESS_API_TOKEN:-}"
+      # Every faculty host goes out directly from your own line, including any faculty added later: the
+      # pool is switched off, so it fetches no proxy lists, probes nobody and never hands out an exit.
+      EGRESS_POOL: "off"
+      # The same, spelled out for egress images older than EGRESS_POOL. To send one host through the
+      # rotating public proxy pool instead (only worth it for a host that blocks your line), remove
+      # EGRESS_POOL and that host from this list.
+      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,planzajec.wcy.wat.edu.pl"
+    volumes:
+      - egress:/data
+    ports:
+      - "127.0.0.1:18080:8080"   # status page: http://localhost:18080/
+    networks: [inner, outside]
+
+networks:
+  inner:
+    internal: true   # no route out: the egress is the only way
+  outside: {}
+
+volumes:
+  work: {}
+  egress: {}
