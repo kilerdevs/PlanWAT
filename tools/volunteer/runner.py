@@ -17,11 +17,13 @@ A pass does only what can end in an accepted bundle, and says plainly why it sto
                a drifting host does not get its bundles refused as stale or from the future;
   2. registry  read only from a commit verified as signed by a registry editor (registry.py); not registered,
                suspended or an outdated crawler: no crawl, look again in a while;
-  3. data      the project's data branch, fetched incrementally into the same clone every pass;
+  3. data      the project's data branch, fetched incrementally into the same clone every pass (a pass cut off
+               mid-crawl by a restart resumes on its own clone, checkpoints included, in the same window);
   4. verdict   what the coordinator published about this volunteer's last bundle (volunteer-state.json);
                benched: no crawl until the maintainer restores it;
   5. crawl     refresh.py --assign, with this line's own learned pacing and block durations (--faculty-state);
-  6. bundle    bundle.py pushes the result (an empty bundle too: it says this crawler is alive).
+  6. bundle    bundle.py pushes the result (an empty bundle too: it says this crawler is alive); a bundle that
+               does not reach the fork ends the pass as failed, with the reason.
 Passes follow the two-hour assignment windows: one pass per window, starting 5-35 minutes after it opens, so
 the volunteers sharing a group crawl in the same window and nobody hits a faculty site twice for one window.
 """
@@ -55,6 +57,9 @@ HEARTBEAT = 10 * 60
 SKEW_FIX = 30            # seconds of clock error that get corrected
 SKEW_WARN = 120
 GC_EVERY = 10
+CRAWL_CAP = STALE - 10 * 60  # a crawl still running after this is stopped (it would turn the health check red)
+PUSH_CAP = 20 * 60           # and a bundle still pushing after this (three tries of bundle.PUSH_TIMEOUT, pauses)
+TIMED_OUT = 124              # the exit code a stopped child counts as
 JOIN = 'https://github.com/{upstream}/issues/new?template=volunteer.yml'
 
 _child = None
@@ -95,10 +100,14 @@ class Status:
 
     def set(self, **values):
         self.data.update(values, updated=core.now_utc().isoformat(), version=bundle.version())
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix('.tmp')
-        tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
-        tmp.replace(self.path)
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix('.tmp')
+            tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+            tmp.replace(self.path)
+        except OSError as err:
+            # A full or read-only /work must not end the loop: the status goes stale, and the health check says so.
+            log(f'cannot write {self.path}: {err}')
 
 
 # --- the steps of a pass --------------------------------------------------------------------------------------
@@ -138,10 +147,14 @@ def git(*args, cwd=None, timeout=600):
                           env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'}).stdout
 
 
-def sync_data(work, upstream, pass_no):
-    """The project's data branch in <work>/data, fetched incrementally (a fresh clone only the first time)."""
+def sync_data(work, upstream, pass_no, resume=False):
+    """The project's data branch in <work>/data, fetched incrementally (a fresh clone only the first time).
+    With `resume` the clone is kept as the cut-off pass left it: its checkpoint (refresh-state.json) and the data
+    its share was computed from, so the groups it already checked in this window are not asked for again."""
     data = Path(work) / 'data'
     url = f'https://github.com/{upstream}.git'
+    if resume and (data / '.git').is_dir():
+        return data
     if (data / '.git').is_dir():
         try:
             git('remote', 'set-url', 'origin', url, cwd=data)
@@ -204,14 +217,39 @@ def outcome_counts(path):
     return counts
 
 
-def run_child(cmd):
-    """Run a step as a child process (so a stop signal can end it cleanly); its exit code."""
+def run_child(cmd, timeout=None, stderr=None):
+    """Run a step as a child process (so a stop signal can end it cleanly); its exit code. A child still running
+    after `timeout` seconds is stopped and counts as TIMED_OUT. With `stderr` (a path) its error output is kept
+    there too, and still shown in the log."""
     global _child
-    _child = subprocess.Popen(cmd)
+    err = open(stderr, 'w+', encoding='utf-8', errors='replace') if stderr else None
     try:
-        return _child.wait()
+        _child = subprocess.Popen(cmd, stderr=err)
+        return _child.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        log(f'{Path(cmd[1]).name if len(cmd) > 1 else cmd[0]} still running after {timeout / 60:.0f} min; stopping it')
+        _child.terminate()
+        try:
+            _child.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            _child.kill()
+            _child.wait()
+        return TIMED_OUT
     finally:
         _child = None
+        if err is not None:
+            err.seek(0)
+            sys.stderr.write(err.read())
+            err.close()
+
+
+def last_line(path):
+    """The last non-empty line of a text file, or '' (the reason a step gave for failing)."""
+    try:
+        lines = Path(path).read_text(encoding='utf-8', errors='replace').strip().splitlines()
+    except OSError:
+        return ''
+    return lines[-1].strip() if lines else ''
 
 
 def run_pass(cfg, status, pass_no=1):
@@ -219,6 +257,9 @@ def run_pass(cfg, status, pass_no=1):
     warnings = []
     login, work = cfg['login'], cfg['work']
     started = core.now_utc()
+    # A pass cut off mid-crawl (a restart, a crash) left its window in a 'crawling' status: within that window the
+    # next pass resumes it instead of crawling the same share again.
+    cut_off = status.data.get('window') if status.data.get('state') == 'crawling' else None
     status.set(state='starting', message='checking the clock and the registry', warnings=[])
     set_clock(measure_offset(), warnings)
     reg_path = work / 'volunteers.json'
@@ -250,8 +291,11 @@ def run_pass(cfg, status, pass_no=1):
                    warnings=warnings)
         return POLL
     status.set(state='syncing', message=f'registry {sha[:12]}: {login} ({me["trust"]}); fetching the data branch')
+    resume = cut_off == assign.window_of(core.now_utc())
+    if resume:
+        log(f'the pass of window {cut_off} was cut off; resuming it on the same clone')
     try:
-        data = sync_data(work, cfg['upstream'], pass_no)
+        data = sync_data(work, cfg['upstream'], pass_no, resume)
     except (subprocess.SubprocessError, OSError) as err:
         log(f'could not fetch the data branch ({err}); trying again in {POLL // 60} min')
         status.set(state='waiting', message='could not fetch the data branch', warnings=warnings)
@@ -276,9 +320,11 @@ def run_pass(cfg, status, pass_no=1):
            '--assign', str(reg_path), '--as', login, '--outcomes', str(outcomes),
            '--faculty-state', str(work / 'faculties.json'), '--max-minutes', f'{cfg["max_minutes"]:g}',
            '--adaptive-hours', '4']
+    if resume:
+        cmd += ['--resume-since', assign.window_start(window).isoformat()]
     if cfg['dry_run']:
         cmd.append('--dry-run')
-    code = run_child(cmd)
+    code = run_child(cmd, timeout=CRAWL_CAP)
     if code not in (0, 3, 4) or not outcomes.is_file():
         log(f'the crawl failed (exit {code}); nothing pushed')
         status.set(state='failed', message=f'the crawl failed (exit {code})', done_window=window,
@@ -289,12 +335,22 @@ def run_pass(cfg, status, pass_no=1):
            '--fork', cfg['fork']]
     if cfg['dry_run']:
         cmd.append('--dry-run')
-    pushed = run_child(cmd) == 0
+    errors = work / 'bundle.err'
+    pushing = run_child(cmd, timeout=PUSH_CAP, stderr=errors)
+    pushed = pushing == 0
     for line in warnings:
         log(f'WARNING: {line}')
-    status.set(state='done', done_window=window, warnings=warnings, message='pass finished',
-               last_pass={'started': started.isoformat(), 'ended': core.now_utc().isoformat(), 'exit': code,
-                          'groups': counts, 'pushed': pushed and not cfg['dry_run'], 'dry_run': cfg['dry_run']})
+    last = {'started': started.isoformat(), 'ended': core.now_utc().isoformat(), 'exit': code,
+            'groups': counts, 'pushed': pushed and not cfg['dry_run'], 'dry_run': cfg['dry_run']}
+    if not pushed:
+        # The window is still done (crawling it again would ask the faculty twice); the next window pushes anew.
+        why = (f'still pushing after {PUSH_CAP // 60} min' if pushing == TIMED_OUT else
+               last_line(errors) or f'bundle.py exit {pushing}')
+        log(f'the bundle did not reach the fork: {why}')
+        status.set(state='failed', done_window=window, warnings=warnings,
+                   message=f'the bundle push failed: {why}'[:300], last_pass={**last, 'push_error': why[:300]})
+        return None
+    status.set(state='done', done_window=window, warnings=warnings, message='pass finished', last_pass=last)
     return None
 
 

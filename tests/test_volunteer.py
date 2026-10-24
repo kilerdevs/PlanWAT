@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -340,6 +341,48 @@ class BundleTest(Harness):
         commit, fetched = collect.fetch_bundle(self.remote('alice'), self.tmp / 'scratch.git')
         self.assertEqual(set(fetched), {'manifest.json', REL})
         self.assertEqual(json.loads(fetched['manifest.json'])['login'], 'alice')
+
+    def bundle_main(self, *extra, env=None):
+        outcomes = self.tmp / 'outcomes.json'
+        outcomes.write_text(json.dumps({'started': NOW.isoformat(), 'ended': NOW.isoformat(), 'window': 1,
+                                        'groups': {}, 'faculties': {}}))
+        err = io.StringIO()
+        with mock.patch.dict(os.environ, env or {}), mock.patch('sys.stderr', err), \
+                mock.patch('sys.stdout', io.StringIO()):
+            code = bundle.main(['--data', str(self.data), '--outcomes', str(outcomes), '--fork', 'alice/PlanWAT',
+                                *extra])
+        return code, err.getvalue()
+
+    def test_a_refused_token_or_a_failed_push_fails_with_one_line_saying_why(self):
+        code, err = self.bundle_main(env={'PLANWAT_FORK_TOKEN': 'ghp_x'})
+        self.assertEqual(code, 1)
+        self.assertIn('not pushing: this is a classic', err)
+        no_token = {'PLANWAT_FORK_TOKEN': '', 'GITHUB_TOKEN': ''}
+        with mock.patch.object(bundle, 'PUSH_TRIES', 1):
+            code, err = self.bundle_main('--remote', str(self.tmp / 'no-such-fork.git'), env=no_token)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(err.strip().splitlines()), 1)
+        self.assertIn('push to alice/PlanWAT failed: ', err)
+        self.assertEqual(self.bundle_main('--remote', self.remote('alice'), env=no_token)[0], 0)
+
+    def test_a_stalled_push_times_out_and_counts_as_a_failed_attempt(self):
+        real, timeouts = subprocess.run, []
+
+        def run(cmd, **kw):
+            if 'push' in cmd:
+                timeouts.append(kw.get('timeout'))
+                raise subprocess.TimeoutExpired(cmd, kw.get('timeout'))
+            return real(cmd, **kw)
+        tree = self.tmp / 'tree'
+        tree.mkdir()
+        bundle.write_tree(tree, {'format': 1}, {})
+        with mock.patch.object(bundle.subprocess, 'run', run), self.assertRaises(subprocess.TimeoutExpired):
+            bundle.push(tree, 'alice/PlanWAT', 'alice', '', self.remote('alice'), tries=2, sleep=lambda s: None)
+        self.assertEqual(timeouts, [bundle.PUSH_TIMEOUT] * 2)
+        with mock.patch.object(bundle, 'push', mock.Mock(side_effect=subprocess.TimeoutExpired('git', 300))):
+            code, err = self.bundle_main('--remote', self.remote('alice'))
+        self.assertEqual(code, 1)
+        self.assertIn('no answer in 300 s', err)
 
     def test_a_volatile_line_does_not_change_the_plan(self):
         moved = SOURCE.replace('X-PLAN-GENERATED:', 'X-PLAN-GENERATED:1', 1)
@@ -715,6 +758,106 @@ class RunnerTest(unittest.TestCase):
         self.assertIn('2 accepted in 7 days', runner.describe_verdict(runner.verdict(
             json.loads((data / core.VOLUNTEER_STATE_FILE).read_text()), 'alice')[0]))
 
+    def crawl(self, push_code=0, reason=''):
+        """A registered alice, a data clone, and fake refresh/bundle children; the commands they were run with."""
+        self.with_registry({'login': 'alice', 'trust': 'trusted'})
+        data = self.tmp / 'data'
+        data.mkdir(exist_ok=True)
+        calls, synced = [], []
+
+        def child(cmd, timeout=None, stderr=None):
+            calls.append((cmd, timeout))
+            if cmd[1].endswith('refresh.py'):
+                Path(cmd[cmd.index('--outcomes') + 1]).write_text(json.dumps(
+                    {'groups': {f'{CODE}@{TID}': {'status': 'unchanged'}}}))
+                return 0
+            if reason:
+                Path(stderr).write_text(f'some noise\n{reason}\n')
+            return push_code
+        for name, value in (('run_child', child), ('sync_data', lambda *a: synced.append(a) or data)):
+            patcher = mock.patch.object(runner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return calls, synced
+
+    def test_a_pass_that_pushed_its_bundle_is_done(self):
+        calls, _ = self.crawl()
+        self.assertIsNone(runner.run_pass(self.cfg, self.status))
+        self.assertEqual(self.status.data['state'], 'done')
+        self.assertTrue(self.status.data['last_pass']['pushed'])
+        self.assertEqual([t for _, t in calls], [runner.CRAWL_CAP, runner.PUSH_CAP])
+
+    def test_a_bundle_that_did_not_reach_the_fork_fails_the_pass_with_the_reason(self):
+        self.crawl(push_code=1, reason='not pushing: GitHub does not accept the token (expired or revoked)')
+        self.assertIsNone(runner.run_pass(self.cfg, self.status))
+        self.assertEqual(self.status.data['state'], 'failed')
+        self.assertIn('does not accept the token', self.status.data['message'])
+        self.assertEqual(self.status.data['done_window'], assign.window_of(core.now_utc()))  # no second crawl
+        last = self.status.data['last_pass']
+        self.assertFalse(last['pushed'])
+        self.assertIn('expired or revoked', last['push_error'])
+        out = io.StringIO()
+        runner.show_status(self.cfg, out)
+        self.assertIn('niewypchnięty', out.getvalue())
+        report = doctor.Report(io.StringIO())
+        doctor.run(self.cfg, report, offline=True)
+        self.assertIn('nie dotarła do forka: not pushing: GitHub does not accept', report.out.getvalue())
+        self.assertEqual(report.failed, 1)
+
+    def test_a_dry_run_pushes_nothing_and_the_doctor_says_so(self):
+        self.cfg['dry_run'] = True
+        self.crawl()
+        runner.run_pass(self.cfg, self.status)
+        self.assertEqual(self.status.data['state'], 'done')
+        self.assertEqual((self.status.data['last_pass']['pushed'], self.status.data['last_pass']['dry_run']),
+                         (False, True))
+        report = doctor.Report(io.StringIO())
+        doctor.run(self.cfg, report, offline=True)
+        self.assertIn('tryb próbny (PLANWAT_DRY_RUN=1)', report.out.getvalue())
+        self.assertNotIn('nie dotarła do forka', report.out.getvalue())
+        self.cfg['dry_run'] = False  # .env changed, the crawler not yet restarted
+        report = doctor.Report(io.StringIO())
+        doctor.run(self.cfg, report, offline=True)
+        self.assertIn('ostatni przebieg był próbny', report.out.getvalue())
+        self.assertEqual(report.failed, 0)
+
+    def test_a_pass_cut_off_mid_crawl_resumes_in_the_same_window_on_the_same_clone(self):
+        calls, synced = self.crawl()
+        window = assign.window_of(core.now_utc())
+        self.status.set(state='crawling', window=window)  # what a restart mid-crawl leaves behind
+        runner.run_pass(self.cfg, self.status)
+        self.assertTrue(synced[-1][3])
+        crawl = calls[0][0]
+        self.assertEqual(crawl[crawl.index('--resume-since') + 1], assign.window_start(window).isoformat())
+        # A finished pass, or a cut-off one from an earlier window, starts afresh.
+        for state, cut in (('done', window), ('crawling', window - 1)):
+            calls.clear()
+            self.status.set(state=state, window=cut)
+            runner.run_pass(self.cfg, self.status)
+            self.assertFalse(synced[-1][3])
+            self.assertNotIn('--resume-since', calls[0][0])
+
+    def test_a_status_that_cannot_be_written_does_not_end_the_loop(self):
+        self.addCleanup(signal.signal, signal.SIGTERM, signal.getsignal(signal.SIGTERM))
+        self.addCleanup(signal.signal, signal.SIGINT, signal.getsignal(signal.SIGINT))
+        full = mock.Mock(side_effect=OSError(28, 'No space left on device'))
+        with mock.patch.object(runner, 'run_pass', mock.Mock(side_effect=OSError(28, 'No space left on device'))), \
+                mock.patch.object(runner.Path, 'write_text', full), mock.patch('sys.stdout', io.StringIO()):
+            self.assertEqual(runner.loop(self.cfg, once=True), 1)
+        self.assertTrue(full.called)
+        self.assertFalse((self.tmp / 'status.json').exists())  # nothing reached the disk, and nothing crashed
+
+    def test_a_child_that_hangs_is_stopped_and_its_reason_kept(self):
+        with mock.patch('sys.stdout', io.StringIO()):
+            self.assertEqual(runner.run_child([sys.executable, '-c', 'import time; time.sleep(60)'], timeout=0.5),
+                             runner.TIMED_OUT)
+        errors = self.tmp / 'child.err'
+        script = 'import sys; sys.stderr.write("noise\\nthe reason\\n"); sys.exit(1)'
+        with mock.patch('sys.stderr', io.StringIO()) as shown:
+            code = runner.run_child([sys.executable, '-c', script], stderr=errors)
+        self.assertEqual((code, runner.last_line(errors)), (1, 'the reason'))
+        self.assertIn('the reason', shown.getvalue())
+
     def test_one_pass_per_window_starting_a_little_after_it_opens(self):
         window = assign.window_of(NOW)
         self.assertEqual(runner.next_wait(NOW, None), 0)
@@ -757,6 +900,27 @@ class RunnerTest(unittest.TestCase):
             runner.sync_data(self.tmp, 'x/y', 10)
         self.assertEqual((data / 'a').read_text(), '2')
         self.assertFalse((data / 'stray').exists())
+
+    def test_a_resumed_pass_keeps_the_clone_and_its_checkpoint(self):
+        upstream = self.tmp / 'up'
+        upstream.mkdir()
+        git('init', '-q', '-b', 'data', cwd=upstream)
+        (upstream / 'a').write_text('1')
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'add', '-A', cwd=upstream)
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'commit', '-qm', '1', cwd=upstream)
+        with mock.patch.object(runner, 'git', lambda *a, cwd=None, timeout=600: runner.subprocess.run(
+                ['git', *[str(upstream) if str(x).startswith('https://github.com/') else x for x in a]], cwd=cwd,
+                check=True, capture_output=True, text=True).stdout):
+            data = runner.sync_data(self.tmp, 'x/y', 1)
+            (data / core.STATE_FILE).write_text('{"version": 1}')  # the cut-off crawl's checkpoint
+            (upstream / 'a').write_text('2')
+            git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'commit', '-qam', '2', cwd=upstream)
+            runner.sync_data(self.tmp, 'x/y', 2, True)
+            self.assertTrue((data / core.STATE_FILE).exists())
+            self.assertEqual((data / 'a').read_text(), '1')  # the data its share was computed from
+            runner.sync_data(self.tmp, 'x/y', 3)
+        self.assertFalse((data / core.STATE_FILE).exists())
+        self.assertEqual((data / 'a').read_text(), '2')
 
 
 class WizardTest(unittest.TestCase):

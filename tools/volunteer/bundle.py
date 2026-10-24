@@ -50,6 +50,7 @@ API = 'https://api.github.com'
 # can write to: one leaked from a crawler's .env would be a disaster, so they are not accepted at all.
 BROAD_TOKENS = ('ghp_', 'gho_')
 PUSH_TRIES = 3
+PUSH_TIMEOUT = 300  # seconds one push attempt may take: a stalled connection counts as a failed attempt
 
 
 def version():
@@ -124,8 +125,9 @@ def write_tree(where, manifest, files):
         (where / rel).write_bytes(raw)
 
 
-def git(*args, cwd, env=None):
-    return subprocess.run(['git', *args], cwd=cwd, env=env, check=True, capture_output=True, text=True).stdout
+def git(*args, cwd, env=None, timeout=120):
+    return subprocess.run(['git', *args], cwd=cwd, env=env, check=True, capture_output=True, text=True,
+                          timeout=timeout).stdout
 
 
 def push(tree, fork, login, token, remote=None, tries=1, sleep=time.sleep):
@@ -144,9 +146,10 @@ def push(tree, fork, login, token, remote=None, tries=1, sleep=time.sleep):
         auth = ['-c', f'http.extraHeader=Authorization: Basic {basic}']
     for attempt in range(1, tries + 1):
         try:
-            git(*auth, 'push', '-q', '--force', url, 'HEAD:refs/heads/crawl', cwd=tree, env=env)
+            git(*auth, 'push', '-q', '--force', url, 'HEAD:refs/heads/crawl', cwd=tree, env=env,
+                timeout=PUSH_TIMEOUT)
             return
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             if attempt == tries:
                 raise
             sleep(15 * attempt)
@@ -195,7 +198,11 @@ def main(argv=None):
         write_tree(tree, manifest, files)
         push(tree, args.fork, login, token, args.remote, tries=PUSH_TRIES)
     except subprocess.CalledProcessError as err:
-        print(f'push to {args.fork} failed: {(err.stderr or "").strip()[-400:]}', file=sys.stderr)
+        # One line: the runner shows the last line of this as the reason in `status` and the doctor.
+        print(f'push to {args.fork} failed: {" ".join((err.stderr or "").split())[-400:]}', file=sys.stderr)
+        return 1
+    except subprocess.TimeoutExpired as err:
+        print(f'push to {args.fork} failed: no answer in {err.timeout:.0f} s', file=sys.stderr)
         return 1
     finally:
         shutil.rmtree(tree, ignore_errors=True)

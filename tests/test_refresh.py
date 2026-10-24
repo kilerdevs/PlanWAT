@@ -1,6 +1,7 @@
 """Offline tests of the timetable refresh (tools/refresh): no network, fixtures are real crawled pages."""
 import datetime as dt
 import importlib.util
+import json
 import os
 import shutil
 import sys
@@ -323,6 +324,27 @@ class Run(unittest.TestCase):
         self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
         self.assertIn(base + 'WLO26AX1S1.htm', session.seen)
         self.assertNotIn(base + 'WLO99ZZ9S9.htm', session.seen)
+
+    def test_a_resumed_run_skips_what_it_already_checked_since_the_cut(self):
+        page_url = 'https://example.test/plan/zima/WLO26AX1S1.htm'
+        self.run_once()  # checked just now, then cut off
+        before = (core.now_utc() - dt.timedelta(hours=1)).isoformat()
+        _, session = self.run_once(extra=['--resume-since', before])
+        self.assertNotIn(page_url, session.seen)
+        later = (core.now_utc() + dt.timedelta(hours=1)).isoformat()
+        _, session = self.run_once(extra=['--resume-since', later])
+        self.assertIn(page_url, session.seen)
+
+    def test_a_resumed_run_still_reports_what_it_checked_before_the_cut(self):
+        outcomes = self.tmp / 'outcomes.json'
+        outcomes.with_name('outcomes.json.partial').write_text(json.dumps({
+            'WLO26AX1S1@2026-27-zima': {'status': 'unchanged', 'at': '2026-10-24T14:10:00'},
+            'WLO26AX2S1@2026-27-zima': {'status': 'changed', 'at': '2026-10-24T11:50:00'}}), encoding='utf-8')
+        args = refresh.parse(['--out', str(self.tmp), '--outcomes', str(outcomes),
+                              '--resume-since', '2026-10-24T14:00:00'])
+        self.assertEqual(list(args.outcomes_log), ['WLO26AX1S1@2026-27-zima'])  # an older window's is dropped
+        fresh = refresh.parse(['--out', str(self.tmp), '--outcomes', str(outcomes)])
+        self.assertEqual(fresh.outcomes_log, {})
 
     def test_not_modified_revalidates_without_rewriting(self):
         self.run_once()

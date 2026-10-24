@@ -237,7 +237,9 @@ Przebieg robi tylko to, co może skończyć się przyjętą paczką, a gdy staje
 2. **Rejestr.** Pobiera `volunteers.json` z gałęzi `volunteers`, tylko z commita zweryfikowanego jako podpisany przez
    opiekuna. Brak wpisu, „wstrzymany” albo zbyt stara wersja crawlera: bez crawlowania, ponowna próba za 30 minut.
 3. **Dane.** Dociąga przyrostowo publiczną gałąź `data` projektu (ostatnie przyjęte kalendarze, stan sprawdzeń i
-   werdykty koordynatora) do tego samego klonu.
+   werdykty koordynatora) do tego samego klonu. Przebieg przerwany w połowie (restart kontenera, awaria) wznawia się
+   w tym samym oknie na tym samym klonie, bez dociągania: grup sprawdzonych przed przerwą (stan zapisuje się co 25
+   sprawdzeń) nie pyta drugi raz.
 4. **Werdykt.** Wypisuje, co koordynator powiedział o poprzedniej paczce (przeczytana, ile głosów, ile przyjęto,
    albo dlaczego odrzucona). Odsunięty przez koordynatora: bez crawlowania, dopóki opiekun nie przywróci.
 5. **Przydział** (`tools/volunteer/assign.py`). Dla każdej grupy i okna wszyscy liczą to samo haszowanie (rendezvous)
@@ -255,7 +257,9 @@ Przebieg robi tylko to, co może skończyć się przyjętą paczką, a gdy staje
    przebiegami), konwertuje i waliduje tymi samymi funkcjami co domowy runner.
 7. **Paczka.** `bundle.py` sprawdza token (dostęp do forka, nie klasyczny, data wygaśnięcia), składa paczkę i
    wypycha ją na gałąź `crawl` forka jako jeden commit bez historii (`--force`, z ponowieniem). Okno bez grup do
-   sprawdzenia też wysyła (pustą) paczkę: koordynator wie wtedy, że Twój crawler żyje.
+   sprawdzenia też wysyła (pustą) paczkę: koordynator wie wtedy, że Twój crawler żyje. Paczka, która nie dotarła do
+   forka (token, fork, sieć, wypychanie bez odpowiedzi przez 5 minut), kończy przebieg jako nieudany, a `status` i
+   `doctor` podają powód; tego okna crawler nie sprawdza drugi raz, następne wyśle nową paczkę.
 
 ## Co trafia do paczki
 
@@ -324,6 +328,8 @@ Zacznij od `planwat-crawler doctor`: przy każdym ✗ jest podpowiedź. Najczęs
 | „odsunięty przez koordynatora” | Trzy razy w tygodniu Twój głos przegrał, gdy wszyscy widzieli już nowy plan | Sprawdź wersję; odpisz w issue „Wolontariusz `<login>` niezgodny”, opiekun przywraca |
 | `the token cannot see …` / `cannot write to …` | Token nie obejmuje forka albo nie ma Contents: write | `planwat-crawler setup` i nowy token |
 | `GitHub does not accept the token` / „token wygasł” | Token wygasł albo został usunięty | Nowy token, `planwat-crawler setup` |
+| „paczka z ostatniego przebiegu nie dotarła do forka” | Token, fork albo sieć zawiodły przy wypychaniu (powód w tej samej linii) | `planwat-crawler doctor` sprawdzi token i fork; nowy token: `planwat-crawler setup` |
+| „tryb próbny (PLANWAT_DRY_RUN=1)” | Pierwszy, testowy przebieg: nic nie jest wypychane | Po teście usuń `PLANWAT_DRY_RUN` z `.env` i `planwat-crawler start` |
 | „ostatnia paczka odrzucona: stale / bad end time” | Bardzo zły zegar albo paczka czekała ponad 12 h | Włącz NTP; następny przebieg wyśle nową |
 | „ostatnia paczka odrzucona: not a plain file / not a manifest…” | Ktoś commitował ręcznie na `crawl` | Nie commituj na `crawl`; następny przebieg nadpisze gałąź |
 | „odrzucone kalendarze: lost too many events” | Strona wydziału była chwilowo niepełna | Nic; inni (albo kolejny przebieg) potwierdzą właściwy plan |

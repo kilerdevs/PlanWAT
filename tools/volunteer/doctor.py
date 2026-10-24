@@ -115,6 +115,17 @@ def run(cfg, report, offline=False, probe=True, now=None):
         report.line(mark, f'crawler: {runner.STATES.get(status.get("state"), status.get("state"))}'
                     + (f' ({status["message"]})' if status.get('message') else '')
                     + (f', ostatni przebieg {last["started"][:16].replace("T", " ")} UTC' if last.get('started') else ''))
+        if last.get('pushed') is False and not last.get('dry_run'):
+            report.line(WARN, 'paczka z ostatniego przebiegu nie dotarła do forka'
+                        + (f': {last["push_error"]}' if last.get('push_error') else ''),
+                        'sprawdź token i fork (niżej), nowy token: planwat-crawler setup; log: planwat-crawler logs')
+    # `start` (compose up) picks up a changed .env; `restart` would keep the old environment.
+    if cfg['dry_run']:
+        report.line(WARN, 'tryb próbny (PLANWAT_DRY_RUN=1): crawler sprawdza plany, ale niczego nie wypycha',
+                    'po teście usuń PLANWAT_DRY_RUN z .env i uruchom: planwat-crawler start')
+    elif ((status or {}).get('last_pass') or {}).get('dry_run'):
+        report.line(WARN, 'ostatni przebieg był próbny: nic nie zostało wypchnięte',
+                    'jeśli PLANWAT_DRY_RUN jest już usunięty z .env, uruchom: planwat-crawler start')
     if offline:
         report.line(WARN, 'tryb offline: pominięto sprawdzenia sieciowe')
         return

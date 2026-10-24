@@ -416,6 +416,20 @@ def note_outcome(args, code, tid, status):
         outcomes[f'{code}@{tid}'] = {'status': status, 'at': core.now_utc().isoformat()}
 
 
+def partial_outcomes(args):
+    """Where the outcomes so far are kept at each checkpoint, so a resumed run still reports them."""
+    return args.outcomes.with_name(args.outcomes.name + '.partial')
+
+
+def save_partial_outcomes(args):
+    if getattr(args, 'outcomes', None) and args.outcomes_log is not None:
+        path = partial_outcomes(args)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(args.outcomes_log, ensure_ascii=False) + '\n', encoding='utf-8')
+        tmp.replace(path)
+
+
 def noted_change(entry):
     """The plan really moved: the group is hot again and is checked every pass."""
     entry['streak'] = 0
@@ -498,6 +512,10 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
         # the coordinator last heard from.
         todo = [i for i in todo if assign.is_assigned(args.registry, args.login, name, i.code, tid, args.window,
                                                       getattr(args, 'health', None))]
+    if getattr(args, 'resume_since', None):
+        # A resumed run (a volunteer pass cut off mid-window): what it checked before the cut is not asked again,
+        # even where the faculty's cadence would already call it stale.
+        todo = [i for i in todo if (state.groups.get(key(i.code), {}).get('checked') or '') < args.resume_since]
     if args.limit:
         todo = todo[:args.limit]
     log(f'[{name}] {len(items)} groups, {len(items) - len(todo)} fresh, {len(todo)} to check (term {tid})')
@@ -517,6 +535,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             sleep(random.uniform(args.delay[0] * mult, args.delay[1] * mult))
         if n % 25 == 0 and not args.dry_run:
             state.save()  # checkpoint every 25 checks, however they end (a 304 or an unchanged hash included)
+            save_partial_outcomes(args)  # and what they found, which a resumed run still has to report
         entry = state.groups.setdefault(key(item.code), {})
         # A block response is reported to the egress (which demotes the exit that carried it) and
         # retried on a fresh connection: with a rotating egress each attempt rides another exit, so
@@ -698,9 +717,19 @@ def parse(argv=None):
     ap.add_argument('--outcomes', type=Path, help='write what each check found here (JSON, for bundle.py)')
     ap.add_argument('--faculty-state', type=Path,
                     help="keep this line's learned pacing and block durations here instead of in the data checkout")
+    ap.add_argument('--resume-since', default='',
+                    help='skip every group checked at or after this UTC time (YYYY-MM-DDTHH:MM:SS): resuming a run')
     args = ap.parse_args(argv)
     args.registry, args.window, args.health = None, None, None
     args.outcomes_log = {} if (args.outcomes or args.assign) else None
+    if args.resume_since and args.outcomes and args.outcomes_log is not None:
+        # The groups the resumed run skips were checked before the cut: their outcomes come from its checkpoint.
+        try:
+            kept = json.loads(partial_outcomes(args).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            kept = {}
+        args.outcomes_log.update({k: v for k, v in (kept if isinstance(kept, dict) else {}).items()
+                                  if isinstance(v, dict) and str(v.get('at') or '') >= args.resume_since})
     if args.assign:
         if not args.login:
             ap.error('--assign needs --as <login>')
@@ -855,6 +884,7 @@ def write_outcomes(args, started, wanted, sources, state):
               'faculties': faculties}
     args.outcomes.parent.mkdir(parents=True, exist_ok=True)
     args.outcomes.write_text(json.dumps(report, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+    partial_outcomes(args).unlink(missing_ok=True)
 
 
 def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monotonic):
