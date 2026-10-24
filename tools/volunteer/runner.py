@@ -264,7 +264,9 @@ def run_pass(cfg, status, pass_no=1):
     set_clock(measure_offset(), warnings)
     reg_path = work / 'volunteers.json'
     try:
-        reg, raw, sha, _ = registry.fetch_verified(cfg['upstream'], cfg['editors'], cfg['token'] or None)
+        # Only the registry used last or a newer one: an older signed commit pushed back would undo a suspension.
+        reg, raw, sha, _ = registry.fetch_verified(cfg['upstream'], cfg['editors'], cfg['token'] or None,
+                                                   after=status.data.get('registry_sha') or None)
     except registry.Missing:
         status.set(state='waiting', message='the project has no volunteer registry yet', warnings=warnings)
         return POLL
@@ -290,7 +292,15 @@ def run_pass(cfg, status, pass_no=1):
         status.set(state='update_needed', message=f'crawler {bundle.version()} < required {reg["min_version"]}',
                    warnings=warnings)
         return POLL
-    status.set(state='syncing', message=f'registry {sha[:12]}: {login} ({me["trust"]}); fetching the data branch')
+    if cfg['fork'] and me['fork'].lower() != cfg['fork'].lower():
+        # The coordinator reads bundles only from the fork the registry names: a crawl pushed elsewhere is never seen.
+        log(f'this crawler pushes to {cfg["fork"]}, but the registry knows {login}\'s fork as {me["fork"]}: '
+            f'run planwat-crawler setup with that fork (or ask the maintainer); not crawling until then')
+        status.set(state='failed', message=f'fork {cfg["fork"]} is not the registry\'s {me["fork"]}',
+                   warnings=warnings, registry_sha=sha)
+        return POLL
+    status.set(state='syncing', message=f'registry {sha[:12]}: {login} ({me["trust"]}); fetching the data branch',
+               registry_sha=sha)
     resume = cut_off == assign.window_of(core.now_utc())
     if resume:
         log(f'the pass of window {cut_off} was cut off; resuming it on the same clone')

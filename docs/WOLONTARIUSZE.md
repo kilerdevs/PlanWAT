@@ -369,7 +369,7 @@ Zacznij od `planwat-crawler doctor`: przy każdym ✗ jest podpowiedź. Najczęs
   pisać do forka (Ty, Twój token, współpracownik forka), może wysłać paczkę w Twoim imieniu. Chroń token jak hasło.
 - Rejestr, który decyduje, co crawlujesz, jest przyjmowany tylko z commita podpisanego przez opiekuna, więc nikt, kto
   przejmie gałąź `volunteers`, nie podsunie Twojemu crawlerowi rejestru, którego opiekun nie podpisał (cofnięcie gałęzi
-  do starszej podpisanej wersji odrzuca koordynator; Twój crawler sam tego nie sprawdza).
+  do starszej podpisanej wersji odrzuca koordynator i Twój crawler, który pamięta ostatnio użyty commit rejestru).
 
 ### Dla serwisu
 

@@ -955,6 +955,24 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(runner.run_pass(self.cfg, self.status), runner.POLL)
         self.assertEqual(self.status.data['state'], 'update_needed')
 
+    def test_a_crawler_pushing_to_another_fork_than_the_registrys_does_not_crawl(self):
+        self.with_registry({'login': 'alice', 'fork': 'alice/Other'})
+        with mock.patch.object(runner, 'sync_data', side_effect=AssertionError('crawled')):
+            self.assertEqual(runner.run_pass(self.cfg, self.status), runner.POLL)
+        self.assertEqual(self.status.data['state'], 'failed')
+        self.assertIn('alice/Other', self.status.data['message'])
+
+    def test_the_registry_used_last_anchors_the_next_read(self):
+        seen = []
+        self.with_registry({'login': 'alice'})
+        reg = registry({'login': 'alice'}, min_version='99.0.0')
+        with mock.patch.object(runner.registry, 'fetch_verified',
+                               lambda *a, **k: seen.append(k.get('after')) or (reg, b'{}', 'c' * 40, 'kilerdevs')):
+            runner.run_pass(self.cfg, self.status)
+            self.status.set(state='done', registry_sha='c' * 40)
+            runner.run_pass(self.cfg, self.status)
+        self.assertEqual(seen, [None, 'c' * 40])
+
     def test_a_benched_volunteer_does_not_crawl_and_the_verdict_is_logged(self):
         self.with_registry({'login': 'alice'})
         data = self.tmp / 'data'
