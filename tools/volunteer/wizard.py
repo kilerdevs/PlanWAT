@@ -221,6 +221,11 @@ class Wizard:
             self.say(f'  Nie udało się sprawdzić rejestru ({err}); crawler spróbuje sam.')
             return
         me = assign.find(reg, login)
+        if me and me['fork'].lower() != fork.lower():
+            # The coordinator reads only the fork the registry names: bundles pushed anywhere else are never seen.
+            self.say(f'  ✗ rejestr zna Twój fork jako {me["fork"]}, a crawler ma wypychać do {fork}; koordynator')
+            self.say(f'    nie zobaczy tych paczek. Uruchom setup jeszcze raz z forkiem {me["fork"]} albo poproś opiekuna')
+            self.say('    o zmianę wpisu.')
         if me and me['trust'] != 'suspended':
             label = {'trusted': 'zaufany', 'peer': 'równorzędny'}[me['trust']]
             self.say(f'  ✓ jesteś w rejestrze ({label}; wydziały: {", ".join(me["faculties"]) or "wszystkie"})')

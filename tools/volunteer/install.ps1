@@ -13,8 +13,8 @@
 #   4. runs the setup wizard inside the verified image, starts the crawler, and (unless you opt out) schedules a
 #      daily verified update with rollback (Task Scheduler).
 #
-# Afterwards: planwat-crawler status | logs | doctor | setup | update | autoupdate on|off | start | stop | restart |
-#             uninstall | version
+# Afterwards: planwat-crawler status | logs [egress] | doctor | setup | update | autoupdate on|off | start | stop |
+#             restart | uninstall [--yes] | version
 # Channels (-Channel, remembered in .env, followed by updates): stable (default) installs the latest release, dev
 # installs the dev branch's files and the :dev images crawler-image.yml publishes from it; both verified alike.
 # Development: -Check (plan only), -Yes, -NoStart, -NoVerify, -Version X.Y.Z, $env:PLANWAT_INSTALL_SOURCE.
@@ -44,6 +44,10 @@ $CommandFile = Join-Path $Root 'planwat-crawler.ps1'
 $Shim = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\planwat-crawler.cmd'
 $TaskName = 'PlanWAT crawler update'
 $Source = $env:PLANWAT_INSTALL_SOURCE
+# The pins in .env are what was verified: image variables in the environment must not override them in compose.
+# They only choose the images of a -NoVerify install (tests).
+$ImageOverride = @{ 'planwat-crawler' = $env:PLANWAT_CRAWLER_IMAGE; 'planwat-crawler-egress' = $env:PLANWAT_EGRESS_IMAGE }
+Remove-Item Env:PLANWAT_CRAWLER_IMAGE, Env:PLANWAT_EGRESS_IMAGE -ErrorAction SilentlyContinue
 
 # Write-Host on purpose: these lines are for the person at the terminal, never part of a function's result.
 function Say([string] $Text) { Write-Host $Text }
@@ -199,12 +203,24 @@ function Get-RunningServices {
     & docker compose --project-name planwat-crawler --project-directory $App -f "$App\compose.yml" ps --status running --services
 }
 
+function Test-Healthy {
+    # Both services running, never restarted since they were created, and not unhealthy.
+    foreach ($service in @('crawler', 'egress')) {
+        $id = & docker compose --project-name planwat-crawler --project-directory $App -f "$App\compose.yml" ps -q $service |
+            Select-Object -First 1
+        if (-not $id) { return $false }
+        $state = & docker inspect --format '{{.State.Status}} {{.RestartCount}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' $id
+        if ($LASTEXITCODE -ne 0 -or "$state" -match 'unhealthy' -or "$state" -notmatch '^running 0( |$)') { return $false }
+    }
+    return $true
+}
+
 function Get-VerifiedImages([string] $Ver) {
     $pins = @{}
     if ($NoVerify) {
         Say 'Uwaga: pomijam weryfikację pochodzenia obrazów (-NoVerify)'
-        $pins['planwat-crawler'] = if ($env:PLANWAT_CRAWLER_IMAGE) { $env:PLANWAT_CRAWLER_IMAGE } else { "ghcr.io/kilerdevs/planwat-crawler:$Ver" }
-        $pins['planwat-crawler-egress'] = if ($env:PLANWAT_EGRESS_IMAGE) { $env:PLANWAT_EGRESS_IMAGE } else { "ghcr.io/kilerdevs/planwat-crawler-egress:$Ver" }
+        $pins['planwat-crawler'] = if ($ImageOverride['planwat-crawler']) { $ImageOverride['planwat-crawler'] } else { "ghcr.io/kilerdevs/planwat-crawler:$Ver" }
+        $pins['planwat-crawler-egress'] = if ($ImageOverride['planwat-crawler-egress']) { $ImageOverride['planwat-crawler-egress'] } else { "ghcr.io/kilerdevs/planwat-crawler-egress:$Ver" }
         return $pins
     }
     $token = Get-EnvValue 'PLANWAT_FORK_TOKEN'
@@ -317,12 +333,19 @@ function Install-Crawler {
     Invoke-Compose run --rm -v "${App}:/config" crawler setup --env /config/.env --keep-token --login (Get-EnvValue 'PLANWAT_LOGIN') @extra
     if ($LASTEXITCODE -ne 0) { Fail 'kreator przerwany; uruchom ponownie: planwat-crawler setup' }
     Step 'Diagnostyka'
-    Invoke-Compose run --rm crawler doctor --no-probe
+    # Not being in the registry yet is expected here (a warning); anything else marked ✗ is said again at the end.
+    Invoke-Compose run --rm crawler doctor --no-probe --installing
+    $diagnosed = $LASTEXITCODE -eq 0
     if ((Get-EnvValue 'PLANWAT_AUTO_UPDATE') -eq '0') { Disable-AutoUpdate } else { Enable-AutoUpdate }
     if (-not $NoStart) {
         Step 'Start'
         Invoke-Compose up -d
-        Say ''
+    }
+    Say ''
+    if (-not $diagnosed) {
+        Say 'Uwaga: diagnostyka zgłosiła problemy (✗ wyżej): crawler nie pomoże, dopóki ich nie poprawisz; potem: planwat-crawler doctor'
+        Say 'Przydatne polecenia:'
+    } elseif (-not $NoStart) {
         Say '✓ Crawler działa (Docker Desktop musi być uruchomiony). Przydatne polecenia:'
     } else {
         Say '✓ Zainstalowano (bez startu: planwat-crawler start).'
@@ -360,18 +383,26 @@ function Update-Crawler {
         Set-Pins $pins
         Complete-ReleaseFiles
         Set-EnvValue 'PLANWAT_CHANNEL' $chan
-        Invoke-Compose up -d --remove-orphans
-        Start-Sleep -Seconds 90
-        $running = @(Get-RunningServices)
-        if (($running -contains 'crawler') -and ($running -contains 'egress')) {
+        # Fresh containers, so a restart counted below can only be the new version's.
+        Invoke-Compose up -d --remove-orphans --force-recreate
+        $why = ''
+        if ($LASTEXITCODE -ne 0) { $why = 'nowa wersja nie wystartowała' }
+        else {
+            Say '  sprawdzam, czy nowa wersja działa…'
+            Start-Sleep -Seconds 90
+            if (-not (Test-Healthy)) { $why = 'nowa wersja nie działa (zatrzymuje się, restartuje albo jest unhealthy)' }
+        }
+        if (-not $why) {
             Set-EnvValue 'PLANWAT_VERSION' $ver
             Say "✓ zaktualizowano do $ver"
         } else {
+            Say "Uwaga: $why; wracam do poprzedniej"
             Set-EnvValue 'PLANWAT_CRAWLER_IMAGE' (Get-EnvValue 'PLANWAT_PREVIOUS_CRAWLER_IMAGE')
             Set-EnvValue 'PLANWAT_EGRESS_IMAGE' (Get-EnvValue 'PLANWAT_PREVIOUS_EGRESS_IMAGE')
             if (Test-Path "$App\compose.yml.prev") { Copy-Item "$App\compose.yml.prev" "$App\compose.yml" -Force }
             if ($was) { Set-EnvValue 'PLANWAT_CHANNEL' $was }
-            Invoke-Compose up -d --remove-orphans
+            Invoke-Compose up -d --remove-orphans --force-recreate
+            if ($LASTEXITCODE -ne 0) { Say 'Uwaga: poprzednia wersja też nie wstaje: planwat-crawler doctor' }
             Fail "aktualizacja do $ver cofnięta (zostaje $installed)"
         }
     } finally {
@@ -380,9 +411,10 @@ function Update-Crawler {
 }
 
 function Remove-Crawler {
-    if (-not $Yes) {
-        $answer = Read-Host 'Usunąć crawler, jego dane i harmonogram aktualizacji? [T/n]'
-        if ($answer -and $answer -notmatch '^(t|tak|y|yes)$') { Fail 'przerwano' }
+    # This cannot be undone: only an explicit yes (or -Yes / --yes) agrees; an empty answer or no input does not.
+    if (-not $Yes -and $Argument -notin @('--yes', '-y')) {
+        $answer = Read-Host 'Usunąć crawler, jego dane i harmonogram aktualizacji? [t/N]'
+        if (-not $answer -or $answer -notmatch '^(t|tak|y|yes)$') { Fail 'przerwano (nic nie usunięto)' }
     }
     if (Test-Path "$App\compose.yml") { Invoke-Compose down -v --remove-orphans }
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
@@ -394,7 +426,10 @@ function Remove-Crawler {
 
 function Invoke-InCrawler {
     if (@(Get-RunningServices) -contains 'crawler') { Invoke-Compose exec -T crawler /app/tools/volunteer/entrypoint.sh @args }
-    else { Invoke-Compose run --rm crawler @args }
+    else {
+        Say 'Uwaga: crawler nie działa (planwat-crawler start); poniżej ostatni zapisany stan, nie bieżący'
+        Invoke-Compose run --rm crawler @args
+    }
 }
 
 switch ($Command) {
@@ -406,14 +441,14 @@ switch ($Command) {
         switch ($Command) {
             'status' { Invoke-InCrawler status }
             'doctor' { Invoke-InCrawler doctor }
-            'logs' { Invoke-Compose logs -f --tail 200 crawler }
+            'logs' { Invoke-Compose logs -f --tail 200 $(if ($Argument -eq 'egress') { 'egress' } else { 'crawler' }) }
             'setup' { Invoke-Compose run --rm -v "${App}:/config" crawler setup --env /config/.env; Invoke-Compose up -d }
             'autoupdate' {
                 if ($Argument -eq 'on') { Enable-AutoUpdate }
                 elseif ($Argument -eq 'off') { Disable-AutoUpdate }
                 else { Say ("automatyczne aktualizacje: " + $(if ((Get-EnvValue 'PLANWAT_AUTO_UPDATE') -eq '0') { 'wyłączone' } else { 'włączone' })) }
             }
-            'start' { Invoke-Compose up -d }
+            'start' { Start-Docker; Invoke-Compose up -d }
             'stop' { Invoke-Compose stop }
             'restart' { Invoke-Compose restart }
             'version' { Say "planwat-crawler $(Get-EnvValue 'PLANWAT_VERSION') (kanał $(Get-Channel))" }

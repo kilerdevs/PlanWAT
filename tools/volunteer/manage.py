@@ -18,8 +18,11 @@ import argparse
 import datetime as dt
 import http.server
 import json
+import os
 import secrets
+import shutil
 import subprocess
+import time
 import sys
 import threading
 import webbrowser
@@ -31,12 +34,18 @@ sys.path.insert(0, str(ROOT / 'tools' / 'refresh'))
 sys.path.insert(0, str(HERE))
 import assign  # noqa: E402
 import core  # noqa: E402
+import registry  # noqa: E402
 
 BRANCH = 'volunteers'
 FILE = 'volunteers.json'
-DEFAULT = {'quorum': 2, 'window_hours': 12, 'min_version': '1.2.0', 'volunteers': []}
+UPSTREAM = 'kilerdevs/PlanWAT'
+# A new registry asks for no more than the crawler of this checkout (package.json), never for a release that
+# does not exist yet: a higher minimum would stop every running crawler until somebody edited it by hand.
+DEFAULT = {'quorum': 2, 'window_hours': 12,
+           'min_version': json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))['version'], 'volunteers': []}
 MAX_BODY = 256 * 1024
 STALE_HOURS = 24
+GIT_TIMEOUT = 120
 
 
 class SaveError(Exception):
@@ -48,19 +57,32 @@ class SaveError(Exception):
 class Repo:
     """The git side: read the registry and the coordinator's state, write a signed registry commit."""
 
-    def __init__(self, root=ROOT, remote='origin', sign=True):
-        self.root, self.remote, self.sign = Path(root), remote, sign
+    def __init__(self, root=ROOT, remote='origin', sign=True, upstream=UPSTREAM, verify=None):
+        self.root, self.remote, self.sign, self.upstream = Path(root), remote, sign, upstream
+        self.verify = sign if verify is None else verify
+        self.editors = os.environ.get('PLANWAT_REGISTRY_EDITORS') or registry.DEFAULT_EDITORS
+        self.fetch_errors = {}
 
-    def git(self, *args, stdin=None, check=True):
-        out = subprocess.run(['git', '-C', str(self.root), *args], input=stdin, capture_output=True, text=True)
+    def git(self, *args, stdin=None, check=True, timeout=GIT_TIMEOUT, env=None):
+        # Never a credential prompt nobody sees, never a hang: a bad remote becomes an error on the page.
+        try:
+            out = subprocess.run(['git', '-C', str(self.root), *args], input=stdin, capture_output=True, text=True,
+                                 timeout=timeout, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', **(env or {})})
+        except subprocess.TimeoutExpired:
+            out = subprocess.CompletedProcess(args, 124, '', f'git {args[0]}: no answer in {timeout} s')
         if check and out.returncode:
             raise SaveError((out.stderr or out.stdout).strip()[-500:] or f'git {args[0]} failed', 500)
         return out
 
     def fetch(self):
+        """Fetch both branches. A branch that does not exist yet is fine; any other failure is kept in
+        fetch_errors, so the page says the remote failed instead of showing an empty, brand-new project."""
+        self.fetch_errors = {}
         for branch in (BRANCH, 'data'):
-            self.git('fetch', '-q', self.remote, f'+refs/heads/{branch}:refs/remotes/{self.remote}/{branch}',
-                     check=False)
+            out = self.git('fetch', '-q', self.remote, f'+refs/heads/{branch}:refs/remotes/{self.remote}/{branch}',
+                           check=False, env={'LC_ALL': 'C'})  # untranslated, to tell "no such branch" apart
+            if out.returncode and "couldn't find remote ref" not in out.stderr:
+                self.fetch_errors[branch] = (out.stderr or out.stdout).strip()[-300:] or f'git fetch {branch} failed'
 
     def head(self):
         out = self.git('rev-parse', '--verify', '-q', f'refs/remotes/{self.remote}/{BRANCH}', check=False)
@@ -141,6 +163,8 @@ class Repo:
     def save(self, registry, base, message):
         """Commit `registry` on top of `base` (None: the branch is new) and push it; returns the commit id."""
         self.fetch()
+        if BRANCH in self.fetch_errors:
+            raise SaveError(f'Nie udało się pobrać gałęzi {BRANCH}: {self.fetch_errors[BRANCH]}', 502)
         if self.head() != base:
             raise SaveError('Rejestr zmienił się w międzyczasie. Odśwież stronę i wprowadź zmiany jeszcze raz.', 409)
         text = json.dumps(registry, ensure_ascii=False, indent=1) + '\n'
@@ -151,14 +175,44 @@ class Repo:
             args += ['-p', base]
         if self.sign:
             args.insert(1, '-S')
-        commit = self.git(*args).stdout.strip()
+        commit = self.git(*args, timeout=None).stdout.strip()  # signing may wait for a passphrase
         self.git('push', '-q', self.remote, f'{commit}:refs/heads/{BRANCH}')
         self.fetch()
         return commit
 
+    def verified(self, commit, tries=6, pause=5, sleep=time.sleep):
+        """'' once GitHub verifies `commit` as the branch head signed by a registry editor (what collect.yml and
+        every crawler require); otherwise what is wrong, for the person who just saved."""
+        if not self.verify:
+            return ''
+        why = ''
+        for attempt in range(tries):
+            try:
+                _, _, sha, _ = registry.fetch_verified(self.upstream, self.editors)
+            except assign.RegistryError as err:
+                return (f'GitHub nie uznaje commita {commit[:7]} za podpisany przez opiekuna ({err}), więc koordynator i '
+                        f'crawlery go odrzucą. Sprawdź, czy klucz podpisu (git config user.signingkey) i e-mail '
+                        f'(user.email) są dodane na GitHubie, i zapisz jeszcze raz.')
+            except (registry.Missing, registry.Unavailable) as err:
+                why = str(err)
+            else:
+                if sha == commit:
+                    return ''
+                why = f'GitHub widzi jeszcze {sha[:7]}'
+            if attempt + 1 < tries:
+                sleep(pause)
+        return f'nie udało się potwierdzić podpisu commita {commit[:7]} na GitHubie ({why}); sprawdź za chwilę.'
+
     def unbench(self, login):
-        out = subprocess.run(['gh', 'workflow', 'run', 'collect.yml', '-f', f'unbench={login}'],
-                             cwd=self.root, capture_output=True, text=True)
+        if not shutil.which('gh'):
+            raise SaveError('Przywracanie uruchamia collect.yml przez GitHub CLI: zainstaluj gh i zaloguj się '
+                            '(gh auth login) albo użyj Actions → Collect volunteer crawls → Run workflow z unbench.', 500)
+        try:
+            out = subprocess.run(['gh', 'workflow', 'run', 'collect.yml', '--repo', self.upstream,
+                                  '-f', f'unbench={login}'], cwd=self.root, capture_output=True, text=True,
+                                 timeout=GIT_TIMEOUT)
+        except (OSError, subprocess.TimeoutExpired) as err:
+            raise SaveError(f'gh workflow run: {err}', 500)
         if out.returncode:
             raise SaveError((out.stderr or 'gh workflow run failed').strip()[-500:], 500)
 
@@ -261,8 +315,14 @@ def make_handler(repo, token):
 
 
 def state(repo):
-    return {'registry': repo.registry(), 'base': repo.head(), 'status': repo.status(),
-            'coverage': repo.coverage(), 'faculties': faculties(), 'branch': BRANCH}
+    # An unreadable registry on the branch is shown, not a dead end: the page offers to replace it.
+    try:
+        current, broken = repo.registry(), ''
+    except (ValueError, assign.RegistryError) as err:
+        current, broken = assign.check_registry(DEFAULT), str(err)[:300]
+    return {'registry': current, 'broken': broken, 'base': repo.head(), 'status': repo.status(),
+            'coverage': repo.coverage(), 'faculties': faculties(), 'branch': BRANCH,
+            'fetch_errors': repo.fetch_errors}
 
 
 def save(repo, body):
@@ -272,13 +332,19 @@ def save(repo, body):
         new = assign.check_registry(body.get('registry'))
     except assign.RegistryError as err:
         raise SaveError(f'Rejestr się nie zgadza: {err}')
-    old = repo.registry()
+    try:
+        old, broken = repo.registry(), False
+    except (ValueError, assign.RegistryError):
+        old, broken = assign.check_registry(DEFAULT), True
     message = describe(old, new)
-    if message.endswith('no change'):
+    if broken:
+        message = 'Volunteers: nieczytelny rejestr zastąpiony' + (
+            '' if message.endswith('no change') else '; ' + message.removeprefix('Volunteers: '))
+    elif message.endswith('no change'):
         raise SaveError('Nic się nie zmieniło.')
     note = str(body.get('note') or '').strip()[:500]
     commit = repo.save(new, body.get('base'), message + (f'\n\n{note}' if note else ''))
-    return {'ok': True, 'commit': commit, 'message': message, **state(repo)}
+    return {'ok': True, 'commit': commit, 'message': message, 'warning': repo.verified(commit), **state(repo)}
 
 
 def main(argv=None):
@@ -441,7 +507,7 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
 (function () {
   var token = (location.hash.match(/t=([\w-]+)/) || [])[1] || '';
   var TRUST = [['trusted', 'Zaufany'], ['peer', 'Równorzędny'], ['suspended', 'Wstrzymany']];
-  var saved = null, draft = null, base = null, status = {}, facs = [], removed = {}, coverage = [];
+  var saved = null, draft = null, base = null, status = {}, facs = [], removed = {}, coverage = [], broken = '';
   function $(id) { return document.getElementById(id); }
   function el(tag, attrs, kids) {
     var n = document.createElement(tag);
@@ -469,15 +535,18 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   }
   function load(j) {
     saved = j.registry; draft = copy(j.registry); base = j.base; status = j.status || {}; facs = j.faculties || []; removed = {};
-    coverage = j.coverage || [];
-    $('sub').textContent = (j.base ? 'Gałąź ' + j.branch + ' · ' + j.base.slice(0, 7) : 'Gałąź ' + j.branch + ' jeszcze nie istnieje: pierwszy zapis ją utworzy')
+    coverage = j.coverage || []; broken = j.broken || '';
+    var failed = Object.keys(j.fetch_errors || {}).map(function (b) { return b + ': ' + j.fetch_errors[b]; });
+    $('sub').textContent = failed.length ? 'Nie udało się pobrać z GitHuba (' + failed.join('; ') + '). Pokazany stan może być nieaktualny: sprawdź remote i dostęp, potem odśwież stronę.'
+      : broken ? 'Rejestr na gałęzi ' + j.branch + ' jest nieczytelny (' + broken + '). Zapis zastąpi go tym, co widzisz niżej.'
+      : (j.base ? 'Gałąź ' + j.branch + ' · ' + j.base.slice(0, 7) : 'Gałąź ' + j.branch + ' jeszcze nie istnieje: pierwszy zapis ją utworzy')
       + ' · zmiany działają od najbliższego przebiegu koordynatora (do 30 min).';
     render();
   }
   function find(list, login) { for (var i = 0; i < list.length; i++) if (list[i].login.toLowerCase() === login.toLowerCase()) return list[i]; return null; }
   function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   function changes() {
-    var out = [], names = { trusted: 'zaufany', peer: 'równorzędny', suspended: 'wstrzymany' };
+    var out = broken ? ['zastąpienie nieczytelnego rejestru'] : [], names = { trusted: 'zaufany', peer: 'równorzędny', suspended: 'wstrzymany' };
     draft.volunteers.forEach(function (v) {
       var was = find(saved.volunteers, v.login);
       if (removed[v.login.toLowerCase()]) { if (was) out.push('usunięty ' + v.login); return; }
@@ -558,7 +627,10 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
         el('a', { href: 'https://github.com/' + v.fork + '/tree/crawl', target: '_blank', rel: 'noopener', text: v.fork })]));
       row.appendChild(seg(v)); row.appendChild(chips(v)); row.appendChild(stat(v));
       var x = el('button', { type: 'button', 'class': 'icon', 'aria-label': (gone ? 'Przywróć ' : 'Usuń ') + v.login, text: gone ? '↺' : '×' });
-      x.addEventListener('click', function () { removed[v.login.toLowerCase()] = !gone; render(); });
+      x.addEventListener('click', function () {
+        if (!gone && was && !confirm('Usunąć ' + v.login + ' z rejestru? Po zapisie przestanie dostawać przydziały.')) return;
+        removed[v.login.toLowerCase()] = !gone; render();
+      });
       row.appendChild(x);
       list.appendChild(row);
     });
@@ -590,7 +662,11 @@ PAGE = r'''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     var btn = this; btn.disabled = true; btn.textContent = 'Podpisywanie…';
     var reg = copy(draft); reg.volunteers = reg.volunteers.filter(function (v) { return !removed[v.login.toLowerCase()]; });
     api('/api/save', { registry: reg, base: base, note: $('note').value })
-      .then(function (j) { $('note').value = ''; load(j); toast('Opublikowano ' + j.commit.slice(0, 7) + '. ' + j.message.replace(/^Volunteers: /, '')); })
+      .then(function (j) {
+        $('note').value = ''; load(j);
+        if (j.warning) toast('Wypchnięto ' + j.commit.slice(0, 7) + ', ale ' + j.warning, true);
+        else toast('Opublikowano ' + j.commit.slice(0, 7) + '. ' + j.message.replace(/^Volunteers: /, ''));
+      })
       .catch(function (e) { toast(e.message, true); })
       .then(function () { btn.disabled = false; btn.textContent = 'Zapisz i opublikuj'; });
   });

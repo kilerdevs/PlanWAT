@@ -19,7 +19,8 @@
 # It never adds you to the docker group (that is root by another name); it uses sudo where it needs to.
 #
 # Afterwards this script is ~/.local/bin/planwat-crawler:
-#   status | logs | doctor | setup | update | autoupdate on|off | start | stop | restart | uninstall | version
+#   status | logs [egress] | doctor | setup | update | autoupdate on|off | start | stop | restart | uninstall [--yes] |
+#   version
 #
 # Channels (--channel, remembered in .env, followed by updates): stable (default) installs the latest release,
 # its files from the release tag and its images; dev installs what is on the dev branch, its files from that
@@ -100,6 +101,13 @@ confirm() {  # confirm "question" (default yes; --yes answers it)
   case "$_answer" in ''|t|T|tak|y|Y|yes) return 0 ;; *) return 1 ;; esac
 }
 
+confirm_no() {  # confirm_no "question": for what cannot be undone; only an explicit yes (or --yes) agrees
+  [ "$YES" = 1 ] && return 0
+  printf '%s [t/N]: ' "$1"
+  read -r _answer || _answer=''
+  case "$_answer" in t|T|tak|y|Y|yes) return 0 ;; *) return 1 ;; esac
+}
+
 # --- the machine ----------------------------------------------------------------------------------------------
 
 os_field() { sed -n "s/^$1=//p" /etc/os-release 2>/dev/null | tr -d '"' | head -n 1; }
@@ -148,8 +156,10 @@ pick_docker() {  # DOCKER: how to call docker here (never by joining the docker 
 }
 
 compose() {
+  # The pins in .env are what was verified: image variables in the caller's environment must not override them.
   # shellcheck disable=SC2086  # DOCKER is "docker" or "sudo docker"
-  $DOCKER compose --project-name planwat-crawler --project-directory "$APP" -f "$APP/compose.yml" "$@"
+  env -u PLANWAT_CRAWLER_IMAGE -u PLANWAT_EGRESS_IMAGE \
+    $DOCKER compose --project-name planwat-crawler --project-directory "$APP" -f "$APP/compose.yml" "$@"
 }
 
 # --- installing software --------------------------------------------------------------------------------------
@@ -197,7 +207,7 @@ start_docker() {
   if [ "$FAMILY" = macos ]; then
     brew services start colima >/dev/null 2>&1 || colima start
   elif have systemctl && [ -d /run/systemd/system ]; then
-    $SUDO systemctl enable --now docker >/dev/null 2>&1 || $SUDO systemctl start docker
+    $SUDO systemctl enable --now docker >/dev/null 2>&1 || $SUDO systemctl start docker || true
   elif [ "$WSL" = 1 ]; then
     die "WSL bez systemd: dopisz do /etc/wsl.conf sekcję [boot] z systemd=true, wykonaj w Windows 'wsl --shutdown' i uruchom ponownie"
   fi
@@ -377,6 +387,7 @@ PLIST
     printf '%s\n' '[Unit]' 'Description=PlanWAT volunteer crawler: verified update' 'Wants=network-online.target' \
       'After=network-online.target docker.service' '' '[Service]' 'Type=oneshot' "User=$user" \
       "Environment=PLANWAT_HOME=$APP" "Environment=HOME=$HOME" "ExecStart=/bin/sh $BIN/planwat-crawler update --auto" \
+      "StandardOutput=append:$APP/update.log" "StandardError=append:$APP/update.log" \
       | $SUDO tee "/etc/systemd/system/$UNIT.service" >/dev/null
     printf '%s\n' '[Unit]' 'Description=PlanWAT volunteer crawler: daily verified update' '' '[Timer]' \
       'OnCalendar=*-*-* 04:00:00' 'RandomizedDelaySec=3h' 'Persistent=true' '' '[Install]' 'WantedBy=timers.target' \
@@ -464,15 +475,21 @@ cmd_install() {
     setup --env /config/.env --keep-token --login "$(env_get PLANWAT_LOGIN)" ${PLANWAT_SETUP_ARGS:-} \
     || die "kreator przerwany; uruchom ponownie: planwat-crawler setup"
   step 'Diagnostyka'
-  compose run --rm crawler doctor --no-probe || true
+  # Not being in the registry yet is expected here (a warning); anything else marked ✗ is said again at the end.
+  diag_ok=1
+  compose run --rm crawler doctor --no-probe --installing || diag_ok=0
   if [ "$(env_get PLANWAT_AUTO_UPDATE)" = 0 ]; then autoupdate_off; else autoupdate_on; fi
   if [ "$START" = 1 ]; then
     step 'Start'
     compose up -d
-    say ''
+  fi
+  say ''
+  if [ "$diag_ok" = 0 ]; then
+    warn 'diagnostyka zgłosiła problemy (✗ wyżej): crawler nie pomoże, dopóki ich nie poprawisz; potem: planwat-crawler doctor'
+    say 'Przydatne polecenia:'
+  elif [ "$START" = 1 ]; then
     say '✓ Crawler działa. Przydatne polecenia:'
   else
-    say ''
     say '✓ Zainstalowano (bez startu: planwat-crawler start).'
   fi
   say '  planwat-crawler status     co robi teraz i co koordynator powiedział o ostatniej paczce'
@@ -517,27 +534,45 @@ cmd_update() {
   pin_images
   commit_release_files
   env_set PLANWAT_CHANNEL "$CHANNEL"
-  compose up -d --remove-orphans
+  # Fresh containers, so a restart counted below can only be the new version's.
+  compose up -d --remove-orphans --force-recreate || rollback 'nowa wersja nie wystartowała'
   say '  sprawdzam, czy nowa wersja działa…'
   sleep "${PLANWAT_UPDATE_SETTLE:-90}"
-  running=$(compose ps --status running --services 2>/dev/null || true)
-  case "$running" in
-    *crawler*egress*|*egress*crawler*)
-      env_set PLANWAT_VERSION "$LABEL"
-      say "✓ zaktualizowano do $LABEL" ;;
-    *)
-      warn "nowa wersja nie wystartowała; wracam do poprzedniej"
-      env_set PLANWAT_CRAWLER_IMAGE "$(env_get PLANWAT_PREVIOUS_CRAWLER_IMAGE)"
-      env_set PLANWAT_EGRESS_IMAGE "$(env_get PLANWAT_PREVIOUS_EGRESS_IMAGE)"
-      [ -f "$APP/compose.yml.prev" ] && cp "$APP/compose.yml.prev" "$APP/compose.yml"
-      [ -n "$was" ] && env_set PLANWAT_CHANNEL "$was"
-      compose up -d --remove-orphans
-      die "aktualizacja do $LABEL cofnięta (zostaje ${installed:-poprzednia})" ;;
-  esac
+  healthy || rollback 'nowa wersja nie działa (zatrzymuje się, restartuje albo jest unhealthy)'
+  env_set PLANWAT_VERSION "$LABEL"
+  say "✓ zaktualizowano do $LABEL"
+}
+
+healthy() {  # both services running, never restarted since they were created, and not unhealthy
+  for service in crawler egress; do
+    id=$(compose ps -q "$service" 2>/dev/null | head -n 1)
+    [ -n "$id" ] || return 1
+    # shellcheck disable=SC2086
+    state=$($DOCKER inspect --format '{{.State.Status}} {{.RestartCount}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' "$id") \
+      || return 1
+    case "$state" in *unhealthy*) return 1 ;; 'running 0'|'running 0 '*) ;; *) return 1 ;; esac
+  done
+}
+
+rollback() {  # rollback "why": back to the previous pins and compose file, then fail
+  warn "$1; wracam do poprzedniej"
+  env_set PLANWAT_CRAWLER_IMAGE "$(env_get PLANWAT_PREVIOUS_CRAWLER_IMAGE)"
+  env_set PLANWAT_EGRESS_IMAGE "$(env_get PLANWAT_PREVIOUS_EGRESS_IMAGE)"
+  [ -f "$APP/compose.yml.prev" ] && cp "$APP/compose.yml.prev" "$APP/compose.yml"
+  [ -n "$was" ] && env_set PLANWAT_CHANNEL "$was"
+  compose up -d --remove-orphans --force-recreate || warn 'poprzednia wersja też nie wstaje: planwat-crawler doctor'
+  die "aktualizacja do $LABEL cofnięta (zostaje ${installed:-poprzednia})"
 }
 
 cmd_uninstall() {
-  confirm 'Usunąć crawler, jego dane i harmonogram aktualizacji?' || die 'przerwano'
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --yes|-y) YES=1 ;;
+      *) die "nieznana opcja: $1" ;;
+    esac
+    shift
+  done
+  confirm_no 'Usunąć crawler, jego dane i harmonogram aktualizacji?' || die 'przerwano (nic nie usunięto)'
   if [ -f "$APP/compose.yml" ]; then compose down -v --remove-orphans || true; fi
   autoupdate_off >/dev/null 2>&1 || true
   rm -rf "$APP"
@@ -558,7 +593,9 @@ running() { compose ps --status running --services 2>/dev/null | grep -qx crawle
 
 in_crawler() {  # run an entrypoint command in the running crawler, or in a one-off container
   if running; then compose exec -T crawler /app/tools/volunteer/entrypoint.sh "$@"
-  else compose run --rm crawler "$@"
+  else
+    warn 'crawler nie działa (planwat-crawler start); poniżej ostatni zapisany stan, nie bieżący'
+    compose run --rm crawler "$@"
   fi
 }
 
@@ -573,11 +610,16 @@ main() {
   detect
   [ -f "$APP/compose.yml" ] || die "crawler nie jest zainstalowany ($APP); uruchom install.sh"
   pick_docker
+  # The 4 a.m. update (and an explicit start) must not fail just because Docker or Colima is not up yet.
+  if [ -z "$DOCKER" ] && { [ "$cmd" = update ] || [ "$cmd" = start ]; }; then start_docker; fi
   [ -n "$DOCKER" ] || die "Docker nie odpowiada"
   case "$cmd" in
     status) in_crawler status ;;
     doctor) in_crawler doctor "$@" ;;
-    logs) compose logs -f --tail "${1:-200}" crawler ;;
+    logs)  # logs [crawler|egress] [lines]
+      service=crawler
+      case "${1:-}" in crawler|egress) service=$1; shift ;; esac
+      compose logs -f --tail "${1:-200}" "$service" ;;
     setup)
       compose run --rm --user "$(id -u):$(id -g)" -v "$APP:/config" crawler setup --env /config/.env "$@"
       compose up -d ;;
@@ -591,9 +633,9 @@ main() {
     start) compose up -d ;;
     stop) compose stop ;;
     restart) compose restart ;;
-    uninstall) cmd_uninstall ;;
+    uninstall) cmd_uninstall "$@" ;;
     version) say "planwat-crawler $(env_get PLANWAT_VERSION) (kanał ${CHANNEL:-$(env_get PLANWAT_CHANNEL)})" ;;
-    help|-h) sed -n '2,30p' "$0" ;;
+    help|-h) sed -n '2,31p' "$0" ;;
     *) die "nieznane polecenie: $cmd (status, logs, doctor, setup, update, autoupdate on|off, start, stop, restart, uninstall)" ;;
   esac
 }

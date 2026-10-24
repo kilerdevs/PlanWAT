@@ -954,6 +954,14 @@ class WizardTest(unittest.TestCase):
             wizard.main(['--env', str(tmp / '.env'), '--login', 'alice', '--token', 'ghp_x', '--faculties', '',
                          '--auto-update', 'on', '--skip-github-checks', '--non-interactive'])
 
+    def test_the_wizard_says_when_the_registry_knows_another_fork(self):
+        args = mock.Mock(skip_github_checks=False, upstream='kilerdevs/PlanWAT', editors='kilerdevs', interactive=False)
+        out = io.StringIO()
+        reg = registry({'login': 'alice', 'fork': 'alice/Other'})
+        with mock.patch.object(wizard.registry, 'fetch_verified', lambda *a, **k: (reg, b'', 'b' * 40, 'kilerdevs')):
+            wizard.Wizard(args, out=out).registry_entry('alice', 'alice/PlanWAT', [])
+        self.assertIn('rejestr zna Twój fork jako alice/Other', out.getvalue())
+
     def test_the_links_are_prefilled(self):
         self.assertIn('target_name=alice', wizard.token_url('alice', 'alice/PlanWAT'))
         self.assertIn('contents=write', wizard.token_url('alice', 'alice/PlanWAT'))
@@ -976,6 +984,114 @@ class WizardTest(unittest.TestCase):
         doctor.run(runner.config({'PLANWAT_LOGIN': 'alice', 'PLANWAT_FORK_TOKEN': 'ghp_x', 'PLANWAT_WORK': str(tmp)}),
                    report, offline=True)
         self.assertEqual(report.failed, 1)  # the classic token
+
+
+class DoctorTest(unittest.TestCase):
+    """What `planwat-crawler doctor` says about the loop's state and the checks around it, each ✗ with a fix."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.cfg = runner.config({'PLANWAT_LOGIN': 'alice', 'PLANWAT_FORK_TOKEN': 'github_pat_x',
+                                  'PLANWAT_WORK': str(self.tmp)})
+
+    def doctor(self, offline=True, **kw):
+        out = io.StringIO()
+        report = doctor.Report(out)
+        doctor.run(self.cfg, report, offline=offline, probe=False, **kw)
+        return report, out.getvalue()
+
+    def online(self, me=None, fork_answer=(200, None), heads='abc\trefs/heads/data\n'):
+        """Patch every network call of the online part: registry with `me`, the fork lookup and the data branch."""
+        me = {'login': 'alice', **(me or {})}
+        reg = registry(me)
+        repo = fork_answer[1] if fork_answer[1] is not None else (
+            {'fork': True, 'parent': {'full_name': 'kilerdevs/PlanWAT'}} if fork_answer[0] == 200 else None)
+
+        def get_json(url, token=None):
+            if url.endswith('/repos/alice/PlanWAT'):
+                return fork_answer[0], repo
+            return 404, None
+
+        def git(*args, cwd=None, timeout=600):
+            if isinstance(heads, Exception):
+                raise heads
+            return heads
+        for target, name, value in ((runner, 'measure_offset', lambda: 0.0),
+                                    (registry_reader, 'fetch_verified', lambda *a, **k: (reg, b'', 'b' * 40, 'kilerdevs')),
+                                    (bundle, 'token_report', lambda fork, token: ('', None)),
+                                    (doctor, 'get_json', get_json), (runner, 'git', git)):
+            patcher = mock.patch.object(target, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_every_intervention_state_fails_with_a_fix(self):
+        status = runner.Status(self.tmp)
+        for state, fix in (('failed', 'planwat-crawler logs'), ('update_needed', 'planwat-crawler update'),
+                           ('benched', 'issue'), ('not_registered', 'https://x/join')):
+            status.set(state=state, message='m', join='https://x/join')
+            report, text = self.doctor()
+            self.assertEqual(report.failed, 1, text)
+            self.assertIn(f'✗ crawler: {runner.STATES[state]}', text)
+            self.assertIn(f'→ ', text.split(runner.STATES[state])[1].split('\n', 2)[1])
+            self.assertIn(fix, text)
+
+    def test_waiting_on_an_error_is_a_warning_not_a_tick(self):
+        runner.Status(self.tmp).set(state='waiting', message='could not fetch the data branch')
+        report, text = self.doctor()
+        self.assertEqual(report.failed, 0)
+        self.assertIn('! crawler: czeka (could not fetch the data branch)', text)
+        self.assertIn('planwat-crawler logs', text)
+
+    def test_a_stopped_or_stale_crawler_is_not_reported_healthy(self):
+        report, text = self.doctor()
+        self.assertIn('! crawler jeszcze nie wystartował', text)
+        runner.Status(self.tmp).set(state='done', message='pass finished')
+        self.assertEqual(self.doctor()[0].failed, 0)
+        report, text = self.doctor(now=core.now_utc() + dt.timedelta(hours=4))
+        self.assertEqual(report.failed, 1)
+        self.assertIn('nie zapisał swojego stanu', text)
+
+    def test_an_unwritable_work_directory_fails(self):
+        blocker = self.tmp / 'file'
+        blocker.write_text('x')
+        self.cfg['work'] = blocker / 'work'
+        report, text = self.doctor()
+        self.assertEqual(report.failed, 1)
+        self.assertIn('katalog roboczy', text)
+        report = doctor.Report(io.StringIO())
+        doctor.check_work(self.tmp, report, free_warn=2**62)
+        self.assertEqual((report.failed, report.warned), (0, 1))
+
+    def test_a_fork_the_registry_does_not_know_fails(self):
+        self.online(me={'fork': 'alice/Other'})
+        report, text = self.doctor(offline=False)
+        self.assertIn('rejestr (i koordynator) zna Twój fork jako alice/Other', text)
+        self.assertIn('planwat-crawler setup', text)
+        self.online()
+        self.assertNotIn('zna Twój fork', self.doctor(offline=False)[1])
+
+    def test_the_data_branch_is_checked(self):
+        self.online()
+        self.assertIn('✓ gałąź data projektu jest dostępna', self.doctor(offline=False)[1])
+        self.online(heads='')
+        self.assertIn('✗ kilerdevs/PlanWAT nie ma gałęzi data', self.doctor(offline=False)[1])
+        self.online(heads=subprocess.TimeoutExpired(['git'], 60))
+        self.assertIn('✗ nie mogę pobrać gałęzi data', self.doctor(offline=False)[1])
+
+    def test_an_unknown_fork_answer_does_not_send_anybody_to_create_one(self):
+        self.online(fork_answer=(None, None))
+        report, text = self.doctor(offline=False)
+        self.assertIn('! nie udało się sprawdzić forka', text)
+        self.assertNotIn('utwórz fork', text)
+        self.online(fork_answer=(404, None))
+        self.assertIn('✗ nie ma repozytorium alice/PlanWAT', self.doctor(offline=False)[1])
+
+    def test_right_after_installing_not_being_registered_is_only_a_warning(self):
+        self.online(me={'login': 'bob'})
+        self.assertIn('✗ alice nie ma w rejestrze', self.doctor(offline=False)[1])
+        report, text = self.doctor(offline=False, installing=True)
+        self.assertIn('! alice nie ma w rejestrze', text)
 
 
 class ManageTest(unittest.TestCase):
@@ -1009,6 +1125,68 @@ class ManageTest(unittest.TestCase):
         self.assertEqual(parent, first['commit'])
         self.assertEqual(git('ls-tree', '--name-only', second['commit'], cwd=self.work).split(), ['volunteers.json'])
         self.assertIn('known in person', git('log', '-1', '--format=%B', second['commit'], cwd=self.work))
+
+    def test_a_new_registry_never_stops_the_crawlers_of_this_version(self):
+        fresh = manage.state(self.repo)['registry']
+        self.assertEqual(fresh['min_version'], VERSION)
+        self.assertGreaterEqual(assign.version_tuple(bundle.version()), assign.version_tuple(fresh['min_version']))
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        status = runner.Status(tmp)
+        reg = assign.check_registry({**fresh, 'volunteers': [{'login': 'alice'}]})
+        cfg = runner.config({'PLANWAT_LOGIN': 'alice', 'PLANWAT_FORK_TOKEN': 'github_pat_x', 'PLANWAT_WORK': str(tmp)})
+        with mock.patch.object(runner, 'measure_offset', lambda: 0.0), \
+                mock.patch.object(runner.registry, 'fetch_verified', lambda *a, **k: (reg, b'{}', 'b' * 40, 'kilerdevs')), \
+                mock.patch.object(runner, 'sync_data', mock.Mock(side_effect=OSError('stop here'))):
+            runner.run_pass(cfg, status)
+        self.assertNotEqual(status.data['state'], 'update_needed')
+
+    def test_a_failed_fetch_is_not_shown_as_a_new_project(self):
+        git('remote', 'set-url', 'origin', str(self.tmp / 'nowhere.git'), cwd=self.work)
+        self.repo.fetch()
+        got = manage.state(self.repo)
+        self.assertEqual(set(got['fetch_errors']), {'volunteers', 'data'})
+        with self.assertRaises(manage.SaveError) as caught:
+            manage.save(self.repo, {'registry': self.registry({'login': 'alice'}), 'base': None})
+        self.assertEqual(caught.exception.status, 502)
+        git('remote', 'set-url', 'origin', str(self.origin), cwd=self.work)
+        self.repo.fetch()
+        self.assertEqual(self.repo.fetch_errors, {})  # a branch that does not exist yet is not an error
+
+    def test_an_unreadable_registry_can_be_seen_and_replaced(self):
+        first = manage.save(self.repo, {'registry': self.registry({'login': 'alice'}), 'base': None})
+        broken = self.tmp / 'broken'
+        git('clone', '-q', '-b', 'volunteers', str(self.origin), str(broken), cwd=self.tmp)
+        (broken / 'volunteers.json').write_text('{"quorum": ')
+        git('-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', 'commit', '-qam', 'oops', cwd=broken)
+        git('push', '-q', 'origin', 'volunteers', cwd=broken)
+        self.repo.fetch()
+        got = manage.state(self.repo)
+        self.assertTrue(got['broken'])
+        self.assertEqual(got['registry']['volunteers'], [])
+        self.assertNotEqual(got['base'], first['commit'])
+        saved = manage.save(self.repo, {'registry': self.registry({'login': 'alice'}), 'base': got['base']})
+        self.assertIn('nieczytelny rejestr zastąpiony', saved['message'])
+        self.assertEqual(saved['broken'], '')
+
+    def test_a_save_github_does_not_verify_says_so(self):
+        repo = manage.Repo(self.work, sign=False, verify=True)
+        refused = assign.RegistryError('volunteers abc is not a verified commit by a registry editor')
+        with mock.patch.object(manage.registry, 'fetch_verified', mock.Mock(side_effect=refused)):
+            self.assertIn('nie uznaje', repo.verified('c' * 40, sleep=lambda s: None))
+        with mock.patch.object(manage.registry, 'fetch_verified', lambda *a, **k: ({}, b'', 'c' * 40, 'kilerdevs')):
+            self.assertEqual(repo.verified('c' * 40, sleep=lambda s: None), '')
+        slept = []
+        with mock.patch.object(manage.registry, 'fetch_verified', lambda *a, **k: ({}, b'', 'd' * 40, 'kilerdevs')):
+            self.assertIn('nie udało się potwierdzić', repo.verified('c' * 40, tries=3, sleep=slept.append))
+        self.assertEqual(len(slept), 2)
+        self.assertEqual(self.repo.verified('c' * 40), '')  # unsigned test repositories are not asked about
+
+    def test_restoring_without_gh_is_an_answer_not_a_crash(self):
+        with mock.patch.object(manage.shutil, 'which', lambda name: None):
+            with self.assertRaises(manage.SaveError) as caught:
+                self.repo.unbench('alice')
+        self.assertIn('gh auth login', str(caught.exception))
 
     def test_a_stale_page_cannot_overwrite_a_newer_registry(self):
         first = manage.save(self.repo, {'registry': self.registry({'login': 'alice'}), 'base': None})

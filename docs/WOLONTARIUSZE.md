@@ -157,13 +157,16 @@ Instalator zostawia polecenie `planwat-crawler` (Linux / macOS: `~/.local/bin`, 
 | Polecenie | Co robi |
 |---|---|
 | `planwat-crawler status` | co crawler robi teraz, kiedy następny przebieg i co koordynator powiedział o ostatniej paczce |
-| `planwat-crawler logs` | dziennik na żywo |
+| `planwat-crawler logs` / `logs egress` | dziennik crawlera / proxy wyjściowego na żywo |
 | `planwat-crawler doctor` | pełna diagnostyka: zegar, rejestr, wersja, token, fork, proxy, wydziały, werdykt koordynatora; przy każdym problemie podpowiedź, co zrobić |
 | `planwat-crawler setup` | kreator od nowa (np. nowy token) |
 | `planwat-crawler update` | aktualizacja teraz (zweryfikowana, z wycofaniem) |
 | `planwat-crawler autoupdate on` / `off` | włącza / wyłącza codzienne aktualizacje |
 | `planwat-crawler start` / `stop` / `restart` | uruchamia / zatrzymuje crawler |
-| `planwat-crawler uninstall` | usuwa crawler, jego dane i harmonogram |
+| `planwat-crawler uninstall` | usuwa crawler, jego dane i harmonogram (tylko po wyraźnym „t”; bez pytania: `--yes`) |
+
+`status` i `doctor` przy zatrzymanym crawlerze mówią to wprost i pokazują ostatni zapisany stan; `doctor` zgłasza też
+crawler, który od ponad 3 godzin nie zapisał stanu (nie działa albo się zawiesił).
 
 Panel proxy z postępem przebiegu: <http://localhost:18080/>.
 
@@ -173,10 +176,12 @@ Domyślnie raz dziennie (systemd albo cron na Linuksie, launchd na macOS, Harmon
 
 1. sprawdza najnowsze wydanie projektu;
 2. pobiera jego obrazy i weryfikuje ich pochodzenie tak samo jak instalator;
-3. przypina nowe skróty, uruchamia nową wersję i sprawdza, że oba kontenery działają;
-4. jeśli nie działają, **wraca do poprzedniej wersji**.
+3. przypina nowe skróty, uruchamia nową wersję i po półtorej minuty sprawdza, że oba kontenery działają, nie
+   restartowały się i nie są oznaczone jako niezdrowe;
+4. jeśli nie wystartowały albo nie przeszły tego sprawdzenia, **wraca do poprzedniej wersji**.
 
-Każdy błąd (np. obraz bez poświadczenia) zostawia działającą wersję bez zmian. Log: `update.log` w katalogu crawlera.
+Gdy Docker (albo Colima) nie działa, aktualizacja najpierw go uruchamia. Każdy błąd (np. obraz bez poświadczenia)
+zostawia działającą wersję bez zmian. Log: `update.log` w katalogu crawlera (na każdym systemie, także z systemd).
 
 Z automatycznych aktualizacji możesz zrezygnować: `planwat-crawler autoupdate off` (albo w kreatorze). Wtedy crawler
 zgłasza w logu i w `doctor`, że jest nowsza wersja, a aktualizujesz sam przez `planwat-crawler update`. Pamiętaj, że
@@ -205,8 +210,8 @@ Przypięcie skrótów: w `.env` wpisz `PLANWAT_CRAWLER_IMAGE=ghcr.io/kilerdevs/p
 
 **Utwardzenie (już w `compose.yml`):** crawler działa jako użytkownik bez uprawnień, z systemem plików tylko do
 odczytu, bez żadnych capabilities, z `no-new-privileges`, limitami pamięci i procesów, bez otwartych portów i bez trasy
-na zewnątrz poza proxy, które przepuszcza tylko GitHub i strony wydziałów. Jedyne, co słucha na hoście, to panel
-proxy na `127.0.0.1:18080`. Obie usługi mają healthcheck, a `init: true` pozwala zatrzymać crawler czysto.
+na zewnątrz poza proxy, które przepuszcza tylko GitHub (z jego magazynem plików), PyPI i strony wydziałów. Jedyne, co
+słucha na hoście, to panel proxy na `127.0.0.1:18080`. Obie usługi mają healthcheck, a `init: true` pozwala zatrzymać crawler czysto.
 
 ## Tryb B: runner na własnym forku
 
@@ -218,9 +223,11 @@ Dla osób, które już utrzymują runnery GitHub Actions. Używa tej samej akcji
 3. Utwardź runner tak jak domowy runner projektu ([REFRESH.md](REFRESH.md#własny-runner-jedyny)):
    - kontener, użytkownik bez uprawnień, bez montowań hosta i bez gniazda Dockera;
    - runner efemeryczny (jedno zadanie) albo czyszczony katalog roboczy;
-   - ruch wychodzący tylko do GitHub i `*.wat.edu.pl` — najprościej przez proxy z [EGRESS.md](EGRESS.md).
-4. Workflow `Volunteer crawl` (`.github/workflows/volunteer.yml`) uruchamia się co 2 godziny (`:41`) i tylko w
-   forkach. Pierwszy raz uruchom go ręcznie: Actions → Volunteer crawl → Run workflow.
+   - ruch wychodzący tylko do GitHub, PyPI (`pypi.org`, `files.pythonhosted.org`: akcja instaluje przy każdym
+     przebiegu `curl_cffi` i `pymupdf`) i `*.wat.edu.pl` — najprościej przez proxy z [EGRESS.md](EGRESS.md).
+4. Workflow `Volunteer crawl` (`.github/workflows/volunteer.yml`) uruchamia się co 2 godziny, 20 minut po otwarciu
+   okna (`:20` UTC), kończy najpóźniej po 75 minutach (przed następnym oknem) i działa tylko w forkach. Pierwszy raz
+   uruchom go ręcznie: Actions → Volunteer crawl → Run workflow.
 5. Trzymaj fork aktualny (Sync fork na stronie forka), bo koordynator odrzuca stare wersje crawlera.
 
 Rejestr (gałąź `volunteers`, tylko z commita podpisanego przez opiekuna) i dane są zawsze czytane z projektu, nigdy
@@ -334,7 +341,7 @@ Zacznij od `planwat-crawler doctor`: przy każdym ✗ jest podpowiedź. Najczęs
 | „ostatnia paczka odrzucona: not a plain file / not a manifest…” | Ktoś commitował ręcznie na `crawl` | Nie commituj na `crawl`; następny przebieg nadpisze gałąź |
 | „odrzucone kalendarze: lost too many events” | Strona wydziału była chwilowo niepełna | Nic; inni (albo kolejny przebieg) potwierdzą właściwy plan |
 | `wydział … blokuje Twoje łącze` | Incapsula blokuje Twoje łącze | Nic: przydziały tego wydziału przejmują na razie inni; przy stałej blokadzie poproś o zmianę wydziałów |
-| „proxy wyjściowe (egress) nie odpowiada” | Kontener `egress` nie wystartował | `docker compose logs egress` (katalog crawlera) |
+| „proxy wyjściowe (egress) nie odpowiada” | Kontener `egress` nie wystartował | `planwat-crawler logs egress` |
 | Instalator: „obraz NIE przeszedł weryfikacji” | Obraz nie pochodzi z workflow projektu (albo sieć/GitHub zawiodły) | Nie obchodź tego. Spróbuj później; jeśli się powtarza, zgłoś issue |
 | Windows: „Docker Desktop nie odpowiada” | Świeżo zainstalowany WSL2 wymaga restartu | Uruchom ponownie komputer i skrypt |
 
@@ -398,12 +405,16 @@ Otwiera się strona (adres z jednorazowym tokenem jest też w terminalu), na kt�
 - przełączasz poziom: **Zaufany / Równorzędny / Wstrzymany**, i wybierasz wydziały (albo „Wszystkie”);
 - dodajesz osobę (login i fork; panel zapisuje datę dodania, od której liczy się doba na pierwszą paczkę) albo ją usuwasz;
 - zmieniasz zasady głosowania: kworum, ważność głosu, najstarszą wersję crawlera;
-- przywracasz odsuniętego wolontariusza jednym kliknięciem (uruchamia `collect.yml` z `unbench`; potrzebny `gh`).
+- przywracasz odsuniętego wolontariusza jednym kliknięciem (uruchamia `collect.yml` z `unbench`; potrzebny `gh` po `gh auth login`).
 
 Pasek na dole pokazuje, co się zmieni. **Zapisz i opublikuj** robi jeden commit z samym `volunteers.json`,
 **podpisany Twoim kluczem** (ten sam co dla `master`), i wypycha go na gałąź `volunteers`. Zmiana działa od
 najbliższego przebiegu koordynatora, czyli najpóźniej po 30 minutach, bez wydania i bez PR. Pierwszy zapis tworzy
-gałąź. Jeśli w międzyczasie ktoś zmienił rejestr, panel odmówi zapisu i poprosi o odświeżenie.
+gałąź (z `min_version` równą wersji Twojego klonu, nigdy wyższą niż istniejące wydanie). Jeśli w międzyczasie ktoś
+zmienił rejestr, panel odmówi zapisu i poprosi o odświeżenie. Po wypchnięciu panel pyta GitHuba, czy uznaje commit za
+podpisany przez opiekuna; jeśli nie, mówi to od razu (inaczej koordynator i crawlery po cichu by go odrzucały). Gdy nie
+da się pobrać gałęzi, panel mówi to zamiast udawać nowy projekt, a nieczytelny `volunteers.json` pokazuje z propozycją
+zastąpienia go przy zapisie.
 
 Panel słucha tylko na `127.0.0.1`, wymaga tokenu z adresu i odrzuca żądania z innym nagłówkiem `Host`.
 

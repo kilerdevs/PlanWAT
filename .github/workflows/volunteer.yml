@@ -4,9 +4,13 @@ name: Volunteer crawl
 # share of the groups and pushes the bundle to your fork's `crawl` branch. Runs only in forks, never here; the
 # project's own crawl is refresh.yml. Register the runner on your fork with the label `planwat-volunteer`, enable
 # Actions in the fork, and make sure your login is in the project's volunteers.json.
+#
+# Like the Docker crawler, one pass per two-hour assignment window (they open at even UTC hours): it starts 20
+# minutes in (inside the 5-35 the Docker crawler uses, with room for GitHub's schedule delays) and stops after
+# 75 minutes at most, so it ends before the next window opens and never overlaps another pass of the same groups.
 on:
   schedule:
-    - cron: '41 */2 * * *'
+    - cron: '20 */2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -33,4 +37,4 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           mode: volunteer
           profile: hosted
-          max-minutes: '90'
+          max-minutes: '75'

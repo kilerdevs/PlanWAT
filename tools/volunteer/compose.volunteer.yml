@@ -9,7 +9,8 @@
 # provenance: PLANWAT_CRAWLER_IMAGE / PLANWAT_EGRESS_IMAGE in .env. Without them the latest release tag is used.
 #
 # The crawler sits on an internal network with no route out; its only exit is the egress proxy, which lets
-# GitHub and the faculty sites through and answers everything else with 403. Nothing listens on the host
+# GitHub (with its file storage), PyPI and the faculty sites through and answers everything else with 403
+# (tools/egress/server.py, DIRECT_SUFFIXES). Nothing listens on the host
 # except the egress status page, bound to localhost.
 services:
   crawler:
