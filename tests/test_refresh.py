@@ -389,6 +389,26 @@ class Run(unittest.TestCase):
         self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
         self.assertEqual(len([u for u in session.seen if u.endswith('index.xml')]), 2)
 
+    def test_exhausted_transients_are_reported_and_retried_on_a_fresh_connection(self):
+        # A 429/5xx wall that outlasts --retries is a block response like any other: the exit
+        # that carried it is reported and the page rides a fresh connection (--block-retries).
+        reported = []
+        orig = refresh.post_block_report
+        refresh.post_block_report = lambda host, url=None, timeout=5: reported.append(host)
+        self.addCleanup(setattr, refresh, 'post_block_report', orig)
+        page_url = 'https://example.test/plan/zima/WLO26AX1S1.htm'
+        routes = dict(self.routes)
+        routes[page_url] = [Resp(429, b'')] * 4 + [Resp(200, page('WLO26AX1S1.htm'))]
+        (changed, blocked, complete), session = self.run_once(routes)
+        self.assertEqual((changed, blocked, complete), (['WLO26AX1S1'], False, True))
+        self.assertEqual(reported, ['example.test'])
+        routes[page_url] = Resp(429, b'')
+        reported.clear()
+        (changed, blocked, complete), session = self.run_once(routes, extra=['--retries', '0'])
+        self.assertEqual((changed, blocked, complete), ([], True, False))
+        self.assertEqual(len([u for u in session.seen if u == page_url]), 3)  # 1 + 2 retries
+        self.assertEqual(reported, ['example.test'] * 3)
+
     def test_a_block_response_is_reported_so_the_egress_demotes_the_exit(self):
         reported = []
         orig = refresh.post_block_report
@@ -1042,8 +1062,11 @@ class ExhaustionCause(unittest.TestCase):
         return result, state
 
     def test_http_transients_exhaust_as_a_wall(self):
-        session = ScriptedSession([Resp(200, INDEX.encode())] + [Resp(503, b'x')] * 10)
+        # robots.txt, then 4 tries per attempt (--retries 3) on each of 1 + 2 fresh connections
+        # (--block-retries 2).
+        session = ScriptedSession([Resp(200, INDEX.encode())] + [Resp(503, b'x')] * 13)
         (changed, blocked, complete), state = self.faculty(session)
+        self.assertEqual(session.script, [])
         self.assertEqual((changed, blocked, complete), ([], True, False))
         run = state.faculties['wlo']['run']
         self.assertEqual(run['cause'], 'wall')

@@ -25,8 +25,8 @@ coarse progress (run/faculty/tick/done/wait events, ticks throttled) to the egre
 PLANWAT_EGRESS_PROGRESS; the GUI turns them into a progress bar and a finish estimate. Nothing half-converted
 is published, the old calendars stay. A merely transient fetch (transport error, 408/425/429/500/502/503/504,
 an empty 200) is retried a few times with exponential backoff first (--retries/--retry-backoff); exhaustion
-raises core.Blocked for HTTP transients (a wall) and the transport error itself for flakiness, so the run
-learns the cause.
+raises core.Blocked for HTTP transients (a block response: reported and retried on a fresh connection like
+any other, then a wall) and the transport error itself for flakiness, so the run learns the cause.
 With --assign volunteers.json --as <login> it runs as a volunteer crawler (see docs/WOLONTARIUSZE.md): only the
 groups assigned to that login this window are checked, at the volunteer pace, and --outcomes records what each
 check found for tools/volunteer/bundle.py.
@@ -528,6 +528,14 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
                                    retries=args.retries, backoff=args.retry_backoff, sleep=sleep)
                 checked += 1
             except core.Blocked as err:
+                # Exhausted 429/5xx/empty 200s are a block response too: report the exit that
+                # carried them and ride a fresh connection before calling it a wall.
+                post_block_report(host)
+                if attempt < attempts:
+                    log(f'[{name}] {item.code}: block response ({err}); '
+                        f'riding a fresh connection ({attempt + 1}/{attempts})')
+                    sleep(random.uniform(2.0, 4.0) * attempt)
+                    continue
                 log(f'[{name}] BLOCKED on {item.code}: {err}')
                 fac['blocked_at'] = core.now_utc().isoformat()
                 fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
