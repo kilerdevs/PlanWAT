@@ -281,7 +281,9 @@ timetables/2026-27-zima/WCY26KY3S1.ics      tylko kalendarze, które się zmieni
 
 **Prywatność:** paczka nigdy nie zawiera surowych stron wydziałów (są na nich nazwiska prowadzących, a fork jest
 publiczny), tylko skonwertowane kalendarze, w których nazwisk nie ma (`build.load_term` odrzuca każdy kalendarz z
-`CONTACT` albo `Prowadzący:`). Publiczne są: Twój login, czasy przebiegów i to, które grupy sprawdziłeś.
+`CONTACT`, `ORGANIZER`, `ATTENDEE` albo `Prowadzący:` gdziekolwiek w pliku, z tytułem przed nazwiskiem (np. „dr inż.
+Kowalski”) w tytule zajęć, opisie, sali czy nagłówku kalendarza oraz z opisem, w którym jest coś poza rodzajem zajęć,
+`Uwaga:` i `Grupy:`). Publiczne są: Twój login, czasy przebiegów i to, które grupy sprawdziłeś.
 
 ## Jak sprawdzić, że działa
 

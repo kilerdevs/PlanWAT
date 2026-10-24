@@ -7,12 +7,17 @@ Current converters no longer emit them and build.py refuses them, but
 calendars published earlier (the `data` branch) still carry them. This
 rewrites such files:
 
-- drop every CONTACT line,
+- drop every CONTACT, ORGANIZER and ATTENDEE line, at any level,
 - drop every part of a LOCATION that names a person (a title and a name, or a lecturer alias such as `AKowalski`;
   the real rooms beside it stay, and a LOCATION with nothing left goes whole),
-- drop every `Prowadzący:` segment of DESCRIPTION (other segments stay;
-  a DESCRIPTION that would still name staff is dropped whole, since
-  build.py refuses the file otherwise — CATEGORIES keeps the category),
+- drop every segment of an event's DESCRIPTION that build.py does not allow
+  (`Prowadzący:` and any other line that is not the class type, an
+  `Uwaga:` note or the `Grupy:` list) or that names someone (other
+  segments stay; a DESCRIPTION with nothing left goes whole — CATEGORIES
+  keeps the category),
+- cut a SUMMARY, CATEGORIES, COMMENT or calendar-level text (X-WR-CALNAME,
+  X-WR-CALDESC, ...) where a title before a name starts ("Podstawy
+  toksykologii plk dr Wachna Piotr" -> "Podstawy toksykologii"),
 - normalize line endings to CRLF (the project standard, enforced by CI).
 
 Only touched lines change: every other line keeps its exact bytes (no
@@ -39,21 +44,50 @@ from wlo2ics import fold_line  # noqa: E402 (the shared 75/74-octet folding)
 
 
 def staff_free(value):
-    """build.py's rule: no CONTACT, no instructor segment in DESCRIPTION."""
-    return 'prowadzący:' not in value.lower()
+    """build.py's rule for free text: no instructor label, no title before a name."""
+    return 'prowadzący:' not in value.lower() and not build._TITLED.search(value)
 
 
-def scrub_description(line):
+def scrub_description(line, kinds):
     """An unfolded DESCRIPTION line -> (line, changed) or (None, True) when
-    the whole line must go (it would still name staff)."""
+    the whole line must go (nothing build.py accepts is left). A segment
+    stays when it is one build.py allows (`kinds`: the event's CATEGORIES)
+    and names no one."""
     head, _, value = line.partition(':')
     segs = [s for s in value.split('\\n')
-            if not s.strip().lower().startswith('prowadzący:')]
+            if staff_free(s) and build.description_line_ok(build._unescape(s), kinds)]
     if not segs or not staff_free('\\n'.join(segs)):
         return None, True  # still names staff: drop the line whole
     if len(segs) != len(value.split('\\n')):
         return head + ':' + '\\n'.join(segs), True
     return line, False
+
+
+def scrub_titled(line):
+    """An unfolded free-text line (SUMMARY, a calendar name) -> (line, changed),
+    or (None, True) when nothing is left. A name follows the subject
+    ('Podstawy toksykologii plk dr Wachna Piotr'), so the text is cut where
+    the title starts; a SUMMARY cut to nothing goes, and verify refuses it."""
+    head, _, value = line.partition(':')
+    if staff_free(value):
+        return line, False
+    m = build._TITLED.search(value) or re.search('(?i)prowadzący:', value)
+    value = re.sub(r'[\s,;:(\\-]+$', '', value[:m.start()])
+    return (head + ':' + value if value else None), True
+
+
+def event_kinds(raw, i):
+    """The CATEGORIES of the event whose BEGIN:VEVENT is raw[i], as build.event_kinds gives them."""
+    for j in range(i + 1, len(raw)):
+        key = raw[j].split(':', 1)[0].split(';', 1)[0].upper()
+        if key == 'END':
+            break
+        if key == 'CATEGORIES':
+            k = j + 1
+            while k < len(raw) and raw[k][:1] in (' ', '\t'):
+                k += 1
+            return build.event_kinds((raw[j] + ''.join(l[1:] for l in raw[j + 1:k])).partition(':')[2])
+    return set()
 
 
 def scrub_location(line):
@@ -82,20 +116,34 @@ def scrub_text(text):
     if raw and raw[-1] == '':
         raw.pop()  # the final newline, re-added on write
     out, removed = [], 0
-    i = 0
+    i, stack, kinds = 0, [], set()
     while i < len(raw):
         line = raw[i]
         key = line.split(':', 1)[0].split(';', 1)[0].upper()
-        if key == 'CONTACT':
+        if key == 'BEGIN':
+            stack.append(line.partition(':')[2].strip().upper())
+            if stack[-1] == 'VEVENT':
+                kinds = event_kinds(raw, i)
+        elif key == 'END' and stack:
+            stack.pop()
+        if key in build.STAFF_PROPS:
+            j = i + 1
+            while j < len(raw) and raw[j][:1] in (' ', '\t'):
+                j += 1
             removed += 1
-            i += 1
+            i = j
             continue
-        if key in ('DESCRIPTION', 'LOCATION'):
+        if key == 'LOCATION' or key in build.TEXT_PROPS or stack == ['VCALENDAR'] and key not in ('BEGIN', 'END'):
             j = i + 1
             while j < len(raw) and raw[j][:1] in (' ', '\t'):
                 j += 1
             logical = raw[i] + ''.join(l[1:] for l in raw[i + 1:j])
-            new, changed = (scrub_description if key == 'DESCRIPTION' else scrub_location)(logical)
+            if key == 'DESCRIPTION' and stack[-1:] == ['VEVENT']:
+                new, changed = scrub_description(logical, kinds)
+            elif key == 'LOCATION':
+                new, changed = scrub_location(logical)
+            else:
+                new, changed = scrub_titled(logical)
             removed += changed
             if changed:
                 if new is not None:

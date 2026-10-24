@@ -331,26 +331,33 @@ def read_calendar(path):
     for line in lines:
         name, _, value = line.partition(':')
         key = name.split(';', 1)[0].upper()
+        # PlanWAT keeps no personal data of staff: a calendar that names who teaches is refused, at any level (the
+        # whole file is published, its header and nested components included).
+        if key in STAFF_PROPS or 'prowadzący:' in value.lower():
+            raise BuildError(f'{path}: calendars must not name staff (remove the {key} line)')
+        if key == 'LOCATION' and _names_person(value):
+            raise BuildError(f'{path}: a LOCATION names a person (a title such as "dr inż." or an alias such as "AKowalski"): calendars must not name staff')
+        if (key in TEXT_PROPS or stack == ['VCALENDAR']) and _TITLED.search(value):
+            raise BuildError(f'{path}: a {key} names a person (a title such as "dr inż." before a name): calendars must not name staff')
         if key == 'BEGIN':
             stack.append(value.upper())
             if value.upper() == 'VEVENT':
-                event = set()
+                event = {}
         elif key == 'END':
             if not stack or stack[-1] != value.upper():
                 raise BuildError(f'{path}: END:{value} does not close {stack[-1] if stack else "anything"}')
             stack.pop()
             if value.upper() == 'VEVENT':
-                missing = {'UID', 'DTSTART', 'SUMMARY'} - event
+                missing = {'UID', 'DTSTART', 'SUMMARY'} - event.keys()
                 if missing:
                     raise BuildError(f'{path}: an event has no {", ".join(sorted(missing))}')
+                kinds = event_kinds(event.get('CATEGORIES', ''))
+                if not all(description_line_ok(l, kinds) for l in _unescape(event.get('DESCRIPTION', '')).split('\n')):
+                    raise BuildError(f'{path}: a DESCRIPTION may hold only the class type (one of the CATEGORIES), '
+                                     f'an "Uwaga: ..." note and "Grupy: <codes>": calendars must not name staff')
                 event = None
         elif stack and stack[-1] == 'VEVENT':
-            # PlanWAT keeps no personal data of staff: a calendar that names who teaches is refused.
-            if key == 'CONTACT' or (key == 'DESCRIPTION' and 'prowadzący:' in value.lower()):
-                raise BuildError(f'{path}: calendars must not name staff (remove the {key} line)')
-            if key == 'LOCATION' and _names_person(value):
-                raise BuildError(f'{path}: a LOCATION names a person (a title such as "dr inż." or an alias such as "AKowalski"): calendars must not name staff')
-            event.add(key)
+            event.setdefault(key, value)
             if key == 'DTSTART' and _ymd(value):
                 dates.append(_ymd(value))
         elif stack == ['VCALENDAR']:
@@ -358,6 +365,30 @@ def read_calendar(path):
     if stack:
         raise BuildError(f'{path}: unclosed {stack[-1]}')
     return props, dates
+
+
+# Properties that name a person by definition: refused wherever they appear.
+STAFF_PROPS = {'CONTACT', 'ORGANIZER', 'ATTENDEE'}
+# Free text a calendar app shows, checked for a title before a name wherever it appears (every calendar-level
+# property, X-WR-CALNAME and X-WR-CALDESC among them, is checked the same way). LOCATION also refuses aliases.
+TEXT_PROPS = {'SUMMARY', 'CATEGORIES', 'COMMENT', 'DESCRIPTION'}
+# What the converters write in a DESCRIPTION besides the class type: the faculty's note on the class (a partial
+# group's share, a subgroup, a topic) and the groups taught together.
+_DESCRIPTION_LINE = re.compile(r'Uwaga: .+|Grupy: \S*\d\S*(?:, \S*\d\S*)*')
+
+
+def event_kinds(categories):
+    """An event's CATEGORIES value as the set of its class types."""
+    return {_unescape(c) for c in re.split(r'(?<!\\),', categories)} - {''}
+
+
+def description_line_ok(line, kinds):
+    """Whether a DESCRIPTION line is one the converters write: a class type of the event, a note or its groups.
+
+    An allowlist, since a bare name ("Jan Kowalski") has no title to catch: an unlabelled line must be one of the
+    event's CATEGORIES."""
+    line = line.strip()
+    return not line or line in kinds or bool(_DESCRIPTION_LINE.fullmatch(line))
 
 
 def load_term(path):
@@ -405,7 +436,7 @@ def _unfold(source):
 
 
 # Academic and military titles. A room part that is such a title followed by a capitalised name is a person.
-_TITLES = {'dr', 'hab', 'prof', 'inż', 'inz', 'mgr', 'lic', 'płk', 'ppłk', 'mjr', 'kpt', 'por', 'ppor', 'gen', 'bryg', 'rez', 'ucz'}
+_TITLES = {'dr', 'hab', 'prof', 'inż', 'inz', 'mgr', 'lic', 'płk', 'ppłk', 'plk', 'pplk', 'mjr', 'kpt', 'por', 'ppor', 'gen', 'bryg', 'rez', 'ucz'}
 
 
 # A lecturer alias left in the room: initial(s) glued to a capitalised surname ('AKowalski'). Real rooms never have
@@ -413,17 +444,17 @@ _TITLES = {'dr', 'hab', 'prof', 'inż', 'inz', 'mgr', 'lic', 'płk', 'ppłk', 'm
 _ALIAS = re.compile('[A-ZĄĆĘŁŃÓŚŹŻ�]{1,2}[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż�]{3,}(?:-[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż�]+)?')
 
 
+# A title (or a run of them) followed by a capitalised name, anywhere in a text: 'dr inż. Kowalski', and also
+# 'Podstawy toksykologii plk dr Wachna Piotr', a subject with its lecturer glued on.
+_TITLED = re.compile(r'(?<!\w)(?:(?i:' + '|'.join(sorted(_TITLES, key=len, reverse=True)) + r')[\s.()]+)+'
+                     r'(?=[A-ZĄĆĘŁŃÓŚŹŻ])')
+
+
 def _names_person(location):
-    """True when any ';'/','-separated part of a LOCATION value is a title followed by a name, or a bare
+    """True when any ';'/','-separated part of a LOCATION value holds a title followed by a name, or is a bare
     lecturer alias."""
     for part in re.split(r'(?:\\[;,]|[;,])', location):
-        if _ALIAS.fullmatch(part.strip()):
-            return True
-        tokens = [t for t in re.split(r'[\s.()]+', part.strip()) if t]
-        i = 0
-        while i < len(tokens) and tokens[i].lower() in _TITLES:
-            i += 1
-        if 0 < i < len(tokens) and tokens[i][0].isalpha() and tokens[i][0].isupper():
+        if _ALIAS.fullmatch(part.strip()) or _TITLED.search(part):
             return True
     return False
 
