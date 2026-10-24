@@ -5,7 +5,8 @@ name: Crawler image
 # from this tag, by this workflow: gh attestation verify oci://ghcr.io/kilerdevs/planwat-crawler:<tag> --repo kilerdevs/PlanWAT
 # Both images are built natively for amd64 and arm64 (Raspberry Pi) and published as one multi-arch tag; the
 # provenance is attested on that index digest, which is also what the installer pins.
-# A release tag v1.2.0 publishes :1.2.0 and :latest (the installers' stable channel); a push to dev that touches
+# A release tag v1.2.0 publishes :1.2.0 and :latest (the installers' stable channel; a pre-release tag such as
+# v1.3.0-rc1 publishes only :1.3.0-rc1); a push to dev that touches
 # the crawler publishes :dev and :dev-<commit> (the dev channel), attested the same way. Pull requests only build
 # both images (no push), so a broken Dockerfile shows up before a release.
 on:
@@ -116,7 +117,10 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           tags=()
           case "$GITHUB_REF" in
-            refs/tags/v*) tags=(-t "IMAGE:$tag" -t "IMAGE:latest") ;;
+            refs/tags/v*)
+              tags=(-t "IMAGE:$tag")
+              # Only a plain release (v1.2.0, not v1.3.0-rc1) moves :latest, the installers' stable channel.
+              if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then tags+=(-t "IMAGE:latest"); fi ;;
             refs/heads/dev) tag="dev-${GITHUB_SHA::12}"; tags=(-t "IMAGE:$tag" -t "IMAGE:dev") ;;
             *) tag="dev-${GITHUB_SHA::12}"; tags=(-t "IMAGE:$tag") ;;
           esac

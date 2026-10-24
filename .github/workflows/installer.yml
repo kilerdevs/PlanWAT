@@ -2,9 +2,11 @@ name: Volunteer installer
 
 # The one-command installers of the volunteer crawler (tools/volunteer/install.sh for Linux and macOS,
 # install.ps1 for Windows; docs/WOLONTARIUSZE.md). Everything here runs on GitHub's runners: linting, the
-# detect-and-plan mode on every supported system family, and one full install on Ubuntu with images built from
-# this commit (provenance cannot be verified for those, so that run uses --no-verify; the verified path is
-# exercised by every real install and update against the published, attested images).
+# detect-and-plan mode on every supported system family, one full install on Ubuntu with images built from
+# this commit (provenance cannot be verified for those, so that run uses --no-verify) that is then updated, and
+# rolled back from a crawler that keeps crashing and from an update compose cannot start, and one install of the
+# published, attested dev images with the real verification and digest pinning. Not covered: a full install on
+# macOS (Colima needs nested virtualisation the runners lack) and on Windows (no Linux containers there).
 on:
   push:
     branches: [dev]
@@ -110,9 +112,9 @@ jobs:
           if ($dev -notmatch 'kana[^:]*: dev') { Write-Output $dev; exit 1 }
 
   install:
-    name: full install (Ubuntu, images from this commit)
+    name: full install, update and rollback (Ubuntu, images from this commit)
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       PLANWAT_HOME: /tmp/planwat
       PLANWAT_BIN: /tmp/planwat-bin
@@ -161,12 +163,99 @@ jobs:
           if systemctl list-timers --all | grep -q planwat-crawler-update; then
             echo '::error::the update timer is still there'; exit 1
           fi
+      - name: Update, and roll back what does not come up
+        env:
+          PLANWAT_UPDATE_SETTLE: '30'
+        run: |
+          set -eu
+          cmd="$PLANWAT_BIN/planwat-crawler"
+          env_file="$PLANWAT_HOME/.env"
+          docker tag planwat-crawler:ci planwat-crawler:ci-next
+          docker tag planwat-crawler-egress:ci planwat-crawler-egress:ci-next
+          # A crawler that exits at once, so Docker keeps restarting it.
+          printf 'FROM planwat-crawler:ci\nENTRYPOINT ["false"]\n' | docker build -q -t planwat-crawler:broken -
+          # 1. A working update: new pins, the previous ones kept for a rollback, the new version recorded.
+          PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci-next PLANWAT_EGRESS_IMAGE=planwat-crawler-egress:ci-next \
+            "$cmd" update --no-verify --version 0.0.1
+          grep -qx 'PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci-next' "$env_file"
+          grep -qx 'PLANWAT_PREVIOUS_CRAWLER_IMAGE=planwat-crawler:ci' "$env_file"
+          grep -qx 'PLANWAT_VERSION=0.0.1' "$env_file"
+          # 2. A crawler that crash-loops passes `compose up` but not the check after it: rolled back.
+          if PLANWAT_CRAWLER_IMAGE=planwat-crawler:broken PLANWAT_EGRESS_IMAGE=planwat-crawler-egress:ci-next \
+              "$cmd" update --no-verify --version 0.0.2; then
+            echo '::error::a crash-looping crawler was accepted'; exit 1
+          fi
+          grep -qx 'PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci-next' "$env_file"
+          grep -qx 'PLANWAT_VERSION=0.0.1' "$env_file"
+          # 3. An image that cannot even be pulled makes `compose up` itself fail: rolled back as well.
+          if PLANWAT_CRAWLER_IMAGE=planwat-crawler:ci-next PLANWAT_EGRESS_IMAGE=planwat-crawler-egress:missing \
+              "$cmd" update --no-verify --version 0.0.3; then
+            echo '::error::an update compose could not start was accepted'; exit 1
+          fi
+          grep -qx 'PLANWAT_EGRESS_IMAGE=planwat-crawler-egress:ci-next' "$env_file"
+          grep -qx 'PLANWAT_VERSION=0.0.1' "$env_file"
+          # After each rollback the previous version runs again.
+          sleep 10
+          docker compose --project-name planwat-crawler ps
+          test "$(docker compose --project-name planwat-crawler ps --status running --services | sort | tr '\n' ' ')" = 'crawler egress '
       - name: Crawler and egress logs
         if: failure()
         run: docker compose --project-name planwat-crawler logs --no-color --tail 200 || true
       - name: Uninstall
         run: |
           set -eu
-          echo | "$PLANWAT_BIN/planwat-crawler" uninstall
+          # No answer (EOF, a pipe) is never a yes to deleting everything.
+          if echo | "$PLANWAT_BIN/planwat-crawler" uninstall; then
+            echo '::error::uninstall went ahead without an explicit yes'; exit 1
+          fi
+          test -e "$PLANWAT_HOME/.env"
+          "$PLANWAT_BIN/planwat-crawler" uninstall --yes
           test ! -e "$PLANWAT_HOME"
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=planwat-crawler)"
+
+  verified:
+    name: verified install (Ubuntu, published dev images)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      attestations: read    # gh attestation verify reads the public attestations of the images
+    env:
+      PLANWAT_HOME: /tmp/planwat
+      PLANWAT_BIN: /tmp/planwat-bin
+      PLANWAT_INSTALL_SOURCE: ${{ github.workspace }}
+      PLANWAT_LOGIN: planwat-ci-volunteer
+      PLANWAT_SETUP_ARGS: --skip-github-checks --faculties= --auto-update off --non-interactive
+      PLANWAT_UPDATE_SETTLE: '30'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install without --no-verify
+        env:
+          # Stands in for a volunteer's fork token: the installer verifies the images with it.
+          PLANWAT_FORK_TOKEN: ${{ github.token }}
+        run: sh tools/volunteer/install.sh --yes --channel dev
+      - name: Pinned by digest after the provenance check
+        run: |
+          set -eu
+          env_file="$PLANWAT_HOME/.env"
+          grep -Eqx 'PLANWAT_CRAWLER_IMAGE=ghcr.io/kilerdevs/planwat-crawler@sha256:[0-9a-f]{64}' "$env_file"
+          grep -Eqx 'PLANWAT_EGRESS_IMAGE=ghcr.io/kilerdevs/planwat-crawler-egress@sha256:[0-9a-f]{64}' "$env_file"
+          grep -qx 'PLANWAT_CHANNEL=dev' "$env_file"
+      - name: Update (verified again), and a failing one changes nothing
+        run: |
+          set -eu
+          env_file="$PLANWAT_HOME/.env"
+          "$PLANWAT_BIN/planwat-crawler" update
+          before=$(grep '_IMAGE=' "$env_file")
+          # No such release: nothing to pull, so nothing may change.
+          if "$PLANWAT_BIN/planwat-crawler" update --channel stable --version 0.0.1; then
+            echo '::error::an update without images went through'; exit 1
+          fi
+          test "$(grep '_IMAGE=' "$env_file")" = "$before"
+          grep -qx 'PLANWAT_CHANNEL=dev' "$env_file"
+      - name: Crawler and egress logs
+        if: failure()
+        run: docker compose --project-name planwat-crawler logs --no-color --tail 200 || true
+      - name: Uninstall
+        run: |
+          "$PLANWAT_BIN/planwat-crawler" uninstall --yes
