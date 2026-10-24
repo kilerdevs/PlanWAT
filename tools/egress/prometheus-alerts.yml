@@ -28,15 +28,16 @@ groups:
           summary: "Egress /api/status down 5m"
           description: "Blackbox probe of http://<egress-host>:18080/api/status failing for 5m."
 
-      # A chain host with 0 verified proxies sits in DIRECT fallback (fail-open).
+      # A chain host with 0 verified proxies sits in DIRECT fallback (fail-open). Direct
+      # hosts legitimately have 0 verified exits, so they are excluded explicitly.
       - alert: EgressHostStuckDirect
-        expr: egress_host_verified == 0
+        expr: egress_host_verified == 0 and on(host) egress_host_direct == 0
         for: 2h
         labels:
           severity: warning
         annotations:
           summary: "Chain host stuck DIRECT with 0 verified ({{ $labels.host }})"
-          description: "Host {{ $labels.host }} has 0 verified proxies for >2h; faculty traffic goes direct."
+          description: "Host {{ $labels.host }} has 0 verified proxies for >2h while not on EGRESS_DIRECT_FACULTY; faculty traffic goes direct."
 
       # Pool nearly empty: rotation has no room to rotate.
       - alert: EgressPoolLow

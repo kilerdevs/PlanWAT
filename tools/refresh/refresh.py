@@ -62,6 +62,20 @@ def log(msg):
     print(msg, flush=True)
 
 
+def egress_headers():
+    """JSON + credentials for every report to the egress GUI.
+
+    The proxy accepts `Authorization: Bearer` and `X-Token`; sending both keeps older
+    egress builds working while the documented Bearer form is always present.
+    """
+    headers = {'Content-Type': 'application/json'}
+    token = os.environ.get('EGRESS_API_TOKEN', '').strip()
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+        headers['X-Token'] = token
+    return headers
+
+
 # Statuses worth one more try: the host is wobbling, not walling us out.
 TRANSIENT_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
 
@@ -108,7 +122,7 @@ def post_run_report(report, url=None, timeout=10):
         return
     try:
         req = urllib.request.Request(url, data=json.dumps(report).encode('utf-8'),
-                                     headers={'Content-Type': 'application/json'}, method='POST')
+                                     headers=egress_headers(), method='POST')
         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout).read()
     except Exception as err:
         log(f'run report not delivered ({err}); continuing')
@@ -140,7 +154,7 @@ def post_block_report(host, url=None, timeout=5):
     import urllib.request
     try:
         req = urllib.request.Request(url, data=json.dumps({'host': host}).encode('utf-8'),
-                                     headers={'Content-Type': 'application/json'}, method='POST')
+                                     headers=egress_headers(), method='POST')
         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout).read()
     except Exception:
         pass  # the demotion is a nice-to-have; the retry path works without it
@@ -174,7 +188,7 @@ class Progress:
     def _deliver(self, payload):
         import urllib.request
         req = urllib.request.Request(self.url, data=json.dumps(payload).encode('utf-8'),
-                                     headers={'Content-Type': 'application/json'}, method='POST')
+                                     headers=egress_headers(), method='POST')
         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=self.timeout).read()
 
     def send(self, event, **fields):
@@ -191,7 +205,7 @@ class Progress:
                 self.quiet = True
             return False
 
-    def tick(self, slot, done, total):
+    def tick(self, slot, done, total, **fields):
         """A progress sample for `slot`, sent at most once per `throttle` seconds."""
         if not self.url:
             return False
@@ -200,7 +214,7 @@ class Progress:
             if now - self.last_sent.get(slot, float('-inf')) < self.throttle:
                 return False
             self.last_sent[slot] = now
-        return self.send('tick', slot=slot, done=done, total=total)
+        return self.send('tick', slot=slot, done=done, total=total, **fields)
 
 
 def wait_for_recovery(name, probe, model, budget, max_probes=5, sleep=time.sleep, clock=time.monotonic):
@@ -495,7 +509,7 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
     not_ready = 0
     for n, item in enumerate(todo, 1):
         if progress is not None:
-            progress.tick(slot, n - 1, len(todo))
+            progress.tick(slot, n - 1, len(todo), faculty=name, lane=group, ahead=ahead, term=tid)
         if args.max_minutes and (clock() - started) / 60 > args.max_minutes:
             log(f'[{name}] time budget used up after {n - 1} groups')
             return changed, False, False
@@ -769,13 +783,16 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
             return False
 
     if progress is not None:
-        progress.send('wait_start', lane=group, faculties=[n for n, _ in deferred],
-                      budget=round(wait_budget))
+        wait_slots = [f'{n}~{core.term_id(coming)}' if (main_ok and coming) else n
+                      for n, main_ok in deferred]
+        progress.send('wait_start', id=group, lane=group, faculties=[n for n, _ in deferred],
+                      slots=wait_slots, budget=round(wait_budget))
     recovered, waited, probes = wait_for_recovery(group, probe, model, wait_budget,
                                                    args.block_probes, sleep, clock)
     if progress is not None:
-        progress.send('wait_end', lane=group, faculties=[n for n, _ in deferred],
-                      waited=round(waited), probes=probes, recovered=recovered)
+        progress.send('wait_end', id=group, lane=group, faculties=[n for n, _ in deferred],
+                      slots=wait_slots, waited=round(waited), probes=probes,
+                      recovered=recovered)
     tallies['waited'] = waited
     for name, main_ok in deferred:
         fac = state.faculties.setdefault(name, {})

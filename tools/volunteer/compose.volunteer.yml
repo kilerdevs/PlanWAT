@@ -30,6 +30,7 @@ services:
       PLANWAT_EGRESS_PROGRESS: http://egress:8080/api/progress
       PLANWAT_EGRESS_STATUS: http://egress:8080/api/run
       PLANWAT_EGRESS_HEALTH: http://egress:8080/api/status
+      EGRESS_API_TOKEN: "${EGRESS_API_TOKEN:-}"
     read_only: true
     user: "10003:10003"
     cap_drop: [ALL]
@@ -60,13 +61,17 @@ services:
     cap_drop: [ALL]
     security_opt: ['no-new-privileges:true']
     mem_limit: 256m
-    pids_limit: 128
+    pids_limit: 256
     tmpfs:
       - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
     environment:
       EGRESS_DATA: /data
+      # Must match the crawler's EGRESS_API_TOKEN. Empty keeps the API open on the
+      # localhost-bound status port; set it in .env when the box is shared.
+      EGRESS_API_TOKEN: "${EGRESS_API_TOKEN:-}"
       # Every faculty host goes out directly from your own line. Remove a host from this list to send it
       # through the rotating public proxy pool instead (only worth it for a host that blocks your line).
+      # With every host listed the pool does no list fetching and no probing at all.
       EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,planzajec.wcy.wat.edu.pl"
     volumes:
       - egress:/data

@@ -33,17 +33,23 @@ dotyczyła — a to wycofuje wyjście z ostatniego tunelu do tego hosta. Bez teg
 
 ## Części
 
-- `tools/egress/pool.py`: pula proxy (wzorzec z DeadDropMGMT). Pobiera te same 9 list proxy z GitHub (proxifly, monosans,
-  thespeedx, roosterkid), sprawdza kandydatów *przez nich samych* na stronie indeksu wydziału (bez zewnętrznego sędziego: 200 +
-  znacznik = zdrowy), sortuje ok → nowe → błąd według opóźnienia i zapisuje `pool.json`. Uszkodzone proxy odpoczywają 15 minut,
-  a wybór z warstwy zweryfikowanej rotuje między wyjściami — jedno szybkie proxy nie dostaje całego crawla, więc nie zostaje
-  przez to oznaczone przez WAF.
+- `tools/egress/pool.py`: pula proxy (wzorzec z DeadDropMGMT). Pobiera te same 8 list proxy z GitHub (proxifly, monosans,
+  thespeedx, roosterkid) i sprawdza kandydatów *przez nich samych*: Round 1 to neutralny kafelek OSM, Round 2 — strona indeksu
+  wydziału. Zdrowy wynik to 200, odpowiedni rozmiar, dodatni znacznik treści i brak znanych stron blokad (WAF potrafi oddać
+  duże 200), więc fałszywe „żywe” nie trafia do puli. Wybór sortuje ok → nowe → błąd według opóźnienia i zapisuje `pool.json`.
+  Pula odświeża się co 4 h, sprawdza do 240 kandydatów na 32 wątkach i dorabia do 56 weryfikacji na host; uszkodzone proxy
+  odpoczywają 10 minut, a po całkowitej awarii list mechanizm utrzymania wraca po 5 minutach, nie po 4 h. Osiem niepowodzeń
+  w 2 minuty wyłącza wyjścia tylko dla jednego hosta (sukces zdejmuje blokadę od razu), a wybór z warstwy zweryfikowanej
+  rotuje między wyjściami — jedno szybkie proxy nie dostaje całego crawla, więc nie zostaje przez to oznaczone przez WAF.
 - `tools/egress/server.py`: proxy przekazujące `:8888` (CONNECT i zwykłe HTTP, tylko porty 443/80) z łączeniem łańcuchowym
-  HTTP/SOCKS5/SOCKS4a, plus GUI monitoringu w sieci LAN `:8080` (na hoście `:18080`, bo `:8080` zajmuje cAdvisor na hoście runnera)
-  (`/` panel, `GET /api/status`, `POST /api/run` skrzynka raportów, `POST /api/block` zgłoszenie blokady (wycofuje wyjście),
-  `POST /api/progress` postęp przebiegu na żywo, `GET /api/progress` jego podsumowanie dla GUI, `POST /api/refresh` wymuszenie
-  odświeżenia). Żądania POST
-  niosą `Authorization: Bearer $EGRESS_API_TOKEN`, gdy ustawiono `EGRESS_API_TOKEN`.
+  HTTP/SOCKS5/SOCKS4a (w tym adresy IPv6 w odpowiedzi SOCKS5), plus GUI monitoringu w sieci LAN `:8080` (na hoście `:18080`,
+  bo `:8080` zajmuje cAdvisor na hoście runnera) (`/` panel, `GET /api/status`, `POST /api/run` skrzynka raportów,
+  `POST /api/block` zgłoszenie blokady (wycofuje wyjście), `POST /api/progress` postęp przebiegu na żywo, `GET /api/progress`
+  jego podsumowanie dla GUI, `POST /api/refresh` wymuszenie odświeżenia). Żądania POST przyjmują `X-Token` albo
+  `Authorization: Bearer $EGRESS_API_TOKEN` (crawler wysyła oba), a bez ustawionego tokenu API jest otwarte — tylko dla
+  zaufanej sieci LAN. Token jest sprawdzany przed odczytem ciała, ciało ma sufit 256 KiB, a liczba połączeń jest ograniczona
+  (`EGRESS_MAX_CONNECTIONS`, domyślnie 96 dla proxy i 32 dla GUI). Tunel kończy się po 120 s ciszy i zachowuje półzamknięcie,
+  więc klient, który skończył wysyłać, wciąż odbiera całą odpowiedź.
 - `Dockerfile.egress`, `requirements.txt` (curl_cffi, ta sama wersja co w odświeżaniu), `compose.fragment.yml` (fragment usługi
   do pliku compose plebanii).
 - `tools/egress/prometheus-alerts.yml`, `tools/egress/blackbox-snippet.yml`: gotowy szablon alertów i sondy Blackbox dla
@@ -51,12 +57,16 @@ dotyczyła — a to wycofuje wyjście z ostatniego tunelu do tego hosta. Bez teg
 
 Polityka pustej puli to świadomy wybór operatora „fail-open”: ruch do wydziałów idzie bezpośrednio, a GUI pokazuje tryb DIRECT
 (`PLANWAT_EGRESS_DIRECT_FALLBACK=1`). Ustaw `0`, by uzyskać „fail-closed” w stylu DeadDropMGMT (żądania do wydziałów dostają 403, aż pula
-wróci do zdrowia).
+wróci do zdrowia). `EGRESS_FAIL_CLOSED` pozwala zawęzić to do wybranych hostów (nazwy rozdzielone przecinkami lub spacjami;
+`1`, `true` albo `all` obejmuje wszystkie hosty wydziałów): wpisany host nigdy nie spada na linię domową, nawet przy fail-open.
+Wdrożenie produkcyjne wpisuje tam `planzajec.wcy.wat.edu.pl`, bo ten host jest blokowany właśnie z linii domowej i działa tylko
+przez pulę.
 
 Lista `EGRESS_DIRECT_FACULTY` (nazwy hostów rozdzielone przecinkami lub spacjami, ustawiana w `compose.yml`) wyłącza wybrane
 hosty wydziałów z puli: wszystkie poza `planzajec.wcy.wat.edu.pl` idą bezpośrednio linią domową, bo publiczne wyjścia dostają od
 nich blokady Incapsuli, a linia domowa serwuje je normalnie (WCY odwrotnie: jego blokuje linia domowa, więc zostaje na puli).
-Host z listy pokazuje w GUI tryb `DIRECT (lista)`.
+Host z listy pokazuje w GUI tryb `DIRECT (lista)`. Tylko hosty spoza tej listy są sprawdzane i weryfikowane przez pulę; gdy lista
+obejmuje wszystkie hosty (wdrożenie wolontariusza), pula nie pobiera list i nie sonduje nikogo.
 
 Ten sam obraz chroni crawlery wolontariuszy (`tools/volunteer/compose.volunteer.yml`, publikowany jako
 `ghcr.io/kilerdevs/planwat-crawler-egress`): crawler stoi w sieci bez trasy na zewnątrz, a proxy z wszystkimi hostami
@@ -96,7 +106,8 @@ wydziału z jego własnych `tick`ów (okno 180 s, przy zbyt krótkiej historii �
 koniec to suma tego, co zostało w najwolniejszej ścieżce (pasach wydziałów) plus minuta na publikację kalendarzy. Wydział,
 który czeka na odblokowanie albo zamilkł, pokazuje „wstrzymane” zamiast wymyślonej godziny — jeden zgubiony `tick` psuje
 tylko dokładność, nigdy sensu, a przebieg bez zdarzeń przez 10 minut czyta się jako „bez wieści”. Stanu nie zapisuje się na
-dysku: raport końcowy wciąż ląduje w `/data/runs.json`.
+dysku: raport końcowy wciąż ląduje w `/data/runs.json`. Raport „rozpoczęty”, po którym nie przyszło zakończenie, znika z panelu
+po 12 h, więc zawieszony przebieg nie udaje wiecznie trwającego.
 
 Sprawdzenie stanu: `GET /api/status` (200 = GUI działa; dodaj jako `healthcheck:` w compose, a samo „unhealthy” nigdy nie
 restartuje kontenera, więc połącz z mechanizmem w stylu autoheal).
@@ -115,7 +126,9 @@ pula żywych < 5, dysk maszyny > 85%, runner offline) zasilany sondą `blackbox-
 1. `scp -r tools/egress <użytkownik>@<host>:/opt/planwat-egress/` (wymaga SSH z hasłem: przełącz `PasswordAuthentication` w
    `/etc/ssh/sshd_config.d/00-hardening.conf` i `systemctl restart ssh`).
 2. Wstaw `compose.fragment.yml` do `<katalog runnera>/compose.yml` (dodaje `egress` pod `<egress-ip>`, a tinyproxy zostaje
-   nietknięty jako wycofanie).
+   nietknięty jako wycofanie). Jeśli GUI nie jest tylko w zaufanym LAN, ustaw w `.env` `EGRESS_API_TOKEN` — ten sam, który
+   widzi krok odświeżania (crawler wysyła go w `Authorization` i `X-Token`). Akcja odświeżania nie ustawia go jawnie, żeby
+   pusta wartość nie nadpisała tokenu odziedziczonego z otoczenia runnera.
 3. `docker compose up -d --build egress`, otwórz `:18080` i poczekaj na odświeżenie puli → ROTATING.
 4. Przełączenie: `HTTP_PROXY/HTTPS_PROXY/http_proxy/https_proxy` runnera → `http://<egress-ip>:8888` z `NO_PROXY` obejmującym
    podsieć wewnętrzną (`localhost,127.0.0.1,<inner-subnet>`, żeby zapytania GUI i statusu omijały proxy),

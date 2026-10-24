@@ -29,15 +29,18 @@ Threat model (unchanged from tinyproxy): job code on the runner is untrusted, so
 this proxy never fetches an arbitrary host on a job's behalf — routing above is
 the whole policy, CONNECT is limited to port 443, plain HTTP to port 80.
 """
+import hmac
 import itertools
 import json
 import os
 import re
+import secrets
 import socket
 import struct
 import threading
 import time
 import urllib.parse
+from calendar import timegm
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -50,6 +53,15 @@ HERE = Path(__file__).resolve().parent
 
 def env(name, default):
     return os.environ.get(name, default)
+
+
+def env_int(name, default, minimum=1):
+    """A positive integer from the environment; a typo falls back instead of crashing boot."""
+    try:
+        value = int(env(name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value >= minimum else default
 
 
 # Parity with <runner dir>/allow.txt: everything here goes direct.
@@ -69,15 +81,36 @@ BUF = 65536
 CONNECT_HEAD_CAP = 32 * 1024
 RELAY_CAP_S = 600
 TUNNEL_SLOTS = threading.BoundedSemaphore(64)
+MAX_CONNECTIONS = env_int('EGRESS_MAX_CONNECTIONS', 96, 8)
+GUI_BODY_CAP = 256 * 1024
 TUNNEL_COUNTER = itertools.count(1)
 CONNECT_STATUS_RE = re.compile(br'^HTTP/1\.[01] 200')
+
+# Hosts that must never fall back to this box's own line: when the pool has no healthy
+# exit for them, the request fails closed instead of leaking the operator's address.
+# `1`/`true`/`all` means every chained faculty host; otherwise a comma/space list.
+_FAIL_CLOSED_RAW = env('EGRESS_FAIL_CLOSED', '').strip().lower()
+FAIL_CLOSED_ALL = _FAIL_CLOSED_RAW in ('1', 'true', 'yes', 'all', '*')
+FAIL_CLOSED = frozenset(
+    s.lower() for s in env('EGRESS_FAIL_CLOSED', '').replace(',', ' ').split()
+    if s and s.lower() not in ('1', 'true', 'yes', 'all', '*')
+)
+
+
+def fail_closed(host):
+    """True when `host` must not use direct fallback (its pool exits are the only route)."""
+    h = (host or '').lower().rstrip('.')
+    if FAIL_CLOSED_ALL:
+        return any(h == s or h.endswith('.' + s) for s in CHAIN_SUFFIXES)
+    return any(h == s or h.endswith('.' + s) for s in FAIL_CLOSED)
 
 
 def faculty_targets(season=None):
     """Round-2 verification targets: each chain host's own index page + content marker.
 
-    XML indexes must start with <?xml; the HTML ones (WCY Drupal, WML landing) only
-    need a healthy 200 with a body (marker None). IOE's index only exists for lato.
+    XML indexes must contain <?xml; the HTML ones (WCY Drupal, WML landing) need a
+    positive marker too — a WAF block page is also a 200 with a large body. The
+    proxy pool additionally rejects known block-page markers on every probe.
     """
     season = season or env('EGRESS_SEASON', 'zima')
     xml = b'<?xml'
@@ -86,10 +119,11 @@ def faculty_targets(season=None):
         'wel.wat.edu.pl': (f'https://wel.wat.edu.pl/planyzajec/{season}/index.xml', xml),
         'www.wim.wat.edu.pl': (f'https://www.wim.wat.edu.pl/wp-content/uploads/rozklady/{season}/index.xml', xml),
         'ioe.wat.edu.pl': ('https://ioe.wat.edu.pl/plany/lato/index.xml', xml),
-        'planzajec.wcy.wat.edu.pl': ('https://planzajec.wcy.wat.edu.pl/pl/rozklad', None),
-        'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', None),
+        'planzajec.wcy.wat.edu.pl': ('https://planzajec.wcy.wat.edu.pl/pl/rozklad', b'grupa_id=wcy'),
+        'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', b'index.xml'),
         'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', xml),
     }
+
 
 
 def host_is_direct(host):
@@ -123,6 +157,42 @@ def split_target(target):
     if port not in (80, 443):
         return None
     return host, port
+
+
+# Plain-HTTP forwarding is a courtesy for the few non-TLS URLs; the crawler uses CONNECT.
+# Bodies are small (nothing in the refresh path POSTs through the proxy), so cap them.
+PLAIN_BODY_CAP = 1024 * 1024
+HOP_BY_HOP = frozenset({
+    'connection', 'proxy-connection', 'keep-alive', 'proxy-authenticate',
+    'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'expect',
+})
+
+
+def plain_forward_headers(headers):
+    """Forwarded header block for an absolute-URI request, without hop-by-hop fields.
+
+    Drops the client's Host (the caller writes the destination's own), its
+    Content-Length (the caller writes the body length it actually forwards), and any
+    header named by Connection — forwarding those is how a proxy smuggles a second
+    request or leaks its own connection semantics upstream.
+    """
+    drop = set(HOP_BY_HOP)
+    try:
+        values = headers.get_all('Connection') or []
+    except AttributeError:
+        values = []
+    for value in values:
+        drop.update(token.strip().lower() for token in str(value).split(',') if token.strip())
+    lines = []
+    for key, value in headers.items():
+        low = key.lower()
+        if low in drop or low in ('host', 'content-length'):
+            continue
+        if any(ch in key for ch in '\r\n:') or any(ch in str(value) for ch in '\r\n'):
+            continue
+        lines.append(f'{key}: {value}\r\n')
+    return ''.join(lines)
+
 
 
 # -- upstream chaining ----------------------------------------------------
@@ -183,9 +253,15 @@ def chain_connect(proxy_url, host, port, timeout=CONNECT_TIMEOUT):
             if rep[:2] != b'\x05\x00':
                 raise OSError(f'socks5: refused ({rep.hex()})')
             atyp = rep[3]
-            _recv_exact(sock, {1: 6, 3: 1}[atyp] if atyp in (1, 3) else 18, timeout)
-            if atyp == 3:
-                _recv_exact(sock, _recv_exact(sock, 1, timeout)[0] + 2, timeout)
+            if atyp == 1:      # IPv4: 4-byte address + 2-byte port
+                _recv_exact(sock, 6, timeout)
+            elif atyp == 4:    # IPv6: 16-byte address + 2-byte port
+                _recv_exact(sock, 18, timeout)
+            elif atyp == 3:    # domain: 1-byte length, then name + 2-byte port
+                length = _recv_exact(sock, 1, timeout)[0]
+                _recv_exact(sock, length + 2, timeout)
+            else:
+                raise OSError(f'socks5: unknown address type {atyp}')
         elif scheme == 'socks4':
             sock.sendall(b'\x04\x01' + struct.pack('!H', port) + b'\x00\x00\x00\x01anonymous\x00'
                          + hb + b'\x00')
@@ -204,50 +280,78 @@ def chain_connect(proxy_url, host, port, timeout=CONNECT_TIMEOUT):
     return sock
 
 
-def relay(a, b, cap=RELAY_CAP_S):
-    """Copy both ways, joining the copy threads (cap `cap` s). Returns (up, down, secs).
+def relay(a, b, cap=RELAY_CAP_S, idle=TUNNEL_IDLE):
+    """Copy both ways, joining the copy threads (cap `cap` s of wall clock, `idle` s quiet).
 
-    up = bytes a->b, down = bytes b->a.
+    up = bytes a->b, down = bytes b->a. Half-close is preserved: EOF on one side only
+    shuts down the write half of the other, so a client that finished sending can still
+    read the whole response. A tunnel that moves no bytes for `idle` seconds is dropped
+    instead of occupying a slot until the hard cap.
     """
     start = time.monotonic()
+    deadline = start + cap
     counts = [0, 0]
+    activity = [start]
+    activity_lock = threading.Lock()
+    done = threading.Event()
     for s in (a, b):
         try:
-            s.settimeout(None)
+            s.settimeout(1.0)
         except OSError:
             pass
 
     def _copy(src, dst, idx):
         try:
-            while True:
+            while not done.is_set() and time.monotonic() < deadline:
                 try:
                     chunk = src.recv(BUF)
+                except socket.timeout:
+                    with activity_lock:
+                        quiet = time.monotonic() - activity[0]
+                    if quiet >= idle:
+                        break
+                    continue
                 except OSError:
                     break
                 if not chunk:
+                    try:
+                        dst.shutdown(socket.SHUT_WR)
+                    except OSError:
+                        pass
                     break
                 try:
                     dst.sendall(chunk)
                 except OSError:
                     break
                 counts[idx] += len(chunk)
+                with activity_lock:
+                    activity[0] = time.monotonic()
         finally:
-            for s in (a, b):
-                try:
-                    s.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
+            # One direction ending must not tear down the other (HTTP responses flow
+            # only after the request body has been sent in full).
+            pass
 
     threads = [threading.Thread(target=_copy, args=(a, b, 0), daemon=True),
                threading.Thread(target=_copy, args=(b, a, 1), daemon=True)]
     for t in threads:
         t.start()
-    deadline = start + cap
-    for t in threads:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
+    while any(t.is_alive() for t in threads):
+        now = time.monotonic()
+        with activity_lock:
+            quiet = now - activity[0]
+        if now >= deadline or quiet >= idle:
             break
-        t.join(timeout=remaining)
+        for t in threads:
+            t.join(timeout=0.5)
+    if any(t.is_alive() for t in threads):
+        done.set()
+        for s in (a, b):
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        for t in threads:
+            t.join(timeout=1.0)
     for s in (a, b):
         try:
             s.close()
@@ -258,6 +362,8 @@ def relay(a, b, cap=RELAY_CAP_S):
 
 # -- run reports -----------------------------------------------------------
 class RunLog:
+    STALE_OPEN_S = 12 * 3600  # a 'started' report without a finish is not live forever
+
     def __init__(self, path, cap=30):
         self.path = Path(path)
         self.cap = cap
@@ -274,9 +380,40 @@ class RunLog:
                     self.runs = runs[-cap:]
                 opened = data.get('open', [])
                 if isinstance(opened, list):
-                    self.open_runs = opened[-cap:]
+                    self.open_runs = self._fresh(opened)[-cap:]
         except (OSError, ValueError):
             pass
+
+    @staticmethod
+    def _stamp(entry):
+        """Unix seconds from a report's `received`/`started` stamp, or None."""
+        for key in ('received', 'started'):
+            value = entry.get(key) if isinstance(entry, dict) else None
+            if not isinstance(value, str):
+                continue
+            try:
+                return timegm(time.strptime(value, '%Y-%m-%dT%H:%M:%SZ'))
+            except (ValueError, OverflowError, OSError):
+                continue
+        return None
+
+    def _fresh(self, entries):
+        now = time.time()
+        return [e for e in entries
+                if isinstance(e, dict)
+                and ((stamp := self._stamp(e)) is None or now - stamp <= self.STALE_OPEN_S)]
+
+    def _expire_open(self):
+        fresh = self._fresh(self.open_runs)
+        changed = len(fresh) != len(self.open_runs)
+        self.open_runs = fresh
+        return changed
+
+    def open_snapshot(self):
+        with self.lock:
+            if self._expire_open():
+                self._persist()
+            return list(self.open_runs)
 
     def _persist(self):
         try:
@@ -301,6 +438,7 @@ class RunLog:
     def add(self, report):
         with self.lock:
             report['received'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+            self._expire_open()
             if isinstance(report, dict) and report.get('phase') == 'started':
                 self.open_runs.append(report)
                 del self.open_runs[:-self.cap]
@@ -337,6 +475,9 @@ class LiveRun:
     TAIL_S = 60.0         # publishing the changed calendars after the last page
     FALLBACK_TOTAL = 150  # groups assumed for a faculty that has not listed yet
     SAMPLE_CAP = 90       # ticks kept per slot (a few minutes at the crawler's throttle)
+    MAX_SLOTS = 128       # hard cap: an untrusted client cannot grow GUI memory without bound
+    MAX_LANES = 32
+    MAX_WAITS = 16
 
     def __init__(self, clock=time.time):
         self.clock = clock
@@ -349,36 +490,60 @@ class LiveRun:
                 'done': 0, 'pass': 0, 'ahead': bool(ahead), 'term': term, 'changed': None,
                 'updated': now, 'samples': deque(maxlen=self.SAMPLE_CAP)}
 
+    @staticmethod
+    def _names(value, limit):
+        """A bounded list of names from an untrusted event field (never a string's chars)."""
+        if not isinstance(value, (list, tuple)):
+            return []
+        return [str(v)[:80] for v in value][:limit]
+
     def _start(self, rid, body, now):
         slots, lanes = {}, []
-        for lane in body.get('lanes') or []:
+        lanes_in = body.get('lanes')
+        if not isinstance(lanes_in, (list, tuple)):
+            lanes_in = []
+        for lane in lanes_in[:self.MAX_LANES]:
             if not isinstance(lane, dict):
                 continue
-            names = [str(f) for f in lane.get('faculties') or [] if f]
-            name = str(lane.get('lane') or (names[0] if names else '?'))
+            names, chosen = [], set()
+            for name in self._names(lane.get('faculties'), self.MAX_SLOTS):
+                if not name or name in slots or name in chosen:
+                    continue
+                if len(slots) + len(names) >= self.MAX_SLOTS:
+                    break
+                names.append(name)
+                chosen.add(name)
+            if not names:
+                continue
+            name = str(lane.get('lane') or names[0])[:80]
             lanes.append({'lane': name, 'slots': list(names)})
             for fac in names:
                 slots[fac] = self._slot(fac, fac, name, now)
         self.state = {'run': rid, 'started': now, 'updated': now, 'finished': None, 'exit': None,
                       'blocked': False, 'incomplete': False, 'degraded': False, 'changed': None,
                       'profile': str(body.get('profile') or ''), 'parallel': bool(body.get('parallel')),
-                      'wait': None, 'lanes': lanes, 'slots': slots}
+                      'waits': {}, 'lanes': lanes, 'slots': slots}
 
     def _lane_add(self, lane, key):
+        lane = (lane or '?')[:80]
         for entry in self.state['lanes']:
             if entry['lane'] == lane:
                 if key not in entry['slots']:
                     entry['slots'].append(key)
                 return
-        self.state['lanes'].append({'lane': lane or '?', 'slots': [key]})
+        if len(self.state['lanes']) >= self.MAX_LANES:
+            return  # a late/unknown lane must not grow the page without bound
+        self.state['lanes'].append({'lane': lane, 'slots': [key]})
 
     def _slot_of(self, body, now):
-        key = str(body.get('slot') or body.get('faculty') or '?')
+        key = str(body.get('slot') or body.get('faculty') or '?')[:80]
         slot = self.state['slots'].get(key)
         if slot is None:  # a slot the run_start did not announce (an ahead pass, a lost event)
-            lane = str(body.get('lane') or '')
-            slot = self._slot(key, str(body.get('faculty') or key), lane, now,
-                              ahead=bool(body.get('ahead')), term=str(body.get('term') or ''))
+            if len(self.state['slots']) >= self.MAX_SLOTS:
+                return None
+            lane = str(body.get('lane') or '')[:80]
+            slot = self._slot(key, str(body.get('faculty') or key)[:80], lane, now,
+                              ahead=bool(body.get('ahead')), term=str(body.get('term') or '')[:32])
             self.state['slots'][key] = slot
             self._lane_add(lane, key)
         return slot
@@ -386,9 +551,14 @@ class LiveRun:
     def _sample(self, slot, now):
         slot['samples'].append((now, slot['done']))
 
+    def _wait_key(self, body, faculties):
+        return str(body.get('id') or body.get('lane') or ','.join(faculties) or '?')[:80]
+
     def _apply(self, kind, body, now):
         if kind == 'faculty_start':
             slot = self._slot_of(body, now)
+            if slot is None:
+                return
             total = body.get('total')
             slot['total'] = int(total) if isinstance(total, (int, float)) else None
             slot['done'] = 0
@@ -401,6 +571,8 @@ class LiveRun:
             self._sample(slot, now)
         elif kind == 'tick':
             slot = self._slot_of(body, now)
+            if slot is None:
+                return
             done, total = body.get('done'), body.get('total')
             if isinstance(done, (int, float)):
                 slot['done'] = int(done)
@@ -412,6 +584,8 @@ class LiveRun:
             self._sample(slot, now)
         elif kind == 'faculty_done':
             slot = self._slot_of(body, now)
+            if slot is None:
+                return
             blocked, complete = bool(body.get('blocked')), bool(body.get('complete'))
             changed = body.get('changed')
             slot['changed'] = int(changed) if isinstance(changed, (int, float)) else None
@@ -421,21 +595,34 @@ class LiveRun:
             slot['updated'] = now
             self._sample(slot, now)
         elif kind == 'wait_start':
-            faculties = [str(f) for f in body.get('faculties') or []]
-            self.state['wait'] = {'lane': str(body.get('lane') or ''), 'faculties': faculties,
-                                  'budget': body.get('budget'), 'since': now}
-            for fac in faculties:
-                slot = self.state['slots'].get(fac)
+            faculties = self._names(body.get('faculties'), self.MAX_SLOTS)
+            slots = self._names(body.get('slots'), self.MAX_SLOTS)
+            key = self._wait_key(body, faculties)
+            waits = self.state['waits']
+            if len(waits) >= self.MAX_WAITS and key not in waits:
+                oldest = min(waits, key=lambda k: waits[k].get('since', now))
+                waits.pop(oldest, None)
+            waits[key] = {'id': key, 'lane': str(body.get('lane') or '')[:80], 'faculties': faculties,
+                          'slots': slots,
+                          'budget': body.get('budget') if isinstance(body.get('budget'), (int, float)) else None,
+                          'since': now}
+            for slot_key in (slots or faculties):
+                slot = self.state['slots'].get(slot_key)
                 if slot is not None:
                     slot['status'] = 'waiting'
                     slot['updated'] = now
         elif kind == 'wait_end':
-            self.state['wait'] = None
+            faculties = self._names(body.get('faculties'), self.MAX_SLOTS)
+            key = self._wait_key(body, faculties)
+            wait = self.state['waits'].pop(key, None)
             recovered = bool(body.get('recovered'))
-            for fac in body.get('faculties') or []:
-                slot = self.state['slots'].get(str(fac))
-                if slot is not None and not recovered:
-                    slot['status'] = 'blocked'  # the wall outlived its budget
+            slots = (self._names(body.get('slots'), self.MAX_SLOTS)
+                     or (wait or {}).get('slots') or faculties or (wait or {}).get('faculties') or [])
+            for slot_key in slots:
+                slot = self.state['slots'].get(slot_key)
+                if slot is not None:
+                    # A recovered wall is re-crawled immediately; an unrecovered one stays blocked.
+                    slot['status'] = 'queued' if recovered else 'blocked'
                     slot['updated'] = now
         elif kind == 'run_done':
             self.state['finished'] = now
@@ -446,6 +633,14 @@ class LiveRun:
             self.state['blocked'] = bool(body.get('blocked'))
             self.state['incomplete'] = bool(body.get('incomplete'))
             self.state['degraded'] = bool(body.get('degraded'))
+            # A wall still outstanding when the run ends is a stopped slot, not a live wait.
+            for wait in self.state['waits'].values():
+                for slot_key in (wait.get('slots') or wait.get('faculties') or []):
+                    slot = self.state['slots'].get(slot_key)
+                    if slot is not None and slot['status'] == 'waiting':
+                        slot['status'] = 'stopped'
+                        slot['updated'] = now
+            self.state['waits'].clear()
 
     def event(self, body):
         """Apply one crawler event; returns a small acknowledgement (None = ignored)."""
@@ -498,7 +693,22 @@ class LiveRun:
             med_rate = median(rates.values()) if rates else None
             med_total = int(median(totals)) if totals else self.FALLBACK_TOTAL
             finished = st.get('finished')
-            wait = st.get('wait')
+            waits = list(st.get('waits', {}).values())
+            wait = None
+            if waits:
+                faculties, slots = [], []
+                for w in waits:
+                    for f in w.get('faculties') or []:
+                        if f not in faculties:
+                            faculties.append(f)
+                    for s in w.get('slots') or []:
+                        if s not in slots:
+                            slots.append(s)
+                wait = {'lanes': sorted({w.get('lane') or '' for w in waits}),
+                        'lane': waits[0].get('lane') or '',
+                        'faculties': faculties, 'slots': slots,
+                        'budget': max((w.get('budget') or 0) for w in waits),
+                        'since': min((w.get('since') or now) for w in waits)}
             views = {}
             for key, slot in st['slots'].items():
                 status = slot['status']
@@ -564,6 +774,7 @@ class LiveRun:
 class ProxyHandler(BaseHTTPRequestHandler):
     server_version = 'PlanWAT-Egress/1'
     protocol_version = 'HTTP/1.1'
+    timeout = 30
 
     def log_message(self, *args):  # keep docker logs to one line per tunnel, not per chunk
         pass
@@ -575,8 +786,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             body = b'slot exhausted'
         else:
             body = b'bad request'
+        self.close_connection = True  # a denied request may have an unread body
         self.send_response(code)
         self.send_header('Content-Length', str(len(body)))
+        self.send_header('Connection', 'close')
         self.end_headers()
         try:
             self.wfile.write(body)
@@ -584,13 +797,20 @@ class ProxyHandler(BaseHTTPRequestHandler):
             pass
 
     def _open(self, host, port):
-        """(socket, via) to host:port per routing policy. Raises OSError when denied."""
+        """(socket, via, connect_ms) to host:port per routing policy. Raises OSError when denied.
+
+        A successful chain_connect only proves the tunnel opened; the caller records the
+        live success after bytes actually flowed, so a blackholing exit cannot stay
+        "verified" just because it accepted CONNECT.
+        """
         import time as _time
         policy = route(host)
         if policy == 'deny' or port not in (80, 443):
             raise OSError('deny')
         if policy == 'direct':
-            return socket.create_connection((host, port), timeout=CONNECT_TIMEOUT), 'direct'
+            start = _time.monotonic()
+            sock = socket.create_connection((host, port), timeout=CONNECT_TIMEOUT)
+            return sock, 'direct', int((_time.monotonic() - start) * 1000)
         try:
             if hasattr(self.server.pool, 'pick_many'):
                 candidates = self.server.pool.pick_many(host, 3)
@@ -616,17 +836,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 continue
             ms = int((_time.monotonic() - start) * 1000)
             try:
-                self.server.pool.mark(proxy, host, True, ms, live=True)  # verified by real use
-            except Exception as merr:
-                print(f'mark ok failed: {merr}', flush=True)
-            try:
                 self.server.remember_tunnel(host, proxy)
             except Exception as merr:
                 print(f'remember tunnel failed: {merr}', flush=True)
-            return sock, proxy
+            return sock, proxy, ms
         return self._fallback(host, port)
 
     def _fallback(self, host, port):
+        if fail_closed(host):
+            raise OSError('proxy_empty')  # this host must never leak the operator's line
         if env('PLANWAT_EGRESS_DIRECT_FALLBACK', '1') in ('1', 'true', 'yes'):
             lock = getattr(self.server, 'fallbacks_lock', None)
             if lock is not None:
@@ -634,8 +852,19 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     self.server.fallbacks[host] = self.server.fallbacks.get(host, 0) + 1
             else:
                 self.server.fallbacks[host] = self.server.fallbacks.get(host, 0) + 1
-            return socket.create_connection((host, port), timeout=CONNECT_TIMEOUT), 'direct-fallback'
+            start = time.monotonic()
+            sock = socket.create_connection((host, port), timeout=CONNECT_TIMEOUT)
+            return sock, 'direct-fallback', int((time.monotonic() - start) * 1000)
         raise OSError('proxy_empty')
+
+    def _record_use(self, host, via, ms, ok):
+        """Feed a finished live request back to the pool (never for direct exits)."""
+        if not via or via in ('direct', 'direct-fallback'):
+            return
+        try:
+            self.server.pool.mark(via, host, ok, ms if ok else None, live=True)
+        except Exception as err:
+            print(f'mark {"ok" if ok else "fail"} failed for {via}: {err}', flush=True)
 
     def do_CONNECT(self):
         if not TUNNEL_SLOTS.acquire(blocking=False):
@@ -648,7 +877,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 return self._deny(400)
             host, port = target
             try:
-                upstream, via = self._open(host, port)
+                upstream, via, ms = self._open(host, port)
             except Exception as err:
                 print(f'open {host}:{port} failed: {err}', flush=True)
                 self.server.blocks += 1
@@ -662,12 +891,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 except OSError:
                     pass
                 return
-            peer = self.connection
+            self.close_connection = True  # the tunnel owns the socket from here on
+            up = down = 0
+            secs = 0.0
             try:
-                up, down, secs = relay(peer, upstream)
+                up, down, secs = relay(self.connection, upstream)
+                self._record_use(host, via, ms, up + down > 0)
             except Exception as err:
                 print(f'relay {host}:{port} failed: {err}', flush=True)
-                up, down, secs = 0, 0, 0.0
+                self._record_use(host, via, ms, False)
             print(json.dumps({'id': next(TUNNEL_COUNTER), 'host': host, 'port': port,
                               'via': via, 'secs': round(secs, 3), 'up': up, 'down': down}),
                   flush=True)
@@ -681,36 +913,63 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.server.requests += 1
         self.server.active += 1
         try:
-            parts = urllib.parse.urlsplit(self.path)
-            if parts.scheme not in ('http',) or not parts.hostname:
-                return self._deny(400)  # only absolute-URI forwarding; origin-form is a client bug
-            host, port = parts.hostname, parts.port or 80
             try:
-                upstream, via = self._open(host, port)
+                parts = urllib.parse.urlsplit(self.path)
+                if parts.scheme not in ('http',) or not parts.hostname:
+                    return self._deny(400)  # only absolute-URI forwarding; origin-form is a client bug
+                host, port = parts.hostname, parts.port or 80
+            except ValueError:
+                return self._deny(400)  # malformed authority (bad port, brackets, …)
+            if self.headers.get('Transfer-Encoding'):
+                return self._deny(400)  # chunked request bodies are not forwarded
+            try:
+                length = int(self.headers.get('Content-Length') or 0)
+            except ValueError:
+                return self._deny(400)
+            if length < 0 or length > PLAIN_BODY_CAP:
+                return self._deny(413)
+            try:
+                body = self.rfile.read(length) if length else b''
+            except OSError:
+                self.close_connection = True
+                return self._deny(400)
+            if len(body) != length:
+                self.close_connection = True
+                return self._deny(400)
+            try:
+                upstream, via, ms = self._open(host, port)
             except Exception as err:
                 print(f'open {host}:{port} failed: {err}', flush=True)
                 self.server.blocks += 1
                 return self._deny(403 if str(err) in ('deny', 'proxy_empty') else 502)
             raw_path = urllib.parse.urlunsplit(('', '', parts.path or '/', parts.query, ''))
-            headers = ''.join(f'{k}: {v}\r\n' for k, v in self.headers.items()
-                              if k.lower() not in ('proxy-connection', 'connection'))
+            headers = plain_forward_headers(self.headers)
+            host_header = host if port == 80 else f'{host}:{port}'
+            up = down = secs = 0
             try:
-                upstream.sendall(f'{self.command} {raw_path} HTTP/1.1\r\nHost: {host}\r\n'
-                                f'Connection: close\r\n{headers}\r\n'.encode('latin-1'))
-                if self.command in ('POST', 'PUT', 'PATCH'):
-                    length = int(self.headers.get('Content-Length') or 0)
-                    if length:
-                        upstream.sendall(self.rfile.read(length))
+                head = (f'{self.command} {raw_path} HTTP/1.1\r\nHost: {host_header}\r\n'
+                        f'Connection: close\r\n{headers}'
+                        f'Content-Length: {len(body)}\r\n\r\n')
+                wire = head.encode('latin-1') + body
+                upstream.sendall(wire)
+                up = len(wire)
+                # One request per connection: stop reading the client so relay() can finish
+                # as soon as the upstream response ends, instead of holding the slot for the
+                # idle timeout waiting for a next request we would not forward.
+                self.close_connection = True
                 try:
-                    up, down, secs = relay(self.connection, upstream)
-                except Exception as err:
-                    print(f'relay http://{host}{raw_path} failed: {err}', flush=True)
-                    up, down, secs = 0, 0, 0.0
+                    self.connection.shutdown(socket.SHUT_RD)
+                except OSError:
+                    pass
+                _up, down, secs = relay(self.connection, upstream)
+                self._record_use(host, via, ms, down > 0)
                 print(json.dumps({'id': next(TUNNEL_COUNTER), 'host': host, 'port': port,
                                   'via': via, 'secs': round(secs, 3), 'up': up, 'down': down}),
                       flush=True)
-            except OSError as err:
+            except (OSError, UnicodeError) as err:
                 print(f'forward http://{host}{raw_path} failed: {err}', flush=True)
+                self.close_connection = True
+                self._record_use(host, via, ms, False)
                 try:
                     upstream.close()
                 except OSError:
@@ -724,10 +983,42 @@ class ProxyHandler(BaseHTTPRequestHandler):
     do_HEAD = _forward_plain
 
 
-class ProxyServer(ThreadingHTTPServer):
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer with a hard cap on live connections (slowloris/thread growth)."""
+
+    connection_limit = 96
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._conn_slots = threading.BoundedSemaphore(self.connection_limit)
+
+    def process_request(self, request, client_address):
+        if not self._conn_slots.acquire(blocking=False):
+            try:
+                request.sendall(b'HTTP/1.1 503 Service Unavailable\r\n'
+                                b'Content-Length: 0\r\nConnection: close\r\n\r\n')
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._conn_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._conn_slots.release()
+
+
+class ProxyServer(BoundedThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
     request_queue_size = 32
+    connection_limit = MAX_CONNECTIONS
 
     def __init__(self, addr, pool):
         super().__init__(addr, ProxyHandler)
@@ -966,8 +1257,8 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   </div></div>
   <p class="stamp" id="stamp">dane wczytywane&hellip;</p>
 </footer>
-<script id="boot" type="application/json">%BOOT%</script>
-<script>
+<script id="boot" type="application/json" nonce="%NONCE%">%BOOT%</script>
+<script nonce="%NONCE%">
 (function () {
   'use strict';
   var boot = JSON.parse(document.getElementById('boot').textContent);
@@ -1219,7 +1510,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
           + (c.ahead ? ' \u00b7 nadchodz\u0105cy semestr' : '')
           + (c.wait ? ' \u00b7 czeka\u0142 ' + fmtDur(c.wait.waited) + (c.wait.recovered ? ' (wr\u00f3ci\u0142)' : '') : '')
           + (c.at ? ' \u00b7 o ' + isoClock(c.at) : '');
-        tags += '<span class="tag ' + cls + '" title="' + esc(tip) + '">' + esc(k.toUpperCase()) + (c.changed ? ' +' + c.changed : '') + (c.blocked ? ' \u26d4' : '') + (c.degraded ? ' \u26a0' : '') + '</span>';
+        tags += '<span class="tag ' + cls + '" title="' + esc(tip) + '">' + esc(k.toUpperCase()) + (c.changed ? ' +' + esc(fmtNum(c.changed)) : '') + (c.blocked ? ' \u26d4' : '') + (c.degraded ? ' \u26a0' : '') + '</span>';
       });
       var d1 = ts(r.started), d2 = ts(r.ended);
       var bits = [];
@@ -1310,12 +1601,15 @@ def _live(server):
     return live
 
 
-def dashboard(status):
+def dashboard(status, nonce=''):
     """The GUI shell with the first snapshot baked in (instant paint) and the page escaping-safe."""
     banner = ('<div class="banner">przebieg w toku — raport otwarty (bez postępu na żywo)</div>'
               if status.get('open_runs') else '')
     boot = json.dumps(status, ensure_ascii=False).replace('<', '\\u003c')
-    return DASHBOARD.replace('%BOOT%', boot).replace('%BANNER%', banner)
+    # Banner and nonce first, BOOT last: replacing it first would also rewrite a literal
+    # %BANNER%/%NONCE% inside crawler-provided run data and corrupt the baked JSON.
+    template = DASHBOARD.replace('%BANNER%', banner).replace('%NONCE%', nonce)
+    return template.replace('%BOOT%', boot)
 
 
 def _wants_auth():
@@ -1324,12 +1618,19 @@ def _wants_auth():
 
 class GuiHandler(BaseHTTPRequestHandler):
     server_version = 'PlanWAT-Egress-GUI/1'
+    timeout = 30
 
-    def _send(self, body, ctype='application/json', code=200):
+    def _send(self, body, ctype='application/json', code=200, csp=None):
         data = body if isinstance(body, bytes) else body.encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type', ctype + '; charset=utf-8')
         self.send_header('Content-Length', str(len(data)))
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('X-Frame-Options', 'DENY')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        self.send_header('Cache-Control', 'no-store')
+        if csp:
+            self.send_header('Content-Security-Policy', csp)
         self.end_headers()
         try:
             self.wfile.write(data)
@@ -1337,10 +1638,33 @@ class GuiHandler(BaseHTTPRequestHandler):
             pass
 
     def _check_token(self):
+        """Accept `X-Token: <token>` or `Authorization: Bearer <token>` (constant time)."""
         want = env('EGRESS_API_TOKEN', '')
         if not want:
             return True
-        return self.headers.get('X-Token') == want
+        got = self.headers.get('X-Token') or ''
+        auth = self.headers.get('Authorization') or ''
+        if auth[:7].lower() == 'bearer ':
+            got = auth[7:].strip()
+        # Compare bytes: a non-ASCII header value must read as "wrong token", not raise.
+        return hmac.compare_digest(got.encode('utf-8', 'replace'),
+                                   want.encode('utf-8', 'replace'))
+
+    def _read_body(self):
+        try:
+            length = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            return None
+        if length < 0:
+            return None
+        if length > GUI_BODY_CAP:
+            raise OverflowError
+        if not length:
+            return b''
+        try:
+            return self.rfile.read(length)
+        except OSError:
+            return None  # timed out mid-body: the caller answers 400 and drops the connection
 
     def status(self):
         pool, runs = self.server.pool, self.server.runs
@@ -1349,22 +1673,26 @@ class GuiHandler(BaseHTTPRequestHandler):
             proxies = sorted(({'url': u, **e} for u, e in pool.entries.items()),
                              key=lambda e: (e.get('latency_ms') or 10 ** 9))
         verified_total = sum(stats.get('verified', {}).values())
-        mode = 'ROTATING' if verified_total > 0 else 'DIRECT (pula pusta)'
+        if not getattr(pool, 'enabled', True):
+            mode = 'DIRECT (wszystkie hosty)'
+        else:
+            mode = 'ROTATING' if verified_total > 0 else 'DIRECT (pula pusta)'
         lock = getattr(self.server.proxy_server, 'fallbacks_lock', None)
         if lock is not None:
             with lock:
                 fallbacks = dict(self.server.proxy_server.fallbacks)
         else:
-            fallbacks = dict(self.server.proxy_server.fallbacks)
+            fallbacks = dict(getattr(self.server.proxy_server, 'fallbacks', {}))
         host_modes = {}
         for h in self.server.pool.round2:
-            n = stats['verified'].get(h, 0)
+            n = stats.get('verified', {}).get(h, 0)
             if host_is_direct(h):
                 host_mode = 'DIRECT (lista)'
             else:
                 host_mode = 'ROTATING' if n else 'DIRECT'
             host_modes[h] = {'mode': host_mode, 'verified': n, 'fallbacks': fallbacks.get(h, 0)}
-        open_runs = list(getattr(runs, 'open_runs', []))
+        open_runs = (runs.open_snapshot() if hasattr(runs, 'open_snapshot')
+                     else list(getattr(runs, 'open_runs', [])))
         ps = self.server.proxy_server
         return {'mode': mode, 'proxy_port': self.server.proxy_port,
                 'started': getattr(ps, 'started', None),
@@ -1373,7 +1701,7 @@ class GuiHandler(BaseHTTPRequestHandler):
                 'pool': stats,
                 'fallbacks': fallbacks, 'fallbacks_total': sum(fallbacks.values()),
                 'hosts': host_modes,
-                'denied': ps.blocks,
+                'denied': getattr(ps, 'blocks', 0),
                 'open_runs': open_runs,
                 'progress': _live(self.server).snapshot(),
                 'proxies': [{'url': p['url'], 'status': p.get('status', 'new'),
@@ -1388,15 +1716,33 @@ class GuiHandler(BaseHTTPRequestHandler):
         if self.path == '/api/progress':
             return self._send(json.dumps(_live(self.server).snapshot(), ensure_ascii=False))
         if self.path in ('/', '/index.html'):
-            return self._send(dashboard(self.status()), 'text/html')
+            nonce = secrets.token_urlsafe(18)
+            csp = ("default-src 'none'; script-src 'nonce-{n}'; "
+                   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                   "font-src https://fonts.gstatic.com; img-src 'self' data:; "
+                   "connect-src 'self'; base-uri 'none'; form-action 'none'; "
+                   "frame-ancestors 'none'").format(n=nonce)
+            return self._send(dashboard(self.status(), nonce), 'text/html', csp=csp)
         return self._send('{"error":"not found"}', code=404)
 
     def do_POST(self):
-        length = int(self.headers.get('Content-Length') or 0)
-        body = self.rfile.read(length) if length else b''
+        if self.path not in ('/api/run', '/api/progress', '/api/block', '/api/refresh'):
+            self.close_connection = True  # a body may be waiting unread
+            return self._send('{"error":"not found"}', code=404)
+        # Authenticate before reading a single body byte: an unauthenticated client
+        # must not be able to make the GUI allocate or wait on its payload.
+        if not self._check_token():
+            self.close_connection = True
+            return self._send('{"error":"unauthorized"}', code=401)
+        try:
+            body = self._read_body()
+        except OverflowError:
+            self.close_connection = True  # the unread body would poison keep-alive
+            return self._send('{"error":"body too large"}', code=413)
+        if body is None:
+            self.close_connection = True
+            return self._send('{"error":"bad length"}', code=400)
         if self.path == '/api/run':
-            if not self._check_token():
-                return self._send('{"error":"unauthorized"}', code=401)
             try:
                 report = json.loads(body.decode('utf-8'))
             except ValueError:
@@ -1405,8 +1751,6 @@ class GuiHandler(BaseHTTPRequestHandler):
                 return self._send('{"error":"bad json"}', code=400)
             return self._send(json.dumps(self.server.runs.add(report), ensure_ascii=False))
         if self.path == '/api/progress':
-            if not self._check_token():
-                return self._send('{"error":"unauthorized"}', code=401)
             try:
                 event = json.loads(body.decode('utf-8'))
             except ValueError:
@@ -1416,8 +1760,6 @@ class GuiHandler(BaseHTTPRequestHandler):
                 return self._send('{"ok":false,"ignored":true}')  # a straggler of an older run
             return self._send(json.dumps(ack))
         if self.path == '/api/block':
-            if not self._check_token():
-                return self._send('{"error":"unauthorized"}', code=401)
             try:
                 report = json.loads(body.decode('utf-8'))
             except ValueError:
@@ -1427,29 +1769,27 @@ class GuiHandler(BaseHTTPRequestHandler):
                 return self._send('{"error":"bad json"}', code=400)
             demoted = self.server.proxy_server.demote_recent(host)
             return self._send(json.dumps({'demoted': demoted}))
-        if self.path == '/api/refresh':
-            if not self._check_token():
-                return self._send('{"error":"unauthorized"}', code=401)
-            pool = self.server.pool
-            lock = getattr(pool, '_refresh_lock', None)
-            if lock is not None:
-                if lock.locked() or getattr(pool, 'force_refresh', False):
-                    return self._send('{"error":"already-running"}', code=409)
-                pool.force_refresh = True
-                try:
-                    pool.heal_event.set()
-                except Exception:
-                    pass
-                return self._send('{"started":true}', code=202)
-            threading.Thread(target=self.server.pool.refresh, daemon=True).start()
+        # /api/refresh
+        pool = self.server.pool
+        lock = getattr(pool, '_refresh_lock', None)
+        if lock is not None:
+            if lock.locked() or getattr(pool, 'force_refresh', False):
+                return self._send('{"error":"already-running"}', code=409)
+            pool.force_refresh = True
+            try:
+                pool.heal_event.set()
+            except Exception:
+                pass
             return self._send('{"started":true}', code=202)
-        return self._send('{"error":"not found"}', code=404)
+        threading.Thread(target=self.server.pool.refresh, daemon=True).start()
+        return self._send('{"started":true}', code=202)
 
 
-class GuiServer(ThreadingHTTPServer):
+class GuiServer(BoundedThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
     request_queue_size = 32
+    connection_limit = 32
 
 
 def maintain_once(pool):
@@ -1489,6 +1829,22 @@ def maintain_once(pool):
         return f'pool refresh failed: {err}'
 
 
+def maintain_wait(pool, interval, now=None):
+    """Seconds until the next maintenance pass.
+
+    A failed list fetch sets `retry_after` (five minutes), which is shorter than the normal
+    ten-minute interval; honour it instead of sleeping past the retry window.
+    """
+    now = time.time() if now is None else now
+    try:
+        retry = float(getattr(pool, 'retry_after', 0) or 0)
+    except (TypeError, ValueError):
+        retry = 0.0
+    if retry > now:
+        return max(5.0, min(float(interval), retry - now))
+    return float(interval)
+
+
 def maintain(pool, interval=600):
     """Seed on start, then refresh when stale — the cron/proxy_heal.php equivalent.
 
@@ -1502,35 +1858,42 @@ def maintain(pool, interval=600):
                 print(msg, flush=True)
         except Exception as err:
             print(f'pool refresh failed: {err}', flush=True)
+        wait = maintain_wait(pool, interval)
         try:
             evt = getattr(pool, 'heal_event', None)
             if evt is not None:
-                evt.wait(timeout=interval)
+                evt.wait(timeout=wait)
                 try:
                     evt.clear()
                 except Exception:
                     pass
             else:
-                time.sleep(interval)
+                time.sleep(wait)
         except Exception:
-            time.sleep(interval)
+            time.sleep(wait)
 
 
 def main():
     data = Path(env('EGRESS_DATA', '/data'))
-    pool = ProxyPool(data / 'pool.json', faculty_targets(),
-                     max_probe=int(env('EGRESS_MAX_PROBE', '150')))
+    targets = faculty_targets()
+    # The GUI still lists every faculty host, but only hosts that actually ride the pool
+    # are probed/refreshed. A volunteer deployment (every host in EGRESS_DIRECT_FACULTY)
+    # therefore performs no pool work at all.
+    active = [h for h in targets if route(h) == 'chain']
+    pool = ProxyPool(data / 'pool.json', targets, active_hosts=active,
+                     max_probe=env_int('EGRESS_MAX_PROBE', 240))
     runs = RunLog(data / 'runs.json')
-    proxy_port = int(env('EGRESS_PROXY_PORT', '8888'))
-    gui_port = int(env('EGRESS_GUI_PORT', '8080'))
+    proxy_port = env_int('EGRESS_PROXY_PORT', 8888)
+    gui_port = env_int('EGRESS_GUI_PORT', 8080)
     proxy_server = ProxyServer(('0.0.0.0', proxy_port), pool)
     gui = GuiServer(('0.0.0.0', gui_port), GuiHandler)
     gui.pool, gui.runs, gui.proxy_server, gui.proxy_port = pool, runs, proxy_server, proxy_port
     gui.live = LiveRun()
-    threading.Thread(target=maintain, args=(pool,), daemon=True).start()
+    if pool.enabled:
+        threading.Thread(target=maintain, args=(pool,), daemon=True).start()
     threading.Thread(target=gui.serve_forever, daemon=True).start()
-    print(f'egress proxy on :{proxy_port}, GUI on :{gui_port} (pool={len(pool.entries)} known)',
-          flush=True)
+    print(f'egress proxy on :{proxy_port}, GUI on :{gui_port} (pool={len(pool.entries)} known, '
+          f'{len(active)} pooled host(s))', flush=True)
     try:
         proxy_server.serve_forever()
     except KeyboardInterrupt:

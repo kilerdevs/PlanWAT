@@ -34,8 +34,10 @@ prometheus:
           labels:
             instance: planwat-egress
       relabel_configs:
-        - source_labels: [__address__]
-          target_label: __param_target
+        # `target` is already set in params above; keep the Blackbox exporter as __address__
+        # and use the probed URL only as the instance label. (Relabeling __address__ into
+        # __param_target would overwrite the target with 127.0.0.1:9115 and probe the
+        # exporter itself, which always succeeds.)
         - source_labels: [__param_target]
           target_label: instance
         - target_label: __address__

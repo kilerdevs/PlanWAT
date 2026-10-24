@@ -41,6 +41,13 @@ class ProxyUrl(unittest.TestCase):
         self.assertEqual(pool.parse_proxy_url('socks4a://8.8.8.8:1080'), 'socks4://8.8.8.8:1080')
         self.assertEqual(pool.parse_proxy_url('socks4h://8.8.8.8:1080'), 'socks4://8.8.8.8:1080')
 
+    def test_ipv6_keeps_its_brackets(self):
+        self.assertEqual(pool.parse_proxy_url('[2001:4860:4860::8888]:8080'),
+                         'http://[2001:4860:4860::8888]:8080')
+        # loopback/unspecified v6 stays out of the pool
+        self.assertIsNone(pool.parse_proxy_url('[::1]:8080'))
+        self.assertIsNone(pool.parse_proxy_url('[::]:8080'))
+
     def test_strict_ip_filter(self):
         # multicast (not covered by is_private) must be rejected
         self.assertIsNone(pool.parse_proxy_url('224.0.0.1:8080'))
@@ -299,6 +306,102 @@ class PoolPick(unittest.TestCase):
         self.pool.mark('http://thin:1', 'example.test', False)
         self.assertTrue(self.pool.heal_event.is_set())
 
+    def test_corrupt_pool_file_never_crashes_pick(self):
+        import json
+        path = Path(tempfile.mkdtemp()) / 'pool.json'
+        path.write_text(json.dumps({'version': pool.POOL_VERSION, 'entries': {
+            'http://a:1': {'status': 'ok', 'latency_ms': 10, 'hosts': {}},
+            'http://bad:2': 'nonsense',
+            'http://badhosts:3': {'status': 'ok', 'hosts': ['not', 'a', 'dict']},
+            'http://badnum:4': {'status': 'ok', 'latency_ms': 'slow', 'last_checked': 'yesterday',
+                               'hosts': {}},
+        }}), encoding='utf-8')
+        p = pool.ProxyPool(path, R2)
+        self.assertIn('http://a:1', p.entries)
+        self.assertNotIn('http://bad:2', p.entries)
+        self.assertEqual(p.entries['http://badhosts:3']['hosts'], {})
+        self.assertNotIn('latency_ms', p.entries['http://badnum:4'])
+        self.assertEqual(p.pick('example.test'), 'http://a:1')
+        self.assertIsNotNone(p.stats()['p50_ok_ms'])  # sorting/median never sees a string
+
+    def test_host_breaker_only_closes_the_failing_host(self):
+        self.pool.entries = {
+            'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
+                           'hosts': {'example.test': {'ok': True, 'ms': 10}}},
+            'http://b:2': {'status': 'ok', 'latency_ms': 20, 'fails': 0,
+                           'hosts': {'other.test': {'ok': True, 'ms': 20}}},
+        }
+        for _ in range(pool.HOST_BREAKER_N):
+            self.pool.mark('http://a:1', 'example.test', False, live=True)
+        self.assertIsNone(self.pool.pick('example.test'))
+        self.assertEqual(self.pool.pick_many('example.test'), [])
+        self.assertEqual(self.pool.pick('other.test'), 'http://b:2')
+        self.assertEqual(self.pool.stats()['hosts_tripped'], 1)
+        # A real success clears that host's breaker at once.
+        self.pool.mark('http://a:1', 'example.test', True, 10, live=True)
+        self.assertEqual(self.pool.pick('example.test'), 'http://a:1')
+        self.assertEqual(self.pool.stats()['hosts_tripped'], 0)
+
+    def test_total_list_failure_retries_soon_instead_of_freezing(self):
+        import time as _t
+
+        def boom(url):
+            raise OSError('list unreachable')
+
+        self.assertEqual(self.pool.refresh(fetcher=boom, workers=2), (0, 0, 0))
+        self.assertIsNone(self.pool.last_refresh)  # not stamped: the pool is not "fresh"
+        self.assertGreater(self.pool.retry_after, _t.time() + pool.RETRY_AFTER_S - 30)
+        self.assertFalse(self.pool.needs_refresh())  # wait out the short retry window...
+        self.pool.retry_after = 0
+        self.assertTrue(self.pool.needs_refresh())   # ...then try again, not in max_age hours
+
+    def test_probe_alive_requires_the_expected_image_and_no_block_page(self):
+        from types import SimpleNamespace
+        good = b'\x89PNG\r\n\x1a\n' + b'x' * 2000
+        for body, expected in (
+            (good, 50),
+            (good + b'incapsula incident id', None),
+            (b'<html>' + b'x' * 2000, None),  # 200 + big body, but not the OSM tile
+        ):
+            self.pool.fetch_via = (
+                lambda url, target, timeout, body=body: (SimpleNamespace(status_code=200, content=body), 50))
+            self.assertEqual(self.pool.probe_alive('http://8.8.8.8:8080'), expected, body[:20])
+
+    def test_probe_host_rejects_a_block_page_even_with_a_200(self):
+        from types import SimpleNamespace
+        marker = b'<?xml'
+        self.pool.round2['example.test'] = ('https://example.test/index.xml', marker)
+        for body, expected in (
+            (marker + b'<plan/>' * 200, 40),
+            (b'<html>' + b'x' * 800 + b'Access Denied', None),
+            (b'<html>' + b'x' * 800, None),  # 200, no marker: not the real index
+            (marker + b'<plan/>', None),     # too small to be an index
+        ):
+            self.pool.fetch_via = (
+                lambda url, target, timeout, body=body: (SimpleNamespace(status_code=200, content=body), 40))
+            self.assertEqual(self.pool.probe_host('http://8.8.8.8:8080', 'example.test'), expected, body[:20])
+
+
+class PoolActiveHosts(unittest.TestCase):
+    def test_no_active_host_means_no_pool_work_at_all(self):
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2, active_hosts=[])
+        self.assertFalse(p.enabled)
+        self.assertEqual(p.coverage(), ({}, 0))
+        self.assertFalse(p.needs_refresh())
+        fetched = []
+        self.assertEqual(p.refresh(fetcher=lambda url: fetched.append(url) or ''), (0, 0, 0))
+        self.assertEqual(fetched, [])
+
+    def test_coverage_only_counts_hosts_that_ride_the_pool(self):
+        two = {'example.test': ('https://example.test/index.xml', None),
+               'other.test': ('https://other.test/index.xml', None)}
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', two,
+                           active_hosts=['example.test'])
+        p.entries = {'http://a:1': {'status': 'ok', 'hosts': {
+            'example.test': {'ok': True}, 'other.test': {'ok': True}}}}
+        self.assertEqual(p.coverage(), ({'example.test': 1}, 1))
+        self.assertTrue(p.enabled)
+
 
 class MaintainOnceTest(unittest.TestCase):
     def test_unpacks_three_values(self):
@@ -331,6 +434,21 @@ class MaintainOnceTest(unittest.TestCase):
             def refresh(self):
                 raise AssertionError('should not refresh')
         self.assertEqual(server.maintain_once(Stub()), 'fresh')
+
+    def test_list_failure_shortens_the_maintenance_sleep(self):
+        import time as _t
+        class Stub:
+            retry_after = 0.0
+
+        now = 1000.0
+        stub = Stub()
+        self.assertEqual(server.maintain_wait(stub, 600, now=now), 600)
+        stub.retry_after = now + 120
+        self.assertEqual(server.maintain_wait(stub, 600, now=now), 120)
+        stub.retry_after = now - 30  # already elapsed: normal cadence
+        self.assertEqual(server.maintain_wait(stub, 600, now=now), 600)
+        stub.retry_after = now + 1  # never busy-loop on a sub-5 s retry
+        self.assertEqual(server.maintain_wait(stub, 600, now=now), 5.0)
 
 
 class FakeSocket:
@@ -386,6 +504,57 @@ class ChainTest(unittest.TestCase):
         finally:
             _sock.create_connection = orig
 
+    def _socks5(self, reply_tail):
+        """Drive one SOCKS5 handshake; returns (socket, sent bytes)."""
+        import socket as _sock
+        fake = FakeSocket(b'\x05\x00' + reply_tail)
+        orig = self._patch_create(fake)
+        try:
+            sock = server.chain_connect('socks5://8.8.8.8:1080', 'example.test', 443)
+        finally:
+            _sock.create_connection = orig
+        self.assertIs(sock, fake)
+        self.assertIn(b'\x05\x01\x00\x03\x0cexample.test\x01\xbb', fake.sent)
+        return fake
+
+    def test_socks5_consumes_an_ipv4_reply_exactly(self):
+        fake = self._socks5(b'\x05\x00\x00\x01\x08\x08\x08\x08\x01\xbb')
+        self.assertEqual(fake._buf, b'')  # no double read, no leftover
+
+    def test_socks5_consumes_a_domain_reply_exactly(self):
+        # ATYP=3: the length byte precedes the name. Reading it twice used to eat the
+        # first name byte and then block until the handshake timed out.
+        fake = self._socks5(b'\x05\x00\x00\x03\x05proxy\x01\xbb')
+        self.assertEqual(fake._buf, b'')
+
+    def test_socks5_consumes_an_ipv6_reply_exactly(self):
+        addr = bytes(range(16))
+        fake = self._socks5(b'\x05\x00\x00\x04' + addr + b'\x01\xbb')
+        self.assertEqual(fake._buf, b'')
+
+    def test_socks5_unknown_address_type_is_refused(self):
+        import socket as _sock
+        fake = FakeSocket(b'\x05\x00\x05\x00\x00\x09')
+        orig = self._patch_create(fake)
+        try:
+            with self.assertRaises(OSError):
+                server.chain_connect('socks5://8.8.8.8:1080', 'example.test', 443)
+            self.assertTrue(fake.closed)
+        finally:
+            _sock.create_connection = orig
+
+    def test_http_connect_refusal_and_header_cap(self):
+        import socket as _sock
+        for reply in (b'HTTP/1.1 403 Forbidden\r\n\r\n',
+                      b'X' * (server.CONNECT_HEAD_CAP + 1)):
+            fake = FakeSocket(reply)
+            orig = self._patch_create(fake)
+            try:
+                with self.assertRaises(OSError):
+                    server.chain_connect('http://8.8.8.8:8080', 'example.test', 443)
+            finally:
+                _sock.create_connection = orig
+
     def test_hostname_too_long_rejected_upfront(self):
         with self.assertRaises(OSError):
             server.chain_connect('http://8.8.8.8:8080', 'a' * 300 + '.test', 443)
@@ -423,9 +592,11 @@ class WalkTest(unittest.TestCase):
             handler = server.ProxyHandler.__new__(server.ProxyHandler)
             from types import SimpleNamespace
             handler.server = SimpleNamespace(pool=p, fallbacks={},
-                                             fallbacks_lock=threading.Lock(), blocks=0)
-            sock, via = handler._open(self.HOST, 443)
+                                             fallbacks_lock=threading.Lock(), blocks=0,
+                                             remember_tunnel=lambda h, v: None)
+            sock, via, ms = handler._open(self.HOST, 443)
             self.assertEqual(via, 'http://c:3')
+            self.assertIsInstance(ms, int)
             self.assertEqual([c[0] for c in calls],
                              ['http://a:1', 'http://b:2', 'http://c:3'])
             self.assertEqual(calls[0][1], 6)
@@ -471,11 +642,88 @@ class WalkTest(unittest.TestCase):
             handler = server.ProxyHandler.__new__(server.ProxyHandler)
             from types import SimpleNamespace
             handler.server = SimpleNamespace(pool=p, fallbacks={},
-                                             fallbacks_lock=threading.Lock(), blocks=0)
-            sock, via = handler._open(self.HOST, 443)
+                                             fallbacks_lock=threading.Lock(), blocks=0,
+                                             remember_tunnel=lambda h, v: None)
+            sock, via, ms = handler._open(self.HOST, 443)
             self.assertEqual(via, 'direct-fallback')
+            self.assertIsInstance(ms, int)
         finally:
             server.chain_connect = orig_chain
+            _sock.create_connection = orig_create
+
+    def test_connect_only_marks_success_once_bytes_flow(self):
+        tmp = Path(tempfile.mkdtemp()) / 'pool.json'
+        p = pool.ProxyPool(tmp, R2)
+        p.entries = {
+            'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0, 'hosts': {}},
+        }
+        orig = server.chain_connect
+        server.chain_connect = lambda *a, **k: object()
+        try:
+            handler = server.ProxyHandler.__new__(server.ProxyHandler)
+            from types import SimpleNamespace
+            handler.server = SimpleNamespace(pool=p, fallbacks={},
+                                             fallbacks_lock=threading.Lock(), blocks=0,
+                                             remember_tunnel=lambda h, v: None)
+            _, via, ms = handler._open(self.HOST, 443)
+            self.assertEqual(via, 'http://a:1')
+            # CONNECT accepted, but no byte has flowed yet: the exit is not "verified".
+            self.assertFalse(p.entries['http://a:1']['hosts'].get(self.HOST, {}).get('ok', False))
+            handler._record_use(self.HOST, via, ms, True)
+            self.assertTrue(p.entries['http://a:1']['hosts'][self.HOST]['ok'])
+        finally:
+            server.chain_connect = orig
+
+    def test_a_blackholed_exit_is_failed_after_the_tunnel(self):
+        tmp = Path(tempfile.mkdtemp()) / 'pool.json'
+        p = pool.ProxyPool(tmp, R2)
+        p.entries = {
+            'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
+                           'hosts': {self.HOST: {'ok': True, 'ms': 10}}},
+        }
+        handler = server.ProxyHandler.__new__(server.ProxyHandler)
+        handler.server = type('S', (), {'pool': p})()
+        handler._record_use(self.HOST, 'http://a:1', 10, False)
+        self.assertFalse(p.entries['http://a:1']['hosts'][self.HOST]['ok'])
+        self.assertIsNone(p.pick(self.HOST))
+        # direct exits are never fed back into the pool
+        handler._record_use(self.HOST, 'direct', 10, False)
+        handler._record_use(self.HOST, 'direct-fallback', 10, True)
+        self.assertFalse(p.entries['http://a:1']['hosts'][self.HOST]['ok'])
+
+    def test_fail_closed_host_never_falls_back_to_the_local_line(self):
+        import socket as _sock
+        orig_closed = server.fail_closed
+        orig_create = _sock.create_connection
+        server.fail_closed = lambda host: True
+        _sock.create_connection = lambda *a, **k: self.fail('must not dial the local line')
+        try:
+            handler = server.ProxyHandler.__new__(server.ProxyHandler)
+            from types import SimpleNamespace
+            handler.server = SimpleNamespace(pool=None, fallbacks={},
+                                             fallbacks_lock=threading.Lock())
+            with self.assertRaises(OSError) as ctx:
+                handler._fallback(self.HOST, 443)
+            self.assertEqual(str(ctx.exception), 'proxy_empty')
+        finally:
+            server.fail_closed = orig_closed
+            _sock.create_connection = orig_create
+
+    def test_direct_fallback_still_works_for_other_hosts(self):
+        import socket as _sock
+        tmp = Path(tempfile.mkdtemp()) / 'pool.json'
+        p = pool.ProxyPool(tmp, R2)
+        orig_create = _sock.create_connection
+        sentinel = object()
+        _sock.create_connection = lambda *a, **k: sentinel
+        try:
+            handler = server.ProxyHandler.__new__(server.ProxyHandler)
+            from types import SimpleNamespace
+            handler.server = SimpleNamespace(pool=p, fallbacks={},
+                                             fallbacks_lock=threading.Lock())
+            self.assertEqual(handler._fallback(self.HOST, 443)[:2], (sentinel, 'direct-fallback'))
+            self.assertEqual(handler.server.fallbacks[self.HOST], 1)
+        finally:
             _sock.create_connection = orig_create
 
 
@@ -502,6 +750,57 @@ class RelayTest(unittest.TestCase):
         self.assertEqual(up, 5)
         self.assertEqual(down, 6)
         self.assertGreaterEqual(secs, 0)
+
+    def test_relay_keeps_the_other_direction_alive_after_half_close(self):
+        import socket as _sock
+        client, proxy_side = _sock.socketpair()
+        upstream, remote = _sock.socketpair()
+        result = []
+        t = threading.Thread(target=lambda: result.append(server.relay(proxy_side, upstream, cap=5)),
+                             daemon=True)
+        t.start()
+        try:
+            client.sendall(b'GET / HTTP/1.1\r\n\r\n')
+            client.shutdown(_sock.SHUT_WR)  # the client has said everything it will say
+            request = b''
+            while True:
+                chunk = remote.recv(4096)
+                if not chunk:
+                    break
+                request += chunk
+            self.assertEqual(request, b'GET / HTTP/1.1\r\n\r\n')
+            response = b'HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello'
+            remote.sendall(response)
+            remote.shutdown(_sock.SHUT_WR)
+            got = b''
+            while True:
+                chunk = client.recv(4096)
+                if not chunk:
+                    break
+                got += chunk
+            self.assertEqual(got, response)
+            t.join(timeout=5)
+            self.assertFalse(t.is_alive())
+            up, down, _secs = result[0]
+            self.assertEqual((up, down), (len(request), len(response)))
+        finally:
+            client.close()
+            remote.close()
+            if t.is_alive():
+                t.join(timeout=2)
+
+    def test_idle_tunnel_is_dropped_before_the_hard_cap(self):
+        import socket as _sock
+        import time as _t
+        a1, a2 = _sock.socketpair()
+        b1, b2 = _sock.socketpair()
+        try:
+            start = _t.monotonic()
+            server.relay(a2, b1, cap=30, idle=0.5)
+            self.assertLess(_t.monotonic() - start, 5)
+        finally:
+            a1.close()
+            b2.close()
 
 
 class Routing(unittest.TestCase):
@@ -545,6 +844,82 @@ class Routing(unittest.TestCase):
         self.assertEqual(server.ProxyServer.request_queue_size, 32)
         self.assertEqual(server.GuiServer.request_queue_size, 32)
         self.assertIsInstance(server.TUNNEL_SLOTS, type(_th.BoundedSemaphore(1)))
+
+    def test_plain_forward_rejects_a_bad_port_without_crashing(self):
+        from types import SimpleNamespace
+        handler = server.ProxyHandler.__new__(server.ProxyHandler)
+        handler.path = 'http://example.test:99999/'
+        handler.headers = {}
+        denied = []
+        handler._deny = lambda code=403: denied.append(code)
+        handler.server = SimpleNamespace(requests=0, active=0)
+        handler._forward_plain()
+        self.assertEqual(denied, [400])
+        self.assertEqual((handler.server.requests, handler.server.active), (1, 0))
+
+    def test_fail_closed_list_matches_only_that_host_and_children(self):
+        saved = (server.FAIL_CLOSED_ALL, server.FAIL_CLOSED)
+        server.FAIL_CLOSED_ALL = False
+        server.FAIL_CLOSED = frozenset({'planzajec.wcy.wat.edu.pl'})
+        try:
+            self.assertTrue(server.fail_closed('planzajec.wcy.wat.edu.pl'))
+            self.assertTrue(server.fail_closed('PLANZAJEC.WCY.WAT.EDU.PL.'))
+            self.assertTrue(server.fail_closed('sub.planzajec.wcy.wat.edu.pl'))
+            self.assertFalse(server.fail_closed('wlo.wat.edu.pl'))
+            self.assertFalse(server.fail_closed('planzajec.wcy.wat.edu.pl.evil.test'))
+        finally:
+            server.FAIL_CLOSED_ALL, server.FAIL_CLOSED = saved
+
+    def test_fail_closed_all_covers_faculty_but_not_outsiders(self):
+        saved = (server.FAIL_CLOSED_ALL, server.FAIL_CLOSED)
+        server.FAIL_CLOSED_ALL = True
+        try:
+            self.assertTrue(server.fail_closed('wlo.wat.edu.pl'))
+            self.assertTrue(server.fail_closed('deep.sub.wat.edu.pl'))
+            self.assertFalse(server.fail_closed('evil.example'))
+            self.assertFalse(server.fail_closed('wat.edu.pl.evil.example'))
+        finally:
+            server.FAIL_CLOSED_ALL, server.FAIL_CLOSED = saved
+
+    def test_faculty_targets_carry_a_positive_marker(self):
+        targets = server.faculty_targets('zima')
+        for host, (url, marker) in targets.items():
+            self.assertTrue(url.startswith('https://'), host)
+            self.assertTrue(marker, host)  # every host rejects a marker-less block page
+
+
+class PlainHeaders(unittest.TestCase):
+    class Headers(dict):
+        def __init__(self, items, connection_values=()):
+            super().__init__(items)
+            self._connection = list(connection_values)
+
+        def get_all(self, name):
+            return self._connection if name.lower() == 'connection' else None
+
+    def test_hop_by_hop_host_and_length_are_dropped(self):
+        h = self.Headers([
+            ('Host', 'evil.example'),
+            ('Content-Length', '999'),
+            ('Proxy-Connection', 'close'),
+            ('Connection', 'x-secret'),
+            ('Keep-Alive', 'timeout=5'),
+            ('X-Secret', 'leak'),
+            ('X-Keep', 'yes'),
+            ('Cookie', 'a=b'),
+            ('Transfer-Encoding', 'chunked'),
+        ], connection_values=['X-Secret'])
+        out = server.plain_forward_headers(h)
+        self.assertIn('X-Keep: yes\r\n', out)
+        self.assertIn('Cookie: a=b\r\n', out)
+        for gone in ('Host:', 'Content-Length:', 'Proxy-Connection:', 'Connection:',
+                     'Keep-Alive:', 'X-Secret:', 'Transfer-Encoding:'):
+            self.assertNotIn(gone, out)
+
+    def test_header_injection_is_dropped(self):
+        h = self.Headers([('X-Ok', 'v\r\nInjected: yes'), ('X-Bad\r\nInj', 'v')])
+        out = server.plain_forward_headers(h)
+        self.assertEqual(out, '')
 
 
 class Resp:
@@ -760,12 +1135,187 @@ class Report(unittest.TestCase):
                                           method='POST')
             with urllib.request.urlopen(req2, timeout=5) as r:
                 self.assertEqual(r.status, 200)
+            # Bearer is the documented form and must work too.
+            req3 = urllib.request.Request(base + '/api/run',
+                                          data=_json.dumps({'exit': 1}).encode(),
+                                          headers={'Content-Type': 'application/json',
+                                                   'Authorization': 'Bearer secret123'},
+                                          method='POST')
+            with urllib.request.urlopen(req3, timeout=5) as r:
+                self.assertEqual(r.status, 200)
+            req4 = urllib.request.Request(base + '/api/run',
+                                          data=_json.dumps({'exit': 1}).encode(),
+                                          headers={'Content-Type': 'application/json',
+                                                   'Authorization': 'Bearer wrong'},
+                                          method='POST')
+            try:
+                urllib.request.urlopen(req4, timeout=5)
+                self.fail('expected 401')
+            except urllib.error.HTTPError as e:
+                self.assertEqual(e.code, 401)
         finally:
             if prev is None:
                 _os.environ.pop('EGRESS_API_TOKEN', None)
             else:
                 _os.environ['EGRESS_API_TOKEN'] = prev
             gui.shutdown()
+
+    def test_non_ascii_token_is_just_a_mismatch(self):
+        import os as _os
+        prev = _os.environ.get('EGRESS_API_TOKEN')
+        _os.environ['EGRESS_API_TOKEN'] = 'sekret'
+        try:
+            h = server.GuiHandler.__new__(server.GuiHandler)
+            h.headers = {'X-Token': 'sécret'}
+            self.assertFalse(h._check_token())
+            h.headers = {'Authorization': 'Bearer sécret'}
+            self.assertFalse(h._check_token())
+            h.headers = {'Authorization': 'Bearer sekret'}
+            self.assertTrue(h._check_token())
+        finally:
+            if prev is None:
+                _os.environ.pop('EGRESS_API_TOKEN', None)
+            else:
+                _os.environ['EGRESS_API_TOKEN'] = prev
+
+    def test_gui_body_cap_and_bad_lengths(self):
+
+        handler = server.GuiHandler.__new__(server.GuiHandler)
+        for headers, expected in (
+            ({'Content-Length': str(server.GUI_BODY_CAP + 1)}, OverflowError),
+            ({'Content-Length': 'nope'}, None),
+            ({'Content-Length': '-1'}, None),
+        ):
+            handler.headers = headers
+            handler.rfile = type('R', (), {'read': lambda self, n: b''})()
+            try:
+                self.assertIs(handler._read_body(), expected)
+            except OverflowError:
+                self.assertIs(expected, OverflowError)
+
+    def test_auth_is_checked_before_a_body_is_read(self):
+        import os as _os
+        import socket as _sock
+        import threading
+        from types import SimpleNamespace
+        prev = _os.environ.get('EGRESS_API_TOKEN')
+        _os.environ['EGRESS_API_TOKEN'] = 'sekret'
+        tmp = Path(tempfile.mkdtemp())
+        test_pool = pool.ProxyPool(tmp / 'pool.json', R2)
+        gui = server.GuiServer(('127.0.0.1', 0), server.GuiHandler)
+        gui.pool, gui.runs, gui.proxy_port = test_pool, server.RunLog(tmp / 'runs.json'), 8888
+        gui.proxy_server = SimpleNamespace(fallbacks={}, blocks=0,
+                                           fallbacks_lock=threading.Lock())
+        threading.Thread(target=gui.serve_forever, daemon=True).start()
+        try:
+            with _sock.create_connection(gui.server_address, timeout=3) as s:
+                # Announce a large body but never send it: only an auth check before the
+                # read can answer promptly instead of blocking for the whole payload.
+                s.sendall(b'POST /api/run HTTP/1.1\r\nHost: gui\r\n'
+                          b'Content-Length: 500000\r\n\r\n')
+                s.settimeout(3)
+                line = s.recv(4096).split(b'\r\n', 1)[0]
+            self.assertIn(b' 401 ', line)
+        finally:
+            if prev is None:
+                _os.environ.pop('EGRESS_API_TOKEN', None)
+            else:
+                _os.environ['EGRESS_API_TOKEN'] = prev
+            gui.shutdown()
+
+    def test_stale_open_run_is_expired_and_persisted(self):
+        tmp = Path(tempfile.mkdtemp()) / 'runs.json'
+        runs = server.RunLog(tmp)
+        runs.add({'phase': 'started', 'id': 1})
+        old = time.time() - server.RunLog.STALE_OPEN_S - 60
+        runs.open_runs[0]['received'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(old))
+        self.assertEqual(runs.open_snapshot(), [])
+        again = server.RunLog(tmp)
+        self.assertEqual(again.open_runs, [])  # the expiry survived the rewrite
+        runs.add({'phase': 'started', 'id': 2})
+        self.assertEqual([r['id'] for r in server.RunLog(tmp).open_runs], [2])
+
+    def test_dashboard_banner_does_not_rewrite_run_data(self):
+        page = server.dashboard({'open_runs': [{'id': 1}], 'note': '%BANNER%',
+                                 'nonce': '%NONCE%'})
+        self.assertIn('przebieg w toku', page)
+        self.assertIn('"note": "%BANNER%"', page)  # BOOT was inserted after the banner pass
+        self.assertIn('"nonce": "%NONCE%"', page)  # ...and after the nonce pass
+
+    def test_dashboard_has_a_nonce_and_security_headers(self):
+        import re
+        import threading
+        import urllib.request
+        from types import SimpleNamespace
+        tmp = Path(tempfile.mkdtemp())
+        test_pool = pool.ProxyPool(tmp / 'pool.json', R2)
+        gui = server.GuiServer(('127.0.0.1', 0), server.GuiHandler)
+        gui.pool, gui.runs, gui.proxy_port = test_pool, server.RunLog(tmp / 'runs.json'), 8888
+        gui.proxy_server = SimpleNamespace(fallbacks={}, blocks=0,
+                                           fallbacks_lock=threading.Lock())
+        threading.Thread(target=gui.serve_forever, daemon=True).start()
+        base = f'http://127.0.0.1:{gui.server_address[1]}'
+        try:
+            with urllib.request.urlopen(base + '/', timeout=5) as r:
+                page = r.read().decode('utf-8')
+                csp = r.headers.get('Content-Security-Policy') or ''
+                self.assertEqual(r.headers.get('X-Frame-Options'), 'DENY')
+                self.assertEqual(r.headers.get('X-Content-Type-Options'), 'nosniff')
+                self.assertEqual(r.headers.get('Referrer-Policy'), 'no-referrer')
+            nonce = re.search(r"'nonce-([^']+)'", csp)
+            self.assertIsNotNone(nonce, csp)
+            self.assertIn(f'nonce="{nonce.group(1)}"', page)
+            self.assertNotIn("<script>", page)
+        finally:
+            gui.shutdown()
+
+
+class EgressHeaders(unittest.TestCase):
+    def _set_token(self, value):
+        import os
+        prev = os.environ.get('EGRESS_API_TOKEN')
+        if value is None:
+            os.environ.pop('EGRESS_API_TOKEN', None)
+        else:
+            os.environ['EGRESS_API_TOKEN'] = value
+        return prev
+
+    def _restore(self, prev):
+        import os
+        if prev is None:
+            os.environ.pop('EGRESS_API_TOKEN', None)
+        else:
+            os.environ['EGRESS_API_TOKEN'] = prev
+
+    def test_bearer_and_x_token_are_both_sent(self):
+        prev = self._set_token('sekret')
+        try:
+            headers = refresh.egress_headers()
+            self.assertEqual(headers['Authorization'], 'Bearer sekret')
+            self.assertEqual(headers['X-Token'], 'sekret')
+            self.assertEqual(headers['Content-Type'], 'application/json')
+        finally:
+            self._restore(prev)
+
+    def test_no_token_keeps_the_json_content_type(self):
+        prev = self._set_token(None)
+        try:
+            self.assertEqual(refresh.egress_headers(),
+                             {'Content-Type': 'application/json'})
+        finally:
+            self._restore(prev)
+
+    def test_tick_forwards_slot_context_to_the_gui(self):
+        sent = []
+        now = [0.0]
+        p = refresh.Progress(url='http://egress/api/progress', run='r1',
+                             post=sent.append, clock=lambda: now[0])
+        self.assertTrue(p.tick('wlo', 3, 10, faculty='wlo', lane='wlo', ahead=True, term='zima'))
+        self.assertEqual(sent[0], {'event': 'tick', 'run': 'r1', 'slot': 'wlo', 'done': 3,
+                                   'total': 10, 'faculty': 'wlo', 'lane': 'wlo', 'ahead': True,
+                                   'term': 'zima'})
+        now[0] = 1.0
+        self.assertFalse(p.tick('wlo', 4, 10))  # throttled per slot
 
 
 class BlockDispatch(unittest.TestCase):
@@ -913,7 +1463,87 @@ class LiveRunTest(unittest.TestCase):
         self.assertEqual(snap['lanes'][0]['slots'][0]['status'], 'blocked')
         self.assertIsNone(snap['eta_s'])
 
+    def test_each_lane_waits_on_its_own_wall(self):
+        clock = FakeClock()
+        live = self.start(clock, lanes=[{'lane': 'wlo', 'faculties': ['wlo']},
+                                        {'lane': 'wel', 'faculties': ['wel']}])
+        live.event({'event': 'faculty_start', 'run': 'r1', 'slot': 'wlo', 'faculty': 'wlo',
+                    'lane': 'wlo', 'total': 20})
+        live.event({'event': 'faculty_start', 'run': 'r1', 'slot': 'wel', 'faculty': 'wel',
+                    'lane': 'wel', 'total': 20})
+        live.event({'event': 'wait_start', 'run': 'r1', 'id': 'wlo', 'lane': 'wlo',
+                    'faculties': ['wlo'], 'slots': ['wlo'], 'budget': 60})
+        live.event({'event': 'wait_start', 'run': 'r1', 'id': 'wel', 'lane': 'wel',
+                    'faculties': ['wel'], 'slots': ['wel'], 'budget': 120})
+        snap = live.snapshot()
+        self.assertTrue(snap['waiting'])
+        self.assertEqual(sorted(snap['wait']['lanes']), ['wel', 'wlo'])
+        self.assertEqual(sorted(snap['wait']['faculties']), ['wel', 'wlo'])
+        self.assertEqual(snap['wait']['budget'], 120)
+        self.assertEqual([l['slots'][0]['status'] for l in snap['lanes']], ['waiting', 'waiting'])
+        # One wall topples: only that lane resumes; the other stays suspended.
+        live.event({'event': 'wait_end', 'run': 'r1', 'id': 'wlo', 'lane': 'wlo',
+                    'faculties': ['wlo'], 'slots': ['wlo'], 'recovered': True})
+        snap = live.snapshot()
+        self.assertEqual(snap['wait']['faculties'], ['wel'])
+        self.assertEqual([l['slots'][0]['status'] for l in snap['lanes']], ['queued', 'waiting'])
+        # The run ending clears every outstanding wait.
+        live.event({'event': 'run_done', 'run': 'r1', 'exit': 0})
+        snap = live.snapshot()
+        self.assertIsNone(snap['wait'])
+        self.assertFalse(snap['waiting'])
+        self.assertEqual([l['slots'][0]['status'] for l in snap['lanes']], ['queued', 'stopped'])
+
+    def test_a_late_ahead_slot_is_tracked_under_its_lane(self):
+        clock = FakeClock()
+        live = self.start(clock, lanes=[{'lane': 'wlo', 'faculties': ['wlo']}])
+        live.event({'event': 'faculty_start', 'run': 'r1', 'slot': 'wlo~lato', 'faculty': 'wlo',
+                    'lane': 'wlo', 'ahead': True, 'term': 'lato', 'total': 30})
+        snap = live.snapshot()
+        wlo = [l for l in snap['lanes'] if l['lane'] == 'wlo'][0]
+        ahead = [s for s in wlo['slots'] if s['slot'] == 'wlo~lato'][0]
+        self.assertTrue(ahead['ahead'])
+        self.assertEqual(ahead['term'], 'lato')
+        self.assertEqual(ahead['status'], 'crawling')
+
+    def test_slot_lane_and_wait_caps_bound_the_page(self):
+        live = server.LiveRun(clock=FakeClock())
+        names = [f'f{i}' for i in range(server.LiveRun.MAX_SLOTS + 40)]
+        lanes = [{'lane': 'flood', 'faculties': names}]
+        lanes += [{'lane': f'l{i}', 'faculties': [f'x{i}']}
+                  for i in range(server.LiveRun.MAX_LANES + 20)]
+        live.event({'event': 'run_start', 'run': 'r1', 'lanes': lanes})
+        with live.lock:
+            self.assertEqual(len(live.state['slots']), server.LiveRun.MAX_SLOTS)
+            self.assertLessEqual(len(live.state['lanes']), server.LiveRun.MAX_LANES)
+        # A late event for an unknown slot cannot push the cap either.
+        for i in range(server.LiveRun.MAX_SLOTS + 10):
+            live.event({'event': 'tick', 'run': 'r1', 'slot': f'late{i}', 'done': 1, 'total': 2})
+        with live.lock:
+            self.assertEqual(len(live.state['slots']), server.LiveRun.MAX_SLOTS)
+        # Waits are capped too (the oldest is evicted, never the list grown).
+        for i in range(server.LiveRun.MAX_WAITS + 8):
+            live.event({'event': 'wait_start', 'run': 'r1', 'id': f'w{i}',
+                        'lane': f'w{i}', 'faculties': []})
+        with live.lock:
+            self.assertEqual(len(live.state['waits']), server.LiveRun.MAX_WAITS)
+
+    def test_malformed_event_fields_are_ignored_not_fatal(self):
+        clock = FakeClock()
+        live = server.LiveRun(clock=clock)
+        live.event({'event': 'run_start', 'run': 'r1',
+                    'lanes': [{'lane': 'bad', 'faculties': 5},
+                              {'lane': 'ok', 'faculties': ['wlo']}]})
+        live.event({'event': 'wait_start', 'run': 'r1', 'id': 'x', 'lane': 'x',
+                    'faculties': 5, 'slots': {'wlo': 1}, 'budget': 'soon'})
+        live.event({'event': 'tick', 'run': 'r1', 'slot': ['wlo'], 'done': 'many',
+                    'total': {}})
+        snap = live.snapshot()
+        self.assertEqual([s['slot'] for s in snap['lanes'][0]['slots']], ['wlo'])
+        self.assertEqual(snap['wait']['budget'], 0)
+
     def test_completion_closes_the_lane_and_the_run(self):
+
         clock = FakeClock()
         live = self.start(clock, lanes=[{'lane': 'wlo', 'faculties': ['wlo']}])
         live.event({'event': 'faculty_start', 'run': 'r1', 'slot': 'wlo', 'faculty': 'wlo',
