@@ -52,8 +52,13 @@ def load_json(path, default, kind=dict):
 def load_fleet(path=FLEET):
     """The runners from fleet.json, checked: [{name, label, speed, always_on, faculties}]."""
     raw = json.loads(Path(path).read_text(encoding='utf-8'))
+    runners = raw.get('runners') if isinstance(raw, dict) else None
+    if not isinstance(runners, list):
+        raise ValueError('the fleet must be an object with a "runners" list')
     fleet, seen = [], set()
-    for r in raw.get('runners', []):
+    for r in runners:
+        if not isinstance(r, dict):
+            raise ValueError(f'a runner must be an object, not {r!r}')
         name, label = r.get('name'), r.get('label')
         if not isinstance(name, str) or not NAME_RE.match(name) or name in seen:
             raise ValueError(f'bad or repeated runner name: {name!r}')
@@ -191,7 +196,10 @@ def cmd_plan(args):
         log('::warning::no runner of the fleet is online; this pass crawls nothing')
     matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties']} for s in result['shards']]
     planned = int(dt.datetime.now(dt.timezone.utc).timestamp())
-    github_output(matrix=json.dumps(matrix, separators=(',', ':')), shards=len(matrix), planned=planned)
+    # runs.py records which servers were off and what nobody could take
+    info = {'down': result['down'], 'unassigned': result['unassigned']}
+    github_output(matrix=json.dumps(matrix, separators=(',', ':')), shards=len(matrix), planned=planned,
+                  fleet=json.dumps(info, separators=(',', ':')))
     step_summary(plan_summary(result))
     return 0
 

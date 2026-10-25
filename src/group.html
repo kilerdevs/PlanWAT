@@ -1725,8 +1725,11 @@
       animation: none;
       transform: translateX(100%);
       visibility: hidden;
-      transition: transform var(--dur-base) var(--ease-in), visibility 0s linear var(--dur-base);
     }
+    /* Only a panel the visitor has opened or closed slides. Firefox can resolve a page's first style before
+       this media query applies (arriving by a link from the front page), and a transition on .tools itself then
+       played the closing slide on load: the open panel flashed and slid away. */
+    .tools.toggled { transition: transform var(--dur-base) var(--ease-in), visibility 0s linear var(--dur-base); }
     .tools.open { transform: none; visibility: visible; transition: transform 420ms var(--ease-sheet); }
     .tools-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
     .tools-head h2 { font-size: var(--fs-20); font-weight: 600; letter-spacing: -0.02em; }
@@ -1930,7 +1933,7 @@
     .month[data-dir] { --vt-x: 0px; }
     .view-in, .month-grid.is-entering, .month-head h2.is-entering, .bar-fill, .cols span { animation: none; }
     .notice, .toolpanel, .pm-panel, .field, table.data, .mysub-parts, .seg.has-pill::before, .tabs.has-pill::before { transition: none; }
-    .hero, .tools, .tools.open, .scrim, .scrim.open { transition: none; }
+    .hero, .tools, .tools.toggled, .tools.open, .scrim, .scrim.open { transition: none; }
     ::view-transition-group(*) { animation-duration: 0s; }
   }
 
@@ -5780,6 +5783,7 @@
     var panel = $('tools'), btn = $('toolsBtn'), scrim = $('toolsScrim');
     function set(open, refocus) {
       if (open === panel.classList.contains('open')) return;
+      panel.classList.add('toggled');  /* from now on it slides (see .tools.toggled) */
       panel.classList.toggle('open', open);
       scrim.classList.toggle('open', open);
       $('hero').classList.toggle('tools-open', open);

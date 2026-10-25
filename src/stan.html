@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+@@CSP@@
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+@@THEME_HEAD@@
+<meta name="description" content="@@DESCRIPTION@@">
+<title>@@TITLE@@</title>
+@@SEO@@
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Crect x='13' y='16' width='38' height='35' rx='9' fill='none' stroke='%23f5f5f7' stroke-width='3.5'/%3E%3Cpath d='M13 27h38M24 11v9M40 11v9' stroke='%23f5f5f7' stroke-width='3.5' stroke-linecap='round'/%3E%3Ccircle cx='40' cy='39.5' r='4.5' fill='%230a84ff'/%3E%3C/svg%3E">
+@@FONTS@@
+<style>
+  :root {
+    --bg: #000000;
+    --s2: #1c1c1e;
+    --s2-hover: #232326;
+    --s3: #2c2c2e;
+    --t1: #f5f5f7;
+    --t2: #a1a1a6;
+    --t3: #86868b;
+    --line: rgba(255, 255, 255, 0.08);
+    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --accent: #0a84ff;
+    --accent-text: #4da3ff;
+    --free: #32d74b;
+    --busy: #ff6b63;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: var(--bg); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--t1);
+    font-family: var(--font);
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  main {
+    max-width: calc(680px + 32px);
+    margin: 0 auto;
+    padding: calc(env(safe-area-inset-top) + 32px) max(16px, env(safe-area-inset-right)) 64px max(16px, env(safe-area-inset-left));
+  }
+  .back { display: inline-flex; align-items: center; min-height: 44px; color: var(--t2); font-size: 0.9375rem; text-decoration: none; transition: color var(--dur-fast); }
+  .back:hover { color: var(--t1); }
+  h1 { margin: 8px 0 0; font-size: 2.25rem; font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; }
+  .lead { margin: 10px 0 0; color: var(--t2); font-size: 1rem; line-height: 1.55; max-width: 60ch; }
+  h2.sect { margin: 36px 4px 10px; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }
+  a { color: var(--accent-text); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* status marks: colour only in small dots and bars, the words carry the meaning */
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--t3); flex: none; }
+  .ok { --tone: var(--free); }
+  .warn { --tone: var(--warn); }
+  .bad { --tone: var(--busy); }
+  .off { --tone: var(--t3); }
+  .dot.ok, .dot.warn, .dot.bad { background: var(--tone); }
+
+  /* the latest pass */
+  .latest { margin-top: 24px; padding: 18px 20px 20px; border-radius: 20px; background: var(--s2); box-shadow: var(--edge); }
+  .lstatus { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--t2); font-size: 0.8125rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .verdict { margin: 6px 0 0; font-size: 1.75rem; font-weight: 700; line-height: 1.1; letter-spacing: -0.03em; }
+  .latest.empty .verdict { font-size: 1.25rem; letter-spacing: -0.02em; }
+  .lead2 { margin: 6px 0 0; color: var(--t2); font-size: 0.9375rem; }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0 0; }
+  .stats div { min-width: 0; }
+  .stats dt { color: var(--t2); font-size: 0.8125rem; font-weight: 500; }
+  .stats dd { margin: 2px 0 0; font-size: 1.375rem; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .latest .parts { margin-top: 18px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .striprow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .striplabel { color: var(--t2); font-size: 0.8125rem; font-weight: 500; }
+  .strip { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .strip li { width: 8px; height: 22px; border-radius: 4px; background: var(--tone, var(--t3)); }
+  .strip li.off { background: var(--s3); }
+  .strip li:last-child { box-shadow: 0 0 0 2px var(--s2), 0 0 0 3px var(--line); }
+
+  /* one server's share: name, its faculties, what it did */
+  .parts { margin: 0; padding: 0; list-style: none; }
+  .parts li { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; padding: 8px 0; font-size: 0.875rem; }
+  .parts li + li { border-top: 1px solid var(--line); }
+  .pname { font-weight: 600; }
+  .pfacs { color: var(--t2); overflow-wrap: anywhere; }
+  .pstate { color: var(--t2); font-variant-numeric: tabular-nums; text-align: right; }
+  .parts li.off .pname { color: var(--t3); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .parts li.off .pstate { color: var(--t3); }
+
+  /* every pass: an inset grouped list whose rows open in place (no script: <details>) */
+  .runs { margin: 0; padding: 0; list-style: none; border-radius: 20px; background: var(--s2); box-shadow: var(--edge); overflow: hidden; }
+  .run { position: relative; }
+  .run + .run::before { content: ""; position: absolute; top: 0; left: 38px; right: 0; height: 1px; background: var(--line); }
+  summary {
+    display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 16px; grid-template-areas: "dot when res chev" ". srv srv chev";
+    column-gap: 12px; row-gap: 6px; align-items: center; padding: 13px 16px; cursor: pointer; list-style: none;
+    transition: background-color var(--dur-fast);
+  }
+  summary::-webkit-details-marker { display: none; }
+  @media (hover: hover) and (pointer: fine) {
+    summary:hover { background: var(--s2-hover); }
+  }
+  summary .dot { grid-area: dot; }
+  .rwhen { grid-area: when; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em; font-variant-numeric: tabular-nums; }
+  .rres { grid-area: res; color: var(--t2); font-size: 0.875rem; font-weight: 500; text-align: right; }
+  .chev { grid-area: chev; width: 16px; height: 16px; color: var(--t3); transition: transform var(--dur-base) var(--ease-out); }
+  details[open] .chev { transform: rotate(90deg); }
+  .rsrv { grid-area: srv; display: flex; flex-wrap: wrap; gap: 6px; }
+  .srv { padding: 2px 9px; border-radius: 999px; background: var(--s3); color: var(--t2); font-size: 0.75rem; font-weight: 600; line-height: 1.5; }
+  .srv.off { background: none; color: var(--t3); box-shadow: inset 0 0 0 1px var(--line); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .more { padding: 2px 16px 16px 38px; }
+  .facs { margin: 12px 0 0; padding: 12px 0 0; list-style: none; border-top: 1px solid var(--line); }
+  .facs li { display: grid; grid-template-columns: 3rem 5.5rem minmax(0, 1fr); gap: 2px 12px; padding: 5px 0; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+  .fcode { font-weight: 600; }
+  .fsrv { color: var(--t2); }
+  .fnum { color: var(--t2); text-align: right; }
+  .fnote { grid-column: 2 / -1; color: var(--t3); font-size: 0.8125rem; }
+  .runlink { margin: 12px 0 0; color: var(--t3); font-size: 0.8125rem; }
+  .note { margin: 16px 4px 0; color: var(--t3); font-size: 0.8125rem; line-height: 1.55; }
+
+  @media (max-width: 480px) {
+    .parts li { grid-template-columns: minmax(0, 1fr) auto; }
+    .pfacs { grid-row: 2; grid-column: 1 / -1; }
+    .facs li { grid-template-columns: 3rem minmax(0, 1fr); }
+    .fsrv { display: none; }
+    .fnum { text-align: left; }
+    .fnote { grid-column: 2; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+    @keyframes open { from { opacity: 0; transform: translateY(-4px); } }
+    .enter { animation: rise var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(var(--d, 0) * 55ms); }
+    .d1 { --d: 1; } .d2 { --d: 2; } .d3 { --d: 3; } .d4 { --d: 4; }
+    details[open] .more { animation: open var(--dur-base) var(--ease-out); }
+  }
+  @media (prefers-reduced-motion: reduce) { .chev, summary { transition: none; } }
+  @media (min-width: 768px) {
+    main { padding-top: 64px; }
+    h1 { font-size: 3rem; letter-spacing: -0.035em; }
+    .latest { padding: 22px 24px 24px; }
+    .verdict { font-size: 2.25rem; }
+  }
+/*@@THEME_CSS@@*/
+</style>
+</head>
+<body>
+<main>
+  <a class="back enter" href="../">‹ PlanWAT</a>
+  <h1 class="enter d1">Odświeżanie planów</h1>
+  <p class="lead enter d2">Co dwie godziny serwery projektu sprawdzają strony wydziałów i pobierają plany, które się zmieniły. Tu widać, jak poszły ostatnie przebiegi.</p>
+  <div class="enter d3">
+@@LATEST@@
+  </div>
+  <section class="enter d4" aria-labelledby="runsTitle">
+    <h2 class="sect" id="runsTitle">Ostatnie przebiegi</h2>
+@@RUNS@@
+    <p class="note">Godziny w czasie warszawskim, od rozpoczęcia przebiegu. Ta lista odświeża się razem ze stroną, więc najnowszy przebieg bywa widoczny z opóźnieniem do kilku godzin; na bieżąco pokazuje go <a href="@@HISTORY_URL@@">historia przebiegów na GitHubie</a>.</p>
+  </section>
+</main>
+</body>
+</html>

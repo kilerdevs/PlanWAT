@@ -52,6 +52,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   wolny, zawsze włączony VPS, według ich szybkości (`tools/refresh/fleet.json`). Gdy plebania śpi, wszystko robi VPS, a
   żadne zadanie nie wisi w kolejce. Runnery wypychają na `data` równolegle i scalają stan zamiast się nadpisywać, każdy
   pamięta tempo i blokady własnego łącza, a zgłoszenia o blokadzie liczą się z wyników wszystkich.
+- **Historia przebiegów odświeżania** ([docs/REFRESH.md](docs/REFRESH.md#historia-przebiegów)): ostatnie 10 przebiegów
+  na GitHubie (`README.md` gałęzi `data` i podsumowanie przebiegu) i na nowej stronie `/stan/` (link w stopce). Każdy
+  przebieg pokazuje wynik, serwery, które go zrobiły (plebania, oracle: wydziały, czas, stan), te, które były wyłączone, i
+  liczby dla każdego wydziału. Oba widoki powstają z jednego pliku `refresh-runs.json`, a strona nie uruchamia skryptu.
 
 ### Zmieniono
 - **Plan na pierwszym ekranie komputera:** na szerokim ekranie (od 1080 px) nagłówek strony grupy jest niższy, a
@@ -72,6 +76,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Panel narzędzi nie mignie już przy wejściu z listy grup:** w Firefoksie na szerokim ekranie strona grupy otwarta
+  linkiem ze strony głównej pokazywała przez chwilę panel narzędzi, który od razu odjeżdżał. Panel przesuwa się teraz
+  tylko wtedy, gdy ktoś go otwiera albo zamyka.
 - **Strona nie jest już wdrażana po każdym przebiegu odświeżania:** bramka `pages.yml` nie przekazywała swojej decyzji
   (brakowało wyjścia zadania, więc budowa szła zawsze), a do tego pomijała tylko przebiegi, które nic nie wypchnęły, choć
   prawie każdy wypycha nowe godziny sprawdzeń. Strona szła więc na produkcję kilkanaście razy dziennie.

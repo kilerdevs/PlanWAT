@@ -296,10 +296,17 @@ class State:
         if self.path.is_file():
             try:
                 loaded = json.loads(self.path.read_text(encoding='utf-8'))
+                if not isinstance(loaded, dict):
+                    raise ValueError(f'holds a JSON {type(loaded).__name__}, not an object')
                 if loaded.get('version') == 1:
+                    for key in ('groups', 'faculties'):
+                        if not isinstance(loaded.setdefault(key, {}), dict):
+                            raise ValueError(f'has a "{key}" that is not an object')
                     self.data = loaded
-            except ValueError:
-                # Unparseable JSON: quarantine the file so the evidence survives, then start fresh.
+            except ValueError as err:
+                # Unparseable JSON, or JSON of the wrong shape (which would only crash the crawl later):
+                # quarantine the file so the evidence survives, then start fresh.
+                why = 'is not valid JSON' if isinstance(err, json.JSONDecodeError) else str(err)
                 stamp = now_utc().strftime('%Y%m%dT%H%M%SZ')
                 backup = self.path.with_name(self.path.name + f'.corrupt-{stamp}')
                 try:
@@ -307,8 +314,7 @@ class State:
                     where = f' (quarantined to {backup.name})'
                 except OSError:
                     where = ' (quarantine failed, dropping it)'
-                print(f'REFRESH STATE CORRUPT: {self.path} is not valid JSON{where}; starting fresh',
-                      flush=True)
+                print(f'REFRESH STATE CORRUPT: {self.path} {why}{where}; starting fresh', flush=True)
             except OSError:
                 pass
         self.accepted = load_accepted(self.path.with_name(VOLUNTEER_STATE_FILE))

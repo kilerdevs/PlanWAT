@@ -7,7 +7,8 @@ name: Refresh timetables
 # GitHub's datacenter addresses on the first request, so a hosted runner can only fail. There are two of them
 # (tools/refresh/fleet.json): plebania, fast but often switched off, and an always-on but slow VPS. A hosted job
 # asks GitHub which of them is online and splits the faculties between those, weighted by speed; another one adds
-# their outcomes up for pages.yml and the "blocked" issues.
+# their outcomes up for pages.yml and the "blocked" issues, and records the pass in the run history (README.md on the
+# data branch, the site's /stan/ page).
 on:
   # Every two hours, round the clock: a pass over every group takes well under an hour (all policy
   # groups crawl side by side, one request at a time per host) and most pages answer 304, so a quiet
@@ -35,6 +36,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shards: ${{ steps.plan.outputs.shards }}
       planned: ${{ steps.plan.outputs.planned }}
+      fleet: ${{ steps.plan.outputs.fleet }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -162,9 +164,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      contents: read
+      # The run history on the data branch (refresh-runs.json, README.md): this job's own two files, nothing else.
+      contents: write
       # The "blocked" and "degraded" issues.
       issues: write
+      # Where the site lives, for the history's link to its /stan/ page.
+      pages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -229,3 +234,54 @@ jobs:
           elif [ "$BLOCKED" != 'true' ] && [ "$DEGRADED" != 'true' ] && [ "$INCOMPLETE" != 'true' ] && [ -n "$dopen" ]; then
             gh issue close "$dopen" --repo "$GITHUB_REPOSITORY" --comment "Odświeżanie znów pełne: $RUN_URL"
           fi
+      # The last passes for people to read: refresh-runs.json and README.md on the data branch (GitHub shows it at
+      # the branch's root, this run's summary repeats it) and, through pages.yml, the site's /stan/ page. Each pass
+      # is recorded, a stale or empty one too; a glitch here never fails the report.
+      - name: Check out the run history
+        id: history
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: data
+          path: data
+          sparse-checkout: |
+            refresh-state.json
+            refresh-runs.json
+            README.md
+          sparse-checkout-cone-mode: false
+      - name: Record this pass in the run history
+        if: steps.history.outcome == 'success'
+        continue-on-error: true
+        working-directory: data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MATRIX: ${{ needs.plan.outputs.matrix }}
+          FLEET: ${{ needs.plan.outputs.fleet }}
+          PLANNED: ${{ needs.plan.outputs.planned }}
+          EVENT: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          git config user.name 'planwat-refresh'
+          git config user.email 'planwat-refresh@users.noreply.github.com'
+          runs="$GITHUB_WORKSPACE/src/tools/refresh/runs.py"
+          site=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.html_url // empty' 2>/dev/null || true)
+          # Another pass's runner or report may push meanwhile: each attempt starts from the branch's newest commit
+          # and adds this pass to the history found there.
+          for attempt in 1 2 3 4 5; do
+            if [ "$attempt" -gt 1 ]; then
+              git fetch -q --depth 1 origin data
+              git reset -q --hard FETCH_HEAD
+            fi
+            python3 "$runs" record --matrix "$MATRIX" --plan "$FLEET" --planned "$PLANNED" \
+              --dir "$GITHUB_WORKSPACE/shards" --state refresh-state.json --runs refresh-runs.json --readme README.md \
+              --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --attempt "$GITHUB_RUN_ATTEMPT" \
+              --event "$EVENT" --url "$RUN_URL" --site-url "${site:+${site%/}/stan/}"
+            git add refresh-runs.json README.md
+            if git diff --cached --quiet || { git commit -q -m "Run history: pass #$GITHUB_RUN_NUMBER" && git push -q origin HEAD:data; }; then
+              python3 "$runs" render --summary --runs refresh-runs.json --site-url "${site:+${site%/}/stan/}" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "the data branch moved under the push (attempt $attempt); recording again"
+            sleep $((attempt * 3 + RANDOM % 5))
+          done
+          exit 1
