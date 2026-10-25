@@ -72,6 +72,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Sterowanie głosem na stronie grupy:** link „Mapa” w nagłówku dnia i dni w widoku miesiąca mają nazwy dostępne,
+  które zawierają to, co widać (WCAG 2.5.3), więc da się je wywołać, mówiąc to, co jest na ekranie. Dzień miesiąca
+  jest nazwany własną treścią, a na wąskim ekranie słowo „bloki” jest ukryte tylko wizualnie.
 - **Egress: błędy, które psuły tunele i panel:** SOCKS5 z adresem domenowym w odpowiedzi zjadał pierwszy znak nazwy i wisiał
   do timeoutu, a nieznany typ adresu albo odmowa HTTP CONNECT kończą się teraz czystym błędem. Sonda Blackboxa mierzyła sam
   eksporter zamiast GUI, a alert „host utknął w DIRECT” obejmował hosty celowo kierowane bezpośrednio. Raport rozpoczęty bez
