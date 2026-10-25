@@ -72,6 +72,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Panel narzędzi nie mignie już przy wejściu z listy grup:** w Firefoksie na szerokim ekranie strona grupy otwarta
+  linkiem ze strony głównej pokazywała przez chwilę panel narzędzi, który od razu odjeżdżał. Panel przesuwa się teraz
+  tylko wtedy, gdy ktoś go otwiera albo zamyka.
 - **Strona nie jest już wdrażana po każdym przebiegu odświeżania:** bramka `pages.yml` nie przekazywała swojej decyzji
   (brakowało wyjścia zadania, więc budowa szła zawsze), a do tego pomijała tylko przebiegi, które nic nie wypchnęły, choć
   prawie każdy wypycha nowe godziny sprawdzeń. Strona szła więc na produkcję kilkanaście razy dziennie.
