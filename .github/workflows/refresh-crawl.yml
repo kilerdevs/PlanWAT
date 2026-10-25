@@ -1,0 +1,120 @@
+name: Refresh share
+
+# One runner's share of a refresh pass: refresh.yml calls this once per shard of its plan (wave 1) and again for the
+# handoff, the faculties a runner left blocked or unfinished, taken over by another one (wave 2). See docs/REFRESH.md.
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: The runner's name in tools/refresh/fleet.json.
+        type: string
+        required: true
+      label:
+        description: Its runner label.
+        type: string
+        required: true
+      faculties:
+        description: Comma-separated faculties of this share.
+        type: string
+        required: true
+      wave:
+        description: 1 for the plan's share, 2 for a takeover.
+        type: number
+        default: 1
+      wait:
+        description: Minutes to wait out a wall before letting a faculty go.
+        type: number
+        default: 30
+      planned:
+        description: When the share was planned (Unix seconds).
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    name: ${{ inputs.runner }}${{ inputs.wave > 1 && ' (takeover)' || '' }}
+    runs-on: [self-hosted, planwat, '${{ inputs.label }}']
+    # One crawl per runner at a time, and never cancel one halfway: a half-finished crawl is resumed, not
+    # restarted. Per runner, not per workflow: a job stuck waiting for a machine that went off right after the
+    # plan saw it must not hold up the passes after it (they plan without that machine).
+    concurrency:
+      group: refresh-${{ inputs.runner }}
+      cancel-in-progress: false
+    timeout-minutes: 110
+    permissions:
+      # Least privilege on purpose (see docs/REFRESH.md "If GitHub is compromised"): contents pushes the data
+      # branch, nothing else. In particular there is no actions:write: the daily pages.yml rebuild picks
+      # refreshed calendars up on its own, so a stolen token cannot trigger arbitrary workflows. The issues
+      # are the report job's, on a hosted runner.
+      contents: write
+    steps:
+      # A job that sat in the queue (its machine went off just after the plan saw it online, and came back
+      # later) crawls nothing: newer passes have planned without it since.
+      - name: Is this share still current?
+        id: current
+        env:
+          PLANNED: ${{ inputs.planned }}
+        run: |
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+          age=$(( $(date +%s) - PLANNED ))
+          if [ "$age" -gt 1800 ]; then
+            echo "::notice::planned $((age / 60)) minutes ago; leaving it to a newer pass"
+            echo 'ok=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ok=true' >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.current.outputs.ok == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+      - if: steps.current.outputs.ok == 'true'
+        uses: ./src/.github/actions/refresh
+        id: refresh
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          profile: selfhosted
+          faculty: ${{ inputs.faculties }}
+          max-minutes: '90'
+          max-block-wait-minutes: ${{ inputs.wait }}
+      # The handoff and the report read these. A shard that never wrote one (a crash before this, a runner lost
+      # mid-crawl) counts as missing: its faculties are handed off or, after the handoff, leave the pass incomplete.
+      - name: Write this share's outcome
+        if: always()
+        env:
+          SHARD: ${{ inputs.runner }}
+          WAVE: ${{ inputs.wave }}
+          FACULTIES: ${{ inputs.faculties }}
+          SKIPPED: ${{ steps.current.outputs.ok != 'true' }}
+          STARTED: ${{ steps.current.outputs.started }}
+          PUSHED: ${{ steps.refresh.outputs.pushed || 'false' }}
+          CHANGED: ${{ steps.refresh.outputs.changed || '0' }}
+          BLOCKED: ${{ steps.refresh.outputs.blocked || 'false' }}
+          INCOMPLETE: ${{ steps.refresh.outputs.incomplete || 'false' }}
+          DEGRADED: ${{ steps.refresh.outputs.degraded || 'false' }}
+          BLOCKED_FACULTIES: ${{ steps.refresh.outputs.blocked-faculties }}
+          INCOMPLETE_FACULTIES: ${{ steps.refresh.outputs.incomplete-faculties }}
+          OUTCOME: ${{ steps.refresh.outcome }}
+        run: |
+          # A refresh step that failed outright leaves its outputs empty: nothing it did can be trusted as done.
+          FAILED=false
+          if [ "$SKIPPED" != 'true' ] && [ "$OUTCOME" != 'success' ]; then INCOMPLETE=true; FAILED=true; fi
+          mkdir -p shard
+          jq -n --arg runner "$SHARD" --arg wave "$WAVE" --arg faculties "$FACULTIES" --arg skipped "$SKIPPED" \
+            --arg pushed "$PUSHED" --arg changed "$CHANGED" --arg blocked "$BLOCKED" --arg incomplete "$INCOMPLETE" \
+            --arg degraded "$DEGRADED" --arg failed "$FAILED" --arg blocked_faculties "$BLOCKED_FACULTIES" \
+            --arg incomplete_faculties "$INCOMPLETE_FACULTIES" --arg started "$STARTED" --arg ended "$(date +%s)" \
+            '$ARGS.named' > "shard/shard-$WAVE-$SHARD.json"
+          cat "shard/shard-$WAVE-$SHARD.json"
+      - name: Upload this share's outcome
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: refresh-shard-${{ inputs.wave }}-${{ inputs.runner }}
+          path: shard/shard-${{ inputs.wave }}-${{ inputs.runner }}.json
+          retention-days: 2
+          # "Re-run failed jobs" crawls the share again: its outcome replaces the first attempt's
+          overwrite: true

@@ -152,7 +152,7 @@ Projekt ma dwa runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh/
 | plebania | `planwat-plebania` | 4 | prywatny serwer: szybki, ale często wyłączony |
 | oracle | `planwat-oracle` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
 
-Każdy przebieg `refresh.yml` ma trzy etapy:
+Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wspólny workflow `refresh-crawl.yml`):
 
 1. **plan** (runner GitHub, bez dostępu do wydziałów): pyta API GitHub, które runnery są `online`, i dzieli między nie
    ścieżki polityk Incapsula (`tools/refresh/fleet.py plan`). Ścieżka nigdy nie jest dzielona (WLO i WEL stoją za jedną
@@ -160,17 +160,37 @@ Każdy przebieg `refresh.yml` ma trzy etapy:
    tempa. Ścieżki idą od największej, każda do runnera, który skończy ją najwcześniej (obciążenie / `speed`), więc
    szybka plebania bierze większość, a VPS resztę, i oba kończą mniej więcej razem. Wyłączony runner nie dostaje nic,
    więc żadne zadanie nie czeka w kolejce na maszynę, która nie przyjdzie. Gdy nic nie jest włączone, przebieg niczego
-   nie crawluje, a następny planuje od nowa. Podział widać w podsumowaniu zadania.
+   nie crawluje, a następny planuje od nowa. Podział widać w podsumowaniu zadania. Gdy jest włączony drugi runner, który
+   mógłby przejąć wydział, plan każe czekać na zejście ściany tylko 5 minut zamiast 30 (`max-block-wait-minutes`):
+   zamiast czekać, lepiej oddać wydział.
 2. **crawl** (po jednym zadaniu na runner, macierz): każdy runner crawluje swoje wydziały (`--faculty`) i wypycha wynik na
    `data`. Runnery wypychają równolegle, więc push nie robi rebase: każda próba zaczyna od najnowszego commita gałęzi,
    kładzie na nim kalendarze tego przebiegu i scala `refresh-state.json` (`fleet.py merge`: stemple grup zmienione w tym
    przebiegu, a stan łącza tylko dla własnych wydziałów), do pięciu prób. Zadanie, które dostało runnera później niż 30
    minut po planie (maszyna zgasła tuż po tym, jak GitHub ją widział, i wróciła później), niczego nie crawluje: nowsze
    przebiegi zaplanowały już bez niej. Współbieżność jest na runner, nie na workflow, więc takie zawieszone zadanie nie
-   blokuje kolejnych przebiegów.
-3. **report** (runner GitHub): sumuje wyniki runnerów do `refresh-outcome.json` dla bramki `pages.yml` (brak wyniku
-   któregoś runnera = przebudowa) i otwiera albo zamyka zgłoszenia o blokadzie i degradacji. Przebieg, któremu brakuje
-   wyniku runnera, jest niepełny: niczego nie zamyka. Przebieg starszy niż 3 h zostawia zgłoszenia nowszym. Na koniec
+   blokuje kolejnych przebiegów. Limit czasu (`--max-minutes`, 90 minut) obejmuje cały udział razem z czekaniem na
+   ściany, nie każdy wydział osobno: po nim każda ścieżka kończy bieżącą stronę, a runner zapisuje i wypycha to, co ma,
+   zanim GitHub przerwie zadanie po 110 minutach. Czego nie zdążył, przejmuje handoff.
+3. **handoff** (runner GitHub, po crawl): ściana Incapsula stoi przed jednym adresem, nie przed wydziałem, więc to, co
+   runner zostawił **zablokowane** albo **niedokończone** (limit czasu, awaria, udział, który w ogóle nie ruszył), dostaje
+   inny runner. Dotyczy to też udziału, który GitHub anulował w kolejce (współbieżność na runner). Zadanie pyta API
+   GitHub **jeszcze raz**, kto jest teraz `online` (plebania mogła się w międzyczasie włączyć albo zgasnąć), i dzieli
+   zostawione ścieżki tak jak plan (`fleet.py handoff`). Liczy się tylko runner, który ma też etykietę `planwat`, bo bez
+   niej zadanie nigdy by na niego nie trafiło. Wydział nie wraca do runnera, który go zostawił; ścieżka (np. WLO z WEL)
+   przechodzi w całości. Każdy runner zgłasza w wyniku dokładnie, które wydziały zostawił zablokowane i których nie
+   skończył (`blocked_faculties`, `incomplete_faculties` z `refresh.py`). Jedyny wyjątek: jeśli runner oddał
+   zablokowaną ścieżkę po krótkim czekaniu, bo plan widział drugi runner, a ten zdążył zgasnąć, ścieżka wraca do niego
+   na resztę czekania (25 minut), o ile nadal jest włączony. Wtedy każdy wydział i tak dostaje pełne 30 minut. Bez
+   drugiego włączonego runnera wydział, który miał już pełne czekanie, czeka na następny przebieg, jak dawniej.
+   Anulowanie całego przebiegu zatrzymuje handoff i przejęcie.
+4. **takeover** (macierz, tak jak crawl): przejmujący runner crawluje te wydziały, czekając na ścianę pełne 30 minut, bo
+   po nim nikt już ich nie przejmie. Zaczyna tam, gdzie poprzedni skończył: grupy, które tamten sprawdził i wypchnął, są
+   świeże i zostają pominięte. Przejmowanie jest jednokrotne (jeden etap), więc przebieg nie może krążyć w kółko.
+5. **report** (runner GitHub): sumuje wyniki runnerów do `refresh-outcome.json` dla bramki `pages.yml` (brak wyniku
+   któregoś runnera = przebudowa) i otwiera albo zamyka zgłoszenia o blokadzie i degradacji. Wydział liczy się tak, jak
+   zostawił go ostatni runner, który go miał: zablokowany na oracle i czysto przejęty przez plebanię nie blokuje
+   przebiegu. Przebieg, w którym jakiegoś wydziału nikt nie skończył, jest niepełny: niczego nie zamyka. Przebieg starszy niż 3 h zostawia zgłoszenia nowszym. Na koniec
    zapisuje przebieg w [historii przebiegów](#historia-przebiegów).
 
 Każdy runner ma też **własny stan łącza** (wyuczone tempo, czasy blokad, ostatni przebieg wydziału): różne adresy

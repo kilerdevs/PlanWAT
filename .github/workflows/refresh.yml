@@ -6,7 +6,8 @@ name: Refresh timetables
 # Crawls only on the project's self-hosted runners (label "planwat"): the faculty sites' Incapsula wall blocks
 # GitHub's datacenter addresses on the first request, so a hosted runner can only fail. There are two of them
 # (tools/refresh/fleet.json): plebania, fast but often switched off, and an always-on but slow VPS. A hosted job
-# asks GitHub which of them is online and splits the faculties between those, weighted by speed; another one adds
+# asks GitHub which of them is online and splits the faculties between those, weighted by speed. What one of them
+# leaves blocked or unfinished, another one that is online then takes over (the handoff). A last hosted job adds
 # their outcomes up for pages.yml and the "blocked" issues, and records the pass in the run history (README.md on the
 # data branch, the site's /stan/ page).
 on:
@@ -83,83 +84,92 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    runs-on: [self-hosted, planwat, '${{ matrix.label }}']
-    # One crawl per runner at a time, and never cancel one halfway: a half-finished crawl is resumed, not
-    # restarted. Per runner, not per workflow: a job stuck waiting for a machine that went off right after the
-    # plan saw it must not hold up the passes after it (they plan without that machine).
-    concurrency:
-      group: refresh-${{ matrix.runner }}
-      cancel-in-progress: false
-    timeout-minutes: 110
     permissions:
-      # Least privilege on purpose (see docs/REFRESH.md "If GitHub is compromised"): contents pushes the data
-      # branch, nothing else. In particular there is no actions:write: the daily pages.yml rebuild picks
-      # refreshed calendars up on its own, so a stolen token cannot trigger arbitrary workflows. The issues
-      # are the report job's, on a hosted runner.
       contents: write
+    uses: ./.github/workflows/refresh-crawl.yml
+    with:
+      runner: ${{ matrix.runner }}
+      label: ${{ matrix.label }}
+      faculties: ${{ matrix.faculties }}
+      wave: 1
+      wait: ${{ matrix.wait }}
+      planned: ${{ needs.plan.outputs.planned }}
+
+  # A wall stands in front of one address, not in front of the faculty: what a runner left blocked (or unfinished:
+  # a crash, a time limit, a share it never started or one GitHub cancelled in its queue) goes to another runner that
+  # GitHub says is online now. The plan had each runner wait a wall out only briefly when such a takeover was
+  # possible. Not after the whole run was cancelled, though: that is someone's way of saying stop.
+  handoff:
+    needs: [plan, crawl]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.shards != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.handoff.outputs.matrix }}
+      shards: ${{ steps.handoff.outputs.shards }}
+      planned: ${{ steps.handoff.outputs.planned }}
     steps:
-      # A job that sat in the queue (its machine went off just after the plan saw it online, and came back
-      # later) crawls nothing: newer passes have planned without it since.
-      - name: Is this share still current?
-        id: current
-        env:
-          PLANNED: ${{ needs.plan.outputs.planned }}
-        run: |
-          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
-          age=$(( $(date +%s) - PLANNED ))
-          if [ "$age" -gt 1800 ]; then
-            echo "::notice::planned $((age / 60)) minutes ago; leaving it to a newer pass"
-            echo 'ok=false' >> "$GITHUB_OUTPUT"
-          else
-            echo 'ok=true' >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.current.outputs.ok == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: src
-      - if: steps.current.outputs.ok == 'true'
-        uses: ./src/.github/actions/refresh
-        id: refresh
+          persist-credentials: false
+      # The takeover is weighed like the plan: by what each faculty listed last time and its pacing.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          profile: selfhosted
-          faculty: ${{ matrix.faculties }}
-          max-minutes: '90'
-      # The report job adds these up. A shard that never wrote one (a crash before this, a runner lost
-      # mid-crawl) counts as missing: the pass is then incomplete and the Pages gate rebuilds.
-      - name: Write this share's outcome
-        if: always()
-        env:
-          SHARD: ${{ matrix.runner }}
-          FACULTIES: ${{ matrix.faculties }}
-          SKIPPED: ${{ steps.current.outputs.ok != 'true' }}
-          STARTED: ${{ steps.current.outputs.started }}
-          PUSHED: ${{ steps.refresh.outputs.pushed || 'false' }}
-          CHANGED: ${{ steps.refresh.outputs.changed || '0' }}
-          BLOCKED: ${{ steps.refresh.outputs.blocked || 'false' }}
-          INCOMPLETE: ${{ steps.refresh.outputs.incomplete || 'false' }}
-          DEGRADED: ${{ steps.refresh.outputs.degraded || 'false' }}
-          OUTCOME: ${{ steps.refresh.outcome }}
-        run: |
-          # A refresh step that failed outright leaves its outputs empty: that is not a clean pass.
-          if [ "$SKIPPED" != 'true' ] && [ "$OUTCOME" != 'success' ]; then INCOMPLETE=true; fi
-          mkdir -p shard
-          printf '{"runner": "%s", "faculties": "%s", "skipped": "%s", "pushed": "%s", "changed": "%s", "blocked": "%s", "incomplete": "%s", "degraded": "%s", "started": "%s", "ended": "%s"}\n' \
-            "$SHARD" "$FACULTIES" "$SKIPPED" "$PUSHED" "$CHANGED" "$BLOCKED" "$INCOMPLETE" "$DEGRADED" \
-            "$STARTED" "$(date +%s)" > "shard/shard-$SHARD.json"
-      - name: Upload this share's outcome
-        if: always()
+          ref: data
+          path: data
+          sparse-checkout: refresh-state.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Download the shares' outcomes
         continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: refresh-shard-${{ matrix.runner }}
-          path: shard/shard-${{ matrix.runner }}.json
-          retention-days: 2
+          pattern: refresh-shard-1-*
+          path: shards
+          merge-multiple: true
+      - name: Ask GitHub which runners are online now
+        env:
+          GH_TOKEN: ${{ secrets.PLANWAT_RUNNERS_TOKEN }}
+        run: |
+          if [ -n "$GH_TOKEN" ] && gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runners" \
+              --jq '.runners[] | {name, status, busy, labels: [.labels[].name]}' > runners.jsonl; then
+            jq -s . runners.jsonl > runners.json
+            jq -r '.[] | "\(.name): \(.status) [\(.labels | join(", "))]"' runners.json
+          else
+            echo '::warning::cannot see which runners are online; only an always-on runner may take over'
+          fi
+      - id: handoff
+        env:
+          MATRIX: ${{ needs.plan.outputs.matrix }}
+        run: |
+          args=(handoff --matrix "$MATRIX" --dir shards --state data/refresh-state.json)
+          if [ -f runners.json ]; then args+=(--runners runners.json); fi
+          python3 src/tools/refresh/fleet.py "${args[@]}"
+
+  takeover:
+    name: takeover (${{ matrix.runner }})
+    needs: handoff
+    if: ${{ !cancelled() && needs.handoff.result == 'success' && needs.handoff.outputs.shards != '0' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.handoff.outputs.matrix) }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/refresh-crawl.yml
+    with:
+      runner: ${{ matrix.runner }}
+      label: ${{ matrix.label }}
+      faculties: ${{ matrix.faculties }}
+      wave: 2
+      wait: ${{ matrix.wait }}
+      planned: ${{ needs.handoff.outputs.planned }}
 
   report:
-    needs: [plan, crawl]
-    # Also after a failed or skipped crawl: the outcome must be written either way (a pass with no runner
-    # online included).
+    needs: [plan, crawl, handoff, takeover]
+    # Also after a failed or skipped crawl or handoff: the outcome must be written either way (a pass with no
+    # runner online included).
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -185,9 +195,10 @@ jobs:
       - id: combine
         env:
           MATRIX: ${{ needs.plan.outputs.matrix }}
+          HANDOFF: ${{ needs.handoff.outputs.matrix }}
           PLANNED: ${{ needs.plan.outputs.planned }}
         run: |
-          python3 src/tools/refresh/fleet.py combine --matrix "$MATRIX" --planned "$PLANNED" \
+          python3 src/tools/refresh/fleet.py combine --matrix "$MATRIX" --handoff "${HANDOFF:-[]}" --planned "$PLANNED" \
             --dir shards --out refresh-outcome.json
       - name: File or close the issues
         if: steps.combine.outputs.current == 'true'
@@ -246,6 +257,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MATRIX: ${{ needs.plan.outputs.matrix }}
+          HANDOFF: ${{ needs.handoff.outputs.matrix }}
           FLEET: ${{ needs.plan.outputs.fleet }}
           PLANNED: ${{ needs.plan.outputs.planned }}
           EVENT: ${{ github.event_name }}
@@ -262,7 +274,7 @@ jobs:
               git fetch -q --depth 1 origin data
               git reset -q --hard FETCH_HEAD
             fi
-            python3 "$runs" record --matrix "$MATRIX" --plan "$FLEET" --planned "$PLANNED" \
+            python3 "$runs" record --matrix "$MATRIX" --handoff "${HANDOFF:-[]}" --plan "$FLEET" --planned "$PLANNED" \
               --dir "$GITHUB_WORKSPACE/shards" --state refresh-state.json --runs refresh-runs.json --readme README.md \
               --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --attempt "$GITHUB_RUN_ATTEMPT" \
               --event "$EVENT" --url "$RUN_URL" --site-url "${site:+${site%/}/stan/}" \
@@ -289,3 +301,5 @@ jobs:
           name: refresh-outcome
           path: refresh-outcome.json
           retention-days: 2
+          # a re-run of the report replaces the first attempt's (pages.yml reads the newest)
+          overwrite: true
