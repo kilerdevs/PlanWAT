@@ -39,11 +39,19 @@ def _flag(outcome, key):
     return str(outcome.get(key, '')).lower() == 'true'
 
 
-def runner_entry(name, faculties, outcome):
-    """One server's part in the pass, from its shard outcome (None: it never reported)."""
-    entry = {'name': name, 'faculties': faculties, 'status': 'missing', 'minutes': None, 'changed': 0}
+def runner_entry(name, faculties, outcome, wave=1, took=None):
+    """One server's part in the pass, from its shard outcome (None: it never reported).
+
+    A takeover (wave 2) says whose faculties it took (`from`: {faculty: runner}); a share that ended blocked says on
+    which faculties (`blocked_on`)."""
+    entry = {'name': name, 'faculties': faculties, 'status': 'missing', 'minutes': None, 'changed': 0, 'wave': wave}
+    if took:
+        entry['from'] = took
     if not isinstance(outcome, dict):
         return entry
+    blocked_on = [f for f in str(outcome.get('blocked_faculties') or '').split(',') if f in faculties]
+    if blocked_on:
+        entry['blocked_on'] = blocked_on
     try:
         entry['minutes'] = max(0, round((float(outcome['ended']) - float(outcome['started'])) / 60))
     except (KeyError, TypeError, ValueError):
@@ -63,12 +71,16 @@ def runner_entry(name, faculties, outcome):
     return entry
 
 
-def faculty_entry(name, runner, state, since):
-    """What the pass did on one faculty: its `run` entry in the state, when that is from this pass."""
+def faculty_entry(name, runner, state, since, handed=None):
+    """What the pass did on one faculty: its `run` entry in the state, when that is from this pass.
+
+    `runner` is the last one that had it; `handed` ({'runner', 'why'}) the one that let it go to that one."""
     fac = state.get('faculties', {}).get(name) if isinstance(state.get('faculties'), dict) else None
     run = fac.get('run') if isinstance(fac, dict) else None
     at = build.utc_moment(run.get('at')) if isinstance(run, dict) else None
     entry = {'id': name, 'runner': runner}
+    if handed:
+        entry['from'] = handed
     if at is None or at < since - SLACK:
         entry['fresh'] = False
         return entry
@@ -79,15 +91,25 @@ def faculty_entry(name, runner, state, since):
     return entry
 
 
-def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, outcomes, plan_info, state):
-    """The record of one pass (see the module docstring)."""
-    got = {o.get('runner'): o for o in outcomes if isinstance(o, dict)}
-    combined = fleet.combine([m['runner'] for m in matrix], outcomes, 0)
-    runners, faculties = [], []
-    for m in matrix:
+def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, outcomes, plan_info, state, handoff=()):
+    """The record of one pass (see the module docstring): the plan's shards (`matrix`), then the takeovers (`handoff`)."""
+    got = {fleet.shard_key(o): o for o in outcomes if isinstance(o, dict)}
+    shards = [dict(m, wave=1) for m in matrix] + [dict(m, wave=2) for m in handoff]
+    combined = fleet.combine(shards, outcomes, 0)
+    runners, last, handed = [], {}, {}
+    for m in shards:
         names = [f for f in m['faculties'].split(',') if f]
-        runners.append(runner_entry(m['runner'], names, got.get(m['runner'])))
-        faculties += [faculty_entry(f, m['runner'], state, planned) for f in names]
+        took = dict(pair.split(':', 1) for pair in str(m.get('from') or '').split(',') if ':' in pair)
+        outcome = got.get(fleet.shard_key(m))
+        runners.append(runner_entry(m['runner'], names, outcome, m['wave'], took))
+        for f in names:
+            if f in last and m['wave'] > 1:
+                was = got.get(fleet.shard_key(last[f]))
+                left = dict(fleet.left_over(last[f], was))
+                handed[f] = {'runner': last[f]['runner'], 'why': left.get(f, 'unfinished')}
+            last[f] = m
+    order = [f for m in shards[:len(matrix)] for f in m['faculties'].split(',') if f]
+    faculties = [faculty_entry(f, last[f]['runner'], state, planned, handed.get(f)) for f in order]
     changed = int(combined['changed'])
     if not matrix:
         result = 'idle'
@@ -157,9 +179,9 @@ def _cell(text):
 
 def servers(run, with_faculties=False):
     parts = []
-    for r in run.get('runners', []):
-        facs = ', '.join(f.upper() for f in r.get('faculties', []))
-        parts.append(f"**{r['name']}**" + (f' ({facs})' if with_faculties and facs else ''))
+    for name in build.run_servers(run):
+        facs = ', '.join(build.runner_share(r) for r in run['runners'] if r['name'] == name and r.get('faculties'))
+        parts.append(f"**{name}**" + (f' ({facs})' if with_faculties and facs else ''))
     parts += [f'~~{n}~~' for n in run.get('offline', [])]
     return ' · '.join(parts) or '–'
 
@@ -193,14 +215,15 @@ def markdown(runs, site_url='', repo_url=''):
     for run in runs:
         lines += ['<details>',
                   f"<summary><b>{when(run['planned'])}</b> · {result_label(run)} · "
-                  f"{' · '.join(r['name'] for r in run.get('runners', [])) or 'bez serwera'}</summary>", '',
+                  f"{' · '.join(build.run_servers(run)) or 'bez serwera'}</summary>", '',
                   f"Przebieg {build.RUN_EVENTS.get(run.get('event'), run.get('event') or '')} "
                   f"[#{run.get('number') or run['id']}]({run.get('url', '')})"
                   + (f", próba {run['attempt']}" if build.count(run.get('attempt')) > 1 else '')
                   + f", od planu do raportu {duration(run)}.", '',
                   '| Serwer | Wydziały | Zmienione | Stan |', '|---|---|--:|---|']
         for r in run.get('runners', []):
-            lines.append(f"| **{r['name']}** | {', '.join(f.upper() for f in r.get('faculties', []))} | "
+            lines.append(f"| **{r['name']}**{' (przejęcie)' if build.count(r.get('wave')) > 1 else ''} | "
+                         f"{_cell(build.runner_share(r))} | "
                          f"{build.count(r.get('changed'))} | {_cell(runner_state(r))} |")
         for n in run.get('offline', []):
             lines.append(f'| {n} | | | wyłączony |')
@@ -238,13 +261,15 @@ def _json_arg(text, kind):
 def cmd_record(args):
     matrix = [m for m in _json_arg(args.matrix, list)
               if isinstance(m, dict) and isinstance(m.get('runner'), str) and isinstance(m.get('faculties'), str)]
+    handoff = [m for m in _json_arg(args.handoff, list)
+               if isinstance(m, dict) and isinstance(m.get('runner'), str) and isinstance(m.get('faculties'), str)]
     plan_info = _json_arg(args.plan, dict)
     outcomes = [fleet.load_json(p, None) for p in sorted(Path(args.dir).glob('shard-*.json'))] \
         if Path(args.dir).is_dir() else []
     planned = dt.datetime.fromtimestamp(float(args.planned or 0), dt.timezone.utc)
     run = build_run(run_id=args.run_id, number=args.run_number, attempt=args.attempt, event=args.event,
                     url=args.url, planned=planned, ended=dt.datetime.now(dt.timezone.utc), matrix=matrix,
-                    outcomes=outcomes, plan_info=plan_info,
+                    outcomes=outcomes, plan_info=plan_info, handoff=handoff,
                     state=fleet.load_json(args.state, {}))
     runs = add_run(load_runs(args.runs), run)
     _write(args.runs, json.dumps({'version': 1, 'runs': runs}, ensure_ascii=False, indent=1) + '\n')
@@ -273,6 +298,7 @@ def parse(argv=None):
     sub = ap.add_subparsers(dest='cmd', required=True)
     p = sub.add_parser('record', help='add this pass to refresh-runs.json and rewrite README.md')
     p.add_argument('--matrix', default='[]', help="the plan's matrix (JSON)")
+    p.add_argument('--handoff', default='[]', help="the handoff's matrix (JSON): the takeovers")
     p.add_argument('--plan', default='{}', help="the plan's fleet output (JSON: down, unassigned)")
     p.add_argument('--planned', default='0', help='when the plan was made (Unix seconds)')
     p.add_argument('--dir', required=True, help='where the shard-*.json outcomes are')

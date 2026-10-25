@@ -9,7 +9,11 @@ The fleet is a fast machine that is often switched off and a slow one that is al
   seed     gives a runner that has never crawled its own line state, copied from the data branch.
   merge    folds one runner's refresh-state.json into the data branch's newer one: the runners crawl disjoint
            faculties side by side and push to the same branch, so neither may overwrite what the other learned.
-  combine  (a GitHub-hosted job) adds the runners' outcomes up into the one refresh-outcome.json pages.yml reads.
+  handoff  (a GitHub-hosted job, after the crawl) gives what a runner left blocked or unfinished to another runner
+           that is online now: a wall stands in front of one address, so the other machine often gets through. The
+           plan has a runner wait a wall out only briefly when such a takeover is possible.
+  combine  (a GitHub-hosted job) adds the runners' outcomes up into the one refresh-outcome.json pages.yml reads,
+           each faculty as the last runner that had it left it.
 
 Nothing here touches a faculty site; it is unit-tested offline (tests/test_refresh.py).
 """
@@ -33,6 +37,10 @@ DEFAULT_SIZE = 100
 # A pass whose last shard ended this long after the plan (it sat in the queue) no longer files or closes issues:
 # newer passes have spoken since.
 REPORT_HOURS = 3
+# How long a runner waits out a wall before it lets the faculty go (refresh.py --max-block-wait-minutes): the full wait
+# when nobody could take over, a short one when another runner is up, which then takes the faculty in the handoff wave.
+BLOCK_WAIT = 30
+HANDOFF_WAIT = 5
 NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,38}$')
 
 
@@ -110,14 +118,25 @@ def lanes_of(wanted):
     return list(lanes.values())
 
 
-def plan(fleet, wanted, state, online):
+def may_take(runner, lane, avoid):
+    """Whether `runner` may crawl every faculty of `lane`: its allowlist has them and none is to be avoided by it."""
+    return all((runner['faculties'] is None or f in runner['faculties']) and runner['name'] not in avoid.get(f, ())
+               for f in lane)
+
+
+def plan(fleet, wanted, state, online, avoid=None):
     """Split the lanes of `wanted` over the runners that are up.
 
     `online` is the set of labels GitHub reports online, or None when it could not be asked: then the always-on
     runners take everything (the job waits for them like a single-runner pass would). Lanes go out largest first,
     each to the runner that would finish it earliest (load / speed), so a fast runner takes a lot and a slow one the
-    rest. A lane no runner up may take is left for the next pass.
+    rest. A lane no runner up may take is left for the next pass. `avoid` maps a faculty to the runners that must not
+    take it (the handoff wave: the runner that was blocked on it).
+
+    Each shard says how long its runner should wait out a wall (`wait`, minutes): briefly when another runner up could
+    take one of its faculties over, else the full wait.
     """
+    avoid = avoid or {}
     if online is None:
         up = [r for r in fleet if r['always_on']] or fleet
     else:
@@ -127,7 +146,7 @@ def plan(fleet, wanted, state, online):
     unassigned = []
     lanes = [(sum(faculty_cost(state, f) for f in lane), lane) for lane in lanes_of(wanted)]
     for cost, lane in sorted(lanes, key=lambda x: (-x[0], x[1])):
-        able = [r for r in up if r['faculties'] is None or all(f in r['faculties'] for f in lane)]
+        able = [r for r in up if may_take(r, lane, avoid)]
         if not able:
             unassigned += lane
             continue
@@ -136,7 +155,9 @@ def plan(fleet, wanted, state, online):
         shards[best['name']] += lane
     order = {f: i for i, f in enumerate(wanted)}
     out = [{'runner': r['name'], 'label': r['label'], 'faculties': ','.join(sorted(shards[r['name']], key=order.get)),
-            'cost': round(load[r['name']]), 'eta': round(load[r['name']] / r['speed'])}
+            'cost': round(load[r['name']]), 'eta': round(load[r['name']] / r['speed']),
+            'wait': HANDOFF_WAIT if any(may_take(o, [f], {f: {r['name']}}) for o in up if o is not r
+                                        for f in shards[r['name']]) else BLOCK_WAIT}
            for r in up if shards[r['name']]]
     return {'shards': out, 'unassigned': sorted(unassigned, key=order.get), 'known': online is not None,
             'up': [r['name'] for r in up], 'down': [r['name'] for r in fleet if r not in up]}
@@ -194,7 +215,8 @@ def cmd_plan(args):
         log(f"::warning::no runner up may take {', '.join(result['unassigned'])}; left for the next pass")
     if not result['shards']:
         log('::warning::no runner of the fleet is online; this pass crawls nothing')
-    matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties']} for s in result['shards']]
+    matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties'], 'wave': 1, 'wait': s['wait']}
+              for s in result['shards']]
     planned = int(dt.datetime.now(dt.timezone.utc).timestamp())
     # runs.py records which servers were off and what nobody could take
     info = {'down': result['down'], 'unassigned': result['unassigned']}
@@ -265,18 +287,86 @@ def cmd_merge(args):
     return 0
 
 
-def combine(expected, outcomes, age_hours):
+def _flag(outcome, key):
+    return str(outcome.get(key, '')).lower() == 'true'
+
+
+def _names(value):
+    return [f for f in str(value or '').split(',') if f]
+
+
+def shard_key(shard):
+    """A shard's identity in a pass: its runner and its wave (1 the plan, 2 the handoff)."""
+    try:
+        wave = int(shard.get('wave') or 1)
+    except (TypeError, ValueError):
+        wave = 1
+    return shard.get('runner'), wave
+
+
+def left_over(shard, outcome):
+    """The faculties of a shard that another runner should take, and why: [(faculty, 'blocked' | 'unfinished')].
+
+    A shard that never reported, was skipped (stale plan) or crashed leaves all of them; one that reported leaves those
+    it ended blocked on and those it did not finish (a time limit, a page it could not read). A report without the
+    per-faculty lists (an older crawl) leaves everything when it was blocked or incomplete at all."""
+    names = _names(shard.get('faculties'))
+    if not isinstance(outcome, dict) or _flag(outcome, 'skipped') or _flag(outcome, 'failed'):
+        return [(f, 'unfinished') for f in names]
+    if 'blocked_faculties' in outcome or 'incomplete_faculties' in outcome:
+        blocked = set(_names(outcome.get('blocked_faculties')))
+        unfinished = set(_names(outcome.get('incomplete_faculties'))) | blocked
+    elif _flag(outcome, 'blocked') or _flag(outcome, 'incomplete'):
+        blocked = set(names) if _flag(outcome, 'blocked') else set()
+        unfinished = set(names)
+    else:
+        return []
+    return [(f, 'blocked' if f in blocked else 'unfinished') for f in names if f in unfinished]
+
+
+def handoff(fleet, shards, outcomes, state, online):
+    """The handoff wave: what the plan's runners left blocked or unfinished, for another runner that is up now.
+
+    `online` is asked afresh (a runner may have come up or gone since the plan). A faculty never goes back to the
+    runner that left it: a wall is per address, and a runner that crashed or never started may do so again. Lanes stay
+    whole, as in the plan, and go out by the same weighting; what no other runner up may take waits for the next pass.
+    """
+    got = {shard_key(o): o for o in outcomes if isinstance(o, dict)}
+    avoid, origin, wanted = {}, {}, []
+    for s in shards:
+        for f, why in left_over(s, got.get(shard_key(s))):
+            avoid.setdefault(f, set()).add(s['runner'])
+            origin[f] = {'runner': s['runner'], 'why': why}
+            wanted.append(f)
+    if not wanted:
+        return {'shards': [], 'unassigned': [], 'left': {}, 'known': online is not None}
+    # a lane's faculties hand off together, in the order the plan had them
+    result = plan(fleet, wanted, state, online, avoid)
+    for shard in result['shards']:
+        shard['wave'] = 2
+        shard['wait'] = BLOCK_WAIT  # nobody after this wave: wait the wall out
+        shard['from'] = ','.join(f"{f}:{origin[f]['runner']}" for f in _names(shard['faculties']))
+    result['left'] = origin
+    return result
+
+
+def combine(shards, outcomes, age_hours):
     """One outcome for the pass out of its shards' outcomes (refresh-outcome.json, read by pages.yml's gate).
 
-    `pushed` is "true" when any shard pushed and "false" only when every planned shard reported it did not; a
-    shard that never reported leaves it empty, which the gate reads as "rebuild". A missing or skipped shard makes
-    the pass incomplete, so it neither files nor closes issues on what it did not see.
+    `shards` lists the plan's shards and then the handoff's (wave 2). A faculty counts as the last wave that had it left
+    it: blocked on oracle and then crawled cleanly by plebania is not blocked. `pushed` is "true" when any shard
+    pushed and "false" only when every shard reported it did not; a shard that never reported leaves it empty, which the
+    gate reads as "rebuild". A faculty whose last shard never reported makes the pass incomplete, so it neither files
+    nor closes issues on what it did not see.
     """
-    got = {o.get('runner'): o for o in outcomes if isinstance(o, dict)}
-    flag = lambda o, k: str(o.get(k, '')).lower() == 'true'  # noqa: E731
-    seen = [got[r] for r in expected if r in got and not flag(got[r], 'skipped')]
-    missing = [r for r in expected if r not in got or flag(got[r], 'skipped')]
-    if any(flag(o, 'pushed') for o in seen):
+    got = {shard_key(o): o for o in outcomes if isinstance(o, dict)}
+    last = {}
+    for s in sorted(shards, key=lambda s: shard_key(s)[1]):
+        for f in _names(s.get('faculties')):
+            last[f] = s
+    seen = [got[shard_key(s)] for s in shards if shard_key(s) in got and not _flag(got[shard_key(s)], 'skipped')]
+    missing = [s['runner'] for s in shards if shard_key(s) not in got or _flag(got[shard_key(s)], 'skipped')]
+    if any(_flag(o, 'pushed') for o in seen):
         pushed = 'true'
     elif not missing:
         pushed = 'false'
@@ -288,23 +378,71 @@ def combine(expected, outcomes, age_hours):
             changed += int(o.get('changed') or 0)
         except (TypeError, ValueError):
             pass
+    blocked, unfinished = [], []
+    for f, s in last.items():
+        for g, why in left_over(s, got.get(shard_key(s))):
+            if g == f:
+                (blocked if why == 'blocked' else unfinished).append(f)
+    finals = [got[k] for k in {shard_key(s) for s in last.values()} if k in got]
     return {'pushed': pushed, 'changed': str(changed),
-            'blocked': str(any(flag(o, 'blocked') for o in seen)).lower(),
-            'incomplete': str(bool(missing) or not expected or any(flag(o, 'incomplete') for o in seen)).lower(),
-            'degraded': str(any(flag(o, 'degraded') for o in seen)).lower(),
-            'missing': missing, 'current': age_hours < REPORT_HOURS}
+            'blocked': str(bool(blocked)).lower(),
+            'incomplete': str(bool(blocked or unfinished) or not shards).lower(),
+            'degraded': str(any(_flag(o, 'degraded') for o in finals)).lower(),
+            'missing': missing, 'blocked_faculties': blocked, 'current': age_hours < REPORT_HOURS}
+
+
+def _matrix(text):
+    try:
+        value = json.loads(text or '[]')
+    except ValueError:
+        return []
+    return [m for m in value if isinstance(m, dict) and isinstance(m.get('runner'), str)] if isinstance(value, list) else []
+
+
+def read_outcomes(folder):
+    return [load_json(p, None) for p in sorted(Path(folder).glob('shard-*.json'))] if Path(folder).is_dir() else []
+
+
+def handoff_summary(result):
+    lines = ['### Handoff', '']
+    if not result['shards'] and not result['unassigned']:
+        return '\n'.join(lines + ['Every faculty of the plan was finished where it was planned: nothing to hand off.']) + '\n'
+    lines += ['| runner | takes over | from |', '|---|---|---|']
+    for s in result['shards']:
+        lines.append(f"| {s['runner']} | {s['faculties']} | {s['from'].replace(',', ', ')} |")
+    if result['unassigned']:
+        lines += ['', f"No other runner up may take: {', '.join(result['unassigned'])} (left for the next pass)."]
+    return '\n'.join(lines) + '\n'
+
+
+def cmd_handoff(args):
+    runners = load_json(args.runners, None, list) if args.runners else None
+    result = handoff(load_fleet(args.fleet), _matrix(args.matrix), read_outcomes(args.dir), load_json(args.state, {}),
+                     online_labels(runners))
+    for f, o in result['left'].items():
+        log(f"{f}: left {o['why']} by {o['runner']}")
+    for s in result['shards']:
+        log(f"{s['runner']} takes over {s['faculties']}")
+    if result['unassigned']:
+        log(f"::warning::no other runner up may take {', '.join(result['unassigned'])}; left for the next pass")
+    matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties'], 'wave': 2, 'wait': s['wait'],
+               'from': s['from']} for s in result['shards']]
+    github_output(matrix=json.dumps(matrix, separators=(',', ':')), shards=len(matrix),
+                  planned=int(dt.datetime.now(dt.timezone.utc).timestamp()))
+    step_summary(handoff_summary(result))
+    return 0
 
 
 def cmd_combine(args):
-    expected = [m.get('runner') for m in json.loads(args.matrix or '[]') if isinstance(m, dict)]
-    outcomes = [load_json(p, None) for p in sorted(Path(args.dir).glob('shard-*.json'))] if Path(args.dir).is_dir() else []
+    shards = _matrix(args.matrix) + [dict(m, wave=2) for m in _matrix(args.handoff)]
+    outcomes = read_outcomes(args.dir)
     age = (dt.datetime.now(dt.timezone.utc).timestamp() - float(args.planned or 0)) / 3600
-    result = combine(expected, outcomes, age)
+    result = combine(shards, outcomes, age)
     Path(args.out).write_text(json.dumps({k: result[k] for k in ('pushed', 'changed', 'blocked')}) + '\n',
                               encoding='utf-8')
     github_output(blocked=result['blocked'], incomplete=result['incomplete'], degraded=result['degraded'],
                   current=str(result['current']).lower())
-    lines = ['### Refresh outcome', '', '| runner | faculties | pushed | changed | blocked | incomplete | minutes |',
+    lines = ['### Refresh outcome', '', '| runner | wave | faculties | pushed | changed | blocked on | minutes |',
              '|---|---|---|---|---|---|---|']
     for o in outcomes:
         if not isinstance(o, dict):
@@ -313,12 +451,15 @@ def cmd_combine(args):
             minutes = round((float(o['ended']) - float(o['started'])) / 60)
         except (KeyError, TypeError, ValueError):
             minutes = ''
-        state = 'skipped (stale plan)' if str(o.get('skipped')).lower() == 'true' else o.get('pushed', '')
-        lines.append(f"| {o.get('runner', '?')} | {o.get('faculties', '')} | {state} | {o.get('changed', '')} | "
-                     f"{o.get('blocked', '')} | {o.get('incomplete', '')} | {minutes} |")
+        state = 'skipped (stale plan)' if _flag(o, 'skipped') else o.get('pushed', '')
+        lines.append(f"| {o.get('runner', '?')} | {shard_key(o)[1]} | {o.get('faculties', '')} | {state} | "
+                     f"{o.get('changed', '')} | {o.get('blocked_faculties', '') or ('yes' if _flag(o, 'blocked') else '')} | "
+                     f"{minutes} |")
     if result['missing']:
         lines += ['', f"No outcome from: {', '.join(result['missing'])}."]
-        log(f"::warning::no outcome from {', '.join(result['missing'])}; the pass counts as incomplete")
+        log(f"::warning::no outcome from {', '.join(result['missing'])}")
+    if result['blocked_faculties']:
+        lines += ['', f"Still blocked after the handoff: {', '.join(result['blocked_faculties'])}."]
     if not result['current']:
         lines += ['', f'The plan is over {REPORT_HOURS} h old: issues are left to newer passes.']
     step_summary('\n'.join(lines) + '\n')
@@ -344,8 +485,15 @@ def parse(argv=None):
     p.add_argument('--into', required=True, help="the branch's newest state; overwritten with the merge")
     p.add_argument('--faculty', default='', help='the faculties this pass crawled (default: every enabled one)')
     p.add_argument('--sources', default=str(SOURCES))
+    p = sub.add_parser('handoff', help='give what one runner left blocked or unfinished to another one that is up')
+    p.add_argument('--matrix', default='[]', help="the plan's matrix (JSON)")
+    p.add_argument('--dir', required=True, help="where the plan's shard-*.json outcomes are")
+    p.add_argument('--state', default='data/refresh-state.json', help="the data branch's refresh-state.json")
+    p.add_argument('--runners', help="GitHub's runner list now (JSON array); missing = unknown")
+    p.add_argument('--fleet', default=str(FLEET))
     p = sub.add_parser('combine', help="add the shards' outcomes up for pages.yml")
     p.add_argument('--matrix', default='[]', help="the plan's matrix (JSON)")
+    p.add_argument('--handoff', default='[]', help="the handoff's matrix (JSON)")
     p.add_argument('--planned', default='0', help='when the plan was made (Unix seconds)')
     p.add_argument('--dir', required=True, help='where the shard-*.json outcomes are')
     p.add_argument('--out', required=True)
@@ -354,7 +502,8 @@ def parse(argv=None):
 
 def main(argv=None):
     args = parse(argv)
-    return {'plan': cmd_plan, 'seed': cmd_seed, 'merge': cmd_merge, 'combine': cmd_combine}[args.cmd](args)
+    return {'plan': cmd_plan, 'seed': cmd_seed, 'merge': cmd_merge, 'handoff': cmd_handoff,
+            'combine': cmd_combine}[args.cmd](args)
 
 
 if __name__ == '__main__':

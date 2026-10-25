@@ -136,6 +136,20 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn('<a href="https://github.com/kilerdevs/PlanWAT/actions/runs/7">Przebieg #512 na GitHubie</a>', rows)
         self.assertIn('class="dot bad"', rows)
 
+    def test_a_takeover_shows_whose_faculty_each_server_took(self):
+        run = self.run_record(
+            runners=[{'name': 'oracle', 'faculties': ['wcy', 'ioe'], 'status': 'blocked', 'minutes': 12,
+                      'blocked_on': ['wcy'], 'wave': 1},
+                     {'name': 'plebania', 'faculties': ['wcy'], 'status': 'done', 'minutes': 9, 'wave': 2,
+                      'from': {'wcy': 'oracle'}}],
+            faculties=[{'id': 'wcy', 'runner': 'plebania', 'fresh': True, 'checked': 100, 'changed': 1,
+                        'from': {'runner': 'oracle', 'why': 'blocked'}}])
+        _, rows = build.render_status_runs([run])
+        self.assertEqual(rows.count('<span class="srv">'), 2)  # each server once
+        self.assertIn('<span class="pstate">12 min, zablokowany na WCY</span>', rows)
+        self.assertIn('<span class="pname">plebania</span><span class="pfacs">WCY (od oracle)</span>', rows)
+        self.assertIn('przejęty po blokadzie na oracle', rows)
+
     def test_runner_states(self):
         self.assertEqual(build.runner_state({'status': 'done', 'minutes': 0}), '0 min')
         self.assertEqual(build.runner_state({'status': 'blocked', 'minutes': 34}), '34 min, zablokowany')

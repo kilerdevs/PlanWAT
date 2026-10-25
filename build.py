@@ -1177,14 +1177,32 @@ def runner_state(r):
     if r.get('status') == 'missing':
         return 'brak raportu'
     took = f"{r['minutes']} min" if count(r.get('minutes')) or r.get('minutes') == 0 else ''
-    extra = {'blocked': 'zablokowany', 'incomplete': 'niedokończony'}.get(r.get('status'))
+    blocked_on = [str(f).upper() for f in r.get('blocked_on', []) if isinstance(f, str)]
+    extra = (f"zablokowany na {', '.join(blocked_on)}" if blocked_on else
+             {'blocked': 'zablokowany', 'incomplete': 'niedokończony'}.get(r.get('status')))
     return ', '.join(x for x in (took, extra) if x) or 'gotowe'
 
 
+def runner_share(r):
+    """A server's faculties in a pass; a takeover says whose they were: 'WTC (od oracle)'."""
+    took = r.get('from') if isinstance(r.get('from'), dict) else {}
+    names = [f for f in r.get('faculties', []) if isinstance(f, str)]
+    return ', '.join(f.upper() + (f' (od {took[f]})' if isinstance(took.get(f), str) else '') for f in names)
+
+
+def run_servers(run):
+    """The servers that took part in a pass, each once, in the order they started."""
+    return list(dict.fromkeys(r['name'] for r in run['runners']))
+
+
 def faculty_notes(f):
-    if not f.get('fresh'):
-        return ['brak danych z tego przebiegu']
     notes = []
+    handed = f.get('from') if isinstance(f.get('from'), dict) else None
+    if handed and isinstance(handed.get('runner'), str):
+        notes.append(f"przejęty po blokadzie na {handed['runner']}" if handed.get('why') == 'blocked'
+                     else f"przejęty od {handed['runner']}, który go nie skończył")
+    if not f.get('fresh'):
+        return notes + ['brak danych z tego przebiegu']
     cause = f.get('cause')
     if f.get('blocked') or cause:
         notes.append(RUN_CAUSES.get(cause) or ('blokada' if f.get('blocked') else str(cause)))
@@ -1204,7 +1222,7 @@ CHEVRON = ('<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9
 
 def _status_servers(run, e):
     """The servers of a pass as chips: those that crawled, then those that were off (struck through)."""
-    chips = [f'<span class="srv">{e(r["name"])}</span>' for r in run['runners']]
+    chips = [f'<span class="srv">{e(name)}</span>' for name in run_servers(run)]
     chips += [f'<span class="srv off">{e(n)}<span class="vh"> (wyłączony)</span></span>'
               for n in run.get('offline', []) if isinstance(n, str)]
     return ''.join(chips)
@@ -1213,8 +1231,7 @@ def _status_servers(run, e):
 def _status_parts(run, e):
     rows = []
     for r in run['runners']:
-        facs = ', '.join(str(f).upper() for f in r.get('faculties', []) if isinstance(f, str))
-        rows.append(f'<li><span class="pname">{e(r["name"])}</span><span class="pfacs">{e(facs) or "–"}</span>'
+        rows.append(f'<li><span class="pname">{e(r["name"])}</span><span class="pfacs">{e(runner_share(r)) or "–"}</span>'
                     f'<span class="pstate">{e(runner_state(r))}</span></li>')
     for n in run.get('offline', []):
         if isinstance(n, str):

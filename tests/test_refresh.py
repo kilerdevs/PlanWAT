@@ -1566,6 +1566,20 @@ class MainTest(unittest.TestCase):
         self.assertEqual([name for name, _ in self.wait_calls], ['wat-edge', 'wim', 'ioe'])
         self.assertEqual([round(budget, 6) for _, budget in self.wait_calls], [1800.0, 1800.0, 1800.0])
 
+    def test_the_faculties_left_blocked_are_exported_for_the_handoff(self):
+        StubDriver.fails = {'wim': {'main': 99}}
+        session = FakeSession({})
+        session.headers = {}
+        out = self.tmp / 'github-output'
+        with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out)}):
+            code = self.main(['--out', str(self.tmp), '--force', '--faculty', 'wim,ioe', '--max-block-wait-minutes', '5'],
+                             session, dt.date(2026, 10, 15))
+        self.assertEqual(code, 3)
+        self.assertEqual([round(budget) for _, budget in self.wait_calls], [300])  # the short wait it was given
+        exported = dict(line.split('=', 1) for line in out.read_text(encoding='utf-8').splitlines())
+        self.assertEqual(exported['blocked_faculties'], 'wim')  # ioe went through: only wim is another runner's
+        self.assertEqual(exported['incomplete_faculties'], 'wim')
+
     def test_policy_groups_become_lanes_in_the_order_asked(self):
         self.assertEqual(refresh.plan_lanes(['wim', 'wel', 'ioe', 'wlo', 'wml']),
                          [['wim'], ['wel', 'wlo'], ['ioe'], ['wml']])
@@ -1998,7 +2012,8 @@ class FleetPlan(unittest.TestCase):
             self.assertEqual(code, 0)
             values = dict(line.split('=', 1) for line in out.read_text().splitlines())
             self.assertEqual(json.loads(values['matrix']),
-                             [{'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wcy,wim'}])
+                             [{'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wcy,wim', 'wave': 1,
+                               'wait': fleet.BLOCK_WAIT}])  # nobody else up to take over: wait walls out
             self.assertEqual(values['shards'], '1')
             self.assertEqual(fleet.main(['plan', '--state', str(tmp / 'state.json'), '--faculty', 'nope']), 2)
 
@@ -2067,49 +2082,168 @@ class FleetMerge(unittest.TestCase):
 class FleetCombine(unittest.TestCase):
     """tools/refresh/fleet.py combine: one refresh-outcome.json for pages.yml out of every share's."""
 
-    def shard(self, runner, **kw):
-        return {'runner': runner, 'skipped': 'false', 'pushed': 'false', 'changed': '0', 'blocked': 'false',
-                'incomplete': 'false', 'degraded': 'false', **kw}
+    PLAN = [{'runner': 'plebania', 'faculties': 'wlo,wel,wcy', 'wave': 1}, {'runner': 'oracle', 'faculties': 'wim,wtc', 'wave': 1}]
+
+    def shard(self, runner, wave=1, **kw):
+        return {'runner': runner, 'wave': str(wave), 'skipped': 'false', 'pushed': 'false', 'changed': '0',
+                'blocked': 'false', 'incomplete': 'false', 'degraded': 'false', 'failed': 'false',
+                'blocked_faculties': '', 'incomplete_faculties': '', **kw}
 
     def test_any_push_rebuilds(self):
-        out = fleet.combine(['plebania', 'oracle'],
-                            [self.shard('plebania', pushed='true', changed='3'), self.shard('oracle', changed='1')], 0)
+        out = fleet.combine(self.PLAN, [self.shard('plebania', pushed='true', changed='3'), self.shard('oracle', changed='1')], 0)
         self.assertEqual((out['pushed'], out['changed'], out['incomplete']), ('true', '4', 'false'))
 
     def test_all_quiet_skips_the_rebuild(self):
-        out = fleet.combine(['plebania', 'oracle'], [self.shard('plebania'), self.shard('oracle')], 0)
+        out = fleet.combine(self.PLAN, [self.shard('plebania'), self.shard('oracle')], 0)
         self.assertEqual(out['pushed'], 'false')
 
     def test_a_missing_or_skipped_share_rebuilds_and_is_incomplete(self):
         for outcomes in ([self.shard('oracle')], [self.shard('oracle'), self.shard('plebania', skipped='true')]):
-            out = fleet.combine(['plebania', 'oracle'], outcomes, 0)
+            out = fleet.combine(self.PLAN, outcomes, 0)
             self.assertEqual((out['pushed'], out['incomplete'], out['missing']), ('', 'true', ['plebania']))
 
     def test_one_blocked_share_blocks_the_pass(self):
-        out = fleet.combine(['plebania', 'oracle'], [self.shard('plebania', blocked='true'), self.shard('oracle')], 0)
-        self.assertEqual(out['blocked'], 'true')
+        out = fleet.combine(self.PLAN, [self.shard('plebania'), self.shard('oracle', blocked='true', incomplete='true',
+                                                                            blocked_faculties='wtc', incomplete_faculties='wtc')], 0)
+        self.assertEqual((out['blocked'], out['incomplete'], out['blocked_faculties']), ('true', 'true', ['wtc']))
+
+    def test_a_faculty_taken_over_cleanly_is_neither_blocked_nor_incomplete(self):
+        took = [{'runner': 'plebania', 'faculties': 'wtc', 'wave': 2, 'from': 'wtc:oracle'}]
+        blocked = self.shard('oracle', blocked='true', incomplete='true', blocked_faculties='wtc', incomplete_faculties='wtc')
+        out = fleet.combine(self.PLAN + took, [self.shard('plebania'), blocked, self.shard('plebania', 2, pushed='true')], 0)
+        self.assertEqual((out['blocked'], out['incomplete'], out['pushed']), ('false', 'false', 'true'))
+        again = self.shard('plebania', 2, blocked='true', blocked_faculties='wtc', incomplete_faculties='wtc')
+        out = fleet.combine(self.PLAN + took, [self.shard('plebania'), blocked, again], 0)
+        self.assertEqual(out['blocked_faculties'], ['wtc'])  # blocked on both: still blocked
+
+    def test_a_lost_share_taken_over_completes_the_pass_but_still_rebuilds(self):
+        took = [{'runner': 'plebania', 'faculties': 'wim,wtc', 'wave': 2}]
+        out = fleet.combine(self.PLAN + took, [self.shard('plebania'), self.shard('plebania', 2)], 0)
+        self.assertEqual((out['incomplete'], out['pushed'], out['missing']), ('false', '', ['oracle']))
+
+    def test_a_takeover_that_never_reported_leaves_the_pass_incomplete(self):
+        took = [{'runner': 'plebania', 'faculties': 'wtc', 'wave': 2}]
+        blocked = self.shard('oracle', blocked='true', blocked_faculties='wtc', incomplete_faculties='wtc')
+        out = fleet.combine(self.PLAN + took, [self.shard('plebania'), blocked], 0)
+        self.assertEqual((out['incomplete'], out['blocked']), ('true', 'false'))
+
+    def test_an_older_report_without_faculty_lists_counts_as_its_flags(self):
+        old = {'runner': 'oracle', 'pushed': 'true', 'changed': '0', 'blocked': 'true', 'incomplete': 'true'}
+        out = fleet.combine(self.PLAN, [self.shard('plebania'), old], 0)
+        self.assertEqual(sorted(out['blocked_faculties']), ['wim', 'wtc'])
 
     def test_a_pass_with_no_runner_is_incomplete(self):
         out = fleet.combine([], [], 0)
         self.assertEqual((out['pushed'], out['incomplete']), ('false', 'true'))
 
     def test_an_old_pass_leaves_the_issues_alone(self):
-        self.assertFalse(fleet.combine(['oracle'], [self.shard('oracle')], fleet.REPORT_HOURS + 1)['current'])
+        self.assertFalse(fleet.combine(self.PLAN, [self.shard('oracle')], fleet.REPORT_HOURS + 1)['current'])
 
     def test_cli_writes_the_gate_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             (tmp / 'shards').mkdir()
-            (tmp / 'shards' / 'shard-oracle.json').write_text(json.dumps(self.shard('oracle', pushed='true')))
+            (tmp / 'shards' / 'shard-1-oracle.json').write_text(json.dumps(self.shard('oracle', pushed='true')))
             out = tmp / 'gh'
             with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out), 'GITHUB_STEP_SUMMARY': ''}):
-                fleet.main(['combine', '--matrix', '[{"runner": "oracle"}]', '--planned',
-                            str(int(dt.datetime.now(dt.timezone.utc).timestamp())), '--dir', str(tmp / 'shards'),
-                            '--out', str(tmp / 'refresh-outcome.json')])
+                fleet.main(['combine', '--matrix', '[{"runner": "oracle", "faculties": "wim"}]', '--handoff', '[]',
+                            '--planned', str(int(dt.datetime.now(dt.timezone.utc).timestamp())),
+                            '--dir', str(tmp / 'shards'), '--out', str(tmp / 'refresh-outcome.json')])
             self.assertEqual(json.loads((tmp / 'refresh-outcome.json').read_text()),
                              {'pushed': 'true', 'changed': '0', 'blocked': 'false'})
             self.assertIn('current=true', out.read_text())
 
+
+class FleetHandoff(unittest.TestCase):
+    """tools/refresh/fleet.py handoff: what one runner left blocked or unfinished goes to another one that is up."""
+
+    FLEET = FleetPlan.FLEET
+    BOTH = {'planwat', 'planwat-plebania', 'planwat-oracle'}
+    PLAN = [{'runner': 'plebania', 'label': 'planwat-plebania', 'faculties': 'wlo,wel,wcy,wml', 'wave': 1},
+            {'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wim,ioe,wtc', 'wave': 1}]
+
+    def shard(self, runner, **kw):
+        return FleetCombine.shard(self, runner, **kw)
+
+    def takeover(self, outcomes, online=None, fleet_=None):
+        result = fleet.handoff(fleet_ or self.FLEET, self.PLAN, outcomes, FleetPlan.STATE,
+                               self.BOTH if online is None else online)
+        return {s['runner']: (s['faculties'], s['from']) for s in result['shards']}, result
+
+    def test_a_blocked_faculty_goes_to_the_other_runner(self):
+        took, result = self.takeover([self.shard('plebania'),
+                                      self.shard('oracle', blocked='true', blocked_faculties='wtc', incomplete_faculties='wtc')])
+        self.assertEqual(took, {'plebania': ('wtc', 'wtc:oracle')})
+        self.assertEqual(result['shards'][0]['wait'], fleet.BLOCK_WAIT)  # nobody after it: wait the wall out
+        self.assertEqual(result['left'], {'wtc': {'runner': 'oracle', 'why': 'blocked'}})
+
+    def test_a_lane_moves_whole_and_never_back_to_the_runner_that_left_it(self):
+        took, _ = self.takeover([self.shard('plebania', blocked='true', blocked_faculties='wlo,wel',
+                                            incomplete_faculties='wlo,wel'), self.shard('oracle')])
+        self.assertEqual(took, {'oracle': ('wlo,wel', 'wlo:plebania,wel:plebania')})
+
+    def test_nobody_else_online_leaves_it_for_the_next_pass(self):
+        took, result = self.takeover([self.shard('plebania'), self.shard('oracle', blocked='true', blocked_faculties='wtc',
+                                                                         incomplete_faculties='wtc')],
+                                     online={'planwat', 'planwat-oracle'})
+        self.assertEqual((took, result['unassigned']), ({}, ['wtc']))
+
+    def test_unknown_runners_leave_it_to_an_always_on_one(self):
+        took, _ = self.takeover([self.shard('plebania', blocked='true', blocked_faculties='wcy', incomplete_faculties='wcy'),
+                                 self.shard('oracle')], online=set())
+        self.assertEqual(took, {})  # nothing online at all
+        result = fleet.handoff(self.FLEET, self.PLAN, [self.shard('plebania', blocked='true', blocked_faculties='wcy',
+                                                                  incomplete_faculties='wcy'), self.shard('oracle')],
+                               FleetPlan.STATE, None)
+        self.assertEqual([(s['runner'], s['faculties']) for s in result['shards']], [('oracle', 'wcy')])
+
+    def test_a_share_that_never_ran_is_taken_over_whole(self):
+        for outcomes in ([self.shard('plebania')], [self.shard('plebania'), self.shard('oracle', skipped='true')],
+                         [self.shard('plebania'), self.shard('oracle', failed='true', incomplete='true')]):
+            took, _ = self.takeover(outcomes)
+            self.assertEqual(took, {'plebania': ('wim,ioe,wtc', 'wim:oracle,ioe:oracle,wtc:oracle')}, outcomes)
+
+    def test_an_unfinished_faculty_is_taken_over_too(self):
+        took, result = self.takeover([self.shard('plebania'), self.shard('oracle', incomplete='true',
+                                                                         incomplete_faculties='ioe')])
+        self.assertEqual(took, {'plebania': ('ioe', 'ioe:oracle')})
+        self.assertEqual(result['left']['ioe']['why'], 'unfinished')
+
+    def test_a_clean_pass_hands_nothing_off(self):
+        took, result = self.takeover([self.shard('plebania'), self.shard('oracle')])
+        self.assertEqual((took, result['unassigned']), ({}, []))
+
+    def test_an_allowlist_is_respected(self):
+        only = [dict(self.FLEET[0], faculties=['wlo', 'wel', 'wcy', 'wml']), self.FLEET[1]]
+        took, result = self.takeover([self.shard('plebania'), self.shard('oracle', blocked='true', blocked_faculties='wtc',
+                                                                         incomplete_faculties='wtc')], fleet_=only)
+        self.assertEqual((took, result['unassigned']), ({}, ['wtc']))
+
+    def test_the_plan_waits_briefly_only_where_a_takeover_is_possible(self):
+        both = fleet.plan(self.FLEET, FleetPlan.WANTED, FleetPlan.STATE, self.BOTH)
+        self.assertEqual({s['wait'] for s in both['shards']}, {fleet.HANDOFF_WAIT})
+        alone = fleet.plan(self.FLEET, FleetPlan.WANTED, FleetPlan.STATE, {'planwat', 'planwat-oracle'})
+        self.assertEqual({s['wait'] for s in alone['shards']}, {fleet.BLOCK_WAIT})
+
+    def test_cli_writes_the_takeover_matrix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'shards').mkdir()
+            (tmp / 'shards' / 'shard-1-plebania.json').write_text(json.dumps(self.shard('plebania')))
+            (tmp / 'shards' / 'shard-1-oracle.json').write_text(json.dumps(
+                self.shard('oracle', blocked='true', blocked_faculties='wtc', incomplete_faculties='wtc')))
+            (tmp / 'runners.json').write_text(json.dumps(
+                [{'name': 'a', 'status': 'online', 'labels': ['planwat', 'planwat-plebania']},
+                 {'name': 'b', 'status': 'online', 'labels': ['planwat', 'planwat-oracle']}]))
+            out = tmp / 'gh'
+            with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out), 'GITHUB_STEP_SUMMARY': ''}):
+                self.assertEqual(fleet.main(['handoff', '--matrix', json.dumps(self.PLAN), '--dir', str(tmp / 'shards'),
+                                             '--state', str(tmp / 'none.json'), '--runners', str(tmp / 'runners.json')]), 0)
+            values = dict(line.split('=', 1) for line in out.read_text().splitlines())
+            self.assertEqual(json.loads(values['matrix']),
+                             [{'runner': 'plebania', 'label': 'planwat-plebania', 'faculties': 'wtc', 'wave': 2,
+                               'wait': fleet.BLOCK_WAIT, 'from': 'wtc:oracle'}])
+            self.assertEqual(values['shards'], '1')
 
 
 class RunHistory(unittest.TestCase):
@@ -2132,13 +2266,14 @@ class RunHistory(unittest.TestCase):
             'wel': {'run': run(blocked=True, cause='wall', checked=0)},
             'ioe': {'run': run(at='2026-10-25T09:00:00')}}}
 
-    def record(self, matrix=None, outcomes=None, plan_info=None, state=None, run_id=7, planned=None):
+    def record(self, matrix=None, outcomes=None, plan_info=None, state=None, run_id=7, planned=None, handoff=()):
         return runs.build_run(run_id=run_id, number=512, attempt=1, event='schedule', url='https://x/7',
                               planned=planned or self.PLANNED, ended=self.PLANNED + dt.timedelta(minutes=41),
                               matrix=self.MATRIX if matrix is None else matrix,
                               outcomes=[self.shard('plebania', changed='2'), self.shard('oracle', 12)]
                               if outcomes is None else outcomes,
-                              plan_info=plan_info or {'down': []}, state=self.state() if state is None else state)
+                              plan_info=plan_info or {'down': []}, state=self.state() if state is None else state,
+                              handoff=handoff)
 
     def test_a_pass_names_each_server_its_faculties_and_its_time(self):
         run = self.record(plan_info={'down': ['spare']})
@@ -2163,6 +2298,31 @@ class RunHistory(unittest.TestCase):
         self.assertEqual(result(outcomes=[self.shard('plebania')]), 'incomplete')  # oracle never reported
         self.assertEqual(result(outcomes=[self.shard('plebania', degraded='true'), self.shard('oracle')]), 'degraded')
         self.assertEqual(result(matrix=[], outcomes=[], plan_info={'down': ['plebania', 'oracle']}), 'idle')
+
+    def test_a_takeover_is_recorded_with_whose_faculty_it_took(self):
+        blocked = self.shard('oracle', 12, blocked='true', incomplete='true', blocked_faculties='ioe',
+                             incomplete_faculties='ioe')
+        took = dict(self.shard('plebania', 9, changed='1'), wave='2')
+        state = self.state()
+        state['faculties']['ioe']['run']['at'] = '2026-10-25T12:40:00'  # plebania's, after the takeover
+        run = self.record(outcomes=[self.shard('plebania'), blocked, took], state=state,
+                          handoff=[{'runner': 'plebania', 'faculties': 'ioe', 'from': 'ioe:oracle'}])
+        self.assertEqual([(r['name'], r['wave'], r['status']) for r in run['runners']],
+                         [('plebania', 1, 'done'), ('oracle', 1, 'blocked'), ('plebania', 2, 'done')])
+        self.assertEqual(run['runners'][1]['blocked_on'], ['ioe'])
+        self.assertEqual(run['runners'][2]['from'], {'ioe': 'oracle'})
+        ioe = {f['id']: f for f in run['faculties']}['ioe']
+        self.assertEqual((ioe['runner'], ioe['from']), ('plebania', {'runner': 'oracle', 'why': 'blocked'}))
+        self.assertEqual(run['result'], 'changed')  # taken over cleanly: the pass is not blocked
+        text = runs.markdown([run])
+        self.assertIn('**plebania** (WCY, WEL, IOE (od oracle)) · **oracle** (IOE)', text)
+        self.assertIn('| **oracle** | IOE | 0 | 12 min, zablokowany na IOE |', text)
+        self.assertIn('| **plebania** (przejęcie) | IOE (od oracle) | 1 | 9 min |', text)
+        self.assertIn('| IOE | plebania | 10 | 0 | przejęty po blokadzie na oracle |', text)
+        stale = self.record(outcomes=[self.shard('plebania'), blocked],
+                            handoff=[{'runner': 'plebania', 'faculties': 'ioe', 'from': 'ioe:oracle'}])
+        self.assertIn('przejęty po blokadzie na oracle, brak danych z tego przebiegu', runs.markdown([stale]))
+        self.assertEqual(stale['result'], 'incomplete')  # the takeover never reported
 
     def test_a_skipped_or_silent_server_says_so(self):
         run = self.record(outcomes=[self.shard('plebania', skipped='true')])

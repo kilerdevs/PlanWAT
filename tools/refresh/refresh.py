@@ -958,8 +958,14 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     exit_code = 3 if blocked else 4 if incomplete else 0
     if args.outcomes:
         write_outcomes(args, started, wanted, sources, state)
+    # Per faculty, for the fleet's handoff (tools/refresh/fleet.py): which ended this pass blocked, and which it did not
+    # finish (blocked ones included, as are faculties it never reached), so another runner can take exactly those.
+    ran = {n: state.faculties.get(n, {}).get('run', {}) for n in wanted if n in sources}
+    this_pass = {n for n, r in ran.items() if str(r.get('at') or '') >= started}
+    blocked_names = [n for n in ran if n in this_pass and ran[n].get('blocked')]
+    unfinished = [n for n in ran if n in tallies['incomplete'] or n not in this_pass or n in blocked_names]
     export(blocked=blocked, incomplete=incomplete, changed=len(tallies['changed']),
-           degraded=degraded_any)
+           degraded=degraded_any, blocked_faculties=','.join(blocked_names), incomplete_faculties=','.join(unfinished))
     log(f'changed: {len(tallies["changed"])}; blocked: {blocked}; incomplete: {incomplete}')
     if progress.url:
         progress.send('run_done', exit=exit_code, blocked=blocked, incomplete=incomplete,
