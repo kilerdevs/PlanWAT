@@ -34,9 +34,11 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   strony odpowiadają `304` bez treści), pomijanie grup sprawdzonych mniej niż 60 minut temu (`--fresh-hours`) oraz rozciąganie
   przerwy przed następnym sprawdzeniem cichej grupy (`--adaptive-hours`, w akcji 4 h — niżej), więc w spokojnym semestrze
   przebieg zagląda do cichej grupy rzadziej niż co drugi raz. Wszystkie polityki Incapsula (`--lanes`, domyślnie 6) są przeglądane
-  równolegle, każdy host we własnym tempie, więc pełny przebieg trwa krócej niż godzinę, a po zakończeniu przebiegu
-  `pages.yml` odbudowuje stronę (`workflow_run`) tylko wtedy, gdy przebieg faktycznie wypchnął nowe kalendarze — cichy
-  przebieg nie potrzebuje identycznego deploymentu (etap „rebuild needed?” w `pages.yml`).
+  równolegle, każdy host we własnym tempie, więc pełny przebieg trwa krócej niż godzinę. Po zakończeniu przebiegu
+  `pages.yml` (`workflow_run`, etap „rebuild needed?”) od razu odbudowuje stronę, gdy zmienił się choć jeden kalendarz.
+  Przebieg, który zapisał tylko nowe godziny sprawdzeń (prawie każdy wypycha `refresh-state.json`), odbudowuje ją dopiero
+  wtedy, gdy opublikowana wersja ma ponad 6 h (`STAMPS_MAX_HOURS`): „Sprawdzono” spóźnia się wtedy najwyżej o tyle, a
+  strona nie jest wdrażana kilkanaście razy dziennie dla samej godziny. Przebieg, który nic nie wypchnął, nie wdraża nic.
 - **Blokada odkłada wydział, nie kończy przebiegu.** Każdy status inny niż 200 (z wyjątkiem 304 i 404) albo strona incydentu
   Incapsula to najpierw odpowiedź blokady, nie wyrok: crawl zgłasza ją do proxy wyjściowego (które wycofuje wyjście, jakie ją
   przewiozło — w tunelu CONNECT proxy nie widzi strony blokady), a potem ponawia na świeżym połączeniu, czyli na innym wyjściu

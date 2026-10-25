@@ -32,18 +32,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # A refresh pass that did not publish any new calendar would rebuild and redeploy a
-  # byte-identical site (twelve scheduled passes a day). This reads the pass's outcome
-  # (refresh.yml uploads an artifact) and lets the build job skip those. Anything the gate
-  # cannot prove -- another event, an older refresh version, a missing or damaged
-  # artifact -- fails open and rebuilds.
+  # Almost every refresh pass pushes the data branch: even when no calendar changed it records
+  # the checks it made, and the group pages show the last check ("Sprawdzono", to the minute).
+  # Redeploying for that alone after every pass (twelve a day, plus the coordinator's) is waste,
+  # so this reads the pass's outcome (refresh.yml, collect.yml and map.yml upload one) and
+  #   - skips when nothing reached the data branch (pushed=false),
+  #   - rebuilds at once when a calendar changed (changed > 0) or the map was updated,
+  #   - when only check times moved (changed=0), rebuilds only if the live site is older than
+  #     STAMPS_MAX_HOURS, so "Sprawdzono" lags by at most that much and never claims a check
+  #     that did not happen.
+  # Anything the gate cannot prove -- another event, a missing or damaged artifact, an outcome
+  # without a calendar count, an unknown last deployment -- fails open and rebuilds.
   gate:
     name: rebuild needed?
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      # Reading the triggering run's artifact; nothing else on the workflow.
+      # Reading the triggering run's artifact and when the site was last deployed; nothing else.
       actions: read
+      deployments: read
+    # Without this the build job's needs.gate.outputs.rebuild is always empty, i.e. never 'false',
+    # and every run rebuilds whatever the gate decided (the gate's first version shipped that way).
+    outputs:
+      rebuild: ${{ steps.decision.outputs.rebuild }}
     steps:
       - id: outcome
         if: github.event_name == 'workflow_run'
@@ -55,13 +66,41 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
       - id: decision
+        env:
+          EVENT: ${{ github.event_name }}
+          SOURCE: ${{ github.event.workflow_run.name }}
+          OUTCOME: ${{ steps.outcome.outcome }}
+          GH_TOKEN: ${{ github.token }}
+          STAMPS_MAX_HOURS: '6'
         run: |
           rebuild=true
-          if [ "${{ github.event_name }}" = 'workflow_run' ] && [ "${{ steps.outcome.outcome }}" = 'success' ]; then
-            value=$(jq -r '.pushed // ""' outcome/refresh-outcome.json 2>/dev/null || true)
-            if [ "$value" = 'false' ]; then
-              echo 'A quiet refresh pass changed nothing on the data branch; skipping the rebuild.'
+          if [ "$EVENT" = 'workflow_run' ] && [ "$OUTCOME" = 'success' ]; then
+            pushed=$(jq -r '.pushed // ""' outcome/refresh-outcome.json 2>/dev/null || true)
+            changed=$(jq -r '.changed // ""' outcome/refresh-outcome.json 2>/dev/null || true)
+            echo "$SOURCE: pushed=${pushed:-?} changed=${changed:-?}"
+            if [ "$pushed" = 'false' ]; then
+              echo 'Nothing reached the data branch; skipping the rebuild.'
               rebuild=false
+            elif [ "$pushed" = 'true' ] && [ "$changed" = '0' ]; then
+              # Only check times moved: rebuild only if the live site is older than STAMPS_MAX_HOURS.
+              # Deployments come newest first; the first one whose latest status is success is live.
+              live=''
+              for id in $(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=github-pages&per_page=10" --jq '.[].id' 2>/dev/null); do
+                live=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=1" \
+                  --jq '.[0] | select(.state == "success") | .created_at' 2>/dev/null || true)
+                if [ -n "$live" ]; then break; fi
+              done
+              if [ -z "$live" ]; then
+                echo 'No calendar changed, but the last deployment is unknown; rebuilding.'
+              else
+                age=$(( ($(date +%s) - $(date -d "$live" +%s)) / 60 ))
+                if [ "$age" -lt $((STAMPS_MAX_HOURS * 60)) ]; then
+                  echo "No calendar changed and the live site is ${age} min old; skipping the rebuild."
+                  rebuild=false
+                else
+                  echo "No calendar changed, but the live site is ${age} min old; rebuilding to refresh \"Sprawdzono\"."
+                fi
+              fi
             fi
           fi
           echo "rebuild=$rebuild" >> "$GITHUB_OUTPUT"

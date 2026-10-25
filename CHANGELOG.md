@@ -72,6 +72,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Strona nie jest już wdrażana po każdym przebiegu odświeżania:** bramka `pages.yml` nie przekazywała swojej decyzji
+  (brakowało wyjścia zadania, więc budowa szła zawsze), a do tego pomijała tylko przebiegi, które nic nie wypchnęły, choć
+  prawie każdy wypycha nowe godziny sprawdzeń. Strona szła więc na produkcję kilkanaście razy dziennie.
+  Teraz zmiana kalendarza wdraża od razu, a same godziny sprawdzeń dopiero, gdy opublikowana wersja ma ponad 6 h.
 - **Sterowanie głosem na stronie grupy:** link „Mapa” w nagłówku dnia i dni w widoku miesiąca mają nazwy dostępne,
   które zawierają to, co widać (WCAG 2.5.3), więc da się je wywołać, mówiąc to, co jest na ekranie. Dzień miesiąca
   jest nazwany własną treścią, a na wąskim ekranie słowo „bloki” jest ukryte tylko wizualnie.
