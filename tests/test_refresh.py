@@ -1413,6 +1413,29 @@ class CorruptStateTest(unittest.TestCase):
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_text(encoding='utf-8'), '{not json')
 
+    def test_valid_json_of_the_wrong_shape_is_quarantined_too(self):
+        for text in ('[]', 'null', '"state"', '1', '{"version": 1, "groups": []}',
+                     '{"version": 1, "groups": {}, "faculties": null}'):
+            with self.subTest(text=text):
+                tmp = Path(tempfile.mkdtemp())
+                self.addCleanup(shutil.rmtree, tmp)
+                path = tmp / core.STATE_FILE
+                path.write_text(text, encoding='utf-8')
+                state = core.State(path)
+                self.assertEqual(state.data, {'version': 1, 'groups': {}, 'faculties': {}})
+                backups = list(tmp.glob(core.STATE_FILE + '.corrupt-*'))
+                self.assertEqual([b.read_text(encoding='utf-8') for b in backups], [text])
+
+    def test_a_good_state_without_faculties_still_loads(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        path = tmp / core.STATE_FILE
+        path.write_text('{"version": 1, "groups": {"A": {"checked": "x"}}}', encoding='utf-8')
+        state = core.State(path)
+        self.assertEqual(state.groups, {'A': {'checked': 'x'}})
+        self.assertEqual(state.faculties, {})
+        self.assertEqual(list(tmp.glob(core.STATE_FILE + '.corrupt-*')), [])
+
 
 class StubDriver:
     """Scripted stand-in for faculty drivers in main() tests: one group per faculty
@@ -1951,7 +1974,8 @@ class FleetPlan(unittest.TestCase):
         self.assertEqual(sum(r['always_on'] for r in runners), 1)
         for bad in ({'runners': []}, {'runners': [{'name': 'Bad Name', 'label': 'x'}]},
                     {'runners': [{'name': 'a', 'label': 'x', 'speed': 0}]},
-                    {'runners': [{'name': 'a', 'label': 'x'}, {'name': 'a', 'label': 'y'}]}):
+                    {'runners': [{'name': 'a', 'label': 'x'}, {'name': 'a', 'label': 'y'}]},
+                    [], None, {'runners': None}, {'runners': ['oracle']}):
             with tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / 'fleet.json'
                 path.write_text(json.dumps(bad))
