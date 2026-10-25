@@ -189,16 +189,6 @@ jobs:
         run: |
           python3 src/tools/refresh/fleet.py combine --matrix "$MATRIX" --planned "$PLANNED" \
             --dir shards --out refresh-outcome.json
-      # pages.yml's gate reads this instead of rebuilding an identical site after every quiet
-      # pass: pushed=false (every share quiet) means the data branch is unchanged. A missing or
-      # damaged artifact, or a share that never reported, fails the gate open, i.e. it still rebuilds.
-      - name: Upload the outcome
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: refresh-outcome
-          path: refresh-outcome.json
-          retention-days: 2
       - name: File or close the issues
         if: steps.combine.outputs.current == 'true'
         env:
@@ -275,7 +265,8 @@ jobs:
             python3 "$runs" record --matrix "$MATRIX" --plan "$FLEET" --planned "$PLANNED" \
               --dir "$GITHUB_WORKSPACE/shards" --state refresh-state.json --runs refresh-runs.json --readme README.md \
               --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --attempt "$GITHUB_RUN_ATTEMPT" \
-              --event "$EVENT" --url "$RUN_URL" --site-url "${site:+${site%/}/stan/}"
+              --event "$EVENT" --url "$RUN_URL" --site-url "${site:+${site%/}/stan/}" \
+              --outcome "$GITHUB_WORKSPACE/refresh-outcome.json"
             git add refresh-runs.json README.md
             if git diff --cached --quiet || { git commit -q -m "Run history: pass #$GITHUB_RUN_NUMBER" && git push -q origin HEAD:data; }; then
               python3 "$runs" render --summary --runs refresh-runs.json --site-url "${site:+${site%/}/stan/}" >> "$GITHUB_STEP_SUMMARY"
@@ -285,3 +276,16 @@ jobs:
             sleep $((attempt * 3 + RANDOM % 5))
           done
           exit 1
+      # pages.yml's gate reads this instead of rebuilding an identical site after every quiet
+      # pass: pushed=false (every share quiet) means the data branch is unchanged, history=new that
+      # this pass ended differently from the one before it, so /stan/ should show it now. A missing or
+      # damaged artifact, or a share that never reported, fails the gate open, i.e. it still rebuilds.
+      # Uploaded last, after the history step added its field, whatever the steps before it did.
+      - name: Upload the outcome
+        if: ${{ !cancelled() && steps.combine.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: refresh-outcome
+          path: refresh-outcome.json
+          retention-days: 2

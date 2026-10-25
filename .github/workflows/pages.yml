@@ -36,6 +36,8 @@ jobs:
   # the checks it made, and the group pages show the last check ("Sprawdzono", to the minute).
   # Redeploying for that alone after every pass (twelve a day, plus the coordinator's) is waste,
   # so this reads the pass's outcome (refresh.yml, collect.yml and map.yml upload one) and
+  #   - rebuilds at once when the pass ended differently from the one before it (history=new: another
+  #     result or other servers), so the /stan/ page shows it,
   #   - skips when nothing reached the data branch (pushed=false),
   #   - rebuilds at once when a calendar changed (changed > 0) or the map was updated,
   #   - when only check times moved (changed=0), rebuilds only if the live site is older than
@@ -77,8 +79,11 @@ jobs:
           if [ "$EVENT" = 'workflow_run' ] && [ "$OUTCOME" = 'success' ]; then
             pushed=$(jq -r '.pushed // ""' outcome/refresh-outcome.json 2>/dev/null || true)
             changed=$(jq -r '.changed // ""' outcome/refresh-outcome.json 2>/dev/null || true)
-            echo "$SOURCE: pushed=${pushed:-?} changed=${changed:-?}"
-            if [ "$pushed" = 'false' ]; then
+            history=$(jq -r '.history // ""' outcome/refresh-outcome.json 2>/dev/null || true)
+            echo "$SOURCE: pushed=${pushed:-?} changed=${changed:-?} history=${history:-?}"
+            if [ "$history" = 'new' ]; then
+              echo 'The pass ended differently from the one before it; rebuilding so /stan/ shows it.'
+            elif [ "$pushed" = 'false' ]; then
               echo 'Nothing reached the data branch; skipping the rebuild.'
               rebuild=false
             elif [ "$pushed" = 'true' ] && [ "$changed" = '0' ]; then

@@ -155,6 +155,9 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(scripts, [])
         self.assertIn('Brak zapisanych przebiegów', page)
         self.assertNotIn('<ol class="runs">', page)
+        # no README.md on the data branch yet: link the workflow's runs instead of a page that does not exist
+        self.assertIn('href="https://github.com/kilerdevs/PlanWAT/actions/workflows/refresh.yml"', page)
+        self.assertNotIn('blob/data/README.md', page)
 
     def test_the_build_reads_the_history_next_to_the_state(self):
         tmp = Path(tempfile.mkdtemp())

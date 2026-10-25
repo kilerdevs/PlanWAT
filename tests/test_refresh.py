@@ -2179,6 +2179,27 @@ class RunHistory(unittest.TestCase):
         self.assertEqual(len(history), 10)
         self.assertEqual(history[3]['attempt'], 2)
 
+    def test_a_pass_is_new_for_the_site_when_its_result_or_servers_differ(self):
+        def quiet(i, **kw):
+            kw.setdefault('outcomes', [self.shard('plebania'), self.shard('oracle')])
+            return self.record(run_id=100 + i, planned=self.PLANNED + dt.timedelta(hours=2 * i), **kw)
+
+        first = quiet(0)
+        self.assertTrue(runs.shows_new(runs.add_run([], first), first))  # nothing on record before it
+        history = runs.add_run([], first)
+        again = quiet(1)
+        self.assertFalse(runs.shows_new(runs.add_run(history, again), again))
+        blocked = quiet(1, outcomes=[self.shard('plebania', blocked='true'), self.shard('oracle')])
+        self.assertTrue(runs.shows_new(runs.add_run(history, blocked), blocked))
+        alone = quiet(1, matrix=[self.MATRIX[1]], outcomes=[self.shard('oracle')], plan_info={'down': ['plebania']})
+        self.assertTrue(runs.shows_new(runs.add_run(history, alone), alone))  # plebania went off
+        full = [quiet(i) for i in range(1, 11)]
+        late = quiet(-5, outcomes=[self.shard('plebania', blocked='true'), self.shard('oracle')])
+        history = runs.add_run(runs.add_run([], full[0]), late)
+        for r in full[1:]:
+            history = runs.add_run(history, r)
+        self.assertFalse(runs.shows_new(history, late))  # fell off the history: nothing to show
+
     def test_markdown_shows_the_latest_pass_and_every_server(self):
         older = self.record(run_id=6, planned=self.PLANNED - dt.timedelta(hours=2), matrix=[self.MATRIX[1]],
                             outcomes=[self.shard('oracle')], plan_info={'down': ['plebania']})
@@ -2212,8 +2233,13 @@ class RunHistory(unittest.TestCase):
                     '--state', str(tmp / 'refresh-state.json'), '--runs', str(tmp / 'refresh-runs.json'),
                     '--readme', str(tmp / 'README.md'), '--run-id', '7', '--run-number', '512', '--event', 'schedule',
                     '--url', 'https://x/7', '--repo-url', '']
-            self.assertEqual(runs.main(args), 0)
-            self.assertEqual(runs.main(args + ['--run-id', '8']), 0)  # the next pass
+            (tmp / 'refresh-outcome.json').write_text(json.dumps({'pushed': 'true', 'changed': '2', 'blocked': 'false'}))
+            outcome = ['--outcome', str(tmp / 'refresh-outcome.json')]
+            self.assertEqual(runs.main(args + outcome), 0)
+            self.assertEqual(json.loads((tmp / 'refresh-outcome.json').read_text()),
+                             {'pushed': 'true', 'changed': '2', 'blocked': 'false', 'history': 'new'})
+            self.assertEqual(runs.main(args + ['--run-id', '8'] + outcome), 0)  # the next pass, ending the same way
+            self.assertEqual(json.loads((tmp / 'refresh-outcome.json').read_text())['history'], 'same')
             saved = json.loads((tmp / 'refresh-runs.json').read_text())
             self.assertEqual([r['id'] for r in saved['runs']], [8, 7])
             self.assertEqual(saved['runs'][0]['offline'], [])

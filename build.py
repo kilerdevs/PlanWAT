@@ -1295,7 +1295,9 @@ def render_status(template, runs, site_url='', assets=None):
     latest, rows = render_status_runs(runs)
     page = template.replace('@@SEO@@', seo_head(site_url, f'{STATUS_DIR}/', STATUS_TITLE, STATUS_DESCRIPTION))
     page = page.replace('@@TITLE@@', html.escape(STATUS_TITLE)).replace('@@DESCRIPTION@@', html.escape(STATUS_DESCRIPTION, quote=True))
-    page = page.replace('@@LATEST@@', latest).replace('@@RUNS@@', rows).replace('@@HISTORY_URL@@', f'{REPO_URL}/blob/data/README.md')
+    # the data branch's README.md is written together with the first pass on record; before that, the runs list
+    history = f'{REPO_URL}/blob/data/README.md' if runs else f'{REPO_URL}/actions/workflows/refresh.yml'
+    page = page.replace('@@LATEST@@', latest).replace('@@RUNS@@', rows).replace('@@HISTORY_URL@@', history)
     return finish(page.replace('@@THEME_HEAD@@' + chr(10), ''), connect=False, assets=assets, asset_prefix='../')
 
 

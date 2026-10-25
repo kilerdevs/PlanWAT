@@ -39,6 +39,8 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   Przebieg, który zapisał tylko nowe godziny sprawdzeń (prawie każdy wypycha `refresh-state.json`), odbudowuje ją dopiero
   wtedy, gdy opublikowana wersja ma ponad 6 h (`STAMPS_MAX_HOURS`): „Sprawdzono” spóźnia się wtedy najwyżej o tyle, a
   strona nie jest wdrażana kilkanaście razy dziennie dla samej godziny. Przebieg, który nic nie wypchnął, nie wdraża nic.
+  Wyjątek: przebieg, który skończył się inaczej niż poprzedni (inny wynik albo inne serwery, `history=new`), odbudowuje
+  stronę od razu, żeby [`/stan/`](#historia-przebiegów) go pokazała.
 - **Blokada odkłada wydział, nie kończy przebiegu.** Każdy status inny niż 200 (z wyjątkiem 304 i 404) albo strona incydentu
   Incapsula to najpierw odpowiedź blokady, nie wyrok: crawl zgłasza ją do proxy wyjściowego (które wycofuje wyjście, jakie ją
   przewiozło — w tunelu CONNECT proxy nie widzi strony blokady), a potem ponawia na świeżym połączeniu, czyli na innym wyjściu
@@ -207,8 +209,11 @@ Zapisuje je zadanie **report** (`tools/refresh/runs.py record`): dopisuje przebi
 najnowszego, ponowna próba zastępuje pierwszą, najwyżej 10) i przepisuje z niego `README.md` gałęzi. Push ma tę samą pętlę
 co runnery (najnowszy commit gałęzi, do pięciu prób), a błąd tutaj nigdy nie psuje raportu. `pages.yml` kopiuje plik obok
 `refresh-state.json`, a `build.py` renderuje z niego `/stan/` (lokalnie: `python3 build.py --runs <plik>`; bez pliku strona
-mówi, że historii jeszcze nie ma). Strona odświeża się razem z witryną, więc po cichym przebiegu może zostawać za GitHubem do
-kilku godzin (bramka Pages, `STAMPS_MAX_HOURS`).
+mówi, że historii jeszcze nie ma, a link prowadzi do listy przebiegów workflow). Strona odświeża się razem z witryną.
+Przebieg, który skończył się inaczej niż poprzedni (inny wynik, np. blokada albo powrót do normy, albo inny zestaw
+serwerów, np. plebania się włączyła) albo zmienił plany, odbudowuje ją od razu: `runs.py record --outcome` dopisuje wtedy
+`history=new` do `refresh-outcome.json`, a bramka Pages to czyta. Pierwszy przebieg w historii też się liczy. Przebieg taki
+jak poprzedni czeka na regułę 6 h (`STAMPS_MAX_HOURS`), więc wtedy `/stan/` bywa za GitHubem do kilku godzin.
 
 ## Gdyby sam GitHub został przejęty
 
