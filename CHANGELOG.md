@@ -47,6 +47,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
     sprawdzenie grupy nigdy nie nadpisują nowszego planu.
 - „Sprawdzono” na stronie grupy uwzględnia także sprawdzenia wolontariuszy, a domowy runner pomija grupy, które
   wolontariusze właśnie potwierdzili.
+- **Dwa runnery odświeżania z podziałem pracy** ([docs/REFRESH.md](docs/REFRESH.md#dwa-runnery-i-podział-pracy)):
+  każdy przebieg sprawdza, które runnery są włączone, i dzieli wydziały między szybką, ale często wyłączoną plebanię a
+  wolny, zawsze włączony VPS, według ich szybkości (`tools/refresh/fleet.json`). Gdy plebania śpi, wszystko robi VPS, a
+  żadne zadanie nie wisi w kolejce. Runnery wypychają na `data` równolegle i scalają stan zamiast się nadpisywać, każdy
+  pamięta tempo i blokady własnego łącza, a zgłoszenia o blokadzie liczą się z wyników wszystkich.
 
 ### Zmieniono
 - **Plan na pierwszym ekranie komputera:** na szerokim ekranie (od 1080 px) nagłówek strony grupy jest niższy, a

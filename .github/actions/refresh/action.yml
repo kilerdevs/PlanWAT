@@ -1,11 +1,12 @@
 name: Refresh timetables
 description: >
   Crawl the faculty timetable pages, convert what changed, push the calendars to the data branch and
-  report whether the run was blocked or incomplete. Used by refresh.yml on a hosted and a self-hosted runner.
+  report whether the run was blocked or incomplete. Used by refresh.yml on each of the project's runners and by
+  volunteer.yml on a volunteer's.
 
 inputs:
   token:
-    description: Token with contents and issues write access (no actions access needed).
+    description: Token with contents write access (no actions access needed).
     required: true
   profile:
     description: Pacing profile, hosted or selfhosted.
@@ -107,6 +108,16 @@ runs:
           mkdir -p "$RUNNER_TOOL_CACHE/planwat"
           args+=(--assign "$RUNNER_TEMP/volunteers.json" --as "$GITHUB_REPOSITORY_OWNER"
                  --outcomes "$RUNNER_TEMP/outcomes.json" --faculty-state "$RUNNER_TOOL_CACHE/planwat/faculties.json")
+        else
+          # The push merges this pass into whatever the other runner pushed meanwhile (tools/refresh/fleet.py merge),
+          # against the state the pass started from.
+          cp data/refresh-state.json "$RUNNER_TEMP/state-base.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/state-base.json"
+          # Each project runner meets its own walls: its learned pacing and block cooldowns stay in the tool cache,
+          # seeded once from the data branch. A runner whose tool cache is not writable shares the branch's, as before.
+          line="$RUNNER_TOOL_CACHE/planwat/refresh-line.json"
+          if [ -f "$line" ] || "$PLANWAT_PY" "$SOURCE/tools/refresh/fleet.py" seed --state data/refresh-state.json --out "$line"; then
+            args+=(--faculty-state "$line")
+          fi
         fi
         "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}"
         code=$?
@@ -125,55 +136,42 @@ runs:
       if: inputs.mode != 'volunteer'
       shell: bash
       working-directory: data
+      env:
+        SOURCE: ${{ inputs.source }}
+        FACULTY: ${{ inputs.faculty }}
       run: |
-        # Publish whatever was refreshed, even from a run that was blocked half-way.
+        # Publish whatever was refreshed, even from a run that was blocked half-way. Another runner may push to the
+        # same branch while this one crawls (other faculties, see tools/refresh/fleet.json), and so may the volunteer
+        # coordinator: each attempt starts from the branch's newest commit, puts this pass's calendars back on top and
+        # merges the state files instead of rebasing them into a conflict.
         git config user.name 'planwat-refresh'
         git config user.email 'planwat-refresh@users.noreply.github.com'
-        git add -A
-        if git diff --cached --quiet; then
-          echo 'nothing to publish'
-          echo 'pushed=false' >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-        git commit -q -m "Timetables refreshed ($(git diff --cached --name-only -- timetables | wc -l) calendars)"
-        git pull -q --rebase origin data
-        git push -q origin HEAD:data
-        echo 'pushed=true' >> "$GITHUB_OUTPUT"
+        fleet="$GITHUB_WORKSPACE/$SOURCE/tools/refresh/fleet.py"
+        cp refresh-state.json "$RUNNER_TEMP/state-mine.json"
+        git ls-files -z -m -o --exclude-standard -- . ':!refresh-state.json' | tar --null -T - -cf "$RUNNER_TEMP/publish.tar"
+        for attempt in 1 2 3 4 5; do
+          git fetch -q --depth 1 origin data
+          git reset -q --hard FETCH_HEAD
+          tar -xf "$RUNNER_TEMP/publish.tar"
+          "$PLANWAT_PY" "$fleet" merge --base "$RUNNER_TEMP/state-base.json" --mine "$RUNNER_TEMP/state-mine.json" \
+            --into refresh-state.json --faculty "$FACULTY"
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'nothing to publish'
+            echo 'pushed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -q -m "Timetables refreshed ($(git diff --cached --name-only -- timetables | wc -l) calendars)"
+          if git push -q origin HEAD:data; then
+            echo 'pushed=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "the data branch moved under the push (attempt $attempt); merging again"
+          sleep $((attempt * 3 + RANDOM % 5))
+        done
+        exit 1
     # No `gh workflow run pages.yml` here on purpose: pages.yml rebuilds daily on its own and picks
     # the refreshed calendars up. Granting actions:write so the crawl could trigger deploys would let
     # anyone holding the refresh token (or a workflow patch) run arbitrary workflows.
-    - if: inputs.mode != 'volunteer'
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.token }}
-        BLOCKED: ${{ steps.run.outputs.blocked }}
-        INCOMPLETE: ${{ steps.run.outputs.incomplete }}
-        DEGRADED: ${{ steps.run.outputs.degraded }}
-        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      run: |
-        # One issue tells the owner that the crawl is blocked; it closes itself after a clean run.
-        title='Odświeżanie planów zablokowane (Incapsula)'
-        open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
-        if [ "$BLOCKED" = 'true' ]; then
-          body="Serwer wydziału zablokował pobieranie planów. Ostatnie poprawne plany zostają bez zmian. Przebieg: $RUN_URL"
-          if [ -n "$open" ]; then
-            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "$body"
-          else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
-          fi
-        elif [ "$INCOMPLETE" != 'true' ] && [ -n "$open" ]; then
-          gh issue close "$open" --repo "$GITHUB_REPOSITORY" --comment "Pobieranie znów działa: $RUN_URL"
-        fi
-        # A second issue tracks degraded-but-not-blocked runs (mass skips); same open/comment/create/close pattern.
-        dtitle='Odświeżanie planów zdegradowane (masowe pominięcia)'
-        dopen=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$dtitle\" in:title" --json number --jq '.[0].number // empty')
-        if [ "$DEGRADED" = 'true' ] && [ "$BLOCKED" != 'true' ]; then
-          dbody="Przebieg odświeżania zdegradowany (masowe pominięcia), ale nie zablokowany. Ostatnie poprawne plany zostają bez zmian. Przebieg: $RUN_URL"
-          if [ -n "$dopen" ]; then
-            gh issue comment "$dopen" --repo "$GITHUB_REPOSITORY" --body "$dbody"
-          else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "$dtitle" --body "$dbody"
-          fi
-        elif [ "$BLOCKED" != 'true' ] && [ "$DEGRADED" != 'true' ] && [ "$INCOMPLETE" != 'true' ] && [ -n "$dopen" ]; then
-          gh issue close "$dopen" --repo "$GITHUB_REPOSITORY" --comment "Odświeżanie znów pełne: $RUN_URL"
-        fi
+    # Nor the "blocked" / "degraded" issues: the pass is split over several runners (refresh.yml), so only its
+    # report job, which sees every runner's outcome, files and closes them.
