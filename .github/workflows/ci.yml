@@ -113,9 +113,10 @@ jobs:
           key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('package-lock.json') }}
       - name: Install ${{ matrix.browser }}
         run: npx playwright install --with-deps ${{ matrix.browser }}
-      # --today matches the frozen browser clock, so the term pick agrees with it.
+      # --today matches the frozen browser clock, so the term pick agrees with it; --runs gives the
+      # stan/ page a history to show.
       - name: Build the site
-        run: python build.py --today 2026-10-15
+        run: python build.py --today 2026-10-15 --runs tests/fixtures/refresh-runs.json
       - name: Run browser tests
         run: >-
           npx playwright test

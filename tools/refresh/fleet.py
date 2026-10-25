@@ -196,7 +196,10 @@ def cmd_plan(args):
         log('::warning::no runner of the fleet is online; this pass crawls nothing')
     matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties']} for s in result['shards']]
     planned = int(dt.datetime.now(dt.timezone.utc).timestamp())
-    github_output(matrix=json.dumps(matrix, separators=(',', ':')), shards=len(matrix), planned=planned)
+    # runs.py records which servers were off and what nobody could take
+    info = {'down': result['down'], 'unassigned': result['unassigned']}
+    github_output(matrix=json.dumps(matrix, separators=(',', ':')), shards=len(matrix), planned=planned,
+                  fleet=json.dumps(info, separators=(',', ':')))
     step_summary(plan_summary(result))
     return 0
 

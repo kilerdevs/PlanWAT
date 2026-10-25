@@ -109,6 +109,7 @@ zawsze prowadzi do bieżącego tygodnia.
 | Plik kalendarza | `…/<GRUPA>/plan.ics`: pobierz albo zasubskrybuj w aplikacji kalendarza |
 | Wszystkie grupy | [`https://kilerdevs.github.io/PlanWAT/`](https://kilerdevs.github.io/PlanWAT/): lista z wyszukiwarką i filtrem wydziałów |
 | Mapa kampusu | [`…/mapa/`](https://kilerdevs.github.io/PlanWAT/mapa/) |
+| Odświeżanie planów | [`…/stan/`](https://kilerdevs.github.io/PlanWAT/stan/): ostatnie przebiegi i serwery, które je zrobiły |
 
 Interfejs jest po polsku. Kod i nazwy techniczne są angielskie, dokumentacja w tym repozytorium: polski.
 

@@ -143,6 +143,40 @@ test('the privacy page is linked from the footer, accessible and runs no script'
   expect(serious).toEqual([]);
 });
 
+test('the refresh history is linked from the footer, names each pass\'s servers and runs no script', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (e) => { window.__csp = (window.__csp || []).concat(e.violatedDirective); });
+  });
+  await page.goto('/');
+  await page.locator('footer a[href="stan/"]').click();
+  await expect(page).toHaveURL(/\/stan\/$/);
+  await expect(page.locator('h1')).toHaveText('Odświeżanie planów');
+  // tests/fixtures/refresh-runs.json: the newest pass was blocked, on both servers
+  await expect(page.locator('#latestTitle')).toHaveText('Zablokowany');
+  await expect(page.locator('.latest .pname')).toHaveText(['plebania', 'oracle']);
+  const runs = page.locator('.run');
+  await expect(runs).toHaveCount(5);
+  await expect(runs.nth(1).locator('.srv')).toHaveText(['oracle', 'plebania (wyłączony)']);
+  // a row opens in place: the servers' shares, every faculty and the link to the run on GitHub
+  const more = runs.nth(1).locator('.more');
+  await expect(more).toBeHidden();
+  await runs.nth(1).locator('summary').click();
+  await expect(more).toBeVisible();
+  await expect(more.locator('.parts li.off')).toContainText('wyłączony');
+  await expect(more.locator('.facs li')).toHaveCount(7);
+  await expect(more.locator('.runlink a')).toHaveAttribute('href', /^https:\/\/github\.com\/kilerdevs\/PlanWAT\/actions\/runs\/\d+$/);
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity));
+  expect(await page.evaluate(() => window.__csp || [])).toEqual([]);
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  expect(serious).toEqual([]);
+});
+
 test('pages draw with Inter from the site itself and ask no other host for fonts', async ({ page, browserName }) => {
   const foreign = [];
   page.on('request', (r) => { if (r.resourceType() === 'font' && !r.url().startsWith('http://127.0.0.1')) foreign.push(r.url()); });

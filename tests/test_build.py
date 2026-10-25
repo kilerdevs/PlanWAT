@@ -71,6 +71,114 @@ class PrivacyNoticeTest(unittest.TestCase):
         self.assertEqual(listed - keys, set(), 'listed on the privacy page but no longer stored')
 
 
+class StatusPageTest(unittest.TestCase):
+    """stan/: the last refresh passes from refresh-runs.json (written by tools/refresh/runs.py)."""
+
+    def run_record(self, **over):
+        run = {'id': 7, 'number': 512, 'attempt': 1, 'event': 'schedule',
+               'url': 'https://github.com/kilerdevs/PlanWAT/actions/runs/7',
+               'planned': '2026-10-25T12:00:00', 'ended': '2026-10-25T12:41:00', 'result': 'ok', 'changed': 0,
+               'checked': 120, 'not_ready': 0, 'offline': ['plebania'], 'unassigned': [],
+               'runners': [{'name': 'oracle', 'faculties': ['wcy', 'ioe'], 'status': 'done', 'minutes': 38,
+                            'changed': 0}],
+               'faculties': [{'id': 'wcy', 'runner': 'oracle', 'fresh': True, 'checked': 100, 'changed': 0,
+                              'not_ready': 38, 'skipped': 1, 'blocked': True, 'degraded': False, 'cause': 'wall'},
+                             {'id': 'ioe', 'runner': 'oracle', 'fresh': False}]}
+        run.update(over)
+        return run
+
+    def write_runs(self, value):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        path = tmp / build.RUNS_FILE
+        path.write_text(value if isinstance(value, str) else json.dumps(value), encoding='utf-8')
+        return path
+
+    def test_missing_or_damaged_history_is_no_history(self):
+        self.assertEqual(build.load_runs(Path(tempfile.gettempdir()) / 'no-such-runs.json'), [])
+        for bad in ('{', '[]', 'null', json.dumps({'version': 2, 'runs': [self.run_record()]}),
+                    json.dumps({'version': 1, 'runs': {'id': 7}})):
+            self.assertEqual(build.load_runs(self.write_runs(bad)), [], bad)
+
+    def test_damaged_entries_are_dropped_and_the_rest_kept(self):
+        good = self.run_record()
+        runs = [good, None, 'x', self.run_record(id=0), self.run_record(result='great'), self.run_record(planned='soon'),
+                self.run_record(runners=None), self.run_record(runners=[{'name': 5}])]
+        self.assertEqual(build.load_runs(self.write_runs({'version': 1, 'runs': runs})), [good])
+
+    def test_times_are_warsaw_time_across_the_clock_change(self):
+        self.assertEqual(build.run_when('2026-10-24T22:00:00'), '25 paź · 00:00')  # CEST, UTC+2
+        self.assertEqual(build.run_when('2026-10-25T12:00:00'), '25 paź · 13:00')  # CET, UTC+1
+        self.assertEqual(build.run_when('2026-10-25T12:00:00', year=True), '25 paź 2026 · 13:00')
+        self.assertEqual(build.run_when('later'), '?')
+
+    def test_results_are_worded_in_polish(self):
+        label = lambda **kw: build.run_result_label(self.run_record(**kw))  # noqa: E731
+        self.assertEqual(label(), 'Bez zmian')
+        self.assertEqual(label(result='changed', changed=1), 'Zmiana w 1 planie')
+        self.assertEqual(label(result='changed', changed=12), 'Zmiany w 12 planach')
+        self.assertEqual(label(result='idle'), 'Serwery wyłączone')
+        self.assertEqual([build.latest_label(n) for n in (1, 3, 10, 22)],
+                         ['Ostatni przebieg', 'Ostatnie 3 przebiegi', 'Ostatnie 10 przebiegów', 'Ostatnie 22 przebiegi'])
+
+    def test_every_pass_names_its_servers_and_what_each_did(self):
+        latest, rows = build.render_status_runs([self.run_record(), self.run_record(id=6, result='blocked')])
+        self.assertIn('Ostatni przebieg · 25 paź · 13:00', latest)
+        self.assertIn('<dd>120</dd>', latest)
+        self.assertIn('<dd>41 min</dd>', latest)  # plan to report
+        self.assertEqual(rows.count('<li class="run">'), 2)
+        self.assertIn('<span class="srv">oracle</span>', rows)
+        self.assertIn('<span class="srv off">plebania<span class="vh"> (wyłączony)</span></span>', rows)
+        self.assertIn('<span class="pname">oracle</span><span class="pfacs">WCY, IOE</span>'
+                      '<span class="pstate">38 min</span>', rows)
+        self.assertIn('blokada Incapsula · bez planu na ten semestr: 38 · pominięte: 1', rows)
+        self.assertIn('brak danych z tego przebiegu', rows)  # IOE's numbers were not this pass's
+        self.assertIn('<a href="https://github.com/kilerdevs/PlanWAT/actions/runs/7">Przebieg #512 na GitHubie</a>', rows)
+        self.assertIn('class="dot bad"', rows)
+
+    def test_runner_states(self):
+        self.assertEqual(build.runner_state({'status': 'done', 'minutes': 0}), '0 min')
+        self.assertEqual(build.runner_state({'status': 'blocked', 'minutes': 34}), '34 min, zablokowany')
+        self.assertEqual(build.runner_state({'status': 'skipped'}), 'nie zaczął na czas')
+        self.assertEqual(build.runner_state({'status': 'missing', 'minutes': None}), 'brak raportu')
+
+    def test_record_text_is_escaped_and_only_https_links_are_followed(self):
+        run = self.run_record(url='javascript:alert(1)', runners=[{'name': '<img src=x>', 'faculties': ['<b>']}])
+        _, rows = build.render_status_runs([run])
+        self.assertNotIn('<img', rows)
+        self.assertNotIn('<b>', rows)
+        self.assertNotIn('javascript:', rows)
+        self.assertIn('&lt;img src=x&gt;', rows)
+
+    def test_no_history_still_renders_a_page_without_script(self):
+        page, scripts, _ = build.render_status((build.SRC / 'stan.html').read_text(encoding='utf-8'), [])
+        self.assertEqual(scripts, [])
+        self.assertIn('Brak zapisanych przebiegów', page)
+        self.assertNotIn('<ol class="runs">', page)
+
+    def test_the_build_reads_the_history_next_to_the_state(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / 'tt' / '2026-27-zima').mkdir(parents=True)
+        (tmp / 'tt' / '2026-27-zima' / 'WCY26KY3S1.ics').write_text(
+            calendar('WCY26KY3S1', '2026-10-01', '2027-02-28', '2026-10-05'), encoding='utf-8')
+        (tmp / 'refresh-state.json').write_text('{}', encoding='utf-8')
+        (tmp / build.RUNS_FILE).write_text(json.dumps({'version': 1, 'runs': [self.run_record()]}), encoding='utf-8')
+        build.build(tmp / 'tt', tmp / 'site', today=D(2026, 10, 15), state_path=tmp / 'refresh-state.json')
+        page = (tmp / 'site' / build.STATUS_DIR / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('<li class="run">', page)
+        self.assertIn('https://github.com/kilerdevs/PlanWAT/blob/data/README.md', page)
+
+    def test_stan_is_a_reserved_name(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / 'tt' / '2026-27-zima').mkdir(parents=True)
+        (tmp / 'tt' / '2026-27-zima' / 'STAN.ics').write_text(
+            calendar('STAN', '2026-10-01', '2027-02-28', '2026-10-05'), encoding='utf-8')
+        with self.assertRaisesRegex(build.BuildError, 'reserved'):
+            build.build(tmp / 'tt', tmp / 'site', today=D(2026, 10, 15))
+
+
 class FacultyTest(unittest.TestCase):
     def test_known_prefixes_map_to_their_faculty(self):
         self.assertEqual(build.faculty_of('WCY26KY3S1'), 'WCY')
@@ -226,6 +334,10 @@ class BuildRealSiteTest(unittest.TestCase):
             self.assertIn('nigdy nie poprosi Cię o adres e-mail', html, rel)
             self.assertRegex(html, r'href="(\.\./)?prywatnosc/"', rel)
         self.assertNotIn('nofollow', privacy)  # only the dev preview asks not to be indexed
+        status = (self.out / build.STATUS_DIR / 'index.html').read_text(encoding='utf-8')
+        self.assertIn("script-src 'none'", self.meta_csp(f'{build.STATUS_DIR}/index.html'))
+        self.assertIn('Brak zapisanych przebiegów', status)  # no refresh-runs.json in a plain checkout
+        self.assertIn('href="stan/"', (self.out / 'index.html').read_text(encoding='utf-8'))
 
     def test_reminder_calendar_has_one_alarm_per_class_and_valid_lines(self):
         raw = (self.out / 'WCY26KY3S1' / build.REMINDER_FILE).read_bytes()
@@ -378,12 +490,13 @@ class BuildRealSiteTest(unittest.TestCase):
                 self.assertNotIn(f"'{name}'", sw)  # most phones draw with SF Pro and never need the fallback font
             else:
                 self.assertIn(f"'{name}'", sw)  # the worker precaches them for offline
-        for page in ('prywatnosc/index.html', '404.html'):
+        for page in ('prywatnosc/index.html', 'stan/index.html', '404.html'):
             html = (self.out / page).read_text(encoding='utf-8')
             self.assertEqual(re.findall(r'assets/[^"]+\.(?:js|css)"', html), [], page)  # only the font is shared
 
     def test_every_page_draws_with_inter_from_the_site_itself(self):
-        rels = ('index.html', 'WCY26KY3S1/index.html', 'mapa/index.html', 'prywatnosc/index.html', '404.html')
+        rels = ('index.html', 'WCY26KY3S1/index.html', 'mapa/index.html', 'prywatnosc/index.html', 'stan/index.html',
+                '404.html')
         for rel in rels:
             html = (self.out / rel).read_text(encoding='utf-8')
             self.assertNotIn('fonts.googleapis.com', html, rel)
@@ -398,7 +511,7 @@ class BuildRealSiteTest(unittest.TestCase):
 
     def test_coverage_chart_counts_exactly_the_groups_the_build_publishes(self):
         published = [p.parent.name for p in self.out.glob('*/index.html')
-                     if p.parent.name not in (build.MAP_DIR, build.PRIVACY_DIR)]
+                     if p.parent.name not in (build.MAP_DIR, build.PRIVACY_DIR, build.STATUS_DIR)]
         counts = {}
         for group in published:
             counts[build.faculty_of(group)] = counts.get(build.faculty_of(group), 0) + 1

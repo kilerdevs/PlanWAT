@@ -168,7 +168,8 @@ Każdy przebieg `refresh.yml` ma trzy etapy:
    blokuje kolejnych przebiegów.
 3. **report** (runner GitHub): sumuje wyniki runnerów do `refresh-outcome.json` dla bramki `pages.yml` (brak wyniku
    któregoś runnera = przebudowa) i otwiera albo zamyka zgłoszenia o blokadzie i degradacji. Przebieg, któremu brakuje
-   wyniku runnera, jest niepełny: niczego nie zamyka. Przebieg starszy niż 3 h zostawia zgłoszenia nowszym.
+   wyniku runnera, jest niepełny: niczego nie zamyka. Przebieg starszy niż 3 h zostawia zgłoszenia nowszym. Na koniec
+   zapisuje przebieg w [historii przebiegów](#historia-przebiegów).
 
 Każdy runner ma też **własny stan łącza** (wyuczone tempo, czasy blokad, ostatni przebieg wydziału): różne adresy
 trafiają na różne ściany, więc trzyma go w `$RUNNER_TOOL_CACHE/planwat/refresh-line.json`, zasiany raz z gałęzi `data`.
@@ -186,6 +187,28 @@ Konfiguracja (jednorazowo):
 3. Dostrajanie: kolumna „minutes” w podsumowaniu zadania report pokazuje, ile trwał udział każdego runnera. Gdy jeden
    regularnie kończy dużo później, zmień `speed` w `fleet.json`. Pole `faculties` (lista) ogranicza runner do tych
    wydziałów, np. gdy któryś wydział nie wpuszcza adresu VPS-a.
+
+### Historia przebiegów
+
+Ostatnie 10 przebiegów widać w dwóch miejscach, z tego samego pliku:
+
+- **na GitHubie:** [`README.md` gałęzi `data`](https://github.com/kilerdevs/PlanWAT/blob/data/README.md) (i w podsumowaniu
+  każdego przebiegu). Na górze stan ostatniego przebiegu jako alert GitHub, niżej tabela i rozwijane szczegóły;
+- **na stronie:** [`/stan/`](https://kilerdevs.github.io/PlanWAT/stan/), podlinkowana w stopce strony głównej. Strona nie
+  uruchamia żadnego skryptu: wiersze rozwijają się elementem `<details>`.
+
+Każdy przebieg pokazuje, kiedy ruszył i jak się skończył (bez zmian, zmiany w N planach, z pominięciami, niepełny,
+zablokowany albo „serwery wyłączone”), **które serwery go zrobiły** (plebania, oracle: wydziały każdego, czas, stan) i które
+były wtedy wyłączone, a dla każdego wydziału: ile grup sprawdzono i zmieniono, ile nie ma jeszcze planu na ten semestr, ile
+pominięto i czy była blokada. Liczby wydziału pochodzą z jego wpisu `run` w `refresh-state.json`, o ile powstał w tym
+przebiegu; inaczej wydział ma „brak danych z tego przebiegu”.
+
+Zapisuje je zadanie **report** (`tools/refresh/runs.py record`): dopisuje przebieg do `refresh-runs.json` na `data` (od
+najnowszego, ponowna próba zastępuje pierwszą, najwyżej 10) i przepisuje z niego `README.md` gałęzi. Push ma tę samą pętlę
+co runnery (najnowszy commit gałęzi, do pięciu prób), a błąd tutaj nigdy nie psuje raportu. `pages.yml` kopiuje plik obok
+`refresh-state.json`, a `build.py` renderuje z niego `/stan/` (lokalnie: `python3 build.py --runs <plik>`; bez pliku strona
+mówi, że historii jeszcze nie ma). Strona odświeża się razem z witryną, więc po cichym przebiegu może zostawać za GitHubem do
+kilku godzin (bramka Pages, `STAMPS_MAX_HOURS`).
 
 ## Gdyby sam GitHub został przejęty
 

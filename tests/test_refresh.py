@@ -1,6 +1,8 @@
 """Offline tests of the timetable refresh (tools/refresh): no network, fixtures are real crawled pages."""
+import contextlib
 import datetime as dt
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -17,6 +19,7 @@ sys.path.insert(0, str(ROOT / 'tools' / 'refresh'))
 import core  # noqa: E402
 import fleet  # noqa: E402
 import refresh  # noqa: E402
+import runs  # noqa: E402
 import wlo2ics  # noqa: E402
 from drivers import Item  # noqa: E402
 from drivers import plansoft  # noqa: E402
@@ -2106,6 +2109,121 @@ class FleetCombine(unittest.TestCase):
             self.assertEqual(json.loads((tmp / 'refresh-outcome.json').read_text()),
                              {'pushed': 'true', 'changed': '0', 'blocked': 'false'})
             self.assertIn('current=true', out.read_text())
+
+
+
+class RunHistory(unittest.TestCase):
+    """tools/refresh/runs.py: the last passes on the data branch (refresh-runs.json, README.md)."""
+
+    PLANNED = dt.datetime(2026, 10, 25, 12, 0, tzinfo=dt.timezone.utc)
+    MATRIX = [{'runner': 'plebania', 'faculties': 'wcy,wel'}, {'runner': 'oracle', 'faculties': 'ioe'}]
+
+    def shard(self, runner, minutes=30, **kw):
+        start = self.PLANNED.timestamp() + 60
+        return {'runner': runner, 'skipped': 'false', 'pushed': 'true', 'changed': '0', 'blocked': 'false',
+                'incomplete': 'false', 'degraded': 'false', 'started': str(start), 'ended': str(start + minutes * 60),
+                **kw}
+
+    def state(self, at='2026-10-25T12:20:00'):
+        run = lambda **kw: {'at': at, 'checked': 10, 'changed': 0, 'skipped': 0, 'not_ready': 0,  # noqa: E731
+                            'blocked': False, 'degraded': False, 'cause': None, **kw}
+        return {'version': 1, 'faculties': {
+            'wcy': {'run': run(checked=100, changed=2, not_ready=38)},
+            'wel': {'run': run(blocked=True, cause='wall', checked=0)},
+            'ioe': {'run': run(at='2026-10-25T09:00:00')}}}
+
+    def record(self, matrix=None, outcomes=None, plan_info=None, state=None, run_id=7, planned=None):
+        return runs.build_run(run_id=run_id, number=512, attempt=1, event='schedule', url='https://x/7',
+                              planned=planned or self.PLANNED, ended=self.PLANNED + dt.timedelta(minutes=41),
+                              matrix=self.MATRIX if matrix is None else matrix,
+                              outcomes=[self.shard('plebania', changed='2'), self.shard('oracle', 12)]
+                              if outcomes is None else outcomes,
+                              plan_info=plan_info or {'down': []}, state=self.state() if state is None else state)
+
+    def test_a_pass_names_each_server_its_faculties_and_its_time(self):
+        run = self.record(plan_info={'down': ['spare']})
+        self.assertEqual([(r['name'], r['faculties'], r['status'], r['minutes']) for r in run['runners']],
+                         [('plebania', ['wcy', 'wel'], 'done', 30), ('oracle', ['ioe'], 'done', 12)])
+        self.assertEqual(run['offline'], ['spare'])
+        self.assertEqual((run['result'], run['changed'], run['planned'], run['ended']),
+                         ('changed', 2, '2026-10-25T12:00:00', '2026-10-25T12:41:00'))
+
+    def test_faculty_numbers_are_taken_only_from_this_pass(self):
+        facs = {f['id']: f for f in self.record()['faculties']}
+        self.assertEqual((facs['wcy']['checked'], facs['wcy']['changed'], facs['wcy']['not_ready']), (100, 2, 38))
+        self.assertEqual((facs['wel']['blocked'], facs['wel']['cause'], facs['wel']['runner']), (True, 'wall', 'plebania'))
+        self.assertFalse(facs['ioe']['fresh'])  # its run entry is from an earlier pass
+        self.assertEqual(self.record()['checked'], 100)
+
+    def test_results(self):
+        result = lambda **kw: self.record(**kw)['result']  # noqa: E731
+        self.assertEqual(result(outcomes=[self.shard('plebania'), self.shard('oracle')]), 'ok')
+        self.assertEqual(result(outcomes=[self.shard('plebania', blocked='true', changed='3'), self.shard('oracle')]),
+                         'blocked')
+        self.assertEqual(result(outcomes=[self.shard('plebania')]), 'incomplete')  # oracle never reported
+        self.assertEqual(result(outcomes=[self.shard('plebania', degraded='true'), self.shard('oracle')]), 'degraded')
+        self.assertEqual(result(matrix=[], outcomes=[], plan_info={'down': ['plebania', 'oracle']}), 'idle')
+
+    def test_a_skipped_or_silent_server_says_so(self):
+        run = self.record(outcomes=[self.shard('plebania', skipped='true')])
+        self.assertEqual([r['status'] for r in run['runners']], ['skipped', 'missing'])
+        self.assertIsNone(run['runners'][1]['minutes'])
+
+    def test_history_keeps_the_newest_ten_and_a_rerun_replaces_its_first_attempt(self):
+        history = []
+        for i in range(12):
+            history = runs.add_run(history, self.record(run_id=100 + i, planned=self.PLANNED + dt.timedelta(hours=2 * i)))
+        self.assertEqual([r['id'] for r in history], list(range(111, 101, -1)))
+        rerun = dict(history[3], attempt=2, result='ok')
+        history = runs.add_run(history, rerun)
+        self.assertEqual(len(history), 10)
+        self.assertEqual(history[3]['attempt'], 2)
+
+    def test_markdown_shows_the_latest_pass_and_every_server(self):
+        older = self.record(run_id=6, planned=self.PLANNED - dt.timedelta(hours=2), matrix=[self.MATRIX[1]],
+                            outcomes=[self.shard('oracle')], plan_info={'down': ['plebania']})
+        text = runs.markdown([self.record(), older], 'https://site/stan/', 'https://github.com/o/r')
+        self.assertIn('> [!TIP]\n> **Ostatni przebieg: zmiany w 2 planach.** 25 paź 2026 · 13:00', text)
+        self.assertIn('| 25 paź · 13:00 | Zmiany w 2 planach | **plebania** (WCY, WEL) · **oracle** (IOE) | 100 | 41 min |',
+                      text)
+        self.assertIn('| **oracle** (IOE) · ~~plebania~~ |', text)
+        self.assertIn('| plebania | | | wyłączony |', text)
+        self.assertIn('| WEL | plebania | 0 | 0 | blokada Incapsula |', text)
+        self.assertIn('| IOE | oracle | – | – | brak danych z tego przebiegu |', text)
+        self.assertIn('Ostatnie 2 przebiegi', text)
+        self.assertIn('[https://site/stan/](https://site/stan/)', text)
+        self.assertEqual(text.count('<details>'), text.count('</details>'))
+        self.assertIn('Brak zapisanych przebiegów', runs.markdown([]))
+
+    def test_a_blocked_pass_is_a_caution(self):
+        text = runs.markdown([self.record(outcomes=[self.shard('plebania', blocked='true'), self.shard('oracle')])])
+        self.assertEqual(text.split('\n')[2], '> [!CAUTION]')
+
+    def test_cli_records_rewrites_the_readme_and_recovers_from_a_damaged_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'shards').mkdir()
+            for o in (self.shard('plebania', changed='2'), self.shard('oracle')):
+                (tmp / 'shards' / f"shard-{o['runner']}.json").write_text(json.dumps(o))
+            (tmp / 'refresh-state.json').write_text(json.dumps(self.state()))
+            (tmp / 'refresh-runs.json').write_text('[1, 2')  # damaged: start a new history
+            args = ['record', '--matrix', json.dumps(self.MATRIX), '--plan', 'not json', '--planned',
+                    str(int(self.PLANNED.timestamp())), '--dir', str(tmp / 'shards'),
+                    '--state', str(tmp / 'refresh-state.json'), '--runs', str(tmp / 'refresh-runs.json'),
+                    '--readme', str(tmp / 'README.md'), '--run-id', '7', '--run-number', '512', '--event', 'schedule',
+                    '--url', 'https://x/7', '--repo-url', '']
+            self.assertEqual(runs.main(args), 0)
+            self.assertEqual(runs.main(args + ['--run-id', '8']), 0)  # the next pass
+            saved = json.loads((tmp / 'refresh-runs.json').read_text())
+            self.assertEqual([r['id'] for r in saved['runs']], [8, 7])
+            self.assertEqual(saved['runs'][0]['offline'], [])
+            readme = (tmp / 'README.md').read_text()
+            self.assertTrue(readme.startswith('# Odświeżanie planów'))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                runs.main(['render', '--summary', '--runs', str(tmp / 'refresh-runs.json')])
+            self.assertIn('\n### Odświeżanie planów', out.getvalue())
+            self.assertIn('\n#### Szczegóły', out.getvalue())
 
 
 if __name__ == '__main__':

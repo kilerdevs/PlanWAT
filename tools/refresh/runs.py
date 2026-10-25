@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""The refresh passes' history: the last few runs, kept on the `data` branch (docs/REFRESH.md).
+
+refresh.yml's report job calls `record` once per pass. It adds the pass to refresh-runs.json (newest first, at most
+KEEP runs) and rewrites the branch's README.md from it, so GitHub shows the history at the branch's root; `render
+--summary` repeats it in the run's summary. build.py renders the same file as the site's /stan/ page.
+
+A run says which servers (fleet.json) took part and what each did, which were off, and per faculty what the pass
+checked and changed, read from the faculty's `run` entry in refresh-state.json when that entry is this pass's.
+
+Nothing here touches a faculty site; it is unit-tested offline (tests/test_refresh.py).
+"""
+import argparse
+import datetime as dt
+import json
+import os
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import fleet  # noqa: E402
+import build  # noqa: E402  (fleet's core put the repository root on the path; the site words a run the same way)
+
+KEEP = 10
+# A faculty's `run` stamped this long before the plan still belongs to the pass (clocks of two machines).
+SLACK = dt.timedelta(minutes=2)
+# GitHub Actions names the repository; elsewhere the README links nowhere rather than to a guess.
+REPO_URL = (f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
+            if os.environ.get('GITHUB_SERVER_URL') and os.environ.get('GITHUB_REPOSITORY') else '')
+
+
+def _iso(moment):
+    """A UTC moment the way refresh-state.json writes it: naive, to the second."""
+    return moment.astimezone(dt.timezone.utc).replace(microsecond=0, tzinfo=None).isoformat()
+
+
+def _flag(outcome, key):
+    return str(outcome.get(key, '')).lower() == 'true'
+
+
+def runner_entry(name, faculties, outcome):
+    """One server's part in the pass, from its shard outcome (None: it never reported)."""
+    entry = {'name': name, 'faculties': faculties, 'status': 'missing', 'minutes': None, 'changed': 0}
+    if not isinstance(outcome, dict):
+        return entry
+    try:
+        entry['minutes'] = max(0, round((float(outcome['ended']) - float(outcome['started'])) / 60))
+    except (KeyError, TypeError, ValueError):
+        pass
+    try:
+        entry['changed'] = max(0, int(outcome.get('changed') or 0))
+    except (TypeError, ValueError):
+        pass
+    if _flag(outcome, 'skipped'):
+        entry['status'] = 'skipped'
+    elif _flag(outcome, 'blocked'):
+        entry['status'] = 'blocked'
+    elif _flag(outcome, 'incomplete'):
+        entry['status'] = 'incomplete'
+    else:
+        entry['status'] = 'done'
+    return entry
+
+
+def faculty_entry(name, runner, state, since):
+    """What the pass did on one faculty: its `run` entry in the state, when that is from this pass."""
+    fac = state.get('faculties', {}).get(name) if isinstance(state.get('faculties'), dict) else None
+    run = fac.get('run') if isinstance(fac, dict) else None
+    at = build.utc_moment(run.get('at')) if isinstance(run, dict) else None
+    entry = {'id': name, 'runner': runner}
+    if at is None or at < since - SLACK:
+        entry['fresh'] = False
+        return entry
+    entry.update(fresh=True, checked=build.count(run.get('checked')), changed=build.count(run.get('changed')),
+                 not_ready=build.count(run.get('not_ready')), skipped=build.count(run.get('skipped')),
+                 blocked=bool(run.get('blocked')), degraded=bool(run.get('degraded')),
+                 cause=run.get('cause') if isinstance(run.get('cause'), str) else None)
+    return entry
+
+
+def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, outcomes, plan_info, state):
+    """The record of one pass (see the module docstring)."""
+    got = {o.get('runner'): o for o in outcomes if isinstance(o, dict)}
+    combined = fleet.combine([m['runner'] for m in matrix], outcomes, 0)
+    runners, faculties = [], []
+    for m in matrix:
+        names = [f for f in m['faculties'].split(',') if f]
+        runners.append(runner_entry(m['runner'], names, got.get(m['runner'])))
+        faculties += [faculty_entry(f, m['runner'], state, planned) for f in names]
+    changed = int(combined['changed'])
+    if not matrix:
+        result = 'idle'
+    elif combined['blocked'] == 'true':
+        result = 'blocked'
+    elif combined['incomplete'] == 'true':
+        result = 'incomplete'
+    elif combined['degraded'] == 'true':
+        result = 'degraded'
+    else:
+        result = 'changed' if changed else 'ok'
+    fresh = [f for f in faculties if f['fresh']]
+    return {
+        'id': run_id, 'number': number, 'attempt': attempt, 'event': event, 'url': url,
+        'planned': _iso(planned), 'ended': _iso(ended), 'result': result, 'changed': changed,
+        'checked': sum(f['checked'] for f in fresh), 'not_ready': sum(f['not_ready'] for f in fresh),
+        'runners': runners,
+        'offline': [n for n in plan_info.get('down', []) if isinstance(n, str)],
+        'unassigned': [n for n in plan_info.get('unassigned', []) if isinstance(n, str)],
+        'faculties': faculties,
+    }
+
+
+def load_runs(path):
+    return build.load_runs(path)
+
+
+def add_run(runs, run, keep=KEEP):
+    """`run` in place of an earlier attempt of the same run, newest first, at most `keep`."""
+    rest = [r for r in runs if r.get('id') != run['id']]
+    return sorted(rest + [run], key=lambda r: (r['planned'], r['id']), reverse=True)[:keep]
+
+
+# ---------------------------------------------------------------- the GitHub view
+
+when = build.run_when
+result_label = build.run_result_label
+runner_state = build.runner_state
+faculty_notes = build.faculty_notes
+latest = build.latest_label
+
+
+def duration(run):
+    minutes = build.run_minutes(run)
+    return f'{minutes} min' if minutes is not None else ''
+
+
+def _cell(text):
+    return str(text).replace('|', '\\|').replace('\n', ' ')
+
+
+def servers(run, with_faculties=False):
+    parts = []
+    for r in run.get('runners', []):
+        facs = ', '.join(f.upper() for f in r.get('faculties', []))
+        parts.append(f"**{r['name']}**" + (f' ({facs})' if with_faculties and facs else ''))
+    parts += [f'~~{n}~~' for n in run.get('offline', [])]
+    return ' · '.join(parts) or '–'
+
+
+ALERT = {'ok': 'TIP', 'changed': 'TIP', 'degraded': 'WARNING', 'incomplete': 'WARNING', 'blocked': 'CAUTION',
+         'idle': 'WARNING'}
+
+
+def markdown(runs, site_url='', repo_url=''):
+    """README.md for the data branch (and the run's summary): the history as GitHub renders it."""
+    lines = ['# Odświeżanie planów: ostatnie przebiegi', '']
+    if not runs:
+        return '\n'.join(lines + ['Brak zapisanych przebiegów.', ''])
+    last = runs[0]
+    lines += [f"> [!{ALERT[last['result']]}]",
+              f"> **Ostatni przebieg: {result_label(last).lower()}.** {when(last['planned'], True)} · "
+              f"{servers(last)} · {duration(last)} · [przebieg #{last.get('number') or last['id']}]({last.get('url', '')})",
+              '',
+              f'{latest(len(runs))} workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. '
+              'Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, '
+              + (f'opis w [docs/REFRESH.md]({repo_url}/blob/master/docs/REFRESH.md)).' if repo_url else 'opis w docs/REFRESH.md).')
+              + (f' Ta sama lista jest na stronie: [{site_url}]({site_url}).' if site_url else ''),
+              '',
+              '| Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |',
+              '|---|---|---|--:|--:|---|']
+    for run in runs:
+        lines.append(f"| {when(run['planned'])} | {result_label(run)} | {_cell(servers(run, True))} | "
+                     f"{build.count(run.get('checked'))} | {duration(run)} | "
+                     f"[#{run.get('number') or run['id']}]({run.get('url', '')}) |")
+    lines += ['', '## Szczegóły', '']
+    for run in runs:
+        lines += ['<details>',
+                  f"<summary><b>{when(run['planned'])}</b> · {result_label(run)} · "
+                  f"{' · '.join(r['name'] for r in run.get('runners', [])) or 'bez serwera'}</summary>", '',
+                  f"Przebieg {build.RUN_EVENTS.get(run.get('event'), run.get('event') or '')} "
+                  f"[#{run.get('number') or run['id']}]({run.get('url', '')})"
+                  + (f", próba {run['attempt']}" if build.count(run.get('attempt')) > 1 else '')
+                  + f", od planu do raportu {duration(run)}.", '',
+                  '| Serwer | Wydziały | Zmienione | Stan |', '|---|---|--:|---|']
+        for r in run.get('runners', []):
+            lines.append(f"| **{r['name']}** | {', '.join(f.upper() for f in r.get('faculties', []))} | "
+                         f"{build.count(r.get('changed'))} | {_cell(runner_state(r))} |")
+        for n in run.get('offline', []):
+            lines.append(f'| {n} | | | wyłączony |')
+        if run.get('faculties'):
+            lines += ['', '| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |', '|---|---|--:|--:|---|']
+            for f in run['faculties']:
+                lines.append(f"| {f['id'].upper()} | {f.get('runner', '')} | "
+                             f"{build.count(f.get('checked')) if f.get('fresh') else '–'} | "
+                             f"{build.count(f.get('changed')) if f.get('fresh') else '–'} | "
+                             f"{_cell(', '.join(faculty_notes(f)))} |")
+        if run.get('unassigned'):
+            lines += ['', f"Żaden włączony serwer nie mógł wziąć: {', '.join(u.upper() for u in run['unassigned'])}."]
+        lines += ['', '</details>', '']
+    return '\n'.join(lines)
+
+
+# ---------------------------------------------------------------- command line
+
+def _write(path, text):
+    path = Path(path)
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    tmp.write_text(text, encoding='utf-8')
+    tmp.replace(path)
+
+
+def _json_arg(text, kind):
+    """A JSON argument from the plan job, or an empty `kind` when it is missing or garbled."""
+    try:
+        value = json.loads(text or 'null')
+    except ValueError:
+        return kind()
+    return value if isinstance(value, kind) else kind()
+
+
+def cmd_record(args):
+    matrix = [m for m in _json_arg(args.matrix, list)
+              if isinstance(m, dict) and isinstance(m.get('runner'), str) and isinstance(m.get('faculties'), str)]
+    plan_info = _json_arg(args.plan, dict)
+    outcomes = [fleet.load_json(p, None) for p in sorted(Path(args.dir).glob('shard-*.json'))] \
+        if Path(args.dir).is_dir() else []
+    planned = dt.datetime.fromtimestamp(float(args.planned or 0), dt.timezone.utc)
+    run = build_run(run_id=args.run_id, number=args.run_number, attempt=args.attempt, event=args.event,
+                    url=args.url, planned=planned, ended=dt.datetime.now(dt.timezone.utc), matrix=matrix,
+                    outcomes=outcomes, plan_info=plan_info,
+                    state=fleet.load_json(args.state, {}))
+    runs = add_run(load_runs(args.runs), run)
+    _write(args.runs, json.dumps({'version': 1, 'runs': runs}, ensure_ascii=False, indent=1) + '\n')
+    text = markdown(runs, args.site_url, args.repo_url)
+    if args.readme:
+        _write(args.readme, text)
+    print(f"run {run['id']}: {run['result']}, {len(runs)} on record")
+    return 0
+
+
+def cmd_render(args):
+    text = markdown(load_runs(args.runs), args.site_url, args.repo_url)
+    if args.summary:  # under the run summary's other ### sections
+        text = '\n' + text.replace('# ', '### ', 1).replace('\n## ', '\n#### ', 1)
+    print(text, end='')
+    return 0
+
+
+def parse(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest='cmd', required=True)
+    p = sub.add_parser('record', help='add this pass to refresh-runs.json and rewrite README.md')
+    p.add_argument('--matrix', default='[]', help="the plan's matrix (JSON)")
+    p.add_argument('--plan', default='{}', help="the plan's fleet output (JSON: down, unassigned)")
+    p.add_argument('--planned', default='0', help='when the plan was made (Unix seconds)')
+    p.add_argument('--dir', required=True, help='where the shard-*.json outcomes are')
+    p.add_argument('--state', required=True, help="the data branch's refresh-state.json after the pass")
+    p.add_argument('--runs', required=True, help='refresh-runs.json; rewritten')
+    p.add_argument('--readme', help='README.md to rewrite from the history')
+    p.add_argument('--run-id', type=int, required=True)
+    p.add_argument('--run-number', type=int, default=0)
+    p.add_argument('--attempt', type=int, default=1)
+    p.add_argument('--event', default='')
+    p.add_argument('--url', default='')
+    p.add_argument('--site-url', default='', help="the site's history page, linked from README.md")
+    p.add_argument('--repo-url', default=REPO_URL)
+    p = sub.add_parser('render', help='print the history as Markdown')
+    p.add_argument('--summary', action='store_true', help="headings for a run's step summary")
+    p.add_argument('--runs', required=True)
+    p.add_argument('--site-url', default='')
+    p.add_argument('--repo-url', default=REPO_URL)
+    return ap.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse(argv)
+    return {'record': cmd_record, 'render': cmd_render}[args.cmd](args)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

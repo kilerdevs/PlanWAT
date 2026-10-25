@@ -8,6 +8,7 @@ Output (default: site/):
     <GROUP>/plan-przypomnienia.ics   the same calendar with a reminder 15 minutes before each class
     mapa/index.html       campus map: MapLibre, OpenFreeMap's style, tiles, glyphs and sprites, all vendored in src/map/
     prywatnosc/index.html privacy notice and terms of use
+    stan/index.html       the last refresh passes (refresh-runs.json next to --state), without a line of script
     assets/               the styles and scripts the pages share (each name carries a hash of its bytes)
     pokrycie-wydzialow.svg  faculty coverage chart for README.md, drawn from the groups of this build
     sw.js, manifest.webmanifest, <GROUP>/manifest.webmanifest, icons/   offline worker and home-screen app
@@ -1089,6 +1090,215 @@ def render_privacy(template, site_url='', assets=None):
     return finish(page.replace('@@THEME_HEAD@@' + chr(10), ''), connect=False, assets=assets, asset_prefix='../')
 
 
+# ---------------------------------------------------------------- refresh history (stan/)
+# tools/refresh/runs.py keeps the last passes in the data branch's refresh-runs.json and writes its README.md from
+# them; the helpers below word a run the same way for that README and for this page.
+
+STATUS_DIR = 'stan'  # site/stan/: the last refresh passes
+RUNS_FILE = 'refresh-runs.json'
+STATUS_TITLE = f'Odświeżanie planów · {SITE_NAME}'
+STATUS_DESCRIPTION = ('Ostatnie przebiegi pobierania planów ze stron wydziałów: kiedy, na których serwerach '
+                      'i co się zmieniło.')
+RUN_RESULTS = ('ok', 'changed', 'degraded', 'incomplete', 'blocked', 'idle')
+RUN_EVENTS = {'schedule': 'zaplanowany', 'workflow_dispatch': 'ręczny'}
+RUN_CAUSES = {'wall': 'blokada Incapsula', 'listing': 'nie udało się pobrać listy grup'}
+MONTHS_SHORT = ('sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru')
+
+
+def plural(n, one, few, many):
+    """The Polish form for n: 1 przebieg, 2 przebiegi, 5 przebiegów (and 22 przebiegi, 12 przebiegów)."""
+    if n == 1:
+        return one
+    return few if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) else many
+
+
+def count(value):
+    """A count from a run record: a non-negative int, anything else 0."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def utc_moment(iso):
+    try:
+        moment = dt.datetime.fromisoformat(str(iso))
+    except ValueError:
+        return None
+    return moment.replace(tzinfo=dt.timezone.utc) if moment.tzinfo is None else moment
+
+
+def _valid_run(run):
+    return (isinstance(run, dict) and count(run.get('id')) > 0 and run.get('result') in RUN_RESULTS
+            and utc_moment(run.get('planned')) is not None and isinstance(run.get('runners'), list)
+            and all(isinstance(r, dict) and isinstance(r.get('name'), str) for r in run['runners']))
+
+
+def load_runs(path):
+    """The passes in refresh-runs.json, newest first; a missing or damaged file (or entry) is no history."""
+    try:
+        data = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    runs = data.get('runs') if isinstance(data, dict) and data.get('version') == 1 else None
+    return [r for r in runs if _valid_run(r)] if isinstance(runs, list) else []
+
+
+def run_when(iso, year=False):
+    """'25 paź · 19:23' in Warsaw time ('… UTC' without a tz database), '?' for no time."""
+    moment = utc_moment(iso)
+    if moment is None:
+        return '?'
+    tz = _tz()
+    local = moment.astimezone(tz) if tz else moment.astimezone(dt.timezone.utc)
+    return (f"{local.day} {MONTHS_SHORT[local.month - 1]}{f' {local.year}' if year else ''} · "
+            f"{local:%H:%M}{'' if tz else ' UTC'}")
+
+
+def run_minutes(run):
+    """From the plan to the report, in whole minutes; None when unknown."""
+    start, end = utc_moment(run.get('planned')), utc_moment(run.get('ended'))
+    return max(0, round((end - start).total_seconds() / 60)) if start and end else None
+
+
+def run_result_label(run):
+    n = count(run.get('changed'))
+    return {
+        'ok': 'Bez zmian',
+        'changed': 'Zmiana w 1 planie' if n == 1 else f'Zmiany w {n} planach',
+        'degraded': 'Z pominięciami',
+        'incomplete': 'Niepełny',
+        'blocked': 'Zablokowany',
+        'idle': 'Serwery wyłączone',
+    }[run['result']]
+
+
+def runner_state(r):
+    """What one server did in a pass: '34 min', '34 min, zablokowany', 'nie zaczął na czas'…"""
+    if r.get('status') == 'skipped':
+        return 'nie zaczął na czas'
+    if r.get('status') == 'missing':
+        return 'brak raportu'
+    took = f"{r['minutes']} min" if count(r.get('minutes')) or r.get('minutes') == 0 else ''
+    extra = {'blocked': 'zablokowany', 'incomplete': 'niedokończony'}.get(r.get('status'))
+    return ', '.join(x for x in (took, extra) if x) or 'gotowe'
+
+
+def faculty_notes(f):
+    if not f.get('fresh'):
+        return ['brak danych z tego przebiegu']
+    notes = []
+    cause = f.get('cause')
+    if f.get('blocked') or cause:
+        notes.append(RUN_CAUSES.get(cause) or ('blokada' if f.get('blocked') else str(cause)))
+    if f.get('degraded'):
+        notes.append('dużo pominięć')
+    if count(f.get('not_ready')):
+        notes.append(f"bez planu na ten semestr: {f['not_ready']}")
+    if count(f.get('skipped')):
+        notes.append(f"pominięte: {f['skipped']}")
+    return notes
+
+
+RUN_TONE = {'ok': 'ok', 'changed': 'ok', 'degraded': 'warn', 'incomplete': 'warn', 'blocked': 'bad', 'idle': 'off'}
+CHEVRON = ('<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" '
+           'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+
+def _status_servers(run, e):
+    """The servers of a pass as chips: those that crawled, then those that were off (struck through)."""
+    chips = [f'<span class="srv">{e(r["name"])}</span>' for r in run['runners']]
+    chips += [f'<span class="srv off">{e(n)}<span class="vh"> (wyłączony)</span></span>'
+              for n in run.get('offline', []) if isinstance(n, str)]
+    return ''.join(chips)
+
+
+def _status_parts(run, e):
+    rows = []
+    for r in run['runners']:
+        facs = ', '.join(str(f).upper() for f in r.get('faculties', []) if isinstance(f, str))
+        rows.append(f'<li><span class="pname">{e(r["name"])}</span><span class="pfacs">{e(facs) or "–"}</span>'
+                    f'<span class="pstate">{e(runner_state(r))}</span></li>')
+    for n in run.get('offline', []):
+        if isinstance(n, str):
+            rows.append(f'<li class="off"><span class="pname">{e(n)}</span><span class="pfacs">–</span>'
+                        '<span class="pstate">wyłączony</span></li>')
+    return '<ul class="parts" aria-label="Serwery">' + ''.join(rows) + '</ul>'
+
+
+def _status_faculties(run, e):
+    rows = []
+    for f in run.get('faculties', []):
+        if not isinstance(f, dict) or not isinstance(f.get('id'), str):
+            continue
+        nums = (f"sprawdzono {count(f.get('checked'))} · zmieniono {count(f.get('changed'))}"
+                if f.get('fresh') else '')
+        notes = ' · '.join(faculty_notes(f))
+        rows.append(f'<li><span class="fcode">{e(f["id"].upper())}</span>'
+                    f'<span class="fsrv">{e(str(f.get("runner") or ""))}</span>'
+                    f'<span class="fnum">{e(nums)}</span>'
+                    + (f'<span class="fnote">{e(notes)}</span>' if notes else '') + '</li>')
+    return '<ul class="facs" aria-label="Wydziały">' + ''.join(rows) + '</ul>' if rows else ''
+
+
+def _status_link(run, e):
+    number = count(run.get('number')) or run['id']
+    url = run.get('url') if isinstance(run.get('url'), str) and run['url'].startswith('https://') else ''
+    bits = [RUN_EVENTS.get(run.get('event'), ''), f'{run_minutes(run)} min' if run_minutes(run) is not None else '']
+    if count(run.get('attempt')) > 1:
+        bits.append(f"próba {run['attempt']}")
+    link = f'<a href="{e(url)}">Przebieg #{number} na GitHubie</a>' if url else f'Przebieg #{number}'
+    return f'<p class="runlink">{link}' + ''.join(f' · {e(b)}' for b in bits if b) + '</p>'
+
+
+def render_status_runs(runs):
+    """The page's two blocks: the latest pass in a card, then every pass as an expandable row."""
+    e = lambda v: html.escape(str(v), quote=True)  # noqa: E731
+    if not runs:
+        latest = ('<section class="latest empty" aria-label="Ostatni przebieg"><p class="verdict">Brak zapisanych '
+                  'przebiegów</p><p class="lead2">Historia pojawi się tu po pierwszym przebiegu odświeżania.</p></section>')
+        return latest, ''
+    last = runs[0]
+    minutes = run_minutes(last)
+    stats = [('Sprawdzono', count(last.get('checked'))), ('Zmieniono', count(last.get('changed'))),
+             ('Czas', f'{minutes} min' if minutes is not None else '–')]
+    strip = ''.join(f'<li class="{RUN_TONE[r["result"]]}"><span class="vh">{e(run_when(r["planned"]))}: '
+                    f'{e(run_result_label(r))}</span></li>' for r in reversed(runs))
+    latest = (
+        '<section class="latest" aria-labelledby="latestTitle">'
+        f'<p class="lstatus"><span class="dot {RUN_TONE[last["result"]]}" aria-hidden="true"></span>'
+        f'Ostatni przebieg · {e(run_when(last["planned"]))}</p>'
+        f'<h2 class="verdict" id="latestTitle">{e(run_result_label(last))}</h2>'
+        '<dl class="stats">' + ''.join(f'<div><dt>{k}</dt><dd>{e(v)}</dd></div>' for k, v in stats) + '</dl>'
+        + _status_parts(last, e)
+        + f'<div class="striprow"><span class="striplabel">{e(latest_label(len(runs)))}</span>'
+        f'<ol class="strip" aria-label="Wyniki od najstarszego">{strip}</ol></div>'
+        + '</section>')
+    rows = []
+    for run in runs:
+        tone = RUN_TONE[run['result']]
+        rows.append(
+            '<li class="run"><details><summary>'
+            f'<span class="dot {tone}" aria-hidden="true"></span>'
+            f'<span class="rwhen">{e(run_when(run["planned"]))}</span>'
+            f'<span class="rres">{e(run_result_label(run))}</span>{CHEVRON}'
+            f'<span class="rsrv">{_status_servers(run, e)}</span>'
+            '</summary><div class="more">'
+            + _status_parts(run, e) + _status_faculties(run, e) + _status_link(run, e)
+            + '</div></details></li>')
+    return latest, '<ol class="runs">' + ''.join(rows) + '</ol>'
+
+
+def latest_label(n):
+    return 'Ostatni przebieg' if n == 1 else f"Ostatnie {n} {plural(n, '', 'przebiegi', 'przebiegów')}"
+
+
+def render_status(template, runs, site_url='', assets=None):
+    # like the privacy notice: no script at all, the theme follows the system through CSS; rows open with <details>
+    latest, rows = render_status_runs(runs)
+    page = template.replace('@@SEO@@', seo_head(site_url, f'{STATUS_DIR}/', STATUS_TITLE, STATUS_DESCRIPTION))
+    page = page.replace('@@TITLE@@', html.escape(STATUS_TITLE)).replace('@@DESCRIPTION@@', html.escape(STATUS_DESCRIPTION, quote=True))
+    page = page.replace('@@LATEST@@', latest).replace('@@RUNS@@', rows).replace('@@HISTORY_URL@@', f'{REPO_URL}/blob/data/README.md')
+    return finish(page.replace('@@THEME_HEAD@@' + chr(10), ''), connect=False, assets=assets, asset_prefix='../')
+
+
 def robots_txt(base_path, noindex, site_url=''):
     if noindex:  # the dev preview: keep it out of search engines altogether
         return 'User-agent: *\nDisallow: /\n'
@@ -1349,7 +1559,8 @@ def update_nginx(conf_path, scripts, styles):
     conf_path.write_text(conf)
 
 
-def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None, noindex=False, site_url=''):
+def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None, noindex=False, site_url='',
+          runs_path=None):
     files = sorted(Path(timetables).glob('*/*.ics'))
     if not files:
         raise BuildError(f'no calendars found in {timetables}/<term>/<GROUP>.ics')
@@ -1357,7 +1568,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     for path in files:
         group, term = load_term(path)
         by_group.setdefault(group, []).append(term)
-    clash = [g for g in by_group if g.lower() in (DATA_DIR, MAP_DIR, ICONS_DIR, PRIVACY_DIR, ASSETS_DIR)]
+    clash = [g for g in by_group if g.lower() in (DATA_DIR, MAP_DIR, ICONS_DIR, PRIVACY_DIR, STATUS_DIR, ASSETS_DIR)]
     if clash:
         raise BuildError(f'group code "{clash[0]}" is reserved for the site\'s own pages and data files')
     fix_semester_bounds(by_group)
@@ -1373,6 +1584,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
             raise BuildError(f'src/{name} must not contain "@@"')
 
     refreshed = load_refresh_state(state_path or ROOT / 'refresh-state.json')
+    runs = load_runs(runs_path or Path(state_path or ROOT / 'refresh-state.json').with_name(RUNS_FILE))
     site_url = site_url.rstrip('/')
     if site_url and not re.match(r'^https?://[^/\s]+(/[^\s]*)?$', site_url):
         raise BuildError(f'--site-url must be an absolute http(s) URL, not "{site_url}"')
@@ -1407,6 +1619,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     shutil.copytree(SRC / 'map', out / MAP_DIR, dirs_exist_ok=True)
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets, site_url=site_url))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8'), site_url, assets))
+    write(f'{STATUS_DIR}/index.html', render_status((SRC / 'stan.html').read_text(encoding='utf-8'), runs, site_url, assets))
     (out / 'robots.txt').write_text(robots_txt(base_path, noindex, site_url), encoding='utf-8')
     if site_url and not noindex:
         (out / 'sitemap.xml').write_text(sitemap_xml(site_url, current, refreshed), encoding='utf-8')
@@ -1442,6 +1655,8 @@ def main(argv=None):
     ap.add_argument('--today', type=dt.date.fromisoformat, help='pick terms as of this date (YYYY-MM-DD)')
     ap.add_argument('--base-path', default='', help='URL path the site is served under, e.g. /PlanWAT')
     ap.add_argument('--state', type=Path, help='refresh-state.json with per-group refresh times (default: ./refresh-state.json)')
+    ap.add_argument('--runs', type=Path, help=f'{RUNS_FILE} with the last refresh passes for {STATUS_DIR}/ '
+                    '(default: next to --state)')
     ap.add_argument('--nginx', type=Path, help='nginx.conf whose CSP header to pin (Docker build only)')
     ap.add_argument('--noindex', action='store_true', help='ask search engines to skip the whole site (the dev preview)')
     ap.add_argument('--site-url', default='', help='absolute address of the site, e.g. https://kilerdevs.github.io/PlanWAT '
@@ -1449,7 +1664,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     try:
         picked = build(args.timetables, args.out, args.today or _today_in_warsaw(), args.base_path, args.nginx, args.state, args.noindex,
-                       args.site_url)
+                       args.site_url, args.runs)
     except BuildError as err:
         print(f'build failed: {err}', file=sys.stderr)
         return 1
