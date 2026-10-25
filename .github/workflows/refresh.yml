@@ -96,11 +96,12 @@ jobs:
       planned: ${{ needs.plan.outputs.planned }}
 
   # A wall stands in front of one address, not in front of the faculty: what a runner left blocked (or unfinished:
-  # a crash, a time limit, a share it never started) goes to another runner that GitHub says is online now. The plan
-  # had each runner wait a wall out only briefly when such a takeover was possible.
+  # a crash, a time limit, a share it never started or one GitHub cancelled in its queue) goes to another runner that
+  # GitHub says is online now. The plan had each runner wait a wall out only briefly when such a takeover was
+  # possible. Not after the whole run was cancelled, though: that is someone's way of saying stop.
   handoff:
     needs: [plan, crawl]
-    if: always() && needs.plan.result == 'success' && needs.plan.outputs.shards != '0' && needs.crawl.result != 'cancelled'
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.shards != '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -149,7 +150,7 @@ jobs:
   takeover:
     name: takeover (${{ matrix.runner }})
     needs: handoff
-    if: always() && needs.handoff.result == 'success' && needs.handoff.outputs.shards != '0'
+    if: ${{ !cancelled() && needs.handoff.result == 'success' && needs.handoff.outputs.shards != '0' }}
     strategy:
       fail-fast: false
       matrix:
@@ -300,3 +301,5 @@ jobs:
           name: refresh-outcome
           path: refresh-outcome.json
           retention-days: 2
+          # a re-run of the report replaces the first attempt's (pages.yml reads the newest)
+          overwrite: true

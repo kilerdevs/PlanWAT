@@ -56,7 +56,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   padnie lub w ogóle nie ruszy), przebieg pyta GitHub, kto jest teraz włączony, i oddaje go drugiemu runnerowi, który
   zaczyna tam, gdzie tamten skończył. Gdy przejęcie jest możliwe, runner czeka na ścianę 5 minut zamiast 30. Przebieg
   liczy wydział tak, jak zostawił go ostatni runner, a historia przebiegów pokazuje, kto co od kogo przejął
-  ([docs/REFRESH.md](docs/REFRESH.md#dwa-runnery-i-podział-pracy)).
+  ([docs/REFRESH.md](docs/REFRESH.md#dwa-runnery-i-podział-pracy)). Gdy drugi runner zgaśnie przed przejęciem, wydział
+  wraca do pierwszego na resztę 30 minut („ponowna próba”), więc nikt nie traci pełnego czekania. Przejmowany jest też
+  udział, który GitHub anulował w kolejce.
+- **Limit czasu odświeżania obejmuje cały przebieg:** `--max-minutes` liczył się osobno dla każdego wydziału, więc runner
+  z kilkoma wydziałami albo długim czekaniem na ścianę mógł przekroczyć 110 minut zadania i stracić wszystko, czego nie
+  wypchnął. Teraz po 90 minutach każda ścieżka kończy bieżącą stronę, czekanie na ścianę nie wychodzi poza limit, a
+  wynik trafia na `data`.
 - **Historia przebiegów odświeżania** ([docs/REFRESH.md](docs/REFRESH.md#historia-przebiegów)): ostatnie 10 przebiegów
   na GitHubie (`README.md` gałęzi `data` i podsumowanie przebiegu) i na nowej stronie `/stan/` (link w stopce). Każdy
   przebieg pokazuje wynik, serwery, które go zrobiły (plebania, oracle: wydziały, czas, stan), te, które były wyłączone, i

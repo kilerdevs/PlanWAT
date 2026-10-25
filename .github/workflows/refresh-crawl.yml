@@ -116,3 +116,5 @@ jobs:
           name: refresh-shard-${{ inputs.wave }}-${{ inputs.runner }}
           path: shard/shard-${{ inputs.wave }}-${{ inputs.runner }}.json
           retention-days: 2
+          # "Re-run failed jobs" crawls the share again: its outcome replaces the first attempt's
+          overwrite: true

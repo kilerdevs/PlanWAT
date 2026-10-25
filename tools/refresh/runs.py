@@ -180,7 +180,9 @@ def _cell(text):
 def servers(run, with_faculties=False):
     parts = []
     for name in build.run_servers(run):
-        facs = ', '.join(build.runner_share(r) for r in run['runners'] if r['name'] == name and r.get('faculties'))
+        # a faculty the server got back after a short wait shows once, as its second try
+        labels = {f: label for r in run['runners'] if r['name'] == name for f, label in build.share_parts(r)}
+        facs = ', '.join(labels.values())
         parts.append(f"**{name}**" + (f' ({facs})' if with_faculties and facs else ''))
     parts += [f'~~{n}~~' for n in run.get('offline', [])]
     return ' · '.join(parts) or '–'
@@ -222,7 +224,8 @@ def markdown(runs, site_url='', repo_url=''):
                   + f", od planu do raportu {duration(run)}.", '',
                   '| Serwer | Wydziały | Zmienione | Stan |', '|---|---|--:|---|']
         for r in run.get('runners', []):
-            lines.append(f"| **{r['name']}**{' (przejęcie)' if build.count(r.get('wave')) > 1 else ''} | "
+            role = build.runner_role(r)
+            lines.append(f"| **{r['name']}**{f' ({role})' if role else ''} | "
                          f"{_cell(build.runner_share(r))} | "
                          f"{build.count(r.get('changed'))} | {_cell(runner_state(r))} |")
         for n in run.get('offline', []):

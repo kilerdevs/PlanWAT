@@ -1184,10 +1184,28 @@ def runner_state(r):
 
 
 def runner_share(r):
-    """A server's faculties in a pass; a takeover says whose they were: 'WTC (od oracle)'."""
+    """A server's faculties in a pass; a takeover says whose they were: 'WTC (od oracle)', or 'WTC (ponownie)' when the
+    server gets back what it let go after a short wait (nobody else was up to take it)."""
+    return ', '.join(label for _, label in share_parts(r))
+
+
+def share_parts(r):
+    """runner_share's pieces, per faculty: [(faculty, label)]."""
     took = r.get('from') if isinstance(r.get('from'), dict) else {}
-    names = [f for f in r.get('faculties', []) if isinstance(f, str)]
-    return ', '.join(f.upper() + (f' (od {took[f]})' if isinstance(took.get(f), str) else '') for f in names)
+
+    def note(f):
+        if not isinstance(took.get(f), str):
+            return ''
+        return ' (ponownie)' if took[f] == r.get('name') else f' (od {took[f]})'
+    return [(f, f.upper() + note(f)) for f in r.get('faculties', []) if isinstance(f, str)]
+
+
+def runner_role(r):
+    """'przejęcie' for a server's second-wave share, 'ponowna próba' when it only got its own faculties back."""
+    if count(r.get('wave')) < 2:
+        return ''
+    took = r.get('from') if isinstance(r.get('from'), dict) else {}
+    return 'ponowna próba' if took and all(v == r.get('name') for v in took.values()) else 'przejęcie'
 
 
 def run_servers(run):
@@ -1199,8 +1217,11 @@ def faculty_notes(f):
     notes = []
     handed = f.get('from') if isinstance(f.get('from'), dict) else None
     if handed and isinstance(handed.get('runner'), str):
-        notes.append(f"przejęty po blokadzie na {handed['runner']}" if handed.get('why') == 'blocked'
-                     else f"przejęty od {handed['runner']}, który go nie skończył")
+        if handed['runner'] == f.get('runner'):
+            notes.append('druga próba po blokadzie')
+        else:
+            notes.append(f"przejęty po blokadzie na {handed['runner']}" if handed.get('why') == 'blocked'
+                         else f"przejęty od {handed['runner']}, który go nie skończył")
     if not f.get('fresh'):
         return notes + ['brak danych z tego przebiegu']
     cause = f.get('cause')

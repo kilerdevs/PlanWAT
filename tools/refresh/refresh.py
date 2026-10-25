@@ -523,10 +523,14 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
                       fresh=len(items) - len(todo), listed=len(items), ahead=ahead, term=tid)
     started, changed, failed, checked = clock(), [], 0, 0
     not_ready = 0
+    # --max-minutes is the whole run's (main sets the deadline once); a faculty refreshed on its own gets all of it.
+    deadline = getattr(args, 'deadline', None)
+    if deadline is None and args.max_minutes:
+        deadline = started + args.max_minutes * 60
     for n, item in enumerate(todo, 1):
         if progress is not None:
             progress.tick(slot, n - 1, len(todo), faculty=name, lane=group, ahead=ahead, term=tid)
-        if args.max_minutes and (clock() - started) / 60 > args.max_minutes:
+        if deadline is not None and clock() > deadline:
             log(f'[{name}] time budget used up after {n - 1} groups')
             return changed, False, False
         if n > 1:
@@ -690,7 +694,8 @@ def parse(argv=None):
     ap.add_argument('--faculty', default='', help='comma-separated faculties (default: every enabled one)')
     ap.add_argument('--profile', choices=sorted(PROFILES), default='hosted')
     ap.add_argument('--limit', type=int, default=0, help='check at most N groups per faculty')
-    ap.add_argument('--max-minutes', type=float, default=0, help='stop gracefully after this long (0 = no limit)')
+    ap.add_argument('--max-minutes', type=float, default=0,
+                    help='stop the whole run gracefully after this long, waits included (0 = no limit)')
     ap.add_argument('--fresh-hours', type=float, default=1.0, help='skip groups checked more recently than this')
     ap.add_argument('--adaptive-hours', type=float, default=4.0,
                     help='a group answering unchanged doubles its revalidation gap (1 h, 2 h, 4 h, ...) '
@@ -718,7 +723,7 @@ def parse(argv=None):
     ap.add_argument('--resume-since', default='',
                     help='skip every group checked at or after this UTC time (YYYY-MM-DDTHH:MM:SS): resuming a run')
     args = ap.parse_args(argv)
-    args.registry, args.window, args.health = None, None, None
+    args.registry, args.window, args.health, args.deadline = None, None, None, None
     args.outcomes_log = {} if (args.outcomes or args.assign) else None
     if args.resume_since and args.outcomes and args.outcomes_log is not None:
         # The groups the resumed run skips were checked before the cut: their outcomes come from its checkpoint.
@@ -803,6 +808,9 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
             deferred.append((name, True))
     if wait_budget is None:
         wait_budget = args.max_block_wait_minutes * 60
+    if getattr(args, 'deadline', None) is not None:
+        # A wait that outlasts the run's time budget would only be cut off by the job's timeout, with nothing pushed.
+        wait_budget = min(wait_budget, args.deadline - clock())
     if not deferred or wait_budget <= 0:
         return tallies
     first = deferred[0][0]
@@ -909,6 +917,9 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     state = core.State(Path(args.out) / core.STATE_FILE)
     if args.faculty_state:
         load_line_state(state, args.faculty_state)
+    # One time budget for the whole run, however many faculties and walls it meets: past it, every lane stops after
+    # its current page, so the run still saves and pushes inside the job's timeout.
+    args.deadline = clock() + args.max_minutes * 60 if args.max_minutes else None
     model = core.BlockModel(state.data)
     coming = core.upcoming_reference(today)
     lanes = plan_lanes(wanted)

@@ -11,7 +11,8 @@ The fleet is a fast machine that is often switched off and a slow one that is al
            faculties side by side and push to the same branch, so neither may overwrite what the other learned.
   handoff  (a GitHub-hosted job, after the crawl) gives what a runner left blocked or unfinished to another runner
            that is online now: a wall stands in front of one address, so the other machine often gets through. The
-           plan has a runner wait a wall out only briefly when such a takeover is possible.
+           plan has a runner wait a wall out only briefly when such a takeover is possible; when the other runner is
+           gone by then, the runner that was blocked gets the rest of the wait.
   combine  (a GitHub-hosted job) adds the runners' outcomes up into the one refresh-outcome.json pages.yml reads,
            each faculty as the last runner that had it left it.
 
@@ -41,6 +42,8 @@ REPORT_HOURS = 3
 # when nobody could take over, a short one when another runner is up, which then takes the faculty in the handoff wave.
 BLOCK_WAIT = 30
 HANDOFF_WAIT = 5
+# Every runner of the fleet carries this label besides its own (refresh-crawl.yml's runs-on).
+RUNNER_LABEL = 'planwat'
 NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,38}$')
 
 
@@ -87,13 +90,19 @@ def load_fleet(path=FLEET):
 
 
 def online_labels(runners):
-    """Labels carried by at least one online runner, from GitHub's runner list; None when it is unknown."""
+    """Labels carried by at least one online runner of the fleet, from GitHub's runner list; None when it is unknown.
+
+    Only a runner that also carries the fleet's own label counts: the crawl asks for both (refresh-crawl.yml), so a
+    machine with the right name but without RUNNER_LABEL would leave the job queued for nobody."""
     if runners is None:
         return None
     labels = set()
     for r in runners:
-        if isinstance(r, dict) and r.get('status') == 'online':
-            labels.update(x for x in r.get('labels', []) if isinstance(x, str))
+        if not isinstance(r, dict) or r.get('status') != 'online' or not isinstance(r.get('labels'), list):
+            continue
+        mine = {x for x in r['labels'] if isinstance(x, str)}
+        if RUNNER_LABEL in mine:
+            labels |= mine
     return labels
 
 
@@ -324,27 +333,60 @@ def left_over(shard, outcome):
     return [(f, 'blocked' if f in blocked else 'unfinished') for f in names if f in unfinished]
 
 
+def _wait(shard):
+    """The minutes a plan's shard was told to wait a wall out (the full wait when it does not say)."""
+    try:
+        wait = float(shard.get('wait'))
+    except (TypeError, ValueError):
+        return BLOCK_WAIT
+    return wait if 0 <= wait <= BLOCK_WAIT else BLOCK_WAIT
+
+
 def handoff(fleet, shards, outcomes, state, online):
     """The handoff wave: what the plan's runners left blocked or unfinished, for another runner that is up now.
 
-    `online` is asked afresh (a runner may have come up or gone since the plan). A faculty never goes back to the
+    `online` is asked afresh (a runner may have come up or gone since the plan). A faculty does not go back to the
     runner that left it: a wall is per address, and a runner that crashed or never started may do so again. Lanes stay
     whole, as in the plan, and go out by the same weighting; what no other runner up may take waits for the next pass.
+
+    One exception keeps the plan's promise of a full wait: a lane its runner let go blocked after only the short wait,
+    because the plan saw another runner up that has gone since, goes back to that runner (when it is still up) for the
+    rest of the wait. The takeover's `from` then names the runner itself.
     """
     got = {shard_key(o): o for o in outcomes if isinstance(o, dict)}
-    avoid, origin, wanted = {}, {}, []
+    avoid, origin, wanted, waited = {}, {}, [], {}
     for s in shards:
         for f, why in left_over(s, got.get(shard_key(s))):
             avoid.setdefault(f, set()).add(s['runner'])
             origin[f] = {'runner': s['runner'], 'why': why}
+            waited[f] = _wait(s)
             wanted.append(f)
     if not wanted:
         return {'shards': [], 'unassigned': [], 'left': {}, 'known': online is not None}
     # a lane's faculties hand off together, in the order the plan had them
     result = plan(fleet, wanted, state, online, avoid)
     for shard in result['shards']:
-        shard['wave'] = 2
         shard['wait'] = BLOCK_WAIT  # nobody after this wave: wait the wall out
+    by_name = {r['name']: r for r in fleet}
+    taking = {s['runner']: s for s in result['shards']}
+    order = {f: i for i, f in enumerate(wanted)}
+    for lane in lanes_of(result['unassigned']):
+        runner = by_name.get(origin[lane[0]]['runner'])
+        short = [f for f in lane if origin[f]['why'] == 'blocked' and waited[f] < BLOCK_WAIT]
+        if not short or runner is None or runner['name'] not in result['up'] or not may_take(runner, lane, {}):
+            continue
+        rest = max(1, round(BLOCK_WAIT - max(waited[f] for f in short)))
+        shard = taking.get(runner['name'])
+        if shard is None:
+            shard = taking[runner['name']] = {'runner': runner['name'], 'label': runner['label'], 'faculties': '',
+                                              'cost': 0, 'eta': 0, 'wait': rest}
+            result['shards'].append(shard)
+        else:
+            shard['wait'] = max(shard['wait'], rest)
+        shard['faculties'] = ','.join(sorted(_names(shard['faculties']) + lane, key=order.get))
+        result['unassigned'] = [f for f in result['unassigned'] if f not in lane]
+    for shard in result['shards']:
+        shard['wave'] = 2
         shard['from'] = ','.join(f"{f}:{origin[f]['runner']}" for f in _names(shard['faculties']))
     result['left'] = origin
     return result
@@ -407,9 +449,9 @@ def handoff_summary(result):
     lines = ['### Handoff', '']
     if not result['shards'] and not result['unassigned']:
         return '\n'.join(lines + ['Every faculty of the plan was finished where it was planned: nothing to hand off.']) + '\n'
-    lines += ['| runner | takes over | from |', '|---|---|---|']
+    lines += ['| runner | takes over | from | waits a wall out |', '|---|---|---|---|']
     for s in result['shards']:
-        lines.append(f"| {s['runner']} | {s['faculties']} | {s['from'].replace(',', ', ')} |")
+        lines.append(f"| {s['runner']} | {s['faculties']} | {s['from'].replace(',', ', ')} | {s['wait']:g} min |")
     if result['unassigned']:
         lines += ['', f"No other runner up may take: {', '.join(result['unassigned'])} (left for the next pass)."]
     return '\n'.join(lines) + '\n'
@@ -422,7 +464,7 @@ def cmd_handoff(args):
     for f, o in result['left'].items():
         log(f"{f}: left {o['why']} by {o['runner']}")
     for s in result['shards']:
-        log(f"{s['runner']} takes over {s['faculties']}")
+        log(f"{s['runner']} takes over {s['faculties']} (waits a wall out up to {s['wait']:g} min)")
     if result['unassigned']:
         log(f"::warning::no other runner up may take {', '.join(result['unassigned'])}; left for the next pass")
     matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties'], 'wave': 2, 'wait': s['wait'],
