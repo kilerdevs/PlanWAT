@@ -17,8 +17,8 @@
    ]
   },
   "wcy": {
-   "blocked_at": "2026-10-25T16:59:09",
-   "cause": "wall",
+   "blocked_at": null,
+   "cause": null,
    "durations": [
     {
      "at_iso": "2026-10-16T15:42:47",
@@ -39,6 +39,11 @@
      "at_iso": "2026-10-23T14:40:46",
      "cause": "wall",
      "dur": 62.0
+    },
+    {
+     "at_iso": "2026-10-25T21:59:08",
+     "cause": "wall",
+     "dur": 86.0
     }
    ]
   },
@@ -111,32 +116,32 @@
   "wcy": {
    "blocked_at": null,
    "last_count": 155,
-   "last_ok": "2026-10-25T21:39:11",
+   "last_ok": "2026-10-25T22:05:51",
    "run": {
     "ahead": false,
-    "at": "2026-10-25T21:39:11",
+    "at": "2026-10-25T22:05:51",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 95,
+    "checked": 39,
     "degraded": false,
     "not_ready": 38,
     "skipped": 1,
     "term": "2026-27-zima"
    },
    "wait": {
-    "probes": 5,
-    "recovered": false,
-    "waited": 1211
+    "probes": 2,
+    "recovered": true,
+    "waited": 67
    }
   },
   "wel": {
    "blocked_at": null,
    "last_count": 158,
-   "last_ok": "2026-10-25T21:25:17",
+   "last_ok": "2026-10-25T21:57:14",
    "run": {
     "ahead": false,
-    "at": "2026-10-25T21:25:17",
+    "at": "2026-10-25T21:57:14",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -172,10 +177,10 @@
   "wlo": {
    "blocked_at": null,
    "last_count": 131,
-   "last_ok": "2026-10-25T21:25:06",
+   "last_ok": "2026-10-25T21:57:07",
    "run": {
     "ahead": false,
-    "at": "2026-10-25T21:25:06",
+    "at": "2026-10-25T21:57:07",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -194,10 +199,10 @@
   "wml": {
    "blocked_at": null,
    "last_count": 162,
-   "last_ok": "2026-10-25T21:25:25",
+   "last_ok": "2026-10-25T21:57:20",
    "run": {
     "ahead": false,
-    "at": "2026-10-25T21:25:25",
+    "at": "2026-10-25T21:57:20",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -6390,10 +6395,10 @@
  },
  "pacing": {
   "ioe": 1.0,
-  "wat-edge": 1.7714700000000003,
-  "wcy": 2.43,
+  "wat-edge": 1.4348907000000004,
+  "wcy": 2.7,
   "wim": 1.0,
-  "wml": 2.43,
+  "wml": 2.1870000000000003,
   "wtc": 3.0
  },
  "robots": {
