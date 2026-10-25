@@ -90,7 +90,7 @@
    ]
   },
   "wtc": {
-   "blocked_at": "2026-10-25T21:57:41",
+   "blocked_at": "2026-10-25T22:25:53",
    "cause": "wall",
    "durations": []
   }
@@ -99,10 +99,10 @@
   "ioe": {
    "blocked_at": null,
    "last_count": 15,
-   "last_ok": "2026-10-25T21:57:34",
+   "last_ok": "2026-10-25T22:25:45",
    "run": {
     "ahead": false,
-    "at": "2026-10-25T21:57:34",
+    "at": "2026-10-25T22:25:45",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -155,10 +155,10 @@
   "wim": {
    "blocked_at": null,
    "last_count": 88,
-   "last_ok": "2026-10-25T21:57:34",
+   "last_ok": "2026-10-25T22:25:44",
    "run": {
     "ahead": false,
-    "at": "2026-10-25T21:57:34",
+    "at": "2026-10-25T22:25:44",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -219,20 +219,19 @@
    }
   },
   "wtc": {
-   "blocked_at": null,
+   "blocked_at": "2026-10-25T22:25:52",
    "last_count": 23,
-   "last_ok": "2026-10-25T22:10:01",
+   "last_ok": "2026-10-24T16:11:24",
    "run": {
     "ahead": false,
-    "at": "2026-10-25T22:10:01",
-    "blocked": false,
-    "cause": null,
+    "at": "2026-10-25T22:25:52",
+    "blocked": true,
+    "cause": "wall",
     "changed": 0,
-    "checked": 23,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
-    "skipped": 1,
-    "term": "2026-27-zima"
+    "skipped": 0
    },
    "wait": {
     "probes": 5,
@@ -6400,7 +6399,7 @@
   "wcy": 2.7,
   "wim": 1.0,
   "wml": 2.1870000000000003,
-  "wtc": 2.7
+  "wtc": 3.0
  },
  "robots": {
   "ioe.wat.edu.pl": {
