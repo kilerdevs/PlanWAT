@@ -135,6 +135,8 @@ test('rooms on the group page link to their building and a day opens its classes
 
   const dayLink = page.locator('#weekBody .day.is-today a.daymap');
   await expect(dayLink).toHaveAttribute('href', '../mapa/?g=WCY26KY3S1&d=2026-10-15');
+  // Its name starts with the word it shows, so voice control finds it (axe's label-content-name-mismatch).
+  await expect(dayLink).toHaveAccessibleName(/^Mapa\b/);
   await dayLink.click();
   await expect(page).toHaveURL(/\/mapa\/\?g=WCY26KY3S1&d=2026-10-15$/);
   await expect(page.locator('#selection h1')).toHaveText('Twój dzień na kampusie');

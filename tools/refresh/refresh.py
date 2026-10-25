@@ -386,9 +386,7 @@ def accepted_checked(state, code, tid):
     return stamp if isinstance(stamp, str) else ''
 
 
-# What a crawl learns about its own line (per-faculty runs, learned block durations, AIMD pacing). A volunteer
-# keeps these in its own file (--faculty-state): the data branch it starts from carries the home runner's numbers.
-LINE_KEYS = ('faculties', 'blocks', 'pacing')
+LINE_KEYS = core.LINE_KEYS
 
 
 def load_line_state(state, path):

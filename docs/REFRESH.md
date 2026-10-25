@@ -7,7 +7,7 @@
 **Plany są ponownie czytane ze stron wydziałów i publikowane bez commita na `master` ani `dev`.**
 
 [![Refresh](https://github.com/kilerdevs/PlanWAT/actions/workflows/refresh.yml/badge.svg)](https://github.com/kilerdevs/PlanWAT/actions/workflows/refresh.yml)
-![Runner](https://img.shields.io/badge/runner-self--hosted%20(jedyny)-blue?style=flat)
+![Runnery](https://img.shields.io/badge/runnery-2%20self--hosted%20(podzia%C5%82%20pracy)-blue?style=flat)
 ![Harmonogram](https://img.shields.io/badge/harmonogram-co%202%20godziny-informational?style=flat)
 ![Grupy](https://img.shields.io/badge/grupy-781-brightgreen?style=flat)
 ![Dane kadry](https://img.shields.io/badge/dane%20kadry-brak-critical?style=flat)
@@ -20,7 +20,7 @@ Workflow Pages nakłada te kalendarze na strony przy każdej budowie.
 <img src="diagrams/aktualizacja-planow.svg" alt="Codziennie w nocy runner odczytuje strony wydziałów przez proxy, konwertuje plany, waliduje je i wypycha na gałąź data. Pages nakłada je na strony i publikuje." width="760">
 
 ```
-refresh.yml   co 2 godziny (`23 */2 * * *`), na własnym runnerze: crawl → konwersja → walidacja → push na `data`
+refresh.yml   co 2 godziny (`23 */2 * * *`), na własnych runnerach (wydziały dzielone między włączone): crawl → konwersja → walidacja → push na `data`
 gałąź data    timetables/<semestr>/<GRUPA>.ics oraz refresh-state.json
 pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomieniem build.py
 ```
@@ -34,9 +34,11 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   strony odpowiadają `304` bez treści), pomijanie grup sprawdzonych mniej niż 60 minut temu (`--fresh-hours`) oraz rozciąganie
   przerwy przed następnym sprawdzeniem cichej grupy (`--adaptive-hours`, w akcji 4 h — niżej), więc w spokojnym semestrze
   przebieg zagląda do cichej grupy rzadziej niż co drugi raz. Wszystkie polityki Incapsula (`--lanes`, domyślnie 6) są przeglądane
-  równolegle, każdy host we własnym tempie, więc pełny przebieg trwa krócej niż godzinę, a po zakończeniu przebiegu
-  `pages.yml` odbudowuje stronę (`workflow_run`) tylko wtedy, gdy przebieg faktycznie wypchnął nowe kalendarze — cichy
-  przebieg nie potrzebuje identycznego deploymentu (etap „rebuild needed?” w `pages.yml`).
+  równolegle, każdy host we własnym tempie, więc pełny przebieg trwa krócej niż godzinę. Po zakończeniu przebiegu
+  `pages.yml` (`workflow_run`, etap „rebuild needed?”) od razu odbudowuje stronę, gdy zmienił się choć jeden kalendarz.
+  Przebieg, który zapisał tylko nowe godziny sprawdzeń (prawie każdy wypycha `refresh-state.json`), odbudowuje ją dopiero
+  wtedy, gdy opublikowana wersja ma ponad 6 h (`STAMPS_MAX_HOURS`): „Sprawdzono” spóźnia się wtedy najwyżej o tyle, a
+  strona nie jest wdrażana kilkanaście razy dziennie dla samej godziny. Przebieg, który nic nie wypchnął, nie wdraża nic.
 - **Blokada odkłada wydział, nie kończy przebiegu.** Każdy status inny niż 200 (z wyjątkiem 304 i 404) albo strona incydentu
   Incapsula to najpierw odpowiedź blokady, nie wyrok: crawl zgłasza ją do proxy wyjściowego (które wycofuje wyjście, jakie ją
   przewiozło — w tunelu CONNECT proxy nie widzi strony blokady), a potem ponawia na świeżym połączeniu, czyli na innym wyjściu
@@ -124,11 +126,11 @@ wymienia kadrę, więc regresja psuje budowę zamiast publikować nazwiska.
    „Read and write”) oraz ustaw „Fork pull request workflows” na wymaganie zatwierdzenia.
 3. Wypróbuj: Actions → *Refresh timetables* → Run workflow, wydział `wim`.
 
-## Własny runner (jedyny)
+## Własne runnery
 
 Ściana Incapsula na stronach wydziałów blokuje adresy centrów danych GitHub już przy pierwszym żądaniu (widziane przy pierwszym
-przebiegu na hostowanym runnerze: `index.xml` odpowiedział 403), więc crawl działa wyłącznie na własnym runnerze, któremu
-adres domowy pozwala przejść.
+przebiegu na hostowanym runnerze: `index.xml` odpowiedział 403), więc crawl działa wyłącznie na własnych runnerach (etykieta
+`planwat`), które ściana przepuszcza.
 
 Runner nawiązuje tylko połączenia wychodzące do GitHub, a maszyna **nie potrzebuje żadnego otwartego portu przychodzącego**.
 Każdy, kto może uruchomić workflow w repozytorium, może uruchomić kod na runnerze, więc:
@@ -139,6 +141,52 @@ Każdy, kto może uruchomić workflow w repozytorium, może uruchomić kod na ru
   własną rejestracją; zarejestruj go na poziomie repozytorium z etykietą `planwat`;
 - zablokuj cały ruch przychodzący do hosta i zezwól na wychodzący wyłącznie do GitHub i hostów wydziałów.
 
+### Dwa runnery i podział pracy
+
+Projekt ma dwa runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh/fleet.json):
+
+| Runner | Etykieta | `speed` | Charakter |
+|---|---|---|---|
+| plebania | `planwat-plebania` | 4 | prywatny serwer: szybki, ale często wyłączony |
+| oracle | `planwat-oracle` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
+
+Każdy przebieg `refresh.yml` ma trzy etapy:
+
+1. **plan** (runner GitHub, bez dostępu do wydziałów): pyta API GitHub, które runnery są `online`, i dzieli między nie
+   ścieżki polityk Incapsula (`tools/refresh/fleet.py plan`). Ścieżka nigdy nie jest dzielona (WLO i WEL stoją za jedną
+   ścianą i czekają razem). Praca ścieżki to liczba grup, które jej wydziały wymieniły ostatnio, razy wyuczony mnożnik
+   tempa. Ścieżki idą od największej, każda do runnera, który skończy ją najwcześniej (obciążenie / `speed`), więc
+   szybka plebania bierze większość, a VPS resztę, i oba kończą mniej więcej razem. Wyłączony runner nie dostaje nic,
+   więc żadne zadanie nie czeka w kolejce na maszynę, która nie przyjdzie. Gdy nic nie jest włączone, przebieg niczego
+   nie crawluje, a następny planuje od nowa. Podział widać w podsumowaniu zadania.
+2. **crawl** (po jednym zadaniu na runner, macierz): każdy runner crawluje swoje wydziały (`--faculty`) i wypycha wynik na
+   `data`. Runnery wypychają równolegle, więc push nie robi rebase: każda próba zaczyna od najnowszego commita gałęzi,
+   kładzie na nim kalendarze tego przebiegu i scala `refresh-state.json` (`fleet.py merge`: stemple grup zmienione w tym
+   przebiegu, a stan łącza tylko dla własnych wydziałów), do pięciu prób. Zadanie, które dostało runnera później niż 30
+   minut po planie (maszyna zgasła tuż po tym, jak GitHub ją widział, i wróciła później), niczego nie crawluje: nowsze
+   przebiegi zaplanowały już bez niej. Współbieżność jest na runner, nie na workflow, więc takie zawieszone zadanie nie
+   blokuje kolejnych przebiegów.
+3. **report** (runner GitHub): sumuje wyniki runnerów do `refresh-outcome.json` dla bramki `pages.yml` (brak wyniku
+   któregoś runnera = przebudowa) i otwiera albo zamyka zgłoszenia o blokadzie i degradacji. Przebieg, któremu brakuje
+   wyniku runnera, jest niepełny: niczego nie zamyka. Przebieg starszy niż 3 h zostawia zgłoszenia nowszym.
+
+Każdy runner ma też **własny stan łącza** (wyuczone tempo, czasy blokad, ostatni przebieg wydziału): różne adresy
+trafiają na różne ściany, więc trzyma go w `$RUNNER_TOOL_CACHE/planwat/refresh-line.json`, zasiany raz z gałęzi `data`.
+Na `data` trafia stan łącza tego runnera, który ostatnio crawlował dany wydział.
+
+Konfiguracja (jednorazowo):
+
+1. Etykiety: Settings → Actions → Runners → runner → Labels. Plebanii dodaj `planwat-plebania`, VPS-owi `planwat-oracle`
+   (obaj zostają też przy `planwat`). Nowy runner z [deploy/runner/](../deploy/runner/README.md) dostaje je przy
+   rejestracji z `RUNNER_LABELS`.
+2. Token do sprawdzania, kto jest włączony: fine-grained personal access token tylko do tego repozytorium z jednym
+   uprawnieniem **Administration: Read-only** (listy runnerów nie da się odczytać `GITHUB_TOKEN`). Zapisz go jako sekret
+   Actions `PLANWAT_RUNNERS_TOKEN`. Bez niego (albo gdy API zawiedzie) wszystko bierze runner `always_on`, jak dawniej
+   jedyny runner.
+3. Dostrajanie: kolumna „minutes” w podsumowaniu zadania report pokazuje, ile trwał udział każdego runnera. Gdy jeden
+   regularnie kończy dużo później, zmień `speed` w `fleet.json`. Pole `faculties` (lista) ogranicza runner do tych
+   wydziałów, np. gdy któryś wydział nie wpuszcza adresu VPS-a.
+
 ## Gdyby sam GitHub został przejęty
 
 Projekt zakłada, że repozytorium (kod, Actions, gałąź `data`, `GITHUB_TOKEN`) może wpaść w niepowołane ręce, podczas gdy host
@@ -148,9 +196,12 @@ runnera musi pozostać czysty, a opublikowana strona bezpieczna:
   `CONNECT ...:443` wyłącznie do GitHub, PyPI i hostów wydziałów (cokolwiek innego, w tym gołe adresy IP, dostaje `403 Filtered`).
   Ukradziony token zadania nadal nie sięgnie bezpośrednio do serwera atakującego, a eksfiltracja ogranicza się do wypchnięcia do
   GitHub, co da się audytować w historii repozytorium.
-- Token zadania ma tylko `contents:write` (push gałęzi `data`) i `issues:write` (zgłoszenie o blokadzie). Celowo nie ma
+- Token zadania na runnerze ma tylko `contents:write` (push gałęzi `data`); zgłoszenia o blokadzie otwiera zadanie report
+  na runnerze GitHub (`issues:write`). Celowo nie ma
   `actions:write`: odświeżone kalendarze podbiera codzienna przebudowa `pages.yml`, więc skradziony token nie może uruchamiać ani
   zatwierdzać innych workflowów.
+- Sekret `PLANWAT_RUNNERS_TOKEN` (zadanie plan, na runnerze GitHub) pozwala tylko czytać ustawienia administracyjne tego
+  repozytorium, w tym listę runnerów: wyciek pokazuje konfigurację, ale niczego nie zmieni. Nie trafia na własne runnery.
 - `master` jest chroniony (podpisane commity, wymagane CI), a `pages.yml` buduje produkcję wyłącznie z `master`, nakładając
   kalendarze z `data`, z których każdy musi przejść walidację `build.load_term` i jest escapowany do stron z CSP przypiętym
   hashami. Zatruta gałąź `data` nie może więc wstrzyknąć skryptu ani wypromować treści do katalogu głównego: w najgorszym razie

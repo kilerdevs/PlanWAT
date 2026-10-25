@@ -3,8 +3,11 @@ name: Refresh timetables
 # Re-crawls the faculty timetable pages, converts what changed and pushes the calendars to the `data` branch;
 # pages.yml overlays that branch over the repository's timetables/ on every deploy. See docs/REFRESH.md.
 #
-# Runs only on the self-hosted runner (label "planwat"): the faculty sites' Incapsula wall blocks GitHub's
-# datacenter addresses on the first request, so a hosted runner can only fail.
+# Crawls only on the project's self-hosted runners (label "planwat"): the faculty sites' Incapsula wall blocks
+# GitHub's datacenter addresses on the first request, so a hosted runner can only fail. There are two of them
+# (tools/refresh/fleet.json): plebania, fast but often switched off, and an always-on but slow VPS. A hosted job
+# asks GitHub which of them is online and splits the faculties between those, weighted by speed; another one adds
+# their outcomes up for pages.yml and the "blocked" issues.
 on:
   # Every two hours, round the clock: a pass over every group takes well under an hour (all policy
   # groups crawl side by side, one request at a time per host) and most pages answer 304, so a quiet
@@ -22,52 +25,207 @@ on:
 permissions:
   contents: read
 
-# One refresh at a time, and never cancel one halfway: a half-finished crawl is resumed, not restarted.
-concurrency:
-  group: refresh
-  cancel-in-progress: false
-
 jobs:
-  refresh:
-    # Only scheduled and manual runs reach the runner, never pull requests, so a fork cannot run code on it.
+  plan:
+    # Only scheduled and manual runs reach the runners, never pull requests, so a fork cannot run code on them.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, planwat]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shards: ${{ steps.plan.outputs.shards }}
+      planned: ${{ steps.plan.outputs.planned }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+          persist-credentials: false
+      # The split weighs each faculty by what it listed last time and its learned pacing.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: data
+          path: data
+          sparse-checkout: refresh-state.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Ask GitHub which runners are online
+        env:
+          # A fine-grained token for this repository with "Administration: Read-only" and nothing else: listing
+          # self-hosted runners needs it, GITHUB_TOKEN cannot. Without it the always-on runner takes everything.
+          GH_TOKEN: ${{ secrets.PLANWAT_RUNNERS_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo '::warning::PLANWAT_RUNNERS_TOKEN is not set; cannot see which runners are online'
+            exit 0
+          fi
+          if gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runners" \
+              --jq '.runners[] | {name, status, busy, labels: [.labels[].name]}' > runners.jsonl; then
+            jq -s . runners.jsonl > runners.json
+            jq -r '.[] | "\(.name): \(.status)\(if .busy then " (busy)" else "" end) [\(.labels | join(", "))]"' runners.json
+          else
+            echo '::warning::could not list the self-hosted runners; the always-on runner takes everything'
+          fi
+      - id: plan
+        env:
+          FACULTY: ${{ inputs.faculty }}
+        run: |
+          args=(plan --state data/refresh-state.json --faculty "$FACULTY")
+          if [ -f runners.json ]; then args+=(--runners runners.json); fi
+          python3 src/tools/refresh/fleet.py "${args[@]}"
+
+  crawl:
+    name: crawl (${{ matrix.runner }})
+    needs: plan
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.plan.outputs.shards != '0'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: [self-hosted, planwat, '${{ matrix.label }}']
+    # One crawl per runner at a time, and never cancel one halfway: a half-finished crawl is resumed, not
+    # restarted. Per runner, not per workflow: a job stuck waiting for a machine that went off right after the
+    # plan saw it must not hold up the passes after it (they plan without that machine).
+    concurrency:
+      group: refresh-${{ matrix.runner }}
+      cancel-in-progress: false
     timeout-minutes: 110
     permissions:
-      # Least privilege on purpose (see docs/REFRESH.md "If GitHub is compromised"):
-      # contents pushes the data branch, issues files the blocked notice. In particular there is
-      # no actions:write: the daily pages.yml rebuild picks refreshed calendars up on its own,
-      # so a stolen token cannot trigger arbitrary workflows.
+      # Least privilege on purpose (see docs/REFRESH.md "If GitHub is compromised"): contents pushes the data
+      # branch, nothing else. In particular there is no actions:write: the daily pages.yml rebuild picks
+      # refreshed calendars up on its own, so a stolen token cannot trigger arbitrary workflows. The issues
+      # are the report job's, on a hosted runner.
       contents: write
+    steps:
+      # A job that sat in the queue (its machine went off just after the plan saw it online, and came back
+      # later) crawls nothing: newer passes have planned without it since.
+      - name: Is this share still current?
+        id: current
+        env:
+          PLANNED: ${{ needs.plan.outputs.planned }}
+        run: |
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+          age=$(( $(date +%s) - PLANNED ))
+          if [ "$age" -gt 1800 ]; then
+            echo "::notice::planned $((age / 60)) minutes ago; leaving it to a newer pass"
+            echo 'ok=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ok=true' >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.current.outputs.ok == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+      - if: steps.current.outputs.ok == 'true'
+        uses: ./src/.github/actions/refresh
+        id: refresh
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          profile: selfhosted
+          faculty: ${{ matrix.faculties }}
+          max-minutes: '90'
+      # The report job adds these up. A shard that never wrote one (a crash before this, a runner lost
+      # mid-crawl) counts as missing: the pass is then incomplete and the Pages gate rebuilds.
+      - name: Write this share's outcome
+        if: always()
+        env:
+          SHARD: ${{ matrix.runner }}
+          FACULTIES: ${{ matrix.faculties }}
+          SKIPPED: ${{ steps.current.outputs.ok != 'true' }}
+          STARTED: ${{ steps.current.outputs.started }}
+          PUSHED: ${{ steps.refresh.outputs.pushed || 'false' }}
+          CHANGED: ${{ steps.refresh.outputs.changed || '0' }}
+          BLOCKED: ${{ steps.refresh.outputs.blocked || 'false' }}
+          INCOMPLETE: ${{ steps.refresh.outputs.incomplete || 'false' }}
+          DEGRADED: ${{ steps.refresh.outputs.degraded || 'false' }}
+          OUTCOME: ${{ steps.refresh.outcome }}
+        run: |
+          # A refresh step that failed outright leaves its outputs empty: that is not a clean pass.
+          if [ "$SKIPPED" != 'true' ] && [ "$OUTCOME" != 'success' ]; then INCOMPLETE=true; fi
+          mkdir -p shard
+          printf '{"runner": "%s", "faculties": "%s", "skipped": "%s", "pushed": "%s", "changed": "%s", "blocked": "%s", "incomplete": "%s", "degraded": "%s", "started": "%s", "ended": "%s"}\n' \
+            "$SHARD" "$FACULTIES" "$SKIPPED" "$PUSHED" "$CHANGED" "$BLOCKED" "$INCOMPLETE" "$DEGRADED" \
+            "$STARTED" "$(date +%s)" > "shard/shard-$SHARD.json"
+      - name: Upload this share's outcome
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: refresh-shard-${{ matrix.runner }}
+          path: shard/shard-${{ matrix.runner }}.json
+          retention-days: 2
+
+  report:
+    needs: [plan, crawl]
+    # Also after a failed or skipped crawl: the outcome must be written either way (a pass with no runner
+    # online included).
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # The "blocked" and "degraded" issues.
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: src
-      - uses: ./src/.github/actions/refresh
-        id: refresh
+          persist-credentials: false
+      - name: Download the shares' outcomes
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          profile: selfhosted
-          faculty: ${{ inputs.faculty }}
-          max-minutes: '90'
-      # pages.yml's gate reads this instead of rebuilding an identical site after every quiet
-      # pass: pushed=false (a quiet pass, a block, a crash) means the data branch is unchanged.
-      # A missing or damaged artifact fails the gate open, i.e. it still rebuilds.
-      - name: Write the outcome for the Pages gate
-        if: always()
+          pattern: refresh-shard-*
+          path: shards
+          merge-multiple: true
+      - id: combine
         env:
-          PUSHED: ${{ steps.refresh.outputs.pushed || 'false' }}
-          CHANGED: ${{ steps.refresh.outputs.changed || '0' }}
-          BLOCKED: ${{ steps.refresh.outputs.blocked || 'false' }}
+          MATRIX: ${{ needs.plan.outputs.matrix }}
+          PLANNED: ${{ needs.plan.outputs.planned }}
         run: |
-          printf '{"pushed": "%s", "changed": "%s", "blocked": "%s"}\n' \
-            "$PUSHED" "$CHANGED" "$BLOCKED" > refresh-outcome.json
+          python3 src/tools/refresh/fleet.py combine --matrix "$MATRIX" --planned "$PLANNED" \
+            --dir shards --out refresh-outcome.json
+      # pages.yml's gate reads this instead of rebuilding an identical site after every quiet
+      # pass: pushed=false (every share quiet) means the data branch is unchanged. A missing or
+      # damaged artifact, or a share that never reported, fails the gate open, i.e. it still rebuilds.
       - name: Upload the outcome
-        if: always()
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: refresh-outcome
           path: refresh-outcome.json
           retention-days: 2
+      - name: File or close the issues
+        if: steps.combine.outputs.current == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BLOCKED: ${{ steps.combine.outputs.blocked }}
+          INCOMPLETE: ${{ steps.combine.outputs.incomplete }}
+          DEGRADED: ${{ steps.combine.outputs.degraded }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # One issue tells the owner that the crawl is blocked; it closes itself after a clean run.
+          title='Odświeżanie planów zablokowane (Incapsula)'
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ "$BLOCKED" = 'true' ]; then
+            body="Serwer wydziału zablokował pobieranie planów. Ostatnie poprawne plany zostają bez zmian. Przebieg: $RUN_URL"
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "$body"
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+            fi
+          elif [ "$INCOMPLETE" != 'true' ] && [ -n "$open" ]; then
+            gh issue close "$open" --repo "$GITHUB_REPOSITORY" --comment "Pobieranie znów działa: $RUN_URL"
+          fi
+          # A second issue tracks degraded-but-not-blocked runs (mass skips); same open/comment/create/close pattern.
+          dtitle='Odświeżanie planów zdegradowane (masowe pominięcia)'
+          dopen=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$dtitle\" in:title" --json number --jq '.[0].number // empty')
+          if [ "$DEGRADED" = 'true' ] && [ "$BLOCKED" != 'true' ]; then
+            dbody="Przebieg odświeżania zdegradowany (masowe pominięcia), ale nie zablokowany. Ostatnie poprawne plany zostają bez zmian. Przebieg: $RUN_URL"
+            if [ -n "$dopen" ]; then
+              gh issue comment "$dopen" --repo "$GITHUB_REPOSITORY" --body "$dbody"
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$dtitle" --body "$dbody"
+            fi
+          elif [ "$BLOCKED" != 'true' ] && [ "$DEGRADED" != 'true' ] && [ "$INCOMPLETE" != 'true' ] && [ -n "$dopen" ]; then
+            gh issue close "$dopen" --repo "$GITHUB_REPOSITORY" --comment "Odświeżanie znów pełne: $RUN_URL"
+          fi

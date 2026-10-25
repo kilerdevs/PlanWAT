@@ -1,0 +1,93 @@
+# The project's self-hosted runner and its egress proxy on one box (deploy/runner/README.md).
+# The runner sits on an internal network with no route out: everything it fetches (GitHub, PyPI, the
+# faculties) goes through the egress, which lets only those hosts through and sends WCY over the pool.
+name: planwat-runner
+
+services:
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    image: planwat/runner:1
+    restart: unless-stopped
+    init: true
+    hostname: ${RUNNER_NAME:-planwat-runner}
+    environment:
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      RUNNER_NAME: ${RUNNER_NAME:-planwat-runner}
+      # planwat-oracle: this box's entry in tools/refresh/fleet.json (the split of each pass between runners).
+      RUNNER_LABELS: ${RUNNER_LABELS:-planwat,planwat-oracle}
+      RUNNER_REPO_URL: https://github.com/kilerdevs/PlanWAT
+      HTTP_PROXY: http://egress:8888
+      HTTPS_PROXY: http://egress:8888
+      http_proxy: http://egress:8888
+      https_proxy: http://egress:8888
+      # The crawler's reports to the egress GUI (http://egress:8080) skip the proxy.
+      NO_PROXY: egress,localhost,127.0.0.1
+      no_proxy: egress,localhost,127.0.0.1
+      # Sent with those reports; must match the egress below.
+      EGRESS_API_TOKEN: ${EGRESS_API_TOKEN:-}
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 700m
+    pids_limit: 512
+    volumes:
+      - runner:/home/runner/actions-runner
+    networks: [inner]
+    depends_on:
+      egress:
+        condition: service_healthy
+
+  egress:
+    build:
+      context: ../../tools/egress
+      dockerfile: Dockerfile.egress
+    image: planwat/egress:1
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 256m
+    pids_limit: 256
+    ulimits:
+      nofile: 4096
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      EGRESS_DATA: /data
+      EGRESS_API_TOKEN: ${EGRESS_API_TOKEN:-}
+      PLANWAT_EGRESS_DIRECT_FALLBACK: "1"
+      # Same split as on the home runner (tools/egress/compose.fragment.yml): WCY blocks this box's own
+      # address, so it only ever goes through the pool; the other faculties answer it directly.
+      EGRESS_FAIL_CLOSED: "planzajec.wcy.wat.edu.pl"
+      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl"
+    dns:
+      - 1.1.1.1
+      - 9.9.9.9
+    volumes:
+      - egress-data:/data
+    ports:
+      # The GUI, on localhost only: ssh -L 18080:127.0.0.1:18080 <host>, then http://localhost:18080.
+      - "127.0.0.1:18080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/status', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks: [inner, outside]
+
+networks:
+  inner:
+    internal: true
+  outside: {}
+
+volumes:
+  runner:
+  egress-data:

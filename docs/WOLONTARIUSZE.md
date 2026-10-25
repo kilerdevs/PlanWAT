@@ -222,7 +222,7 @@ Dla osób, które już utrzymują runnery GitHub Actions. Używa tej samej akcji
 1. W forku: Settings → Actions → General → zezwól na Actions. Zakładka Actions → włącz workflowy (GitHub wyłącza
    harmonogramy w świeżych forkach).
 2. Settings → Actions → Runners → New self-hosted runner. Zarejestruj go z etykietą **`planwat-volunteer`**.
-3. Utwardź runner tak jak domowy runner projektu ([REFRESH.md](REFRESH.md#własny-runner-jedyny)):
+3. Utwardź runner tak jak domowy runner projektu ([REFRESH.md](REFRESH.md#własne-runnery)):
    - kontener, użytkownik bez uprawnień, bez montowań hosta i bez gniazda Dockera;
    - runner efemeryczny (jedno zadanie) albo czyszczony katalog roboczy;
    - ruch wychodzący tylko do GitHub, PyPI (`pypi.org`, `files.pythonhosted.org`: akcja instaluje przy każdym

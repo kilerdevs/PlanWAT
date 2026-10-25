@@ -20,6 +20,9 @@ import build  # noqa: E402  (the site's own validator, so "valid here" means "bu
 STATE_FILE = 'refresh-state.json'
 # Check stamps the volunteer coordinator accepted (tools/volunteer/collect.py), keyed CODE@term.
 VOLUNTEER_STATE_FILE = 'volunteer-state.json'
+# What a crawl learns about its own line (per-faculty runs, learned block durations, AIMD pacing). A volunteer
+# and each project runner keep these in a file of their own (--faculty-state): every line meets its own walls.
+LINE_KEYS = ('faculties', 'blocks', 'pacing')
 # Lines that change on every run without the plan changing.
 VOLATILE = ('X-PLAN-GENERATED', 'DTSTAMP', 'X-PLAN-UPDATED')
 

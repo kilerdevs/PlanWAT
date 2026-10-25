@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +15,7 @@ FIXTURES = ROOT / 'tests' / 'fixtures' / 'refresh'
 sys.path.insert(0, str(ROOT / 'tools' / 'refresh'))
 
 import core  # noqa: E402
+import fleet  # noqa: E402
 import refresh  # noqa: E402
 import wlo2ics  # noqa: E402
 from drivers import Item  # noqa: E402
@@ -1869,6 +1871,217 @@ class QuietStretch(unittest.TestCase):
         second, state, session = self.run_faculty({}, adaptive=0)
         self.assertEqual(second, ([], False, True))
         self.assertEqual(state.groups['WLO26AX1S1']['streak'], 1)
+
+
+class FleetPlan(unittest.TestCase):
+    """tools/refresh/fleet.py plan: the faculties split over the runners GitHub sees online."""
+    FLEET = [{'name': 'plebania', 'label': 'planwat-plebania', 'speed': 4.0, 'always_on': False, 'faculties': None},
+             {'name': 'oracle', 'label': 'planwat-oracle', 'speed': 1.0, 'always_on': True, 'faculties': None}]
+    WANTED = ['wlo', 'wel', 'wim', 'ioe', 'wcy', 'wml', 'wtc']
+    STATE = {'faculties': {'wlo': {'last_count': 131}, 'wel': {'last_count': 158}, 'wim': {'last_count': 88},
+                           'ioe': {'last_count': 15}, 'wcy': {'last_count': 155}, 'wml': {'last_count': 162},
+                           'wtc': {'last_count': 23}},
+             'pacing': {'wat-edge': 2.7, 'wcy': 3.0, 'wml': 3.0, 'wtc': 3.0}}
+
+    def shares(self, online, runners=None):
+        result = fleet.plan(runners or self.FLEET, self.WANTED, self.STATE, online)
+        return {s['runner']: s['faculties'].split(',') for s in result['shards']}, result
+
+    def test_both_online_the_fast_one_takes_the_most_and_both_finish_close(self):
+        shares, result = self.shares({'planwat', 'planwat-plebania', 'planwat-oracle'})
+        self.assertEqual(sorted(shares['plebania'] + shares['oracle']), sorted(self.WANTED))
+        etas = {s['runner']: s['eta'] for s in result['shards']}
+        costs = {s['runner']: s['cost'] for s in result['shards']}
+        self.assertGreater(costs['plebania'], 3 * costs['oracle'])
+        # No lane could move to the other runner and finish the pass sooner.
+        self.assertLess(max(etas.values()), sum(costs.values()) / 4)
+
+    def test_a_lane_never_splits(self):
+        shares, _ = self.shares({'planwat-plebania', 'planwat-oracle'})
+        holder = [r for r, fs in shares.items() if 'wlo' in fs]
+        self.assertEqual(len(holder), 1)
+        self.assertIn('wel', shares[holder[0]])
+
+    def test_plebania_off_the_vps_takes_everything(self):
+        shares, result = self.shares({'planwat', 'planwat-oracle'})
+        self.assertEqual(shares, {'oracle': self.WANTED})
+        self.assertEqual(result['down'], ['plebania'])
+
+    def test_vps_down_plebania_takes_everything(self):
+        shares, _ = self.shares({'planwat-plebania'})
+        self.assertEqual(shares, {'plebania': self.WANTED})
+
+    def test_nobody_online_plans_nothing_rather_than_queueing(self):
+        shares, result = self.shares(set())
+        self.assertEqual(shares, {})
+        self.assertEqual(result['unassigned'], self.WANTED)
+
+    def test_unknown_status_falls_back_to_the_always_on_runner(self):
+        shares, result = self.shares(None)
+        self.assertEqual(shares, {'oracle': self.WANTED})
+        self.assertFalse(result['known'])
+
+    def test_a_runner_limited_to_some_faculties_gets_only_those(self):
+        limited = [dict(self.FLEET[0], faculties=['wim', 'ioe']), self.FLEET[1]]
+        shares, _ = self.shares({'planwat-plebania', 'planwat-oracle'}, runners=limited)
+        self.assertTrue(set(shares.get('plebania', [])) <= {'wim', 'ioe'})
+        self.assertEqual(sorted(sum(shares.values(), [])), sorted(self.WANTED))
+        alone = [dict(self.FLEET[0], faculties=['wim'])]
+        shares, result = self.shares({'planwat-plebania'}, runners=alone)
+        self.assertEqual(shares, {'plebania': ['wim']})
+        self.assertIn('wcy', result['unassigned'])
+
+    def test_a_share_keeps_the_order_asked(self):
+        shares, _ = self.shares({'planwat-oracle'})
+        self.assertEqual(shares['oracle'], self.WANTED)
+
+    def test_online_labels_reads_githubs_runner_list(self):
+        runners = [{'name': 'a', 'status': 'online', 'labels': ['planwat', 'planwat-oracle']},
+                   {'name': 'b', 'status': 'offline', 'labels': ['planwat', 'planwat-plebania']}]
+        self.assertEqual(fleet.online_labels(runners), {'planwat', 'planwat-oracle'})
+        self.assertIsNone(fleet.online_labels(None))
+
+    def test_cost_falls_back_for_an_unknown_faculty(self):
+        self.assertEqual(fleet.faculty_cost({}, 'wim'), fleet.DEFAULT_SIZE)
+        self.assertEqual(fleet.faculty_cost({'faculties': {'wcy': {'last_count': 10}}, 'pacing': {'wcy': 9}},
+                                            'wcy'), 30)
+
+    def test_the_shipped_fleet_is_valid(self):
+        runners = fleet.load_fleet()
+        self.assertEqual(sum(r['always_on'] for r in runners), 1)
+        for bad in ({'runners': []}, {'runners': [{'name': 'Bad Name', 'label': 'x'}]},
+                    {'runners': [{'name': 'a', 'label': 'x', 'speed': 0}]},
+                    {'runners': [{'name': 'a', 'label': 'x'}, {'name': 'a', 'label': 'y'}]}):
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / 'fleet.json'
+                path.write_text(json.dumps(bad))
+                with self.assertRaises(ValueError):
+                    fleet.load_fleet(path)
+
+    def test_cli_writes_the_matrix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'state.json').write_text(json.dumps(self.STATE))
+            (tmp / 'runners.json').write_text(json.dumps(
+                [{'name': 'x', 'status': 'online', 'labels': ['planwat', 'planwat-oracle']}]))
+            out = tmp / 'out'
+            with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out), 'GITHUB_STEP_SUMMARY': ''}):
+                code = fleet.main(['plan', '--state', str(tmp / 'state.json'), '--runners', str(tmp / 'runners.json'),
+                                   '--faculty', 'wcy,wim'])
+            self.assertEqual(code, 0)
+            values = dict(line.split('=', 1) for line in out.read_text().splitlines())
+            self.assertEqual(json.loads(values['matrix']),
+                             [{'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wcy,wim'}])
+            self.assertEqual(values['shards'], '1')
+            self.assertEqual(fleet.main(['plan', '--state', str(tmp / 'state.json'), '--faculty', 'nope']), 2)
+
+
+class FleetMerge(unittest.TestCase):
+    """tools/refresh/fleet.py merge: two runners push one branch without losing each other's state."""
+
+    def test_disjoint_passes_both_survive(self):
+        base = {'version': 1, 'groups': {'WCY1': {'checked': 'old'}, 'WIM1': {'checked': 'old'}},
+                'faculties': {'wcy': {'last_count': 1}, 'wim': {'last_count': 2}},
+                'pacing': {'wcy': 3.0, 'wim': 1.0}, 'blocks': {}, 'robots': {}}
+        # The VPS crawled WIM and pushed first...
+        theirs = json.loads(json.dumps(base))
+        theirs['groups']['WIM1'] = {'checked': 'vps'}
+        theirs['faculties']['wim'] = {'last_count': 3}
+        theirs['robots']['www.wim.wat.edu.pl'] = {'at': 'vps'}
+        # ...while plebania crawled WCY, starting from the same base. Its line state (from its own tool cache)
+        # carries other numbers for WIM too: those are its line's, not this pass's.
+        mine = json.loads(json.dumps(base))
+        mine['groups']['WCY1'] = {'checked': 'plebania'}
+        mine['groups']['WCY2'] = {'checked': 'plebania'}
+        mine['faculties'] = {'wcy': {'last_count': 5}, 'wim': {'last_count': 99}}
+        mine['pacing'] = {'wcy': 2.0, 'wim': 2.5}
+        mine['blocks'] = {'wcy': {'durations': [60]}}
+        out = fleet.merge_state(base, mine, theirs, ['wcy'])
+        self.assertEqual(out['groups'], {'WCY1': {'checked': 'plebania'}, 'WCY2': {'checked': 'plebania'},
+                                         'WIM1': {'checked': 'vps'}})
+        self.assertEqual(out['faculties'], {'wcy': {'last_count': 5}, 'wim': {'last_count': 3}})
+        self.assertEqual(out['pacing'], {'wcy': 2.0, 'wim': 1.0})
+        self.assertEqual(out['blocks'], {'wcy': {'durations': [60]}})
+        self.assertEqual(out['robots'], {'www.wim.wat.edu.pl': {'at': 'vps'}})
+
+    def test_a_shared_policy_group_follows_its_faculty(self):
+        mine = {'version': 1, 'groups': {}, 'faculties': {'wlo': {'x': 1}, 'wel': {'x': 2}},
+                'pacing': {'wat-edge': 1.5}, 'blocks': {'wat-edge': {'durations': [1]}}}
+        out = fleet.merge_state({}, mine, {'version': 1, 'groups': {}, 'faculties': {}}, ['wlo', 'wel'])
+        self.assertEqual(out['pacing'], {'wat-edge': 1.5})
+        self.assertEqual(out['blocks'], {'wat-edge': {'durations': [1]}})
+
+    def test_nothing_on_the_branch_yet(self):
+        mine = {'version': 1, 'groups': {'A': {'checked': 'x'}}, 'faculties': {'wim': {}}}
+        out = fleet.merge_state({}, mine, {}, ['wim'])
+        self.assertEqual(out['groups'], {'A': {'checked': 'x'}})
+        self.assertEqual(out['version'], 1)
+
+    def test_cli_merges_in_place_and_seed_copies_the_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'base.json').write_text(json.dumps({'version': 1, 'groups': {}, 'faculties': {}}))
+            (tmp / 'mine.json').write_text(json.dumps({'version': 1, 'groups': {'WIM1': {'checked': 'a'}},
+                                                       'faculties': {'wim': {'last_count': 1}}}))
+            (tmp / 'into.json').write_text(json.dumps({'version': 1, 'groups': {'WCY1': {'checked': 'b'}},
+                                                       'faculties': {}, 'pacing': {'wcy': 2.0}}))
+            self.assertEqual(fleet.main(['merge', '--base', str(tmp / 'base.json'), '--mine', str(tmp / 'mine.json'),
+                                         '--into', str(tmp / 'into.json'), '--faculty', 'wim']), 0)
+            merged = core.State(tmp / 'into.json')
+            self.assertEqual(set(merged.groups), {'WIM1', 'WCY1'})
+            self.assertEqual(merged.data['pacing'], {'wcy': 2.0})
+            self.assertEqual(fleet.main(['seed', '--state', str(tmp / 'into.json'), '--out',
+                                         str(tmp / 'cache' / 'line.json')]), 0)
+            line = json.loads((tmp / 'cache' / 'line.json').read_text())
+            self.assertEqual(set(line), set(core.LINE_KEYS))
+            self.assertEqual(line['pacing'], {'wcy': 2.0})
+
+
+class FleetCombine(unittest.TestCase):
+    """tools/refresh/fleet.py combine: one refresh-outcome.json for pages.yml out of every share's."""
+
+    def shard(self, runner, **kw):
+        return {'runner': runner, 'skipped': 'false', 'pushed': 'false', 'changed': '0', 'blocked': 'false',
+                'incomplete': 'false', 'degraded': 'false', **kw}
+
+    def test_any_push_rebuilds(self):
+        out = fleet.combine(['plebania', 'oracle'],
+                            [self.shard('plebania', pushed='true', changed='3'), self.shard('oracle', changed='1')], 0)
+        self.assertEqual((out['pushed'], out['changed'], out['incomplete']), ('true', '4', 'false'))
+
+    def test_all_quiet_skips_the_rebuild(self):
+        out = fleet.combine(['plebania', 'oracle'], [self.shard('plebania'), self.shard('oracle')], 0)
+        self.assertEqual(out['pushed'], 'false')
+
+    def test_a_missing_or_skipped_share_rebuilds_and_is_incomplete(self):
+        for outcomes in ([self.shard('oracle')], [self.shard('oracle'), self.shard('plebania', skipped='true')]):
+            out = fleet.combine(['plebania', 'oracle'], outcomes, 0)
+            self.assertEqual((out['pushed'], out['incomplete'], out['missing']), ('', 'true', ['plebania']))
+
+    def test_one_blocked_share_blocks_the_pass(self):
+        out = fleet.combine(['plebania', 'oracle'], [self.shard('plebania', blocked='true'), self.shard('oracle')], 0)
+        self.assertEqual(out['blocked'], 'true')
+
+    def test_a_pass_with_no_runner_is_incomplete(self):
+        out = fleet.combine([], [], 0)
+        self.assertEqual((out['pushed'], out['incomplete']), ('false', 'true'))
+
+    def test_an_old_pass_leaves_the_issues_alone(self):
+        self.assertFalse(fleet.combine(['oracle'], [self.shard('oracle')], fleet.REPORT_HOURS + 1)['current'])
+
+    def test_cli_writes_the_gate_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'shards').mkdir()
+            (tmp / 'shards' / 'shard-oracle.json').write_text(json.dumps(self.shard('oracle', pushed='true')))
+            out = tmp / 'gh'
+            with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out), 'GITHUB_STEP_SUMMARY': ''}):
+                fleet.main(['combine', '--matrix', '[{"runner": "oracle"}]', '--planned',
+                            str(int(dt.datetime.now(dt.timezone.utc).timestamp())), '--dir', str(tmp / 'shards'),
+                            '--out', str(tmp / 'refresh-outcome.json')])
+            self.assertEqual(json.loads((tmp / 'refresh-outcome.json').read_text()),
+                             {'pushed': 'true', 'changed': '0', 'blocked': 'false'})
+            self.assertIn('current=true', out.read_text())
 
 
 if __name__ == '__main__':

@@ -1098,8 +1098,9 @@
   .mdots { display: flex; flex-wrap: wrap; gap: 3px; }
   .mdots span { width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--t3)); }
   .mcount { font-size: var(--fs-12); color: var(--t2); }
-  .mword { display: none; }
-  @media (min-width: 768px) { .mword { display: inline; } }
+  /* Narrow cells hide the word only visually: it stays part of the cell's name for screen readers. */
+  .mword { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  @media (min-width: 768px) { .mword { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip-path: none; } }
   .month .legend-tip { margin-top: var(--sp-3); }
   .month[data-dir="next"] { --vt-x: 32px; }
   .month[data-dir="prev"] { --vt-x: -32px; }
@@ -2456,7 +2457,8 @@
     if (!lessons.some(function (l) { return Campus.roomBuilding(l.room); })) return;
     var a = el('a', 'daymap');
     a.href = '../mapa/?g=' + encodeURIComponent(groupCode()) + '&d=' + iso;
-    a.setAttribute('aria-label', 'Budynki zajęć tego dnia na mapie kampusu');
+    /* The name starts with the visible "Mapa", so voice control finds the link by what it shows (WCAG 2.5.3). */
+    a.setAttribute('aria-label', 'Mapa: budynki zajęć tego dnia na kampusie');
     a.appendChild(icon('map', 'i-sm'));
     a.appendChild(el('span', null, 'Mapa'));
     parent.appendChild(a);
@@ -3626,6 +3628,10 @@
         var d = isoToLocalDate(iso);
         var list = (state.byDate[iso] || []).filter(isShownLesson);
         cell.appendChild(el('span', 'mnum', String(d.getDate())));
+        /* The cell is named by its own text (visible day and count, hidden month, weekday and "dziś") rather than an
+           aria-label, so its name always contains what it shows and voice control finds it (WCAG 2.5.3). */
+        cell.appendChild(el('span', 'vh', ' ' + MONTHS_PL_SHORT[d.getMonth()] + ', ' + DOW_PL[DAY_ORDER[dowIndex(iso)]] +
+          (list.length ? ': ' : ': brak zajęć')));
         if (iso === today) cell.classList.add('is-today');
         else if (iso < today) cell.classList.add('is-past');
         var wi = weekIndexOf(iso);
@@ -3645,8 +3651,7 @@
           mc.appendChild(el('span', 'mword', ' ' + blocks(list.length).replace(/^\d+ /, '')));
           cell.appendChild(mc);
         }
-        cell.setAttribute('aria-label', d.getDate() + ' ' + MONTHS_PL_SHORT[d.getMonth()] + ', ' + DOW_PL[DAY_ORDER[dowIndex(iso)]] +
-          (list.length ? ': ' + blocks(list.length) : ': brak zajęć') + (iso === today ? ', dziś' : ''));
+        if (iso === today) cell.appendChild(el('span', 'vh', ', dziś'));
         cell.addEventListener('click', function () {
           setView('week', true);
           setWeek(wi, null, function () {

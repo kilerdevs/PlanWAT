@@ -420,6 +420,9 @@ test('the month view opens the week of a picked day', async ({ page }) => {
   await page.locator('#monthNext').click();
   await expect(page.locator('#monthTitle')).toHaveText('Listopad 2026');
   await page.locator('#monthPrev').click();
+  // Each cell is named by its own text, so the name holds what it shows (axe's label-content-name-mismatch).
+  await expect(page.locator('.mday', { hasText: /^21/ })).toHaveAccessibleName(/^21 paź, Środa: (\d+ blok(i|ów)?|brak zajęć)$/);
+  await expect(page.locator('.mday.is-today')).toHaveAccessibleName(/^15 paź, Czwartek: .+, dziś$/);
   await page.locator('.mday', { hasText: /^21/ }).click();
   await expect(page.locator('#monthView')).toBeHidden();
   await expect(weekLabel(page)).toHaveText('19.10–24.10');

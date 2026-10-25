@@ -47,6 +47,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
     sprawdzenie grupy nigdy nie nadpisują nowszego planu.
 - „Sprawdzono” na stronie grupy uwzględnia także sprawdzenia wolontariuszy, a domowy runner pomija grupy, które
   wolontariusze właśnie potwierdzili.
+- **Dwa runnery odświeżania z podziałem pracy** ([docs/REFRESH.md](docs/REFRESH.md#dwa-runnery-i-podział-pracy)):
+  każdy przebieg sprawdza, które runnery są włączone, i dzieli wydziały między szybką, ale często wyłączoną plebanię a
+  wolny, zawsze włączony VPS, według ich szybkości (`tools/refresh/fleet.json`). Gdy plebania śpi, wszystko robi VPS, a
+  żadne zadanie nie wisi w kolejce. Runnery wypychają na `data` równolegle i scalają stan zamiast się nadpisywać, każdy
+  pamięta tempo i blokady własnego łącza, a zgłoszenia o blokadzie liczą się z wyników wszystkich.
 
 ### Zmieniono
 - **Plan na pierwszym ekranie komputera:** na szerokim ekranie (od 1080 px) nagłówek strony grupy jest niższy, a
@@ -67,6 +72,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Strona nie jest już wdrażana po każdym przebiegu odświeżania:** bramka `pages.yml` nie przekazywała swojej decyzji
+  (brakowało wyjścia zadania, więc budowa szła zawsze), a do tego pomijała tylko przebiegi, które nic nie wypchnęły, choć
+  prawie każdy wypycha nowe godziny sprawdzeń. Strona szła więc na produkcję kilkanaście razy dziennie.
+  Teraz zmiana kalendarza wdraża od razu, a same godziny sprawdzeń dopiero, gdy opublikowana wersja ma ponad 6 h.
+- **Sterowanie głosem na stronie grupy:** link „Mapa” w nagłówku dnia i dni w widoku miesiąca mają nazwy dostępne,
+  które zawierają to, co widać (WCAG 2.5.3), więc da się je wywołać, mówiąc to, co jest na ekranie. Dzień miesiąca
+  jest nazwany własną treścią, a na wąskim ekranie słowo „bloki” jest ukryte tylko wizualnie.
 - **Egress: błędy, które psuły tunele i panel:** SOCKS5 z adresem domenowym w odpowiedzi zjadał pierwszy znak nazwy i wisiał
   do timeoutu, a nieznany typ adresu albo odmowa HTTP CONNECT kończą się teraz czystym błędem. Sonda Blackboxa mierzyła sam
   eksporter zamiast GUI, a alert „host utknął w DIRECT” obejmował hosty celowo kierowane bezpośrednio. Raport rozpoczęty bez
