@@ -115,6 +115,22 @@ def load_runs(path):
     return build.load_runs(path)
 
 
+def outcome_key(run):
+    """What a pass looks like from far away: its result and the servers that ran it."""
+    return run.get('result'), sorted(r.get('name', '') for r in run.get('runners', []))
+
+
+def shows_new(runs, run):
+    """Whether `run` ended differently from the pass before it, so /stan/ should show it now (pages.yml's gate).
+
+    The first pass on record does; one that fell off the history (a late rerun of an old pass) does not."""
+    ids = [r['id'] for r in runs]
+    if run['id'] not in ids:
+        return False
+    i = ids.index(run['id'])
+    return i + 1 == len(runs) or outcome_key(runs[i + 1]) != outcome_key(run)
+
+
 def add_run(runs, run, keep=KEEP):
     """`run` in place of an earlier attempt of the same run, newest first, at most `keep`."""
     rest = [r for r in runs if r.get('id') != run['id']]
@@ -235,6 +251,11 @@ def cmd_record(args):
     text = markdown(runs, args.site_url, args.repo_url)
     if args.readme:
         _write(args.readme, text)
+    if args.outcome:
+        # refresh-outcome.json, uploaded after this step: "new" lets the Pages gate rebuild for this pass alone
+        outcome = fleet.load_json(args.outcome, {})
+        outcome['history'] = 'new' if shows_new(runs, run) else 'same'
+        _write(args.outcome, json.dumps(outcome) + '\n')
     print(f"run {run['id']}: {run['result']}, {len(runs)} on record")
     return 0
 
@@ -258,6 +279,7 @@ def parse(argv=None):
     p.add_argument('--state', required=True, help="the data branch's refresh-state.json after the pass")
     p.add_argument('--runs', required=True, help='refresh-runs.json; rewritten')
     p.add_argument('--readme', help='README.md to rewrite from the history')
+    p.add_argument('--outcome', help="the pass's refresh-outcome.json, to note whether it ended differently")
     p.add_argument('--run-id', type=int, required=True)
     p.add_argument('--run-number', type=int, default=0)
     p.add_argument('--attempt', type=int, default=1)

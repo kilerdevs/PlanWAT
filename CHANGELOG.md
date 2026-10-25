@@ -56,6 +56,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   na GitHubie (`README.md` gałęzi `data` i podsumowanie przebiegu) i na nowej stronie `/stan/` (link w stopce). Każdy
   przebieg pokazuje wynik, serwery, które go zrobiły (plebania, oracle: wydziały, czas, stan), te, które były wyłączone, i
   liczby dla każdego wydziału. Oba widoki powstają z jednego pliku `refresh-runs.json`, a strona nie uruchamia skryptu.
+  Przebieg, który skończył się inaczej niż poprzedni (inny wynik albo inne serwery), od razu odbudowuje stronę; taki sam
+  jak poprzedni czeka na regułę 6 h. Zanim zapisze się pierwszy przebieg, link „historia przebiegów na GitHubie” prowadzi
+  do listy przebiegów workflow zamiast do jeszcze nieistniejącego pliku.
 
 ### Zmieniono
 - **Plan na pierwszym ekranie komputera:** na szerokim ekranie (od 1080 px) nagłówek strony grupy jest niższy, a
