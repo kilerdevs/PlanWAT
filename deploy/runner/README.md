@@ -1,0 +1,40 @@
+# Runner projektu na VPS
+
+Własny runner `refresh.yml` (etykiety `planwat` i `planwat-oracle`) razem z proxy wyjściowym, na jednej maszynie z Dockerem.
+To wolniejszy, zawsze włączony runner projektu: każdy przebieg dzieli wydziały między niego a plebanię, gdy ta jest
+włączona ([docs/REFRESH.md](../../docs/REFRESH.md#dwa-runnery-i-podział-pracy), `tools/refresh/fleet.json`). Zasady są te
+same co w [docs/REFRESH.md](../../docs/REFRESH.md) („Własny runner”):
+
+- runner działa w kontenerze jako użytkownik bez uprawnień, bez gniazda Dockera i bez montowań hosta;
+- jego sieć (`inner`) nie ma trasy na zewnątrz: GitHub, PyPI i wydziały osiąga tylko przez egress
+  ([docs/EGRESS.md](../../docs/EGRESS.md)), który przepuszcza wyłącznie te hosty;
+- WCY blokuje adresy centrów danych, więc idzie zawsze przez pulę (`EGRESS_FAIL_CLOSED`), a pozostałe wydziały
+  bezpośrednio. Zanim użyjesz innej maszyny, sprawdź, które wydziały ją wpuszczają:
+
+  ```sh
+  docker run --rm --entrypoint python ghcr.io/kilerdevs/planwat-crawler:dev -c \
+    "import sys; sys.path.insert(0,'/app/tools/volunteer'); import doctor; print(doctor.probe_faculties())"
+  ```
+
+  i dopasuj `EGRESS_DIRECT_FACULTY` w `compose.yml`.
+
+## Instalacja
+
+Na maszynie potrzebny jest Docker z Compose i ok. 1 GB RAM (przy 1 GB dodaj swap). Pliki: `deploy/runner/` i
+`tools/egress/` w tym samym układzie katalogów co w repozytorium.
+
+1. Settings → Actions → Runners → New self-hosted runner: skopiuj token rejestracji (ważny godzinę).
+2. `cp .env.example .env`, wpisz `RUNNER_TOKEN`, wygeneruj `EGRESS_API_TOKEN` (`openssl rand -hex 24`), `chmod 600 .env`.
+3. `docker compose up -d --build`. Runner rejestruje się przy pierwszym starcie (rejestracja zostaje w wolumenie
+   `runner`); potem usuń `RUNNER_TOKEN` z `.env`.
+4. Actions → *Refresh timetables* → Run workflow, wydział `wim`.
+
+GUI egressu: `ssh -L 18080:127.0.0.1:18080 <host>`, potem <http://localhost:18080> (zaloguj się tokenem z `.env`).
+
+## Utrzymanie
+
+- Aktualizacja egressu albo obrazu runnera: podmień pliki, `docker compose up -d --build`. Sam runner aktualizuje się
+  automatycznie w wolumenie.
+- Ponowna rejestracja: `docker compose down`, `docker volume rm planwat-runner_runner`, nowy `RUNNER_TOKEN`, `up -d`.
+  Etykiety bierze z `RUNNER_LABELS`; już zarejestrowanemu runnerowi zmienisz je w Settings → Actions → Runners.
+- Logi: `docker compose logs -f runner` / `egress`.

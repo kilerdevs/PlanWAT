@@ -1,0 +1,33 @@
+# The project's self-hosted runner (refresh.yml, label `planwat`), see deploy/runner/README.md.
+# An unprivileged user, no Docker socket, and no route out but the egress proxy (compose.yml).
+FROM ubuntu:24.04
+
+ARG RUNNER_VERSION=2.338.1
+ARG GH_VERSION=2.103.2
+ARG TARGETARCH
+
+ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git jq python3 python3-venv python-is-python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# GitHub CLI (the refresh action files and closes the "blocked" issues with it), checked against its checksums.
+RUN set -eu; arch="$TARGETARCH"; [ -n "$arch" ] || arch=$(dpkg --print-architecture); \
+    cd /tmp; f="gh_${GH_VERSION}_linux_${arch}.tar.gz"; \
+    curl -fsSLO "https://github.com/cli/cli/releases/download/v${GH_VERSION}/$f"; \
+    curl -fsSLO "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_checksums.txt"; \
+    grep " $f\$" "gh_${GH_VERSION}_checksums.txt" | sha256sum -c -; \
+    tar xzf "$f"; install -m 0755 "gh_${GH_VERSION}_linux_${arch}/bin/gh" /usr/local/bin/gh; rm -rf /tmp/gh_*
+
+RUN useradd -m -u 10001 -s /bin/bash runner
+WORKDIR /home/runner/actions-runner
+RUN set -eu; arch="$TARGETARCH"; [ -n "$arch" ] || arch=$(dpkg --print-architecture); \
+    case "$arch" in amd64) arch=x64 ;; esac; \
+    curl -fsSL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${arch}-${RUNNER_VERSION}.tar.gz" \
+      | tar xz; \
+    ./bin/installdependencies.sh && rm -rf /var/lib/apt/lists/*; \
+    chown -R runner:runner /home/runner
+
+COPY --chmod=0755 entrypoint.sh /usr/local/bin/planwat-runner
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/planwat-runner"]
