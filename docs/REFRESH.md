@@ -94,9 +94,12 @@ Wydziały wymienia `tools/refresh/sources.json`. Każdy wskazuje sterownik w `to
 | WML | `wml` (strony Plansoft, żywy `index.xml` rozpoznawany przez ramkę strony głównej, bo wydział publikuje ponownie w katalogach z rewizją) | włączone |
 | WCY | `wcy` | włączone: zwykłe HTTP działa (sprawdzono 14.10.2026), a strony pokazujące inny semestr (lub pustą siatkę) są liczone jako „jeszcze nieopublikowane” — stare kalendarze zostają do publikacji nowego planu i nie oznaczają przebiegu jako pogorszony; stary kalendarz jest przed porównaniem przycinany do semestru, więc oczyszczenie pliku niosącego jeszcze lekcje poprzedniego lata nie jest czytane jako podejrzany skurcz planu |
 | WTC | `wtc` | włączone: płaski `index.xml` (`/Plany/`) nazywa semestr, który wymienia (`<period>`), a sterownik publikuje PDF-y tylko dla odświeżanego semestru; konwersja przez `pymupdf` (instalowany przez akcję odświeżania) |
+| WIG | `wig` | włączone: otwarte listingi katalogów Phoca Download (`/cpp/phocadownloadpap/`), w nich PDF-y będące wydrukami stron Plansoft; sterownik odtwarza siatkę z linii tabeli i oddaje ją `wlo2ics`, a semestr i grupę bierze z nagłówka PDF-u (`pymupdf`, jak przy WTC) |
 
 Każda grupa ma dokładnie jednego kanonicznego właściciela, więc żaden plan nie jest publikowany dwa razy pod dwoma kodami: WEL
 pomija strony `IOE*` i `WME*`, które jego indeks też wymienia (należą do IOE i WIM), a IOE pomija wymienioną stronę `WME*`.
+Odwrotnie jest z grupami `WIG..BW` (budownictwo, studia wojskowe): wymienia je i WEL, i WIG, ale kopia WEL jest świeższa i
+ustrukturyzowana, więc zostają przy WEL, a WIG je pomija.
 
 Strony nazwane jak `1PL26KP` dostają prefiks wydziału (`WEL1PL26KP`), żeby nazwa pliku, `X-PLAN-GROUP` i sekcja na stronie
 głównej były spójne. Strony niebędące kodami grup (kursy, np. `Kurs_-_…`) są pomijane. Grupy WML zachowują własne kody `WMT`
@@ -111,6 +114,25 @@ odświeżany semestr, a pobiera je z indeksem jako Referer, po jednym naraz. Kon
 maszynie uruchamiającej crawl (codzienna akcja instaluje go do jednorazowego venv w `$RUNNER_TEMP`, bo wbudowany w runner
 `/opt/venv` jest w trakcie zadania tylko do odczytu). Skonwertowane kalendarze nie zawierają nazwisk kadry (zob. zasadę
 prywatności niżej).
+
+Uwagi o WIG: wydział nie ma indeksu planów. Strona `rozklady-zajec` (Joomla) linkuje PDF-y grup z kategorii kierunków i
+roczników, ale same pliki leżą w zwykłych katalogach (`/cpp/phocadownloadpap/<kierunek>/<tryb>/WIG26AX1S0.pdf`, tryb
+`stacjonarne`, `niestacjonarne` albo `drugistopien`) z otwartymi listingami Apache. Wykrywanie czyta te listingi, nie
+Joomlę: Incapsula odpowiada na strony Joomli wyzwaniem (403) z adresów centrów danych (runner oracle, sprawdzono
+26.10.2026), a listingi i PDF-y podaje obu runnerom; dwa poziomy małych listingów są też tańsze niż 60 stron kategorii.
+Listing ponad kierunkami jest ukryty, więc katalogi kierunków wymienia `dirs` w `sources.json`, a ich podkatalogi trybów
+znajduje przejście. Żeby nowy kierunek nie umknął, plebania robi **spis** (`--census wig`, `census` w `fleet.json`, najwyżej
+raz na dobę): przechodzi drzewo Joomli, które jej łącze widzi, i zapisuje katalogi wszystkich wymienionych tam PDF-ów w
+`refresh-state.json` (`found`). Wykrywanie czyta je razem z `dirs` na każdym runnerze, więc grupa nowego kierunku trafia na
+stronę w pierwszym przebiegu po spisie, nawet gdy WIG crawluje oracle. Spis loguje katalogi spoza `dirs` do dopisania;
+zablokowany albo nieudany spis zostawia poprzedni i nie psuje przebiegu (26.10.2026 jedynie „Bud. dróg i mostów” nie miał
+jeszcze żadnego katalogu). Katalog, który zniknął, nic nie wymienia, a spadek liczby grup o ponad połowę oznacza przebieg
+jako `degraded`. PDF-y to statyczne pliki z `Last-Modified`, więc niezmieniony plan odpowiada `304`. Każdy PDF jest wydrukiem (wkhtmltopdf) strony Plansoft w jednym
+z dwóch układów: stacjonarne powtarzają dzień w każdym wierszu, niestacjonarne rozciągają jedną komórkę dnia na wiersze
+dnia. Sterownik odtwarza tabelę z linii siatki i słów w komórkach, skleja wiersz przecięty przez koniec strony, rozpoznaje
+kolumny po treści (dzień, blok, daty) i oddaje zwykłą stronę Plansoft konwerterowi `wlo2ics`. Rok akademicki pochodzi z
+nagłówka PDF-u (`SEMESTR - WIG ZIMA 2026-2027`), nie z daty aktualizacji, bo plany niestacjonarne drukowane są w sierpniu.
+PDF innej grupy jest odrzucany, a PDF innego semestru liczy się jako „jeszcze nieopublikowany” (`core.NotReady`).
 
 ## Bez nazwisk kadry w kalendarzach
 
@@ -192,6 +214,14 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
    zostawił go ostatni runner, który go miał: zablokowany na oracle i czysto przejęty przez plebanię nie blokuje
    przebiegu. Przebieg, w którym jakiegoś wydziału nikt nie skończył, jest niepełny: niczego nie zamyka. Przebieg starszy niż 3 h zostawia zgłoszenia nowszym. Na koniec
    zapisuje przebieg w [historii przebiegów](#historia-przebiegów).
+
+Runner może też **preferować** wydziały (`prefers` w `fleet.json`): ścieżkę złożoną z nich dostaje zawsze, gdy jest
+włączony, niezależnie od obciążenia. Gdy jest wyłączony albo to on ją zostawił (handoff), ścieżka jest dzielona jak każda
+inna. Oracle preferuje WIG i IOE: oba runnery przeszły 26.10.2026 po dwa przebiegi WIG (33 z 33 grup, identyczne kalendarze), a
+IOE z oracle przeszedł czysto 9 przebiegów z 9. Plebania preferuje WTC, bo ściana WTC odrzuca adres VPS (zablokowany w 4
+przebiegach z 4, zwykłe HTTPS z maszyny dostaje 403): na oracle WTC kosztował tylko czekanie na ścianę i przekazanie.
+Przy obu włączonych oracle dostaje WIM, IOE i WIG, a plebania WLO z WEL, WCY, WML i WTC. Runner może też robić **spis** wydziału
+(`census`): plebania robi spis WIG, bo tylko jej łącze widzi strony Joomli wydziału (zob. uwagi o WIG wyżej).
 
 Każdy runner ma też **własny stan łącza** (wyuczone tempo, czasy blokad, ostatni przebieg wydziału): różne adresy
 trafiają na różne ściany, więc trzyma go w `$RUNNER_TOOL_CACHE/planwat/refresh-line.json`, zasiany raz z gałęzi `data`.

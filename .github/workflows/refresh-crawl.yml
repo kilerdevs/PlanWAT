@@ -17,6 +17,10 @@ on:
         description: Comma-separated faculties of this share.
         type: string
         required: true
+      census:
+        description: Comma-separated faculties whose site census this runner takes first (fleet.json), at most daily.
+        type: string
+        default: ''
       wave:
         description: 1 for the plan's share, 2 for a takeover.
         type: number
@@ -77,6 +81,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           profile: selfhosted
           faculty: ${{ inputs.faculties }}
+          census: ${{ inputs.census }}
           max-minutes: '90'
           max-block-wait-minutes: ${{ inputs.wait }}
       # The handoff and the report read these. A shard that never wrote one (a crash before this, a runner lost

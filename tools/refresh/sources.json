@@ -56,5 +56,18 @@
     "base": "https://wtc.wat.edu.pl/Plany/",
     "enabled": true,
     "note": "Enabled 2026-10-13: crawler + PDF converter in drivers/wtc (pymupdf). The index is flat (/Plany/index.xml) and names the semester it lists; the driver files PDFs only when that is the term being refreshed. The site sits behind Incapsula."
+  },
+  "wig": {
+    "driver": "wig",
+    "label": "WIG",
+    "prefix": "WIG",
+    "groups_re": "^WIG\\d\\d(?!BW)",
+    "base": "https://www.wig.wat.edu.pl/cpp/phocadownloadpap/",
+    "landing": "https://www.wig.wat.edu.pl/cpp/index.php/studenci/plany-rozklady-terminy/rozklady-zajec",
+    "dirs": ["bud_inz_cyfr_jsm_cyw", "budownictwo", "budownictwo_jsm_woj", "geodezja_kartografia_jsm_woj",
+             "geodezja_kataster", "geoinformatyka_jsm_cyw", "inzynieria_geoprzestrzenna", "meteo_hydro_jsm_cyw",
+             "transport"],
+    "enabled": true,
+    "note": "Enabled 2026-10-26: Plansoft PDFs (wkhtmltopdf prints) found through the open Apache listings of the Phoca Download directories (Incapsula challenges datacenter addresses on the Joomla pages, not on these); drivers/wig rebuilds each grid from its ruling lines into the Plansoft table wlo2ics converts (pymupdf). dirs names the programme directories (the listing above them is hidden; their stacjonarne/niestacjonarne/drugistopien subdirectories are walked): a new programme on rozklady-zajec is found by the census (landing, walked by the runner fleet.json gives census: wig, at most daily; the directories it finds are crawled from then on and logged, to be added here). On 2026-10-26 only 'Bud. dróg i mostów' had no directory yet. WIG..BW groups are also listed by WEL, whose copy is fresher, so WEL stays their owner and they are skipped here, as are PDFs that are not group plans."
   }
 }

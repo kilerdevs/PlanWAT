@@ -14,6 +14,9 @@ inputs:
   faculty:
     description: Comma-separated faculties; empty means every enabled one.
     default: ''
+  census:
+    description: Comma-separated faculties whose site census to take first (at most once a day; project mode only).
+    default: ''
   max-minutes:
     description: Stop gracefully after this many minutes.
     default: '100'
@@ -91,6 +94,7 @@ runs:
       env:
         PROFILE: ${{ inputs.profile }}
         FACULTY: ${{ inputs.faculty }}
+        CENSUS: ${{ inputs.census }}
         MAX_MINUTES: ${{ inputs.max-minutes }}
         BLOCK_WAIT: ${{ inputs.max-block-wait-minutes }}
         ADAPTIVE_HOURS: ${{ inputs.adaptive-hours }}
@@ -131,6 +135,7 @@ runs:
           if [ -f "$line" ] || "$PLANWAT_PY" "$SOURCE/tools/refresh/fleet.py" seed --state data/refresh-state.json --out "$line"; then
             args+=(--faculty-state "$line")
           fi
+          if [ -n "$CENSUS" ]; then args+=(--census "$CENSUS"); fi
         fi
         "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}"
         code=$?

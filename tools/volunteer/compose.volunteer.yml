@@ -76,7 +76,7 @@ services:
       # The same, spelled out for egress images older than EGRESS_POOL. To send one host through the
       # rotating public proxy pool instead (only worth it for a host that blocks your line), remove
       # EGRESS_POOL and that host from this list.
-      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,planzajec.wcy.wat.edu.pl"
+      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,www.wig.wat.edu.pl,planzajec.wcy.wat.edu.pl"
     volumes:
       - egress:/data
     ports:

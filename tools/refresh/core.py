@@ -31,6 +31,10 @@ class Blocked(Exception):
     """The host answered with a block page or an unexpected status. The run must stop, never retry."""
 
 
+class NotReady(Exception):
+    """A converter found a healthy plan of another semester (a PDF, which page_ok/not_ready cannot read)."""
+
+
 # How long a faculty stays blocked: learned from history, so the crawler waits out
 # the block instead of hammering a wall. Bounds keep a thin history honest.
 BLOCK_DEFAULT = 2 * 3600   # no history yet: assume a couple of hours

@@ -4,14 +4,17 @@
       "name": "plebania",
       "label": "planwat-plebania",
       "speed": 4,
-      "note": "The home server: fast, but often switched off. Takes the lion's share whenever GitHub sees it online."
+      "census": ["wig"],
+      "prefers": ["wtc"],
+      "note": "The home server: fast, but often switched off. Takes the lion's share whenever GitHub sees it online. Takes the WIG census (the Joomla tree Incapsula keeps from the VPS's datacenter address), at most once a day, so a new programme directory is crawled by whoever has WIG. Takes WTC whenever it is up: WTC's wall refuses the VPS's address (blocked in 4 of 4 passes up to 2026-10-26, plain HTTPS from the box answers 403), so on oracle it only ever cost a wall wait and a handoff."
     },
     {
       "name": "oracle",
       "label": "planwat-oracle",
       "speed": 1,
       "always_on": true,
-      "note": "The free Oracle VPS (deploy/runner/): slow and weak, but always up. Covers everything while plebania is off."
+      "prefers": ["wig", "ioe"],
+      "note": "The free Oracle VPS (deploy/runner/): slow and weak, but always up. Covers everything while plebania is off. Takes WIG and IOE whenever it is up, so the fast machine's share stays on the faculties only it gets through: WIG tested from both runners on 2026-10-26 (two passes each, 33/33 groups, identical calendars); IOE crawled clean from here in 9 of 9 passes. WLO/WEL, WML and WTC answer this address with their walls."
     }
   ]
 }

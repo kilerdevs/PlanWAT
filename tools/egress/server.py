@@ -128,7 +128,7 @@ def falls_back_direct(host):
 def faculty_targets(season=None):
     """Round-2 verification targets: each chain host's own index page + content marker.
 
-    XML indexes must contain <?xml; the HTML ones (WCY Drupal, WML landing) need a
+    XML indexes must contain <?xml; the HTML ones (WCY Drupal, WML landing, WIG file listing) need a
     positive marker too — a WAF block page is also a 200 with a large body. The
     proxy pool additionally rejects known block-page markers on every probe.
     """
@@ -142,6 +142,7 @@ def faculty_targets(season=None):
         'planzajec.wcy.wat.edu.pl': ('https://planzajec.wcy.wat.edu.pl/pl/rozklad', b'grupa_id=wcy'),
         'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', b'index.xml'),
         'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', xml),
+        'www.wig.wat.edu.pl': ('https://www.wig.wat.edu.pl/cpp/phocadownloadpap/budownictwo/', b'Index of /cpp/'),
     }
 
 

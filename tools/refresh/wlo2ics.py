@@ -870,6 +870,9 @@ def main(argv):
     ap.add_argument("--faculty", default=None,
                     help="faculty code for UIDs/headers "
                     "(default: WLO*/WEL* filename prefix, else 'wlo')")
+    ap.add_argument("--year", type=int, default=None,
+                    help="academic year the plan starts in, e.g. 2026 for "
+                    "2026/27 (default: from the update footer)")
     ap.add_argument("--code", default=None,
                     help="group code written to the calendar and used for its "
                     "UIDs (default: the page's own group id)")
@@ -913,7 +916,9 @@ def main(argv):
                     lect_alias.setdefault(short, [])
                     if name not in lect_alias[short]:
                         lect_alias[short].append(name)
-    if updated and updated[1] >= 9:
+    if args.year:
+        base_year = args.year
+    elif updated and updated[1] >= 9:
         base_year = updated[2]
     elif updated:
         base_year = updated[2] - 1

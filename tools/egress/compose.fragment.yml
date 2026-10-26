@@ -42,7 +42,7 @@ services:
       # public exits answer them with WAF block pages (WTC the worst), while the home line
       # serves them fine. Deliberately NOT listed: planzajec.wcy.wat.edu.pl — that one is
       # blocked from the home line and can only be reached through the pool.
-      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl"
+      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,www.wig.wat.edu.pl"
     # Pin resolvers: Docker snapshots the host's /etc/resolv.conf when a container starts, so a
     # container that starts before DHCP has written it can resolve nothing for the rest of its
     # life (seen 2026-10-17: runner offline with proxy 502s after a host reboot).
