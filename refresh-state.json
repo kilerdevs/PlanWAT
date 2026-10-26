@@ -74,8 +74,8 @@
    ]
   },
   "wml": {
-   "blocked_at": "2026-10-26T19:02:48",
-   "cause": "flaky",
+   "blocked_at": "2026-10-26T19:30:43",
+   "cause": "wall",
    "durations": [
     {
      "at_iso": "2026-10-15T19:54:58",
@@ -91,11 +91,6 @@
      "at_iso": "2026-10-23T14:46:52",
      "cause": "flaky",
      "dur": 72.0
-    },
-    {
-     "at_iso": "2026-10-26T19:02:20",
-     "cause": "flaky",
-     "dur": 13.0
     }
    ]
   },
@@ -207,25 +202,24 @@
    }
   },
   "wml": {
-   "blocked_at": "2026-10-26T19:02:48",
+   "blocked_at": "2026-10-26T19:30:43",
    "last_count": 162,
-   "last_ok": "2026-10-26T15:21:26",
+   "last_ok": "2026-10-24T16:21:34",
    "run": {
     "ahead": false,
-    "at": "2026-10-26T19:02:48",
+    "at": "2026-10-26T19:30:43",
     "blocked": true,
-    "cause": "flaky",
+    "cause": "wall",
     "changed": 0,
-    "checked": 1,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
-    "skipped": 1,
-    "term": "2026-27-zima"
+    "skipped": 0
    },
    "wait": {
-    "probes": 1,
-    "recovered": true,
-    "waited": 12
+    "probes": 5,
+    "recovered": false,
+    "waited": 1800
    }
   },
   "wtc": {
