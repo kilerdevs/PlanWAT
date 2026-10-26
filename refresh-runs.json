@@ -2,6 +2,133 @@
  "version": 1,
  "runs": [
   {
+   "id": 40288910011,
+   "number": 65,
+   "attempt": 1,
+   "event": "schedule",
+   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/40288910011",
+   "planned": "2026-10-26T07:56:44",
+   "ended": "2026-10-26T08:51:17",
+   "result": "blocked",
+   "changed": 2,
+   "checked": 261,
+   "not_ready": 0,
+   "runners": [
+    {
+     "name": "oracle",
+     "faculties": [
+      "wlo",
+      "wel",
+      "wim",
+      "ioe",
+      "wcy",
+      "wml",
+      "wtc"
+     ],
+     "status": "blocked",
+     "minutes": 54,
+     "changed": 2,
+     "wave": 1,
+     "blocked_on": [
+      "wlo",
+      "wcy",
+      "wml",
+      "wtc"
+     ]
+    }
+   ],
+   "offline": [
+    "plebania"
+   ],
+   "unassigned": [],
+   "faculties": [
+    {
+     "id": "wlo",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 0,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": true,
+     "degraded": false,
+     "cause": "wall"
+    },
+    {
+     "id": "wel",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 158,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 3,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wim",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 88,
+     "changed": 2,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "ioe",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 15,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wcy",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 0,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": true,
+     "degraded": false,
+     "cause": "wall"
+    },
+    {
+     "id": "wml",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 0,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": true,
+     "degraded": false,
+     "cause": "wall"
+    },
+    {
+     "id": "wtc",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 0,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": true,
+     "degraded": false,
+     "cause": "wall"
+    }
+   ]
+  },
+  {
    "id": 40249645750,
    "number": 64,
    "attempt": 1,
