@@ -1,13 +1,14 @@
 # Odświeżanie planów: ostatnie przebiegi
 
 > [!TIP]
-> **Ostatni przebieg: zmiany w 2 planach.** 26 paź 2026 · 22:06 · **plebania** · **oracle** · 26 min · [przebieg #69](https://github.com/kilerdevs/PlanWAT/actions/runs/40401476129)
-> Pobrano nowe wersje 2 planów.
+> **Ostatni przebieg: zmiany w 33 planach.** 26 paź 2026 · 23:48 · **oracle** · 4 min · [przebieg #70](https://github.com/kilerdevs/PlanWAT/actions/runs/40415244881)
+> Pobrano nowe wersje 33 planów.
 
 Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
 
 | Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |
 |---|---|---|--:|--:|---|
+| 26 paź · 23:48 | Zmiany w 33 planach | **oracle** (WIG) | 33 | 4 min | [#70](https://github.com/kilerdevs/PlanWAT/actions/runs/40415244881) |
 | 26 paź · 22:06 | Zmiany w 2 planach | **plebania** (WLO, WEL, IOE, WCY, WML, WTC (od oracle)) · **oracle** (WIM, WTC) | 255 | 26 min | [#69](https://github.com/kilerdevs/PlanWAT/actions/runs/40401476129) |
 | 26 paź · 20:01 | Zablokowany | **plebania** (WLO, WEL, WCY, WML, WIM (od oracle), WTC (od oracle)) · **oracle** (WIM, IOE, WTC, WML (od plebania)) | 485 | 60 min | [#68](https://github.com/kilerdevs/PlanWAT/actions/runs/40382908076) |
 | 26 paź · 16:19 | Część stron odrzucona | **plebania** (WLO, WEL, WCY, WML, WTC (od oracle)) · **oracle** (WIM, IOE, WTC) | 110 | 10 min | [#67](https://github.com/kilerdevs/PlanWAT/actions/runs/40348126142) |
@@ -17,9 +18,23 @@ Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w cza
 | 25 paź · 23:24 | Bez zmian | **plebania** (WLO, WEL, WCY, WML, WTC (od oracle)) · **oracle** (WIM, IOE, WTC) | 46 | 8 min | [#63](https://github.com/kilerdevs/PlanWAT/actions/runs/40240046249) |
 | 25 paź · 22:56 | Bez zmian | **plebania** (WLO, WEL, WCY, WML, WTC (od oracle)) · **oracle** (WIM, IOE, WTC) | 68 | 14 min | [#62](https://github.com/kilerdevs/PlanWAT/actions/runs/40237831558) |
 | 25 paź · 21:59 | Zablokowany | **plebania** (WLO, WEL, WCY, WML) · **oracle** (WIM, IOE, WTC) | 101 | 50 min | [#61](https://github.com/kilerdevs/PlanWAT/actions/runs/40233347824) |
-| 25 paź · 21:46 | Zablokowany | **plebania** (WLO, WEL, WCY, WML) · **oracle** (WIM, IOE, WTC) | 654 | 37 min | [#60](https://github.com/kilerdevs/PlanWAT/actions/runs/40232365038) |
 
 ## Szczegóły
+
+<details>
+<summary><b>26 paź · 23:48</b> · Zmiany w 33 planach · oracle</summary>
+
+Pobrano nowe wersje 33 planów. Przebieg uruchomiony ręcznie [#70](https://github.com/kilerdevs/PlanWAT/actions/runs/40415244881), od planu do raportu 4 min.
+
+| Serwer | Wydziały | Zmienione | Stan |
+|---|---|--:|---|
+| **oracle** | WIG | 33 | 3 min |
+
+| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
+|---|---|--:|--:|---|
+| WIG | oracle | 33 | 33 |  |
+
+</details>
 
 <details>
 <summary><b>26 paź · 22:06</b> · Zmiany w 2 planach · plebania · oracle</summary>
@@ -222,28 +237,6 @@ Strona wydziału WTC zablokowała pobieranie. Zostają poprzednie plany, następ
 | WML | plebania | 3 | 0 | odrzucone strony: 3 |
 | WIM | oracle | 0 | 0 |  |
 | IOE | oracle | 0 | 0 |  |
-| WTC | oracle | 0 | 0 | blokada Incapsula |
-
-</details>
-
-<details>
-<summary><b>25 paź · 21:46</b> · Zablokowany · plebania · oracle</summary>
-
-Strona wydziału WTC zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu. Przebieg uruchomiony ręcznie [#60](https://github.com/kilerdevs/PlanWAT/actions/runs/40232365038), od planu do raportu 37 min.
-
-| Serwer | Wydziały | Zmienione | Stan |
-|---|---|--:|---|
-| **plebania** | WLO, WEL, WCY, WML | 0 | 36 min |
-| **oracle** | WIM, IOE, WTC | 0 | 31 min, zablokowany |
-
-| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
-|---|---|--:|--:|---|
-| WLO | plebania | 131 | 0 |  |
-| WEL | plebania | 158 | 0 | odrzucone strony: 3 |
-| WCY | plebania | 100 | 0 | odrzucone strony: 1, bez planu na ten semestr: 38 |
-| WML | plebania | 162 | 0 | odrzucone strony: 3 |
-| WIM | oracle | 88 | 0 |  |
-| IOE | oracle | 15 | 0 |  |
 | WTC | oracle | 0 | 0 | blokada Incapsula |
 
 </details>
