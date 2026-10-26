@@ -219,11 +219,17 @@ Ostatnie 10 przebiegów widać w dwóch miejscach, z tego samego pliku:
 - **na stronie:** [`/stan/`](https://kilerdevs.github.io/PlanWAT/stan/), podlinkowana w stopce strony głównej. Strona nie
   uruchamia żadnego skryptu: wiersze rozwijają się elementem `<details>`.
 
-Każdy przebieg pokazuje, kiedy ruszył i jak się skończył (bez zmian, zmiany w N planach, z pominięciami, niepełny,
+Każdy przebieg pokazuje, kiedy ruszył i jak się skończył (bez zmian, zmiany w N planach, część stron odrzucona, niedokończony,
 zablokowany albo „serwery wyłączone”), **które serwery go zrobiły** (plebania, oracle: wydziały każdego, czas, stan) i które
 były wtedy wyłączone, a dla każdego wydziału: ile grup sprawdzono i zmieniono, ile nie ma jeszcze planu na ten semestr, ile
-pominięto i czy była blokada. Liczby wydziału pochodzą z jego wpisu `run` w `refresh-state.json`, o ile powstał w tym
+stron odrzucono i czy była blokada. Liczby wydziału pochodzą z jego wpisu `run` w `refresh-state.json`, o ile powstał w tym
 przebiegu; inaczej wydział ma „brak danych z tego przebiegu”.
+
+`/stan/` pokazuje też **stan opublikowanych planów** (z `refresh-state.json`, liczony na koniec ostatniego przebiegu, więc
+strona zbudowana później mówi to samo): jak dawno sprawdzono plany każdego wydziału, dzień ostatniej zmiany planu z 14
+dni, plany najdawniej sprawdzone (dzień lub więcej), ostatnio zmienione i najdłużej bez zmian. Plan, którego wydział nie
+potwierdził w tym semestrze (strona pokazuje jeszcze inny semestr), liczy się osobno jako „bez potwierdzenia”. Wykresy są
+w SVG bez skryptu, z tabelą liczb pod każdym.
 
 Zapisuje je zadanie **report** (`tools/refresh/runs.py record`): dopisuje przebieg do `refresh-runs.json` na `data` (od
 najnowszego, ponowna próba zastępuje pierwszą, najwyżej 10) i przepisuje z niego `README.md` gałęzi. Push ma tę samą pętlę

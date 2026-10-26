@@ -29,6 +29,13 @@
     --accent-text: #4da3ff;
     --free: #32d74b;
     --busy: #ff6b63;
+    /* charts (dataviz validator: an ordinal one-hue ramp, fresh = brightest on dark; theme-light.css has the light steps) */
+    --fr1: #6da7ec;
+    --fr2: #3987e5;
+    --fr3: #256abf;
+    --fr4: #184f95;
+    --frn: #48484a;
+    --bar: #3987e5;
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
     color-scheme: dark;
   }
@@ -72,14 +79,16 @@
   .latest.empty .verdict { font-size: 1.25rem; letter-spacing: -0.02em; }
   .lead2 { margin: 6px 0 0; color: var(--t2); font-size: 0.9375rem; }
   .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0 0; }
-  .stats div { min-width: 0; }
-  .stats dt { color: var(--t2); font-size: 0.8125rem; font-weight: 500; }
-  .stats dd { margin: 2px 0 0; font-size: 1.375rem; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  /* number first, its label under it: the numbers share one line however the labels wrap (dt stays first in the
+     markup, so a screen reader still hears the label before the value) */
+  .stats div { display: flex; flex-direction: column; min-width: 0; }
+  .stats dd { order: -1; margin: 0; font-size: 1.375rem; font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stats dt { margin-top: 2px; color: var(--t2); font-size: 0.8125rem; font-weight: 500; line-height: 1.35; }
   .latest .parts { margin-top: 18px; padding-top: 6px; border-top: 1px solid var(--line); }
   .striprow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
   .striplabel { color: var(--t2); font-size: 0.8125rem; font-weight: 500; }
   .strip { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
-  .strip li { width: 8px; height: 22px; border-radius: 4px; background: var(--tone, var(--t3)); }
+  .strip li { width: 8px; height: 22px; border-radius: 4px; background: var(--tone, var(--t3)); cursor: default; }
   .strip li.off { background: var(--s3); }
   .strip li:last-child { box-shadow: 0 0 0 2px var(--s2), 0 0 0 3px var(--line); }
 
@@ -88,6 +97,8 @@
   .parts li { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; padding: 8px 0; font-size: 0.875rem; }
   .parts li + li { border-top: 1px solid var(--line); }
   .pname { font-weight: 600; }
+  /* a second-wave share: the same server twice reads as a mistake without it */
+  .prole { display: block; margin-top: 1px; color: var(--t3); font-size: 0.75rem; font-weight: 500; }
   .pfacs { color: var(--t2); overflow-wrap: anywhere; }
   .pstate { color: var(--t2); font-variant-numeric: tabular-nums; text-align: right; }
   .parts li.off .pname { color: var(--t3); text-decoration: line-through; text-decoration-thickness: 1px; }
@@ -98,30 +109,98 @@
   .run { position: relative; }
   .run + .run::before { content: ""; position: absolute; top: 0; left: 38px; right: 0; height: 1px; background: var(--line); }
   summary {
-    display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 16px; grid-template-areas: "dot when res chev" ". srv srv chev";
+    display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 16px; grid-template-areas: "dot when res chev" ". srv srv .";
     column-gap: 12px; row-gap: 6px; align-items: center; padding: 13px 16px; cursor: pointer; list-style: none;
     transition: background-color var(--dur-fast);
+    touch-action: manipulation;
   }
   summary::-webkit-details-marker { display: none; }
+  summary:active { background: var(--s3); }
   @media (hover: hover) and (pointer: fine) {
     summary:hover { background: var(--s2-hover); }
+    summary:active { background: var(--s3); }
   }
+  /* a pass opens and closes smoothly, like the faculties on the front page (the browser animates the height to and
+     from auto; where it cannot, the row just opens) */
+  .run details, .tview { interpolate-size: allow-keywords; }
+  .run details::details-content, .tview::details-content {
+    block-size: 0;
+    overflow: clip;
+    transition: block-size var(--dur-base) var(--ease-out), content-visibility var(--dur-base) allow-discrete;
+  }
+  .run details[open]::details-content, .tview[open]::details-content { block-size: auto; }
   summary .dot { grid-area: dot; }
   .rwhen { grid-area: when; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em; font-variant-numeric: tabular-nums; }
   .rres { grid-area: res; color: var(--t2); font-size: 0.875rem; font-weight: 500; text-align: right; }
-  .chev { grid-area: chev; width: 16px; height: 16px; color: var(--t3); transition: transform var(--dur-base) var(--ease-out); }
+  .chev { grid-area: chev; width: 16px; height: 16px; color: var(--t3); transition: transform var(--dur-base) var(--spring); }
   details[open] .chev { transform: rotate(90deg); }
   .rsrv { grid-area: srv; display: flex; flex-wrap: wrap; gap: 6px; }
   .srv { padding: 2px 9px; border-radius: 999px; background: var(--s3); color: var(--t2); font-size: 0.75rem; font-weight: 600; line-height: 1.5; }
   .srv.off { background: none; color: var(--t3); box-shadow: inset 0 0 0 1px var(--line); text-decoration: line-through; text-decoration-thickness: 1px; }
   .more { padding: 2px 16px 16px 38px; }
-  .facs { margin: 12px 0 0; padding: 12px 0 0; list-style: none; border-top: 1px solid var(--line); }
-  .facs li { display: grid; grid-template-columns: 3rem 5.5rem minmax(0, 1fr); gap: 2px 12px; padding: 5px 0; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+  .facs { margin: 0; padding: 0; list-style: none; }
+
+  /* the published plans: freshness per faculty, the day plans last changed, the extremes */
+  .stack .card + .card { margin-top: 12px; }
+  .card { padding: 18px 20px 20px; border-radius: 20px; background: var(--s2); box-shadow: var(--edge); }
+  .asof { margin: -4px 4px 10px; color: var(--t3); font-size: 0.8125rem; }
+  .stack .stats { margin-top: 0; }
+  /* a number that counts up (build.count_up): --n runs from 0 to the value the build wrote a rule for */
+  @property --n { syntax: '<integer>'; inherits: false; initial-value: 0; }
+  .cu { --n: var(--to, 0); counter-reset: n var(--n); }
+  .cu::after { content: counter(n); }
+  @property --seen { syntax: '<integer>'; inherits: false; initial-value: 0; }
+/*@@COUNTERS@@*/
+  .stats dd small { margin-left: 2px; color: var(--t2); font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; }
+  .sub.first { margin-top: 0; }
+  .card .sub { margin-top: 22px; }
+  .card .sub.first { margin-top: 0; }
+  .legendrow { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 10px; padding: 0; list-style: none; color: var(--t2); font-size: 0.75rem; }
+  .legendrow li { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 10px; height: 10px; flex: none; }
+  .fr1 { fill: var(--fr1); } .fr2 { fill: var(--fr2); } .fr3 { fill: var(--fr3); } .fr4 { fill: var(--fr4); } .frn { fill: var(--frn); }
+  .fresh { margin: 0; padding: 0; list-style: none; }
+  .fresh li { display: grid; grid-template-columns: 3rem minmax(0, 1fr) 4.75rem; align-items: center; gap: 12px; padding: 5px 0; font-size: 0.875rem; }
+  .fresh .fcode { font-weight: 600; text-decoration: none; }
+  .fbar { display: block; width: 100%; height: 12px; border-radius: 4px; overflow: hidden; }
+  .fbar .gap { stroke: var(--s2); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+  .fval { color: var(--t2); font-size: 0.8125rem; text-align: right; font-variant-numeric: tabular-nums; }
+  .axisnote { margin: 6px 0 0; color: var(--t3); font-size: 0.75rem; line-height: 1.45; }
+  .hist { display: block; width: 100%; height: 120px; margin-top: 12px; border-bottom: 1px solid var(--line); }
+  .hbar { fill: var(--bar); }
+  .hbar.zero { fill: var(--line); }
+  .haxis { display: flex; justify-content: space-between; margin-top: 4px; color: var(--t3); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+  .tview { margin-top: 8px; font-size: 0.8125rem; }
+  .tview summary { display: inline-block; padding: 2px 0; color: var(--accent-text); cursor: pointer; list-style: none; transition: opacity var(--dur-fast); }
+  .tview summary::-webkit-details-marker { display: none; }
+  .tview summary:active { opacity: 0.6; }
+  .tview table { width: 100%; margin-top: 6px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .tview th, .tview td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; font-weight: 400; }
+  .tview th:first-child { text-align: left; }
+  .tview thead th { color: var(--t2); font-weight: 500; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 24px; }
+  .glist { margin: 4px 0 0; padding: 0; list-style: none; }
+  .glist li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+  .glist li + li { border-top: 1px solid var(--line); }
+  .glist a { color: var(--t1); font-weight: 600; text-decoration: none; transition: color var(--dur-fast); }
+  .glist a:hover { color: var(--accent-text); text-decoration: underline; }
+  .glist span { color: var(--t2); text-align: right; }
+  .quietnote { margin: 8px 0 0; color: var(--t3); font-size: 0.8125rem; }
+  /* an opened pass: a small title over the servers and another over the faculties, with air between the two */
+  .sub { margin: 20px 0 2px; color: var(--t3); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .why + .sub { margin-top: 12px; }
+  .facs li { display: grid; grid-template-columns: 3rem 5.5rem minmax(0, 1fr); gap: 2px 12px; padding: 8px 0; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+  .facs li + li { border-top: 1px solid var(--line); }
   .fcode { font-weight: 600; }
   .fsrv { color: var(--t2); }
   .fnum { color: var(--t2); text-align: right; }
   .fnote { grid-column: 2 / -1; color: var(--t3); font-size: 0.8125rem; }
+  .why { margin: 0 0 4px; color: var(--t2); font-size: 0.875rem; line-height: 1.5; }
   .runlink { margin: 12px 0 0; color: var(--t3); font-size: 0.8125rem; }
+  .legend { display: grid; gap: 8px; margin: 18px 4px 0; font-size: 0.8125rem; line-height: 1.5; }
+  .legend dt { display: inline; color: var(--t2); font-weight: 600; }
+  .legend dt::after { content: " – "; font-weight: 400; }
+  .legend dd { display: inline; margin: 0; color: var(--t3); }
   .note { margin: 16px 4px 0; color: var(--t3); font-size: 0.8125rem; line-height: 1.55; }
 
   @media (max-width: 480px) {
@@ -132,14 +211,72 @@
     .fnum { text-align: left; }
     .fnote { grid-column: 2; }
   }
+  /* motion, the project's own (group.html, index.html): one page-load entrance with a 60 ms stagger (a softer rise with
+     a blur on a desktop pointer), the rows of the list a beat later, charts that grow from their baseline, details that
+     open smoothly. No script: a chart below the fold grows as it scrolls into view where the browser can tie an
+     animation to that (animation-timeline), and at load elsewhere */
+  :root { --rise-y: 16px; --rise-blur: 0px; }
   @media (prefers-reduced-motion: no-preference) {
-    @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+    @keyframes rise { from { opacity: 0; transform: translateY(var(--rise-y)); filter: blur(var(--rise-blur)); } }
     @keyframes open { from { opacity: 0; transform: translateY(-4px); } }
-    .enter { animation: rise var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(var(--d, 0) * 55ms); }
-    .d1 { --d: 1; } .d2 { --d: 2; } .d3 { --d: 3; } .d4 { --d: 4; }
-    details[open] .more { animation: open var(--dur-base) var(--ease-out); }
+    @keyframes grow-x { from { transform: scaleX(0); } }
+    @keyframes grow-y { from { transform: scaleY(0); } }
+    .enter { animation: rise var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(var(--d, 0) * 60ms); }
+    .d1 { --d: 1; } .d2 { --d: 2; } .d3 { --d: 3; } .d4 { --d: 4; } .d5 { --d: 5; }
+    details[open] .more, .tview[open] table { animation: open var(--dur-base) var(--ease-out); }
+    /* the tiles count up from 0 as their card settles in (time-based on purpose: a number tied to the scroll could
+       come to rest showing a value it never had) */
+    @keyframes count-up { from { --n: 0; } }
+    @keyframes seen { to { --seen: 1; } }
+    .latest .cu { animation: count-up 1.1s var(--ease-out) 260ms backwards; }
+    .stack .cu { animation: count-up 1.1s var(--ease-out) 380ms backwards; }
+    /* the list's rows follow the entrance, one after another (the rest are below the fold anyway) */
+    .runs > .run { animation: rise var(--dur-slow) var(--ease-out) backwards; }
+    .runs > .run:nth-child(1) { animation-delay: 330ms; }
+    .runs > .run:nth-child(2) { animation-delay: 380ms; }
+    .runs > .run:nth-child(3) { animation-delay: 430ms; }
+    .runs > .run:nth-child(4) { animation-delay: 480ms; }
+    .runs > .run:nth-child(n+5) { animation-delay: 530ms; }
+    /* the last passes' strip rises bar by bar, the newest last */
+    .strip li { transform-origin: bottom; animation: grow-y var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(240ms + var(--i, 0) * 30ms); }
+    .strip li:nth-child(2) { --i: 1; } .strip li:nth-child(3) { --i: 2; } .strip li:nth-child(4) { --i: 3; }
+    .strip li:nth-child(5) { --i: 4; } .strip li:nth-child(6) { --i: 5; } .strip li:nth-child(7) { --i: 6; }
+    .strip li:nth-child(8) { --i: 7; } .strip li:nth-child(9) { --i: 8; } .strip li:nth-child(10) { --i: 9; }
+    /* a faculty's freshness bar fills from the left, the histogram's bars rise from the baseline */
+    .fbar { transform-origin: left; animation: grow-x var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(300ms + var(--i, 0) * 40ms); }
+    .fresh li:nth-child(2) .fbar { --i: 1; } .fresh li:nth-child(3) .fbar { --i: 2; } .fresh li:nth-child(4) .fbar { --i: 3; }
+    .fresh li:nth-child(5) .fbar { --i: 4; } .fresh li:nth-child(6) .fbar { --i: 5; } .fresh li:nth-child(7) .fbar { --i: 6; }
+    .fresh li:nth-child(n+8) .fbar { --i: 7; }
+    .hist rect { transform-box: fill-box; transform-origin: bottom; animation: grow-y var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(300ms + var(--i, 0) * 25ms); }
+    .hist rect:nth-child(2) { --i: 1; } .hist rect:nth-child(3) { --i: 2; } .hist rect:nth-child(4) { --i: 3; }
+    .hist rect:nth-child(5) { --i: 4; } .hist rect:nth-child(6) { --i: 5; } .hist rect:nth-child(7) { --i: 6; }
+    .hist rect:nth-child(8) { --i: 7; } .hist rect:nth-child(9) { --i: 8; } .hist rect:nth-child(10) { --i: 9; }
+    .hist rect:nth-child(11) { --i: 10; } .hist rect:nth-child(12) { --i: 11; } .hist rect:nth-child(13) { --i: 12; }
+    .hist rect:nth-child(14) { --i: 13; }
+    /* below the fold, a chart grows as it comes into view instead of having grown unseen at load */
+    @supports (animation-timeline: view()) {
+      /* the scroll only pulls the trigger: --seen flips to 1 once a faculty's row (or the histogram) is a fifth of the
+         screen up, where it is read rather than glimpsed at the edge, and the bars then grow on the clock. A bar tied
+         to the scroll itself could come to rest half-drawn and show a share it doesn't have. Until then a bar is
+         hidden, not empty; where style queries are missing neither rule applies and the bars simply stand */
+      .fresh li, .hist { container-name: chart; animation: seen step-end both; animation-timeline: view(); animation-range: cover 0% cover 20%; }
+      .fbar, .hist rect { animation: none; }
+      @container chart style(--seen: 0) {
+        .fbar { transform: scaleX(0); }
+        .hist rect { transform: scaleY(0); }
+      }
+      @container chart style(--seen: 1) {
+        .fbar { animation: grow-x var(--dur-slow) var(--ease-out) backwards; }
+        .hist rect { animation: grow-y var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 25ms); }
+      }
+    }
   }
-  @media (prefers-reduced-motion: reduce) { .chev, summary { transition: none; } }
+  @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+    :root { --rise-y: 20px; --rise-blur: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chev, summary, .run details::details-content, .tview::details-content { transition: none; }
+  }
   @media (min-width: 768px) {
     main { padding-top: 64px; }
     h1 { font-size: 3rem; letter-spacing: -0.035em; }
@@ -153,13 +290,21 @@
 <main>
   <a class="back enter" href="../">‹ PlanWAT</a>
   <h1 class="enter d1">Odświeżanie planów</h1>
-  <p class="lead enter d2">Co dwie godziny serwery projektu sprawdzają strony wydziałów i pobierają plany, które się zmieniły. Tu widać, jak poszły ostatnie przebiegi.</p>
+  <p class="lead enter d2">Kilka razy na dobę serwery projektu sprawdzają strony wydziałów i pobierają plany, które się zmieniły. Tu widać, jak poszły ostatnie przebiegi.</p>
   <div class="enter d3">
 @@LATEST@@
   </div>
-  <section class="enter d4" aria-labelledby="runsTitle">
+  <div class="enter d4">
+@@PLANS@@
+  </div>
+  <section class="enter d5" aria-labelledby="runsTitle">
     <h2 class="sect" id="runsTitle">Ostatnie przebiegi</h2>
 @@RUNS@@
+    <dl class="legend">
+      <div><dt>Odrzucone strony</dt><dd>Plan ze strony wydziału nie przeszedł kontroli (np. nagle zniknęła z niego większość zajęć), więc zostaje poprzednia wersja.</dd></div>
+      <div><dt>Bez planu na ten semestr</dt><dd>Wydział nie opublikował jeszcze planu tej grupy na bieżący semestr.</dd></div>
+      <div><dt>Przejęcie</dt><dd>Strona wydziału zablokowała jeden serwer albo ten go nie skończył, więc wydział sprawdził drugi serwer.</dd></div>
+    </dl>
     <p class="note">Godziny w czasie warszawskim, od rozpoczęcia przebiegu. Ta lista odświeża się razem ze stroną, więc najnowszy przebieg bywa widoczny z opóźnieniem do kilku godzin; na bieżąco pokazuje go <a href="@@HISTORY_URL@@">historia przebiegów na GitHubie</a>.</p>
   </section>
 </main>

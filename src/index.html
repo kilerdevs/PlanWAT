@@ -428,16 +428,28 @@
     .now-card, .star, .fac-sec summary .chev, .chip, .pick, .fac-sec::details-content { transition: none; }
     .chip:active, .pick:active { transform: none; }
   }
-  /* entrance: the header settles in once, the list sections follow a beat later */
+  /* entrance: the page settles in once, top to bottom, every faculty's section included. "Teraz w…" and the saved groups
+     take their turn when the script shows them at load, and push what follows a step back (--x); shown later (a first
+     star), they rise at once */
   @media (prefers-reduced-motion: no-preference) {
     @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
-    .enter { animation: rise var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(var(--d, 0) * 55ms); }
+    main { --x: 0; }
+    main:has(#liveSec:not([hidden])), main:has(#saved:not([hidden])) { --x: 1; }
+    main:has(#liveSec:not([hidden])):has(#saved:not([hidden])) { --x: 2; }
+    .enter, .live-sec, .saved, .resultline, #groupList > .fac-sec { animation: rise var(--dur-slow) var(--ease-out) backwards; }
+    .enter { animation-delay: calc(var(--d, 0) * 55ms); }
     .d1 { --d: 1; } .d2 { --d: 2; } .d3 { --d: 3; } .d4 { --d: 4; } .d5 { --d: 5; } .d6 { --d: 6; }
-    #groupList > .fac-sec { animation: rise var(--dur-slow) var(--ease-out) backwards; }
-    #groupList > .fac-sec:nth-of-type(1) { animation-delay: 180ms; }
-    #groupList > .fac-sec:nth-of-type(2) { animation-delay: 240ms; }
-    #groupList > .fac-sec:nth-of-type(3) { animation-delay: 300ms; }
-    #groupList > .fac-sec:nth-of-type(4) { animation-delay: 360ms; }
+    .live-sec { animation-delay: 220ms; }
+    .saved { animation-delay: calc((4 + var(--x) - 1) * 55ms); }
+    .bar, .search-wrap, .finder-cta, .filters { animation-delay: calc((var(--d) + var(--x)) * 55ms); }
+    .resultline { animation-delay: calc((7 + var(--x)) * 55ms); }
+    #groupList > .fac-sec { animation-delay: calc((7 + var(--x)) * 55ms + var(--i, 1) * 40ms); }
+    #groupList > .fac-sec:nth-of-type(2) { --i: 2; } #groupList > .fac-sec:nth-of-type(3) { --i: 3; }
+    #groupList > .fac-sec:nth-of-type(4) { --i: 4; } #groupList > .fac-sec:nth-of-type(5) { --i: 5; }
+    #groupList > .fac-sec:nth-of-type(6) { --i: 6; } #groupList > .fac-sec:nth-of-type(7) { --i: 7; }
+    #groupList > .fac-sec:nth-of-type(8) { --i: 8; } #groupList > .fac-sec:nth-of-type(9) { --i: 9; }
+    #groupList > .fac-sec:nth-of-type(n+10) { --i: 10; }
+    .settled .live-sec, .settled .saved { animation-delay: 0s; }
   }
   @media (min-width: 768px) {
     main { padding-top: calc(env(safe-area-inset-top) + 96px); }
@@ -1103,6 +1115,8 @@
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {});
   renderSaved();
   renderLive();
+  /* the entrance is over: a section shown from now on (a first star) rises at once, not after its load-time turn */
+  setTimeout(function () { document.documentElement.classList.add('settled'); }, 1200);
   /* keep "now" honest while the page stays open */
   setInterval(function () { if (!document.hidden) renderLive(); }, 60000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) renderLive(); });

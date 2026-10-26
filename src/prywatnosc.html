@@ -69,10 +69,37 @@
   .cmp td strong { color: var(--accent-text); }
   .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .updated { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 0.875rem; }
+  /* motion, the project's own (group.html, stan/): one entrance with a 60 ms stagger (a softer rise with a blur on a
+     desktop pointer), then each section rises as it comes into view, its heading first. The scroll only pulls the
+     trigger (--seen flips once a section's heading is in view, as on /stan/) and the rise runs on the clock, so
+     no text rests half-faded. No script on a privacy page: without scroll timelines the sections rise at load, and
+     without style queries they simply stand */
+  :root { --rise-y: 16px; --rise-blur: 0px; }
+  @property --seen { syntax: '<integer>'; inherits: false; initial-value: 0; }
   @media (prefers-reduced-motion: no-preference) {
-    @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
-    .enter { animation: rise var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(var(--d, 0) * 55ms); }
+    @keyframes rise { from { opacity: 0; transform: translateY(var(--rise-y)); filter: blur(var(--rise-blur)); } }
+    @keyframes seen { to { --seen: 1; } }
+    .enter, .sec > *, .cmp tbody tr { animation: rise var(--dur-slow) var(--ease-out) backwards; }
+    .enter { animation-delay: calc(var(--d, 0) * 60ms); }
     .d1 { --d: 1; } .d2 { --d: 2; }
+    /* a section's own stagger: heading, then each block 40 ms apart; the table's rows follow one by one */
+    .sec > * { animation-delay: calc(180ms + var(--i, 0) * 40ms); }
+    .sec > :nth-child(2) { --i: 1; } .sec > :nth-child(3) { --i: 2; } .sec > :nth-child(4) { --i: 3; } .sec > :nth-child(n+5) { --i: 4; }
+    .cmp tbody tr { animation-delay: calc(300ms + var(--r, 0) * 30ms); }
+    .cmp tbody tr:nth-child(2) { --r: 1; } .cmp tbody tr:nth-child(3) { --r: 2; } .cmp tbody tr:nth-child(4) { --r: 3; }
+    .cmp tbody tr:nth-child(5) { --r: 4; } .cmp tbody tr:nth-child(6) { --r: 5; } .cmp tbody tr:nth-child(7) { --r: 6; }
+    .cmp tbody tr:nth-child(8) { --r: 7; } .cmp tbody tr:nth-child(n+9) { --r: 8; }
+    @supports (animation-timeline: view()) {
+      .sec { container-name: sec; animation: seen step-end both; animation-timeline: view(); animation-range: entry 0px entry 40px; }
+      .sec > *, .cmp tbody tr { animation: none; }
+      @container sec style(--seen: 0) { .sec > * { opacity: 0; } }
+      @container sec style(--seen: 1) {
+        .sec > *, .cmp tbody tr { animation: rise var(--dur-slow) var(--ease-out) backwards; }
+      }
+    }
+  }
+  @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+    :root { --rise-y: 20px; --rise-blur: 8px; }
   }
   @media (min-width: 768px) { main { padding-top: 64px; } h1 { font-size: 3rem; letter-spacing: -0.035em; } }
 /*@@THEME_CSS@@*/
@@ -85,72 +112,88 @@
 
   <p class="callout enter d2"><strong>PlanWAT nigdy nie poprosi Cię o adres e-mail</strong> ani żadne inne dane osobowe. Serwis nie ma kont ani formularzy logowania, więc nie ma też miejsca, w którym takie dane mogłyby zostać zapisane. Jeśli ktoś podaje się za PlanWAT i prosi o Twój adres e-mail, to szemrane zachowanie: nie podawaj go i zgłoś to opiekunowi projektu.</p>
 
-  <h2>Kto prowadzi serwis</h2>
-  <p>PlanWAT to prywatna, nieoficjalna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Prowadzi go opiekun projektu <a href="https://github.com/kilerdevs/PlanWAT">kilerdevs/PlanWAT</a> na GitHubie. Plany zajęć pochodzą z ogólnodostępnych stron wydziałów.</p>
+  <section class="sec">
+    <h2>Kto prowadzi serwis</h2>
+    <p>PlanWAT to prywatna, nieoficjalna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Prowadzi go opiekun projektu <a href="https://github.com/kilerdevs/PlanWAT">kilerdevs/PlanWAT</a> na GitHubie. Plany zajęć pochodzą z ogólnodostępnych stron wydziałów.</p>
+  </section>
 
-  <h2>Jakie dane zbieramy</h2>
-  <p><strong>Żadnych danych osobowych.</strong> Nie ma kont, formularzy, plików cookie, reklam ani narzędzi analitycznych czy śledzących. Serwis nie wie, kim jesteś ani które plany oglądasz.</p>
+  <section class="sec">
+    <h2>Jakie dane zbieramy</h2>
+    <p><strong>Żadnych danych osobowych.</strong> Nie ma kont, formularzy, plików cookie, reklam ani narzędzi analitycznych czy śledzących. Serwis nie wie, kim jesteś ani które plany oglądasz.</p>
+  </section>
 
-  <h2>Dlaczego bez logowania</h2>
-  <p>Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to oferują konto (na przykład przez kod wysyłany na adres studencki). Samo logowanie bywa opcjonalne, ale ta droga ma kilka słabych punktów, których u nas po prostu nie ma:</p>
-  <p class="cmp-hint">Przesuń tabelę w bok, aby zobaczyć wszystkie kolumny.</p>
-  <div class="cmp-wrap" tabindex="0" role="region" aria-label="Porównanie PlanWAT z serwisem z logowaniem kodem">
-    <table class="cmp">
-      <thead>
-        <tr><th scope="col"><span class="vh">Cecha</span></th><th scope="col">PlanWAT</th><th scope="col">Serwis z opcjonalnym logowaniem kodem na adres studencki</th></tr>
-      </thead>
-      <tbody>
-        <tr><th scope="row">Logowanie</th><td><strong>Nie ma i nie będzie</strong></td><td>Opcjonalne, ale po co, skoro plan jest publiczny</td></tr>
-        <tr><th scope="row">Co o Tobie wiemy</th><td><strong>Nic: ani adresu, ani konta</strong></td><td>Po zalogowaniu zweryfikowany adres e-mail powiązany z Twoją tożsamością, grupą i datami wizyt</td></tr>
-        <tr><th scope="row">Co wycieknie przy włamaniu</th><td><strong>Nie ma czego wykradać</strong></td><td>Lista adresów zalogowanych studentów z przypisanymi grupami</td></tr>
-        <tr><th scope="row">Phishing</th><td><strong>Nikt nie prosi Cię o kod, więc nie ma czego podrobić</strong></td><td>Przyzwyczaja do wpisywania kodów z poczty uczelnianej na stronie osoby trzeciej, czyli dokładnie tak, jak działają wyłudzacze</td></tr>
-        <tr><th scope="row">Obowiązki wobec RODO</th><td><strong>Żadne: nie zbieramy danych osobowych</strong></td><td>Zgody, polityka przetwarzania, obsługa próśb o wgląd i usunięcie danych</td></tr>
-        <tr><th scope="row">Eksport i subskrypcja kalendarza (<code>.ics</code>)</th><td><strong>Za darmo, dla każdego</strong></td><td>W części za abonamentem</td></tr>
-        <tr><th scope="row">Reklamy, śledzenie, cookies</th><td><strong>Brak</strong></td><td>Różnie</td></tr>
-        <tr><th scope="row">Cena</th><td><strong>0 zł, na zawsze</strong></td><td>Do ustalenia przy płatności</td></tr>
-        <tr><th scope="row">Kod źródłowy</th><td><strong>Otwarty, na licencji MIT</strong></td><td>Jak to działa i co dzieje się z danymi, trzeba przyjąć na słowo (trust me bro)</td></tr>
-      </tbody>
-    </table>
-  </div>
+  <section class="sec">
+    <h2>Dlaczego bez logowania</h2>
+    <p>Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to oferują konto (na przykład przez kod wysyłany na adres studencki). Samo logowanie bywa opcjonalne, ale ta droga ma kilka słabych punktów, których u nas po prostu nie ma:</p>
+    <p class="cmp-hint">Przesuń tabelę w bok, aby zobaczyć wszystkie kolumny.</p>
+    <div class="cmp-wrap" tabindex="0" role="region" aria-label="Porównanie PlanWAT z serwisem z logowaniem kodem">
+      <table class="cmp">
+        <thead>
+          <tr><th scope="col"><span class="vh">Cecha</span></th><th scope="col">PlanWAT</th><th scope="col">Serwis z opcjonalnym logowaniem kodem na adres studencki</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Logowanie</th><td><strong>Nie ma i nie będzie</strong></td><td>Opcjonalne, ale po co, skoro plan jest publiczny</td></tr>
+          <tr><th scope="row">Co o Tobie wiemy</th><td><strong>Nic: ani adresu, ani konta</strong></td><td>Po zalogowaniu zweryfikowany adres e-mail powiązany z Twoją tożsamością, grupą i datami wizyt</td></tr>
+          <tr><th scope="row">Co wycieknie przy włamaniu</th><td><strong>Nie ma czego wykradać</strong></td><td>Lista adresów zalogowanych studentów z przypisanymi grupami</td></tr>
+          <tr><th scope="row">Phishing</th><td><strong>Nikt nie prosi Cię o kod, więc nie ma czego podrobić</strong></td><td>Przyzwyczaja do wpisywania kodów z poczty uczelnianej na stronie osoby trzeciej, czyli dokładnie tak, jak działają wyłudzacze</td></tr>
+          <tr><th scope="row">Obowiązki wobec RODO</th><td><strong>Żadne: nie zbieramy danych osobowych</strong></td><td>Zgody, polityka przetwarzania, obsługa próśb o wgląd i usunięcie danych</td></tr>
+          <tr><th scope="row">Eksport i subskrypcja kalendarza (<code>.ics</code>)</th><td><strong>Za darmo, dla każdego</strong></td><td>W części za abonamentem</td></tr>
+          <tr><th scope="row">Reklamy, śledzenie, cookies</th><td><strong>Brak</strong></td><td>Różnie</td></tr>
+          <tr><th scope="row">Cena</th><td><strong>0 zł, na zawsze</strong></td><td>Do ustalenia przy płatności</td></tr>
+          <tr><th scope="row">Kod źródłowy</th><td><strong>Otwarty, na licencji MIT</strong></td><td>Jak to działa i co dzieje się z danymi, trzeba przyjąć na słowo (trust me bro)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
-  <h2>Co zostaje w Twojej przeglądarce</h2>
-  <p>Kilka ustawień zapisuje się wyłącznie na Twoim urządzeniu (<code>localStorage</code>) i nigdy nie jest nigdzie wysyłane:</p>
-  <ul>
-    <li data-storage="favs recent">ulubione i ostatnio oglądane grupy,</li>
-    <li data-storage="view">wybrany widok planu (tydzień, lista, miesiąc),</li>
-    <li data-storage="toolTab">ostatnio otwarta zakładka narzędzi,</li>
-    <li data-storage="theme">wybrany motyw (jasny lub ciemny),</li>
-    <li data-storage="tour">informacja, że przewodnik został już pokazany,</li>
-    <li data-storage="seen">wersja planu z ostatniej wizyty, żeby pokazać, że plan się zmienił,</li>
-    <li data-storage="compare">grupy wybrane do porównania,</li>
-    <li data-storage="hide">przedmioty i rodzaje zajęć ukryte w „Moich przedmiotach”,</li>
-    <li data-storage="extras">Twoje dodatkowe zajęcia (nazwa, dzień, godziny i miejsce, które sam wpiszesz).</li>
-  </ul>
-  <p>Aby plan działał bez internetu, przeglądarka przechowuje też kopię odwiedzonych stron i plików planu (Service Worker, Cache Storage). Wszystko to usuniesz, czyszcząc dane witryny w ustawieniach przeglądarki.</p>
+  <section class="sec">
+    <h2>Co zostaje w Twojej przeglądarce</h2>
+    <p>Kilka ustawień zapisuje się wyłącznie na Twoim urządzeniu (<code>localStorage</code>) i nigdy nie jest nigdzie wysyłane:</p>
+    <ul>
+      <li data-storage="favs recent">ulubione i ostatnio oglądane grupy,</li>
+      <li data-storage="view">wybrany widok planu (tydzień, lista, miesiąc),</li>
+      <li data-storage="toolTab">ostatnio otwarta zakładka narzędzi,</li>
+      <li data-storage="theme">wybrany motyw (jasny lub ciemny),</li>
+      <li data-storage="tour">informacja, że przewodnik został już pokazany,</li>
+      <li data-storage="seen">wersja planu z ostatniej wizyty, żeby pokazać, że plan się zmienił,</li>
+      <li data-storage="compare">grupy wybrane do porównania,</li>
+      <li data-storage="hide">przedmioty i rodzaje zajęć ukryte w „Moich przedmiotach”,</li>
+      <li data-storage="extras">Twoje dodatkowe zajęcia (nazwa, dzień, godziny i miejsce, które sam wpiszesz).</li>
+    </ul>
+    <p>Aby plan działał bez internetu, przeglądarka przechowuje też kopię odwiedzonych stron i plików planu (Service Worker, Cache Storage). Wszystko to usuniesz, czyszcząc dane witryny w ustawieniach przeglądarki.</p>
+  </section>
 
-  <h2>Hosting i usługi zewnętrzne</h2>
-  <p>Jak każda strona internetowa, serwer otrzymuje Twój adres IP i podstawowe dane żądania (adres strony, czas, rodzaj przeglądarki), bo bez nich nie mógłby odesłać strony. Robią to:</p>
-  <ul>
-    <li><strong>hosting:</strong> GitHub Pages (GitHub, Inc.), który może przez ograniczony czas przechowywać logi w celach technicznych i ochrony przed nadużyciami, na zasadach swojej polityki prywatności.</li>
-  </ul>
-  <p>Nic więcej: krój pisma i cała mapa kampusu (silnik, kafelki i ikony; dane © współtwórcy OpenStreetMap) są serwowane z tej samej strony, więc żadna strona PlanWAT nie łączy się z innymi serwerami.</p>
-  <p>Strony wysyłają nagłówek „no-referrer”, więc te usługi nie dostają adresu strony, z której przychodzisz. Linki do Google Calendar, Map Google czy e-dziekanatu otwierają zewnętrzne serwisy dopiero wtedy, gdy je klikniesz.</p>
+  <section class="sec">
+    <h2>Hosting i usługi zewnętrzne</h2>
+    <p>Jak każda strona internetowa, serwer otrzymuje Twój adres IP i podstawowe dane żądania (adres strony, czas, rodzaj przeglądarki), bo bez nich nie mógłby odesłać strony. Robią to:</p>
+    <ul>
+      <li><strong>hosting:</strong> GitHub Pages (GitHub, Inc.), który może przez ograniczony czas przechowywać logi w celach technicznych i ochrony przed nadużyciami, na zasadach swojej polityki prywatności.</li>
+    </ul>
+    <p>Nic więcej: krój pisma i cała mapa kampusu (silnik, kafelki i ikony; dane © współtwórcy OpenStreetMap) są serwowane z tej samej strony, więc żadna strona PlanWAT nie łączy się z innymi serwerami.</p>
+    <p>Strony wysyłają nagłówek „no-referrer”, więc te usługi nie dostają adresu strony, z której przychodzisz. Linki do Google Calendar, Map Google czy e-dziekanatu otwierają zewnętrzne serwisy dopiero wtedy, gdy je klikniesz.</p>
+  </section>
 
-  <h2>Twoje prawa</h2>
-  <p>Ponieważ PlanWAT nie zbiera danych, które pozwalają Cię zidentyfikować, nie mamy czego udostępnić ani usunąć. W sprawie logów hostingu możesz zwrócić się do GitHub. Masz też prawo wnieść skargę do Prezesa Urzędu Ochrony Danych Osobowych.</p>
+  <section class="sec">
+    <h2>Twoje prawa</h2>
+    <p>Ponieważ PlanWAT nie zbiera danych, które pozwalają Cię zidentyfikować, nie mamy czego udostępnić ani usunąć. W sprawie logów hostingu możesz zwrócić się do GitHub. Masz też prawo wnieść skargę do Prezesa Urzędu Ochrony Danych Osobowych.</p>
+  </section>
 
-  <h2>Zasady korzystania</h2>
-  <ul>
-    <li>Serwis jest darmowy i udostępniany „tak jak jest”, bez gwarancji poprawności i dostępności.</li>
-    <li>Wiążący jest oficjalny plan uczelni: zmiany i terminy dodatkowe zawsze sprawdzaj w e-dziekanacie.</li>
-    <li>Nie odpowiadamy za skutki opierania się wyłącznie na tym serwisie, np. spóźnienia czy nieobecności.</li>
-    <li>Kod jest otwarty; licencje użytego oprogramowania i danych opisuje plik THIRD-PARTY-NOTICES w repozytorium.</li>
-  </ul>
+  <section class="sec">
+    <h2>Zasady korzystania</h2>
+    <ul>
+      <li>Serwis jest darmowy i udostępniany „tak jak jest”, bez gwarancji poprawności i dostępności.</li>
+      <li>Wiążący jest oficjalny plan uczelni: zmiany i terminy dodatkowe zawsze sprawdzaj w e-dziekanacie.</li>
+      <li>Nie odpowiadamy za skutki opierania się wyłącznie na tym serwisie, np. spóźnienia czy nieobecności.</li>
+      <li>Kod jest otwarty; licencje użytego oprogramowania i danych opisuje plik THIRD-PARTY-NOTICES w repozytorium.</li>
+    </ul>
+  </section>
 
-  <h2>Kontakt i bezpieczeństwo</h2>
-  <p>Błąd w planie lub w serwisie zgłoś w <a href="https://github.com/kilerdevs/PlanWAT/issues">zgłoszeniach na GitHubie</a>. Lukę bezpieczeństwa zgłoś prywatnie przez <a href="https://github.com/kilerdevs/PlanWAT/security/advisories/new">GitHub Security Advisories</a> (szczegóły w <a href="../.well-known/security.txt">security.txt</a>).</p>
+  <section class="sec">
+    <h2>Kontakt i bezpieczeństwo</h2>
+    <p>Błąd w planie lub w serwisie zgłoś w <a href="https://github.com/kilerdevs/PlanWAT/issues">zgłoszeniach na GitHubie</a>. Lukę bezpieczeństwa zgłoś prywatnie przez <a href="https://github.com/kilerdevs/PlanWAT/security/advisories/new">GitHub Security Advisories</a> (szczegóły w <a href="../.well-known/security.txt">security.txt</a>).</p>
 
-  <p class="updated">Ostatnia zmiana: 20 października 2026</p>
+    <p class="updated">Ostatnia zmiana: 20 października 2026</p>
+  </section>
 </main>
 </body>
 </html>

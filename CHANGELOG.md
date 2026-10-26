@@ -70,6 +70,23 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   Przebieg, który skończył się inaczej niż poprzedni (inny wynik albo inne serwery), od razu odbudowuje stronę; taki sam
   jak poprzedni czeka na regułę 6 h. Zanim zapisze się pierwszy przebieg, link „historia przebiegów na GitHubie” prowadzi
   do listy przebiegów workflow zamiast do jeszcze nieistniejącego pliku.
+- **Statystyki planów na `/stan/`:** jak dawno sprawdzono plany każdego wydziału (pasek: do 6 h, 6–24 h, 1–3 dni,
+  dawniej, bez potwierdzenia), w jakim dniu plany zmieniły się ostatnio (wykres 14 dni), plany najdawniej sprawdzone,
+  ostatnio zmienione i najdłużej bez zmian, z linkami do stron grup. Wszystko liczone na koniec ostatniego przebiegu, z
+  tabelą liczb pod każdym wykresem; strona dalej nie uruchamia skryptu.
+- **Ruch na `/stan/` jak w reszcie serwisu:** to samo wejście strony co na stronie grupy (narastanie z rozmyciem na
+  komputerze, kolejne bloki co 60 ms), wiersze przebiegów pojawiają się po kolei, przebiegi i tabele liczb rozwijają się
+  płynnie, strzałka ma sprężynę, a liczby w kafelkach (także procent) rosną od zera. Słupki wykresów rosną od osi, gdy
+  wykres podjedzie na piątą część ekranu (tam, gdzie przeglądarka to umie; inaczej przy wejściu), i zawsze do końca:
+  przewijanie tylko je uruchamia, więc żaden słupek nie zatrzyma się w połowie i nie pokaże nieprawdziwego udziału. Przy
+  ograniczonym ruchu nic się nie animuje. Kafelki mówią „w ostatnich 6 h” i „w ostatnich 7 dniach”.
+- **Wejście strony głównej po kolei, do końca:** wszystkie sekcje wydziałów pojawiają się płynnie (wcześniej tylko
+  pierwsze cztery), a także linia „Wyświetlono … grup”, „Teraz w Twoich grupach” i zapisane grupy (ulubione, ostatnio
+  oglądane), każde w swojej kolejce od góry do dołu. Sekcja pokazana później, np. po pierwszej gwiazdce, pojawia się od
+  razu, bez czekania na swoją kolej z wejścia.
+- **Ruch na stronie prywatności jak w reszcie serwisu:** to samo wejście co na stronie grupy, a każda sekcja wjeżdża,
+  gdy jej nagłówek pojawi się na ekranie (nagłówek pierwszy, wiersze tabeli porównania po kolei). Przewijanie tylko to
+  uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
 - **Plan na pierwszym ekranie komputera:** na szerokim ekranie (od 1080 px) nagłówek strony grupy jest niższy, a
@@ -90,6 +107,19 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **`/stan/` mówi po ludzku:** pod wynikiem przebiegu jest zdanie, co znaczy dla planów („Część stron (WEL) nie
+  przeszła kontroli, więc zostają dla nich poprzednie plany”). Serwer, który tylko odrzucił strony, nie jest już
+  „niedokończony”, przejęcie ma podpis, krótki udział to „<1 min”, a nie „0 min”, „pominięte” to „odrzucone strony”,
+  przebieg z harmonogramu to „automatyczny”, a nie „zaplanowany”. Szczegóły przebiegu mają osobne listy „Serwery” i
+  „Wydziały” z liniami między wierszami, pasek ostatnich przebiegów mówi, że najnowszy jest z prawej, a liczby w kafelkach
+  stoją w jednej linii, nawet gdy podpis się zawija. Na dole jest objaśnienie pojęć.
+- **Formularz „Moje dodatkowe zajęcia”:** przycisk „Anuluj” nie jest już wysokim owalem obok „Zapisz”, pola mają odstępy,
+  główny przycisk jest wyróżniony, a nowe zajęcia mają przycisk „Dodaj zajęcia” (nie „Zapisz zmiany”) i podlegają limitowi
+  liczby zajęć, który wcześniej pomijały. Podpowiedź mówi, czego brakuje albo co jest nie tak z godzinami.
+- **„Dziś” nie zasłania nazwy dnia:** w tygodniu z siedmioma kolumnami etykieta „Dziś” nachodziła na „Poniedziałek”.
+  W wąskiej kolumnie dzisiejszy dzień ma teraz nazwę w kolorze akcentu (etykietę nadal czyta czytnik ekranu).
+- **Pusty tydzień mówi to raz:** tydzień bez żadnych zajęć pokazuje tylko komunikat „Brak zajęć w tym tygodniu”, bez
+  rzędu nazw dni, z których każdy powtarzał „Brak zajęć”.
 - **Panel narzędzi nie mignie już przy wejściu z listy grup:** w Firefoksie na szerokim ekranie strona grupy otwarta
   linkiem ze strony głównej pokazywała przez chwilę panel narzędzi, który od razu odjeżdżał. Panel przesuwa się teraz
   tylko wtedy, gdy ktoś go otwiera albo zamyka.

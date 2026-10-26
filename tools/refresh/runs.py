@@ -60,12 +60,17 @@ def runner_entry(name, faculties, outcome, wave=1, took=None):
         entry['changed'] = max(0, int(outcome.get('changed') or 0))
     except (TypeError, ValueError):
         pass
+    unfinished = [f for f in str(outcome.get('incomplete_faculties') or '').split(',') if f in faculties]
     if _flag(outcome, 'skipped'):
         entry['status'] = 'skipped'
     elif _flag(outcome, 'blocked'):
         entry['status'] = 'blocked'
-    elif _flag(outcome, 'incomplete'):
+    elif _flag(outcome, 'incomplete') and (unfinished or 'incomplete_faculties' not in outcome
+                                           or not _flag(outcome, 'degraded')):
         entry['status'] = 'incomplete'
+    elif _flag(outcome, 'degraded'):
+        # refresh.py raises "incomplete" for a degraded faculty too; with every faculty finished, that is all it was
+        entry['status'] = 'degraded'
     else:
         entry['status'] = 'done'
     return entry
@@ -110,6 +115,10 @@ def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, ou
             last[f] = m
     order = [f for m in shards[:len(matrix)] for f in m['faculties'].split(',') if f]
     faculties = [faculty_entry(f, last[f]['runner'], state, planned, handed.get(f)) for f in order]
+    for r, m in zip(runners, shards):
+        degraded_on = [f['id'] for f in faculties if f.get('degraded') and last[f['id']] is m]
+        if degraded_on and r['status'] == 'degraded':
+            r['degraded_on'] = degraded_on
     changed = int(combined['changed'])
     if not matrix:
         result = 'idle'
@@ -170,7 +179,7 @@ latest = build.latest_label
 
 def duration(run):
     minutes = build.run_minutes(run)
-    return f'{minutes} min' if minutes is not None else ''
+    return build.minutes_label(minutes) if minutes is not None else ''
 
 
 def _cell(text):
@@ -201,6 +210,7 @@ def markdown(runs, site_url='', repo_url=''):
     lines += [f"> [!{ALERT[last['result']]}]",
               f"> **Ostatni przebieg: {result_label(last).lower()}.** {when(last['planned'], True)} · "
               f"{servers(last)} · {duration(last)} · [przebieg #{last.get('number') or last['id']}]({last.get('url', '')})",
+              f"> {build.run_explanation(last)}",
               '',
               f'{latest(len(runs))} workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. '
               'Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, '
@@ -218,7 +228,7 @@ def markdown(runs, site_url='', repo_url=''):
         lines += ['<details>',
                   f"<summary><b>{when(run['planned'])}</b> · {result_label(run)} · "
                   f"{' · '.join(build.run_servers(run)) or 'bez serwera'}</summary>", '',
-                  f"Przebieg {build.RUN_EVENTS.get(run.get('event'), run.get('event') or '')} "
+                  f"{build.run_explanation(run)} Przebieg {build.RUN_EVENTS.get(run.get('event'), run.get('event') or '')} "
                   f"[#{run.get('number') or run['id']}]({run.get('url', '')})"
                   + (f", próba {run['attempt']}" if build.count(run.get('attempt')) > 1 else '')
                   + f", od planu do raportu {duration(run)}.", '',

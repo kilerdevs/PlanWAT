@@ -1100,7 +1100,7 @@ STATUS_TITLE = f'Odświeżanie planów · {SITE_NAME}'
 STATUS_DESCRIPTION = ('Ostatnie przebiegi pobierania planów ze stron wydziałów: kiedy, na których serwerach '
                       'i co się zmieniło.')
 RUN_RESULTS = ('ok', 'changed', 'degraded', 'incomplete', 'blocked', 'idle')
-RUN_EVENTS = {'schedule': 'zaplanowany', 'workflow_dispatch': 'ręczny'}
+RUN_EVENTS = {'schedule': 'automatyczny', 'workflow_dispatch': 'uruchomiony ręcznie'}
 RUN_CAUSES = {'wall': 'blokada Incapsula', 'listing': 'nie udało się pobrać listy grup'}
 MONTHS_SHORT = ('sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru')
 
@@ -1158,16 +1158,48 @@ def run_minutes(run):
     return max(0, round((end - start).total_seconds() / 60)) if start and end else None
 
 
+def minutes_label(minutes):
+    """'34 min', or '<1 min' for a share that took seconds (0 min reads as if nothing ran)."""
+    return '<1 min' if minutes == 0 else f'{minutes} min'
+
+
 def run_result_label(run):
     n = count(run.get('changed'))
     return {
         'ok': 'Bez zmian',
         'changed': 'Zmiana w 1 planie' if n == 1 else f'Zmiany w {n} planach',
-        'degraded': 'Z pominięciami',
-        'incomplete': 'Niepełny',
+        'degraded': 'Część stron odrzucona',
+        'incomplete': 'Niedokończony',
         'blocked': 'Zablokowany',
         'idle': 'Serwery wyłączone',
     }[run['result']]
+
+
+def _facs(run, keep):
+    return ', '.join(f['id'].upper() for f in run.get('faculties', [])
+                     if isinstance(f, dict) and isinstance(f.get('id'), str) and keep(f))
+
+
+def run_explanation(run):
+    """One plain sentence under a pass's verdict: what it means for the plans people see."""
+    result, n = run['result'], count(run.get('changed'))
+    if result == 'ok':
+        return 'Sprawdzono wszystkie wydziały, żaden plan się nie zmienił.'
+    if result == 'changed':
+        return 'Pobrano nową wersję 1 planu.' if n == 1 else f'Pobrano nowe wersje {n} planów.'
+    if result == 'degraded':
+        where = _facs(run, lambda f: f.get('fresh') and f.get('degraded'))
+        return (f"Część stron{' (' + where + ')' if where else ''} nie przeszła kontroli, "
+                'więc zostają dla nich poprzednie plany.')
+    if result == 'incomplete':
+        where = _facs(run, lambda f: not f.get('fresh') or f.get('cause') == 'listing')
+        return (f"Nie wszystko zostało sprawdzone{' (' + where + ')' if where else ''}. Zostają poprzednie plany, "
+                'resztę dokończy następny przebieg.')
+    if result == 'blocked':
+        where = _facs(run, lambda f: f.get('fresh') and f.get('blocked'))
+        return (f"Strona wydziału{' ' + where if where else ''} zablokowała pobieranie. Zostają poprzednie plany, "
+                'następny przebieg spróbuje znowu.')
+    return 'Żaden serwer projektu nie był włączony, więc nic nie sprawdzono.'
 
 
 def runner_state(r):
@@ -1176,10 +1208,15 @@ def runner_state(r):
         return 'nie zaczął na czas'
     if r.get('status') == 'missing':
         return 'brak raportu'
-    took = f"{r['minutes']} min" if count(r.get('minutes')) or r.get('minutes') == 0 else ''
+    took = minutes_label(r['minutes']) if count(r.get('minutes')) or r.get('minutes') == 0 else ''
     blocked_on = [str(f).upper() for f in r.get('blocked_on', []) if isinstance(f, str)]
-    extra = (f"zablokowany na {', '.join(blocked_on)}" if blocked_on else
-             {'blocked': 'zablokowany', 'incomplete': 'niedokończony'}.get(r.get('status')))
+    degraded_on = [str(f).upper() for f in r.get('degraded_on', []) if isinstance(f, str)]
+    if blocked_on:
+        extra = f"zablokowany na {', '.join(blocked_on)}"
+    elif r.get('status') == 'degraded':
+        extra = f"odrzucone strony{' na ' + ', '.join(degraded_on) if degraded_on else ''}"
+    else:
+        extra = {'blocked': 'zablokowany', 'incomplete': 'niedokończony'}.get(r.get('status'))
     return ', '.join(x for x in (took, extra) if x) or 'gotowe'
 
 
@@ -1227,12 +1264,15 @@ def faculty_notes(f):
     cause = f.get('cause')
     if f.get('blocked') or cause:
         notes.append(RUN_CAUSES.get(cause) or ('blokada' if f.get('blocked') else str(cause)))
-    if f.get('degraded'):
-        notes.append('dużo pominięć')
+    skipped, checked = count(f.get('skipped')), count(f.get('checked'))
+    if skipped:
+        # the skips are what flagged it (refresh.py: over 30% of 5+ pages); say how many of how many, once
+        notes.append(f'odrzucone strony: {skipped} z {checked}' if f.get('degraded') and checked else
+                     f'odrzucone strony: {skipped}')
+    elif f.get('degraded'):
+        notes.append('lista grup podejrzanie krótka')
     if count(f.get('not_ready')):
         notes.append(f"bez planu na ten semestr: {f['not_ready']}")
-    if count(f.get('skipped')):
-        notes.append(f"pominięte: {f['skipped']}")
     return notes
 
 
@@ -1252,7 +1292,10 @@ def _status_servers(run, e):
 def _status_parts(run, e):
     rows = []
     for r in run['runners']:
-        rows.append(f'<li><span class="pname">{e(r["name"])}</span><span class="pfacs">{e(runner_share(r)) or "–"}</span>'
+        role = runner_role(r)
+        rows.append(f'<li><span class="pname">{e(r["name"])}'
+                    + (f'<span class="prole">{e(role)}</span>' if role else '') + '</span>'
+                    f'<span class="pfacs">{e(runner_share(r)) or "–"}</span>'
                     f'<span class="pstate">{e(runner_state(r))}</span></li>')
     for n in run.get('offline', []):
         if isinstance(n, str):
@@ -1276,10 +1319,16 @@ def _status_faculties(run, e):
     return '<ul class="facs" aria-label="Wydziały">' + ''.join(rows) + '</ul>' if rows else ''
 
 
+def _status_section(title, body):
+    """A titled block of an opened pass: the servers and the faculties read as two lists, not one long one."""
+    return f'<h3 class="sub">{title}</h3>{body}' if body else ''
+
+
 def _status_link(run, e):
     number = count(run.get('number')) or run['id']
     url = run.get('url') if isinstance(run.get('url'), str) and run['url'].startswith('https://') else ''
-    bits = [RUN_EVENTS.get(run.get('event'), ''), f'{run_minutes(run)} min' if run_minutes(run) is not None else '']
+    bits = [RUN_EVENTS.get(run.get('event'), ''),
+            f'trwał {minutes_label(run_minutes(run))}' if run_minutes(run) is not None else '']
     if count(run.get('attempt')) > 1:
         bits.append(f"próba {run['attempt']}")
     link = f'<a href="{e(url)}">Przebieg #{number} na GitHubie</a>' if url else f'Przebieg #{number}'
@@ -1295,18 +1344,23 @@ def render_status_runs(runs):
         return latest, ''
     last = runs[0]
     minutes = run_minutes(last)
-    stats = [('Sprawdzono', count(last.get('checked'))), ('Zmieniono', count(last.get('changed'))),
-             ('Czas', f'{minutes} min' if minutes is not None else '–')]
-    strip = ''.join(f'<li class="{RUN_TONE[r["result"]]}"><span class="vh">{e(run_when(r["planned"]))}: '
-                    f'{e(run_result_label(r))}</span></li>' for r in reversed(runs))
+    took = '–' if minutes is None else '&lt;1 min' if minutes == 0 else f'{count_up(minutes)} min'
+    stats = [('Sprawdzone plany', count_up(last.get('checked'))), ('Zmienione plany', count_up(last.get('changed'))),
+             ('Czas', took)]
+    # a hover title for the pointer, the same words for a screen reader; the label says which end is newest
+    strip = ''.join(f'<li class="{RUN_TONE[r["result"]]}" title="{e(run_when(r["planned"]))}: {e(run_result_label(r))}">'
+                    f'<span class="vh">{e(run_when(r["planned"]))}: {e(run_result_label(r))}</span></li>'
+                    for r in reversed(runs))
     latest = (
         '<section class="latest" aria-labelledby="latestTitle">'
         f'<p class="lstatus"><span class="dot {RUN_TONE[last["result"]]}" aria-hidden="true"></span>'
         f'Ostatni przebieg · {e(run_when(last["planned"]))}</p>'
         f'<h2 class="verdict" id="latestTitle">{e(run_result_label(last))}</h2>'
-        '<dl class="stats">' + ''.join(f'<div><dt>{k}</dt><dd>{e(v)}</dd></div>' for k, v in stats) + '</dl>'
+        f'<p class="lead2">{e(run_explanation(last))}</p>'
+        '<dl class="stats">' + ''.join(f'<div><dt>{k}</dt><dd>{v}</dd></div>' for k, v in stats) + '</dl>'
         + _status_parts(last, e)
-        + f'<div class="striprow"><span class="striplabel">{e(latest_label(len(runs)))}</span>'
+        + f'<div class="striprow"><span class="striplabel">{e(latest_label(len(runs)))}'
+        + (', najnowszy z prawej' if len(runs) > 1 else '') + '</span>'
         f'<ol class="strip" aria-label="Wyniki od najstarszego">{strip}</ol></div>'
         + '</section>')
     rows = []
@@ -1319,23 +1373,216 @@ def render_status_runs(runs):
             f'<span class="rres">{e(run_result_label(run))}</span>{CHEVRON}'
             f'<span class="rsrv">{_status_servers(run, e)}</span>'
             '</summary><div class="more">'
-            + _status_parts(run, e) + _status_faculties(run, e) + _status_link(run, e)
+            f'<p class="why">{e(run_explanation(run))}</p>'
+            + _status_section('Serwery', _status_parts(run, e)) + _status_section('Wydziały', _status_faculties(run, e))
+            + _status_link(run, e)
             + '</div></details></li>')
     return latest, '<ol class="runs">' + ''.join(rows) + '</ol>'
+
+
+# How long ago a published plan was last confirmed, as the ordinal steps of the /stan/ freshness bars (hours; None:
+# older). Plans never confirmed this semester (the faculty still shows another one) are a bucket of their own.
+FRESH_BUCKETS = (('fr1', 'do 6 h', 6), ('fr2', '6–24 h', 24), ('fr3', '1–3 dni', 72), ('fr4', 'dawniej', None))
+FRESH_NONE = ('frn', 'bez potwierdzenia')
+CHANGE_DAYS = 14
+LIST_LEN = 5
+
+
+def _local(moment):
+    tz = _tz()
+    return moment.astimezone(tz) if tz else moment.astimezone(dt.timezone.utc)
+
+
+def _day_label(day):
+    return f'{day.day} {MONTHS_SHORT[day.month - 1]}'
+
+
+def _ago(moment, ref):
+    """'5 h', '3 dni', '<1 h' between a stamp and the page's reference moment."""
+    hours = max(0.0, (ref - moment).total_seconds() / 3600)
+    if hours < 1:
+        return '<1 h'
+    if hours < 48:
+        return f'{round(hours)} h'
+    days = round(hours / 24)
+    return f"{days} {plural(days, 'dzień', 'dni', 'dni')}"
+
+
+def plan_stats(current, refreshed, runs):
+    """What /stan/ tells about the published plans, as of the end of the last pass (or the newest check when no pass
+    is on record): how long ago each faculty's plans were confirmed, when plans last changed, and the extremes.
+    None when nothing was ever checked. Every age is against that moment, not the build's clock, so a page rebuilt
+    later without a new pass says the same."""
+    stamps = {}
+    for g in sorted(current):
+        entry = refreshed.get(g) if isinstance(refreshed.get(g), dict) else {}
+        stamps[g] = (utc_moment(entry.get('checked')) if entry.get('checked') else None,
+                     utc_moment(entry.get('changed')) if entry.get('changed') else None)
+    ref = utc_moment(runs[0]['ended']) if runs and runs[0].get('ended') else None
+    ref = ref or max((c for c, _ in stamps.values() if c), default=None)
+    if ref is None or not stamps:
+        return None
+    faculties = {}
+    for g, (checked, _) in stamps.items():
+        row = faculties.setdefault(faculty_of(g), {k: 0 for k, _, _ in FRESH_BUCKETS} | {FRESH_NONE[0]: 0})
+        if checked is None:
+            row[FRESH_NONE[0]] += 1
+            continue
+        hours = (ref - checked).total_seconds() / 3600
+        row[next(k for k, _, limit in FRESH_BUCKETS if limit is None or hours <= limit)] += 1
+    order = [code for code, _ in FACULTIES if code in faculties] + (['OTHER'] if 'OTHER' in faculties else [])
+    last_day = _local(ref).date()
+    days = [last_day - dt.timedelta(days=i) for i in range(CHANGE_DAYS - 1, -1, -1)]
+    per_day = dict.fromkeys(days, 0)
+    for _, changed in stamps.values():
+        if changed is not None and _local(changed).date() in per_day:
+            per_day[_local(changed).date()] += 1
+    dated = [(c, g) for g, (_, c) in stamps.items() if c is not None]
+    confirmed = sorted((c, g) for g, (c, _) in stamps.items() if c is not None)
+    week = ref - dt.timedelta(days=7)
+    return {
+        'ref': ref, 'total': len(stamps),
+        'fresh': sum(row['fr1'] for row in faculties.values()),
+        'week': sum(1 for c, _ in dated if c >= week),
+        'faculties': [(code, faculties[code]) for code in order],
+        'days': [(day, per_day[day]) for day in days],
+        'recent': sorted(dated, reverse=True)[:LIST_LEN],
+        'quiet': sorted(dated)[:LIST_LEN],
+        'never_changed': sum(1 for _, c in stamps.values() if c is None),
+        # only what is a day or more behind is worth naming; the bars already show the rest
+        'stale': [(c, g) for c, g in confirmed if (ref - c).total_seconds() >= 86400][:LIST_LEN],
+    }
+
+
+def _bar_rects(parts, total):
+    """A 100-wide stacked bar: one rect per non-empty part, with a surface-coloured gap line between neighbours."""
+    rects, gaps, x = [], [], 0.0
+    for cls, label, n in parts:
+        if not n:
+            continue
+        w = 100 * n / total
+        rects.append(f'<rect class="{cls}" x="{x:.2f}" y="0" width="{w:.2f}" height="10"><title>{label}</title></rect>')
+        if x > 0:
+            gaps.append(f'<line class="gap" x1="{x:.2f}" x2="{x:.2f}" y1="0" y2="10"/>')
+        x += w
+    return ''.join(rects + gaps)
+
+
+def _swatch(cls):
+    return f'<svg class="sw" viewBox="0 0 10 10" aria-hidden="true"><rect class="{cls}" width="10" height="10" rx="3"/></svg>'
+
+
+def _group_list(items, e, what):
+    rows = ''.join(f'<li><a href="../{e(g)}/">{e(g)}</a><span>{e(what(c))}</span></li>' for c, g in items)
+    return f'<ol class="glist">{rows}</ol>'
+
+
+def render_plan_stats(stats):
+    """The /stan/ cards about the published plans (see plan_stats); '' without any."""
+    if not stats:
+        return ''
+    e = lambda v: html.escape(str(v), quote=True)  # noqa: E731
+    ref, total = stats['ref'], stats['total']
+    names = dict(FACULTIES)
+    share = round(100 * stats['fresh'] / total)
+    tiles = [('Wszystkie plany', count_up(total)), ('Sprawdzone w ostatnich 6 h', f"{count_up(stats['fresh'])} <small>{count_up(share)}%</small>"),
+             ('Zmienione w ostatnich 7 dniach', count_up(stats['week']))]
+    buckets = [(k, label) for k, label, _ in FRESH_BUCKETS] + [FRESH_NONE]
+    legend = ''.join(f'<li>{_swatch(k)}{e(label)}</li>' for k, label in buckets)
+    rows, table = [], []
+    for code, row in stats['faculties']:
+        n = sum(row.values())
+        name = names.get(code, 'Inne')
+        parts = [(k, f'{code}: {row[k]} z {n} – {label}', row[k]) for k, label in buckets]
+        said = ', '.join(f'{label}: {row[k]}' for k, label in buckets if row[k])
+        rows.append(f'<li><abbr class="fcode" title="{e(name)}">{e(code if code != "OTHER" else "inne")}</abbr>'
+                    f'<svg class="fbar" viewBox="0 0 100 10" preserveAspectRatio="none" role="img" '
+                    f'aria-label="{e(code)}: {e(said)}">{_bar_rects(parts, n)}</svg>'
+                    f'<span class="fval">{row["fr1"]} z {n}</span></li>')
+        table.append(f'<tr><th scope="row">{e(code)}</th>' + ''.join(f'<td>{row[k]}</td>' for k, _ in buckets) + '</tr>')
+    fresh_table = ('<details class="tview"><summary>Liczby w tabeli</summary><table><thead><tr><th>Wydział</th>'
+                   + ''.join(f'<th>{e(label)}</th>' for _, label in buckets) + '</tr></thead><tbody>'
+                   + ''.join(table) + '</tbody></table></details>')
+    stale = (_group_list(stats['stale'], e, lambda c: f'{run_when(c.isoformat())} · {_ago(c, ref)} temu')
+             if stats['stale'] else '<p class="quietnote">Każdy potwierdzony plan sprawdzono w ostatniej dobie.</p>')
+
+    days = stats['days']
+    top = max((n for _, n in days), default=0) or 1
+    slot = 100 / len(days)
+    bars = []
+    for i, (day, n) in enumerate(days):
+        h = max(1.5, 100 * n / top) if n else 1.5  # an empty day keeps a stub on the baseline
+        cls = 'hbar' if n else 'hbar zero'
+        word = plural(n, 'plan', 'plany', 'planów')
+        bars.append(f'<rect class="{cls}" x="{i * slot + slot * 0.15:.2f}" y="{100 - h:.2f}" width="{slot * 0.7:.2f}" '
+                    f'height="{h:.2f}"><title>{_day_label(day)}: {n} {word}</title></rect>')
+    peak_day, peak = max(days, key=lambda d: (d[1], d[0]))
+    hist_label = (f'Dzień ostatniej zmiany planu, {CHANGE_DAYS} dni do {_day_label(days[-1][0])}. '
+                  f'Najwięcej: {_day_label(peak_day)}, {peak} {plural(peak, "plan", "plany", "planów")}.')
+    day_table = ('<details class="tview"><summary>Liczby w tabeli</summary><table><thead><tr><th>Dzień</th>'
+                 '<th>Plany</th></tr></thead><tbody>'
+                 + ''.join(f'<tr><th scope="row">{_day_label(d)}</th><td>{n}</td></tr>' for d, n in reversed(days))
+                 + '</tbody></table></details>')
+    recent = _group_list(stats['recent'], e, lambda c: f'{run_when(c.isoformat())}')
+    quiet = _group_list(stats['quiet'], e, lambda c: f'od {_day_label(_local(c).date())} · {_ago(c, ref)}')
+    never = stats['never_changed']
+    never_note = (f'<p class="quietnote">Bez żadnej zmiany, odkąd serwis je śledzi: {never} '
+                  f'{plural(never, "plan", "plany", "planów")}.</p>' if never else '')
+    return (
+        '<section class="stack" aria-labelledby="plansTitle">'
+        '<h2 class="sect" id="plansTitle">Plany na stronie</h2>'
+        f'<p class="asof">Stan na koniec ostatniego przebiegu: {e(run_when(ref.isoformat()))}.</p>'
+        '<div class="card">'
+        '<dl class="stats">' + ''.join(f'<div><dt>{k}</dt><dd>{v}</dd></div>' for k, v in tiles) + '</dl>'
+        '<h3 class="sub">Kiedy plany sprawdzono ostatnio</h3>'
+        f'<ul class="legendrow" aria-hidden="true">{legend}</ul>'
+        f'<ul class="fresh">{"".join(rows)}</ul>'
+        '<p class="axisnote">Liczba po prawej: plany sprawdzone w ostatnich 6 h, z wszystkich planów wydziału.</p>'
+        + fresh_table +
+        '<h3 class="sub">Najdawniej sprawdzone</h3>' + stale +
+        '</div><div class="card">'
+        '<h3 class="sub first">Dzień ostatniej zmiany planu</h3>'
+        f'<p class="axisnote">Ile planów zmieniło się po raz ostatni danego dnia. Najwięcej: {_day_label(peak_day)}, '
+        f'{peak} {plural(peak, "plan", "plany", "planów")}.</p>'
+        f'<svg class="hist" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="{e(hist_label)}">'
+        + ''.join(bars) + '</svg>'
+        f'<div class="haxis"><span>{_day_label(days[0][0])}</span><span>{_day_label(days[-1][0])}</span></div>'
+        + day_table +
+        '<div class="two">'
+        f'<div><h3 class="sub">Ostatnio zmienione</h3>{recent}</div>'
+        f'<div><h3 class="sub">Najdłużej bez zmian</h3>{quiet}{never_note}</div>'
+        '</div></div></section>')
+
+
+def count_up(n):
+    """A number that counts up from 0 as the page arrives (stan.html's .cu: a registered integer property shown through
+    a CSS counter, no script). The digits themselves stay in the text for screen readers and copying, and are what a
+    browser without @property shows."""
+    n = count(n)
+    return f'<span class="vh">{n}</span><span class="cu" data-n="{n}" aria-hidden="true"></span>'
+
+
+def count_up_rules(page):
+    """One rule per number the page counts up to: the target can only come from the stylesheet (CSP: no style
+    attributes), so each value gets its own selector."""
+    values = sorted({int(v) for v in re.findall(r'class="cu" data-n="(\d+)"', page)})
+    return ''.join(f'.cu[data-n="{v}"]{{--to:{v}}}' for v in values)
 
 
 def latest_label(n):
     return 'Ostatni przebieg' if n == 1 else f"Ostatnie {n} {plural(n, '', 'przebiegi', 'przebiegów')}"
 
 
-def render_status(template, runs, site_url='', assets=None):
+def render_status(template, runs, site_url='', assets=None, current=None, refreshed=None):
     # like the privacy notice: no script at all, the theme follows the system through CSS; rows open with <details>
     latest, rows = render_status_runs(runs)
+    template = template.replace('@@PLANS@@', render_plan_stats(plan_stats(current or {}, refreshed or {}, runs)))
     page = template.replace('@@SEO@@', seo_head(site_url, f'{STATUS_DIR}/', STATUS_TITLE, STATUS_DESCRIPTION))
     page = page.replace('@@TITLE@@', html.escape(STATUS_TITLE)).replace('@@DESCRIPTION@@', html.escape(STATUS_DESCRIPTION, quote=True))
     # the data branch's README.md is written together with the first pass on record; before that, the runs list
     history = f'{REPO_URL}/blob/data/README.md' if runs else f'{REPO_URL}/actions/workflows/refresh.yml'
     page = page.replace('@@LATEST@@', latest).replace('@@RUNS@@', rows).replace('@@HISTORY_URL@@', history)
+    page = page.replace('/*@@COUNTERS@@*/', count_up_rules(page))
     return finish(page.replace('@@THEME_HEAD@@' + chr(10), ''), connect=False, assets=assets, asset_prefix='../')
 
 
@@ -1659,7 +1906,8 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     shutil.copytree(SRC / 'map', out / MAP_DIR, dirs_exist_ok=True)
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets, site_url=site_url))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8'), site_url, assets))
-    write(f'{STATUS_DIR}/index.html', render_status((SRC / 'stan.html').read_text(encoding='utf-8'), runs, site_url, assets))
+    write(f'{STATUS_DIR}/index.html', render_status((SRC / 'stan.html').read_text(encoding='utf-8'), runs, site_url, assets,
+                                                    current, refreshed))
     (out / 'robots.txt').write_text(robots_txt(base_path, noindex, site_url), encoding='utf-8')
     if site_url and not noindex:
         (out / 'sitemap.xml').write_text(sitemap_xml(site_url, current, refreshed), encoding='utf-8')

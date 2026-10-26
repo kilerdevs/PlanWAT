@@ -2399,6 +2399,18 @@ class RunHistory(unittest.TestCase):
         self.assertIn('| IOE | oracle | 10 | 0 | druga próba po blokadzie |', text)
         self.assertEqual(run['result'], 'ok')
 
+    def test_a_server_that_only_rejected_pages_is_not_called_unfinished(self):
+        # refresh.py raises "incomplete" for a degraded faculty; with every faculty finished that is all it was
+        lots = self.shard('plebania', incomplete='true', degraded='true', incomplete_faculties='')
+        state = self.state()
+        state['faculties']['wel']['run'].update(degraded=True, skipped=3)
+        run = self.record(outcomes=[lots, self.shard('oracle')], state=state)
+        plebania = run['runners'][0]
+        self.assertEqual((plebania['status'], plebania.get('degraded_on')), ('degraded', ['wel']))
+        self.assertIn('odrzucone strony na WEL', runs.markdown([run]))
+        unfinished = self.shard('plebania', incomplete='true', degraded='true', incomplete_faculties='wcy')
+        self.assertEqual(self.record(outcomes=[unfinished, self.shard('oracle')])['runners'][0]['status'], 'incomplete')
+
     def test_a_skipped_or_silent_server_says_so(self):
         run = self.record(outcomes=[self.shard('plebania', skipped='true')])
         self.assertEqual([r['status'] for r in run['runners']], ['skipped', 'missing'])
