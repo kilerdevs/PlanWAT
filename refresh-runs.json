@@ -2,6 +2,154 @@
  "version": 1,
  "runs": [
   {
+   "id": 40335568289,
+   "number": 66,
+   "attempt": 1,
+   "event": "workflow_dispatch",
+   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/40335568289",
+   "planned": "2026-10-26T14:00:14",
+   "ended": "2026-10-26T14:40:47",
+   "result": "changed",
+   "changed": 124,
+   "checked": 735,
+   "not_ready": 38,
+   "runners": [
+    {
+     "name": "plebania",
+     "faculties": [
+      "wlo",
+      "wel",
+      "wcy",
+      "wml"
+     ],
+     "status": "done",
+     "minutes": 36,
+     "changed": 114,
+     "wave": 1
+    },
+    {
+     "name": "oracle",
+     "faculties": [
+      "wim",
+      "ioe",
+      "wtc"
+     ],
+     "status": "blocked",
+     "minutes": 6,
+     "changed": 10,
+     "wave": 1,
+     "blocked_on": [
+      "wtc"
+     ]
+    },
+    {
+     "name": "plebania",
+     "faculties": [
+      "wtc"
+     ],
+     "status": "done",
+     "minutes": 4,
+     "changed": 0,
+     "wave": 2,
+     "from": {
+      "wtc": "oracle"
+     }
+    }
+   ],
+   "offline": [],
+   "unassigned": [],
+   "faculties": [
+    {
+     "id": "wlo",
+     "runner": "plebania",
+     "fresh": true,
+     "checked": 131,
+     "changed": 28,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wel",
+     "runner": "plebania",
+     "fresh": true,
+     "checked": 158,
+     "changed": 46,
+     "not_ready": 0,
+     "skipped": 3,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wcy",
+     "runner": "plebania",
+     "fresh": true,
+     "checked": 158,
+     "changed": 31,
+     "not_ready": 38,
+     "skipped": 1,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wml",
+     "runner": "plebania",
+     "fresh": true,
+     "checked": 162,
+     "changed": 9,
+     "not_ready": 0,
+     "skipped": 3,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wim",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 88,
+     "changed": 10,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "ioe",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 15,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wtc",
+     "runner": "plebania",
+     "from": {
+      "runner": "oracle",
+      "why": "blocked"
+     },
+     "fresh": true,
+     "checked": 23,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 1,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    }
+   ]
+  },
+  {
    "id": 40288910011,
    "number": 65,
    "attempt": 1,
