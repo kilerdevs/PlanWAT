@@ -1,18 +1,41 @@
 # Odświeżanie planów: ostatnie przebiegi
 
-> [!TIP]
-> **Ostatni przebieg: bez zmian.** 25 paź 2026 · 23:24 · **plebania** · **oracle** · 8 min · [przebieg #63](https://github.com/kilerdevs/PlanWAT/actions/runs/40240046249)
+> [!CAUTION]
+> **Ostatni przebieg: zablokowany.** 26 paź 2026 · 01:30 · **oracle** · ~~plebania~~ · 32 min · [przebieg #64](https://github.com/kilerdevs/PlanWAT/actions/runs/40249645750)
 
-Ostatnie 4 przebiegi workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
+Ostatnie 5 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
 
 | Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |
 |---|---|---|--:|--:|---|
+| 26 paź · 01:30 | Zablokowany | **oracle** (WLO, WEL, WIM, IOE, WCY, WML, WTC) · ~~plebania~~ | 42 | 32 min | [#64](https://github.com/kilerdevs/PlanWAT/actions/runs/40249645750) |
 | 25 paź · 23:24 | Bez zmian | **plebania** (WLO, WEL, WCY, WML, WTC (od oracle)) · **oracle** (WIM, IOE, WTC) | 46 | 8 min | [#63](https://github.com/kilerdevs/PlanWAT/actions/runs/40240046249) |
 | 25 paź · 22:56 | Bez zmian | **plebania** (WLO, WEL, WCY, WML, WTC (od oracle)) · **oracle** (WIM, IOE, WTC) | 68 | 14 min | [#62](https://github.com/kilerdevs/PlanWAT/actions/runs/40237831558) |
 | 25 paź · 21:59 | Zablokowany | **plebania** (WLO, WEL, WCY, WML) · **oracle** (WIM, IOE, WTC) | 101 | 50 min | [#61](https://github.com/kilerdevs/PlanWAT/actions/runs/40233347824) |
 | 25 paź · 21:46 | Zablokowany | **plebania** (WLO, WEL, WCY, WML) · **oracle** (WIM, IOE, WTC) | 654 | 37 min | [#60](https://github.com/kilerdevs/PlanWAT/actions/runs/40232365038) |
 
 ## Szczegóły
+
+<details>
+<summary><b>26 paź · 01:30</b> · Zablokowany · oracle</summary>
+
+Przebieg zaplanowany [#64](https://github.com/kilerdevs/PlanWAT/actions/runs/40249645750), od planu do raportu 32 min.
+
+| Serwer | Wydziały | Zmienione | Stan |
+|---|---|--:|---|
+| **oracle** | WLO, WEL, WIM, IOE, WCY, WML, WTC | 0 | 31 min, zablokowany na WLO, WML, WTC |
+| plebania | | | wyłączony |
+
+| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
+|---|---|--:|--:|---|
+| WLO | oracle | 0 | 0 | blokada Incapsula |
+| WEL | oracle | 3 | 0 | pominięte: 3 |
+| WIM | oracle | 0 | 0 |  |
+| IOE | oracle | 0 | 0 |  |
+| WCY | oracle | 39 | 0 | bez planu na ten semestr: 38, pominięte: 1 |
+| WML | oracle | 0 | 0 | blokada Incapsula |
+| WTC | oracle | 0 | 0 | blokada Incapsula |
+
+</details>
 
 <details>
 <summary><b>25 paź · 23:24</b> · Bez zmian · plebania · oracle</summary>
