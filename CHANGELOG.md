@@ -16,6 +16,18 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **WIG w automatycznym odświeżaniu** (sterownik `wig`): plany wydziału, dotąd dodawane ręcznie, są czytane z otwartych
+  listingów jego katalogów plików (strony Joomli Incapsula blokuje adresom centrów danych, listingów i PDF-ów nie). Katalogi
+  kierunków wymienia `dirs` w `sources.json`. Każdy PDF to wydruk strony Plansoft; sterownik odtwarza z linii
+  siatki tabelę, skleja wiersze przecięte przez koniec strony, rozpoznaje oba układy (stacjonarny i niestacjonarny) i
+  oddaje ją konwerterowi `wlo2ics`, więc kalendarze WIG przechodzą te same reguły co reszta wydziałów Plansoft, bez nazwisk
+  kadry. Semestr i grupa pochodzą z nagłówka PDF-u; PDF innego semestru czeka jako „jeszcze nieopublikowany”
+  (`core.NotReady`). Grupy `WIG..BW` zostają przy WEL, którego kopia jest świeższa. `wlo2ics` przyjmuje `--year`.
+- **Preferowany runner** (`prefers` w `tools/refresh/fleet.json`): ścieżka z preferowanych wydziałów trafia do swojego
+  runnera zawsze, gdy jest włączony. Oracle preferuje WIG, sprawdzony z obu runnerów (po dwa przebiegi, identyczne wyniki).
+- **Spis wydziału** (`refresh.py --census`, `census` w `fleet.json`): raz na dobę plebania przechodzi drzewo Joomli WIG i
+  zapisuje katalogi wszystkich wymienionych tam PDF-ów (`found` w `refresh-state.json`). Wykrywanie WIG czyta je na każdym
+  runnerze, więc grupy nowego kierunku trafiają na stronę, zanim katalog zostanie dopisany do `sources.json`.
 - **Crawlery wolontariuszy** ([docs/WOLONTARIUSZE.md](docs/WOLONTARIUSZE.md)):
   - **Kto i jak:** zaproszone osoby z rejestru na gałęzi `volunteers` mogą odświeżać plany ze swojego łącza, obrazem Docker
     (`ghcr.io/kilerdevs/planwat-crawler` z poświadczeniem pochodzenia) albo runnerem na własnym forku.

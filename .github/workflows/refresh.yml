@@ -91,6 +91,7 @@ jobs:
       runner: ${{ matrix.runner }}
       label: ${{ matrix.label }}
       faculties: ${{ matrix.faculties }}
+      census: ${{ matrix.census || '' }}
       wave: 1
       wait: ${{ matrix.wait }}
       planned: ${{ needs.plan.outputs.planned }}

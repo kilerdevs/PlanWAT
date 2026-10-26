@@ -66,7 +66,7 @@ services:
       # Same split as on the home runner (tools/egress/compose.fragment.yml): WCY blocks this box's own
       # address, so it only ever goes through the pool; the other faculties answer it directly.
       EGRESS_FAIL_CLOSED: "planzajec.wcy.wat.edu.pl"
-      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl"
+      EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,www.wig.wat.edu.pl"
     dns:
       - 1.1.1.1
       - 9.9.9.9

@@ -61,7 +61,7 @@ def load_json(path, default, kind=dict):
 
 
 def load_fleet(path=FLEET):
-    """The runners from fleet.json, checked: [{name, label, speed, always_on, faculties}]."""
+    """The runners from fleet.json, checked: [{name, label, speed, always_on, faculties, prefers, census}]."""
     raw = json.loads(Path(path).read_text(encoding='utf-8'))
     runners = raw.get('runners') if isinstance(raw, dict) else None
     if not isinstance(runners, list):
@@ -78,12 +78,15 @@ def load_fleet(path=FLEET):
         speed = r.get('speed', 1)
         if isinstance(speed, bool) or not isinstance(speed, (int, float)) or not speed > 0:
             raise ValueError(f'{name}: speed must be a positive number')
-        only = r.get('faculties')
+        only, prefers, census = r.get('faculties'), r.get('prefers', []), r.get('census', [])
         if only is not None and not (isinstance(only, list) and all(isinstance(f, str) for f in only)):
             raise ValueError(f'{name}: faculties must be a list of faculty ids')
+        for key, value in (('prefers', prefers), ('census', census)):
+            if not (isinstance(value, list) and all(isinstance(f, str) for f in value)):
+                raise ValueError(f'{name}: {key} must be a list of faculty ids')
         seen.add(name)
-        fleet.append({'name': name, 'label': label, 'speed': float(speed),
-                      'always_on': bool(r.get('always_on')), 'faculties': only})
+        fleet.append({'name': name, 'label': label, 'speed': float(speed), 'always_on': bool(r.get('always_on')),
+                      'faculties': only, 'prefers': prefers, 'census': census})
     if not fleet:
         raise ValueError('the fleet has no runners')
     return fleet
@@ -139,8 +142,10 @@ def plan(fleet, wanted, state, online, avoid=None):
     `online` is the set of labels GitHub reports online, or None when it could not be asked: then the always-on
     runners take everything (the job waits for them like a single-runner pass would). Lanes go out largest first,
     each to the runner that would finish it earliest (load / speed), so a fast runner takes a lot and a slow one the
-    rest. A lane no runner up may take is left for the next pass. `avoid` maps a faculty to the runners that must not
-    take it (the handoff wave: the runner that was blocked on it).
+    rest. A lane a runner up `prefers` (every faculty of it) goes to that runner whatever the load: a faculty tried
+    from both machines that crawls as well from either stays off the fast one's share. A lane no runner up may take
+    is left for the next pass. `avoid` maps a faculty to the runners that must not take it (the handoff wave: the
+    runner that was blocked on it), so a preferred runner that left a lane behind does not get it back.
 
     Each shard says how long its runner should wait out a wall (`wait`, minutes): briefly when another runner up could
     take one of its faculties over, else the full wait.
@@ -159,7 +164,8 @@ def plan(fleet, wanted, state, online, avoid=None):
         if not able:
             unassigned += lane
             continue
-        best = min(able, key=lambda r: ((load[r['name']] + cost) / r['speed'], -r['speed'], r['name']))
+        keen = [r for r in able if all(f in r.get('prefers', ()) for f in lane)]
+        best = min(keen or able, key=lambda r: ((load[r['name']] + cost) / r['speed'], -r['speed'], r['name']))
         load[best['name']] += cost
         shards[best['name']] += lane
     order = {f: i for i, f in enumerate(wanted)}
@@ -170,6 +176,12 @@ def plan(fleet, wanted, state, online, avoid=None):
            for r in up if shards[r['name']]]
     return {'shards': out, 'unassigned': sorted(unassigned, key=order.get), 'known': online is not None,
             'up': [r['name'] for r in up], 'down': [r['name'] for r in fleet if r not in up]}
+
+
+def census_of(fleet, wanted):
+    """{runner: 'wig,...'}: the censuses each runner takes this pass (its fleet.json `census` among the faculties
+    wanted), whoever crawls those faculties. refresh.py runs each at most once a day; a takeover takes none."""
+    return {r['name']: ','.join(f for f in wanted if f in r.get('census', ())) for r in fleet}
 
 
 def plan_summary(result):
@@ -215,7 +227,9 @@ def cmd_plan(args):
         return 2
     wanted = named or [f for f, c in sources.items() if c.get('enabled')]
     runners = load_json(args.runners, None, list) if args.runners else None
-    result = plan(load_fleet(args.fleet), wanted, load_json(args.state, {}), online_labels(runners))
+    fleet = load_fleet(args.fleet)
+    result = plan(fleet, wanted, load_json(args.state, {}), online_labels(runners))
+    census = census_of(fleet, wanted)
     for s in result['shards']:
         log(f"{s['runner']}: {s['faculties']} (work {s['cost']}, relative time {s['eta']})")
     for name in result['down']:
@@ -224,8 +238,8 @@ def cmd_plan(args):
         log(f"::warning::no runner up may take {', '.join(result['unassigned'])}; left for the next pass")
     if not result['shards']:
         log('::warning::no runner of the fleet is online; this pass crawls nothing')
-    matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties'], 'wave': 1, 'wait': s['wait']}
-              for s in result['shards']]
+    matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties'], 'wave': 1, 'wait': s['wait'],
+               'census': census.get(s['runner'], '')} for s in result['shards']]
     planned = int(dt.datetime.now(dt.timezone.utc).timestamp())
     # runs.py records which servers were off and what nobody could take
     info = {'down': result['down'], 'unassigned': result['unassigned']}

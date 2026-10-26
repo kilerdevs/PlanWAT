@@ -4,14 +4,16 @@
       "name": "plebania",
       "label": "planwat-plebania",
       "speed": 4,
-      "note": "The home server: fast, but often switched off. Takes the lion's share whenever GitHub sees it online."
+      "census": ["wig"],
+      "note": "The home server: fast, but often switched off. Takes the lion's share whenever GitHub sees it online. Takes the WIG census (the Joomla tree Incapsula keeps from the VPS's datacenter address), at most once a day, so a new programme directory is crawled by whoever has WIG."
     },
     {
       "name": "oracle",
       "label": "planwat-oracle",
       "speed": 1,
       "always_on": true,
-      "note": "The free Oracle VPS (deploy/runner/): slow and weak, but always up. Covers everything while plebania is off."
+      "prefers": ["wig"],
+      "note": "The free Oracle VPS (deploy/runner/): slow and weak, but always up. Covers everything while plebania is off. Takes WIG whenever it is up: tested from both runners on 2026-10-26 (two passes each, 33/33 groups, identical calendars), so the fast machine's share stays on the faculties only it gets through."
     }
   ]
 }

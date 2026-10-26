@@ -50,6 +50,7 @@ import assign  # noqa: E402
 import core  # noqa: E402
 import drivers  # noqa: E402
 
+CENSUS_HOURS = 20  # a census (take_census) at most this often: once a day, a little early so a daily pass never slips
 PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (1.5, 4.0), 'volunteer': (4.0, 9.0)}  # seconds between pages
 # WLO and WEL share one Incapsula policy (cookies for .wat.edu.pl): crawling either too fast blocks both home
 # addresses for hours. The ranges above are for the home line with one request at a time per host; a block
@@ -433,11 +434,45 @@ def noted_change(entry):
     entry['streak'] = 0
 
 
+def take_census(names, sources, state, today, session=None, sleep=time.sleep):
+    """Run the census of each named faculty whose driver has one and whose last census is CENSUS_HOURS old.
+
+    A census reads what lists every group (drivers/wig.py: the Joomla tree a datacenter line cannot reach) and
+    keeps it in refresh-state.json under `found`, which refresh_faculty hands back to the driver on any runner. It
+    never fails the run: a block or an error leaves the last census in place for the next try.
+    """
+    store = state.data.setdefault('found', {})
+    now = core.now_utc()
+    for name in names:
+        cfg = sources[name]
+        driver = drivers.load(cfg['driver'], name, cfg, today)
+        if not hasattr(driver, 'census'):
+            continue
+        last = store.get(name, {}).get('at', '') if isinstance(store.get(name), dict) else ''
+        try:
+            if now - dt.datetime.fromisoformat(last) < dt.timedelta(hours=CENSUS_HOURS):
+                continue
+        except ValueError:
+            pass
+        try:
+            found = driver.census(session or new_session())
+        except Exception as err:  # Blocked included: this line cannot take it today
+            log(f'[{name}] census not taken ({err!r}); keeping the last one')
+            continue
+        known = {d.strip('/') for d in cfg.get('dirs', [])}
+        new = sorted(d for d in found.get('dirs', []) if d.split('/', 1)[0] not in known)
+        store[name] = dict(found, at=core.now_utc().isoformat())
+        log(f"[{name}] census: {found.get('pdfs', 0)} PDFs in {len(found.get('dirs', []))} directories"
+            + (f"; not in sources.json (crawled from now on, add them to dirs): {', '.join(new)}" if new else ''))
+
+
 def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic,
                     progress=None, ahead=False):
     """Returns (changed codes, blocked, complete). `today` is a date inside the semester to refresh; with `ahead`
     that is the coming semester, tracked under its own state keys so the running one keeps its dates."""
-    driver = drivers.load(cfg['driver'], name, cfg, today)
+    # what a census found where this runner may not look (drivers/wig.py): the driver lists it too
+    found = state.data.get('found', {}).get(name)
+    driver = drivers.load(cfg['driver'], name, dict(cfg, found=found) if isinstance(found, dict) else cfg, today)
     tid = core.term_id(today)
     out = Path(args.out)
     fac = state.faculties.setdefault(name, {})
@@ -623,6 +658,11 @@ def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, cl
             continue
         try:
             ics = core.to_crlf(driver.convert(item, raw))
+        except core.NotReady as err:  # a PDF of another semester: what not_ready(text) tells for HTML pages
+            not_ready += 1
+            log(f'[{name}] {item.code}: not ready for {tid} yet ({err}); keeping the old calendar')
+            note_outcome(args, item.code, tid, 'not_ready')
+            continue
         except Exception as err:
             log(f'[{name}] {item.code}: conversion failed ({err!r}), keeping the old calendar')
             failed += 1
@@ -722,6 +762,9 @@ def parse(argv=None):
                     help="keep this line's learned pacing and block durations here instead of in the data checkout")
     ap.add_argument('--resume-since', default='',
                     help='skip every group checked at or after this UTC time (YYYY-MM-DDTHH:MM:SS): resuming a run')
+    ap.add_argument('--census', default='',
+                    help='comma-separated faculties whose driver takes a census of the site first (at most once in '
+                         f'{CENSUS_HOURS} h; fleet.json names the runner that can)')
     args = ap.parse_args(argv)
     args.registry, args.window, args.health, args.deadline = None, None, None, None
     args.outcomes_log = {} if (args.outcomes or args.assign) else None
@@ -917,6 +960,9 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     state = core.State(Path(args.out) / core.STATE_FILE)
     if args.faculty_state:
         load_line_state(state, args.faculty_state)
+    census = [f for f in args.census.split(',') if f in sources and sources[f].get('enabled')]
+    if census and not args.dry_run:
+        take_census(census, sources, state, today, session, sleep)
     # One time budget for the whole run, however many faculties and walls it meets: past it, every lane stops after
     # its current page, so the run still saves and pushes inside the job's timeout.
     args.deadline = clock() + args.max_minutes * 60 if args.max_minutes else None

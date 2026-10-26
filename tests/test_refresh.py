@@ -24,6 +24,7 @@ import wlo2ics  # noqa: E402
 from drivers import Item  # noqa: E402
 from drivers import plansoft  # noqa: E402
 from drivers import wcy  # noqa: E402
+from drivers import wig  # noqa: E402 (stdlib-only import; pymupdf stays lazy)
 from drivers import wml  # noqa: E402
 from drivers import wtc  # noqa: E402 (stdlib-only import; pymupdf stays lazy)
 
@@ -44,6 +45,10 @@ WML_INDEX = ('<?xml version="1.0"?><xml><data>'
              '<gro href="WMT26AX1S1.htm"/><gro href="K1103168.htm"/>'
              '<gro href="P1.htm"/><gro href="Studia_indywidualne.htm"/>'
              '</data></xml>')
+WIG_BASE = 'https://example.test/cpp/phocadownloadpap/'
+WIG_CFG = {'driver': 'wig', 'label': 'WIG', 'prefix': 'WIG', 'groups_re': '^WIG\\d\\d(?!BW)',
+           'base': WIG_BASE, 'dirs': ['budownictwo', 'budownictwo_jsm_woj']}
+
 HAS_PYMUPDF = importlib.util.find_spec('pymupdf') is not None
 
 
@@ -809,6 +814,248 @@ class IoeConversion(unittest.TestCase):
         self.assertNotIn('Bi.Ka', ics)
         ok, why = core.validate(core.to_crlf(ics), 'IOE26HX1S0', '2026-27-zima')
         self.assertTrue(ok, why)
+
+
+def apache_listing(path, entries):
+    """An Apache directory listing as the WIG file server prints it (sort links, parent, entries)."""
+    rows = ''.join(f'<tr><td><a href="{e}">{e}</a></td><td>2026-10-01 09:35</td></tr>' for e in entries)
+    return (f'<html><head><title>Index of {path}</title></head><body><h1>Index of {path}</h1><table>'
+            f'<tr><th><a href="?C=N;O=D">Name</a></th><th><a href="?C=M;O=A">Last modified</a></th></tr>'
+            f'<tr><td><a href="/cpp/phocadownloadpap/">Parent Directory</a></td></tr>{rows}</table></body></html>'
+            ).encode()
+
+
+WIG_ROUTES = {
+    WIG_BASE + 'budownictwo/': Resp(200, apache_listing('/cpp/phocadownloadpap/budownictwo',
+                                                        ['drugistopien/', 'niestacjonarne/', 'stacjonarne/'])),
+    WIG_BASE + 'budownictwo/stacjonarne/': Resp(200, apache_listing('/cpp/phocadownloadpap/budownictwo/stacjonarne',
+                                                                    ['WIG26AX1S0.pdf', 'Harmonogram_roku.pdf'])),
+    WIG_BASE + 'budownictwo/niestacjonarne/': Resp(200, apache_listing(
+        '/cpp/phocadownloadpap/budownictwo/niestacjonarne', ['WIG26BX1N1.pdf'])),
+    WIG_BASE + 'budownictwo/drugistopien/': Resp(200, apache_listing('/cpp/phocadownloadpap/budownictwo/drugistopien',
+                                                                     [])),
+    WIG_BASE + 'budownictwo_jsm_woj/': Resp(200, apache_listing('/cpp/phocadownloadpap/budownictwo_jsm_woj',
+                                                                ['stacjonarne/'])),
+    WIG_BASE + 'budownictwo_jsm_woj/stacjonarne/': Resp(200, apache_listing(
+        '/cpp/phocadownloadpap/budownictwo_jsm_woj/stacjonarne', ['WIG26BW1S0.pdf'])),
+}
+
+
+class WigDiscovery(unittest.TestCase):
+    def discover(self, routes):
+        pauses = []
+        driver = wig.Driver('wig', WIG_CFG, TODAY, sleep=pauses.append)
+        session = FakeSession(routes)
+        return driver.discover(session), pauses, session
+
+    def test_walks_the_programme_listings_and_their_mode_directories(self):
+        items, pauses, session = self.discover(WIG_ROUTES)
+        # WEL owns the BW groups; a PDF that is no group plan is not one either
+        self.assertEqual([i.code for i in items], ['WIG26BX1N1', 'WIG26AX1S0'])
+        self.assertEqual(items[1].url, WIG_BASE + 'budownictwo/stacjonarne/WIG26AX1S0.pdf')
+        self.assertEqual(items[1].page, 'WIG26AX1S0')
+        self.assertEqual(len(session.seen), 6)  # two programmes, four mode directories; never the parent
+        self.assertEqual(len(pauses), 5)
+        self.assertTrue(all(1.0 <= p <= 2.0 for p in pauses))
+
+    def test_a_listing_reads_entries_not_sort_links_or_the_parent(self):
+        url = WIG_BASE + 'budownictwo/'
+        subdirs, pdfs = wig.listing(WIG_ROUTES[url].content.decode(), url)
+        self.assertEqual(subdirs, [url + 'drugistopien/', url + 'niestacjonarne/', url + 'stacjonarne/'])
+        self.assertEqual(pdfs, [])
+
+    def test_a_missing_directory_lists_nothing_and_a_blocked_one_raises(self):
+        routes = dict(WIG_ROUTES)
+        del routes[WIG_BASE + 'budownictwo_jsm_woj/']
+        items, _, _ = self.discover(routes)
+        self.assertEqual([i.code for i in items], ['WIG26BX1N1', 'WIG26AX1S0'])
+        with self.assertRaises(core.Blocked):
+            self.discover(dict(WIG_ROUTES, **{WIG_BASE + 'budownictwo/stacjonarne/': Resp(403, b'')}))
+
+
+class WigCensus(unittest.TestCase):
+    """The census walks the Joomla tree (where a line may) and hands the directories it finds to discovery."""
+    LANDING = 'https://example.test/cpp/index.php/studenci/rozklady-zajec'
+    PAGES = {
+        LANDING: ('<a href="/cpp/index.php/studenci/rozklady-zajec/6-budow">Budow.</a>'
+                  '<a href="/cpp/index.php/studenci/rozklady-zajec/6-budow/7-i-r">I R.</a>'
+                  '<a href="/cpp/index.php/studenci/rozklady-zajec/117-drogi/118-i-r">I R.</a>'
+                  '<a href="/cpp/index.php/studenci/kody-grup">Kody</a>'),
+        LANDING + '/6-budow/7-i-r': '<a href="/cpp/phocadownloadpap/budownictwo/stacjonarne/WIG26BX1S1.pdf">x</a>',
+        LANDING + '/117-drogi/118-i-r': ('<a href="/cpp/phocadownloadpap/drogi_mosty/stacjonarne/WIG26DX1S1.pdf">x</a>'
+                                         '<a href="/cpp/phocadownloadpap/drogi_mosty/stacjonarne/WIG26DX2S1.pdf">x</a>'),
+    }
+    CFG = dict(WIG_CFG, landing=LANDING)
+
+    def routes(self):
+        return {url: Resp(200, body.encode()) for url, body in self.PAGES.items()}
+
+    def test_lists_the_directories_of_every_linked_pdf(self):
+        driver = wig.Driver('wig', self.CFG, TODAY, sleep=lambda s: None)
+        self.assertEqual(driver.census(FakeSession(self.routes())),
+                         {'dirs': ['budownictwo/stacjonarne', 'drogi_mosty/stacjonarne'], 'pdfs': 3})
+        with self.assertRaises(core.Blocked):
+            driver.census(FakeSession({self.LANDING: Resp(403, b'')}))
+
+    def test_discovery_reads_the_directories_a_census_found(self):
+        routes = dict(WIG_ROUTES, **{WIG_BASE + 'drogi_mosty/stacjonarne/': Resp(200, apache_listing(
+            '/cpp/phocadownloadpap/drogi_mosty/stacjonarne', ['WIG26DX1S1.pdf']))})
+        found = {'dirs': ['drogi_mosty/stacjonarne', 'budownictwo/stacjonarne', '../etc', '/abs'], 'pdfs': 2}
+        driver = wig.Driver('wig', dict(self.CFG, found=found), TODAY, sleep=lambda s: None)
+        session = FakeSession(routes)
+        codes = [i.code for i in driver.discover(session)]
+        self.assertIn('WIG26DX1S1', codes)
+        self.assertEqual(codes.count('WIG26AX1S0'), 1)
+        self.assertEqual(len(session.seen), len(set(session.seen)))  # a directory known both ways is read once
+        self.assertFalse(any('etc' in u or u.endswith('//abs/') for u in session.seen))
+
+    def census_run(self, routes, state):
+        sources = {'wig': self.CFG}
+        logged = io.StringIO()
+        with contextlib.redirect_stdout(logged), \
+                unittest.mock.patch.object(wig.random, 'uniform', return_value=0.0):
+            refresh.take_census(['wig'], sources, state, TODAY, FakeSession(routes), sleep=lambda s: None)
+        return logged.getvalue()
+
+    def test_take_census_stores_it_once_a_day_and_keeps_the_last_one_when_blocked(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        state = core.State(tmp / core.STATE_FILE)
+        log = self.census_run(self.routes(), state)
+        found = state.data['found']['wig']
+        self.assertEqual(found['dirs'], ['budownictwo/stacjonarne', 'drogi_mosty/stacjonarne'])
+        self.assertIn('add them to dirs): drogi_mosty/stacjonarne', log)  # budownictwo is configured
+        self.assertEqual(self.census_run({}, state), '')  # taken today: not again
+        found['at'] = (core.now_utc() - dt.timedelta(hours=refresh.CENSUS_HOURS + 1)).isoformat()
+        log = self.census_run({self.LANDING: Resp(403, b'')}, state)
+        self.assertIn('census not taken', log)
+        self.assertEqual(state.data['found']['wig']['dirs'], found['dirs'])
+
+    def test_a_faculty_run_hands_the_census_to_its_driver(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        args = refresh.parse(['--out', str(tmp), '--force', '--dry-run'])
+        state = core.State(tmp / core.STATE_FILE)
+        state.data['found'] = {'wig': {'dirs': ['drogi_mosty/stacjonarne'], 'at': core.now_utc().isoformat()}}
+        routes = dict(WIG_ROUTES, **{WIG_BASE + 'drogi_mosty/stacjonarne/': Resp(200, apache_listing(
+            '/cpp/phocadownloadpap/drogi_mosty/stacjonarne', ['WIG26DX1S1.pdf']))})
+        session = FakeSession(routes)
+        with unittest.mock.patch.object(wig.random, 'uniform', return_value=0.0):
+            refresh.refresh_faculty('wig', WIG_CFG, args, state, TODAY, session, sleep=lambda s: None)
+        self.assertIn(WIG_BASE + 'drogi_mosty/stacjonarne/WIG26DX1S1.pdf', session.seen)
+
+
+class WigCells(unittest.TestCase):
+    """The rebuilt cells: what wlo2ics gets for each shape the WIG prints use."""
+
+    def test_lesson_cells(self):
+        seg = wig.lesson_segments
+        self.assertEqual(seg(['M1(w)', 'A 59', 'Psz.K'], set()), ['M1(w)', 'A 59'])
+        self.assertEqual(seg(['PZiP(w', ')', '12 57', 'Stm'], set()), ['PZiP(w)', '12 57'])
+        self.assertEqual(seg(['WDM(ć)', '06 58;16', '58', 'WaMi'], set()), ['WDM(ć)', '06 58;16 58'])
+        self.assertEqual(seg(['WF(ć)', 'MLipka'], set()), ['WF(ć)', ''])
+        self.assertEqual(seg(['PGI(ć)', '30/ 54;29/', '54', 'Tor.J;', 'Siw.K'], set()), ['PGI(ć)', '30/ 54;29/ 54'])
+        self.assertEqual(seg(['Ez(w)', '111 58', 'K2'], {'K2'}), ['Ez(w)', '111 58'])
+        # a cut-off room list loses its stub; a share goes where wlo2ics keeps notes
+        self.assertEqual(seg(['Ja(ć)', '134 K;133', 'K;124 K;12'], set()), ['Ja(ć)', '134 K;133 K;124 K'])
+        self.assertEqual(seg(['50%', 'SzS(ć)', 'ST.nr', '1(KB)'], set()), ['SzS(ć)', 'ST.nr 1(KB)', '', '50%'])
+        self.assertTrue(wig.is_lesson(['50%', 'SzS(ć)']))
+        self.assertFalse(wig.is_lesson(['05 X']))
+        self.assertFalse(wig.is_lesson([]))
+
+    def test_legend_rows(self):
+        self.assertEqual(wig.legend_entry(['Pta.S', 'w 14'], ['dr Ptaszek', 'Stanisław']), ('w 14', 'dr Ptaszek Stanisław'))
+        self.assertEqual(wig.legend_entry(['Owi'], ['Ochrona', 'własności']), ('Owi', 'Ochrona własności'))
+
+    def test_semester_headers(self):
+        self.assertEqual(wig.pdf_term('SEMESTR - WIG ZIMA 2026-2027-CYW'), '2026-27-zima')
+        self.assertEqual(wig.pdf_term('niestacjonarne Zima 2026_2027'), '2026-27-zima')
+        self.assertEqual(wig.pdf_term('SEMESTR - WIG LATO 2026-2027-WOJ'), '2026-27-lato')
+        self.assertIsNone(wig.pdf_term('Rozkład zajęć'))
+
+
+@unittest.skipUnless(HAS_PYMUPDF, 'pymupdf not installed')
+class WigConversion(unittest.TestCase):
+    STAFF = ('CONTACT', 'Prowadzący', 'Ptaszek', 'Pszczoła', 'Mielnik', 'Pta.S', 'Psz.K', 'MLipka', 'WaMi')
+
+    def convert(self, code, today=TODAY, fixture=None):
+        driver = wig.Driver('wig', WIG_CFG, today)
+        return driver.convert(Item(code, f'https://example.test/{code}.pdf', code), page(fixture or f'{code}.pdf'))
+
+    def event(self, ics, start):
+        block = ics.replace('\n ', '').split(f'DTSTART;TZID=Europe/Warsaw:{start}\n', 1)[1]
+        return block.split('END:VEVENT', 1)[0]
+
+    def assert_name_free_and_valid(self, ics, code):
+        for word in self.STAFF:
+            self.assertNotIn(word, ics)
+        ok, why = core.validate(core.to_crlf(ics), code, '2026-27-zima')
+        self.assertTrue(ok, why)
+
+    def test_a_full_time_print_becomes_a_valid_calendar_without_staff_names(self):
+        ics = self.convert('WIG26AX1S0')
+        self.assertIn('PRODID:-//PlanWAT//WIG//PL', ics)
+        self.assertIn('X-PLAN-SOURCE:wig-plansoft', ics)
+        self.assertIn('X-PLAN-UPDATED:20260929', ics)
+        self.assertEqual(ics.count('BEGIN:VEVENT'), 217)
+        first = self.event(ics, '20261005T080000')
+        self.assertIn('SUMMARY:Matematyka 1', first)
+        self.assertIn('LOCATION:A 59', first)
+        self.assertIn('CATEGORIES:Wykład', first)
+        self.assertIn('LOCATION:06 58\\;17 58', self.event(ics, '20261005T114000'))  # a room wrapped in its cell
+        # the row the first page break cuts: its subject and room on one page, its alias on the next
+        self.assertIn('SUMMARY:Podstawy zarządzania i przedsiębiorczości', self.event(ics, '20261014T095000'))
+        self.assertIn('LOCATION:16 57\n', self.event(ics, '20261014T095000'))
+        self.assert_name_free_and_valid(ics, 'WIG26AX1S0')
+
+    def test_a_part_time_print_spans_the_day_over_its_rows(self):
+        ics = self.convert('WIG26BX1N1')
+        self.assertEqual(ics.count('BEGIN:VEVENT'), 123)
+        self.assertIn('SUMMARY:Inauguracja', self.event(ics, '20261002T133000'))  # a Friday
+        saturday = self.event(ics, '20261003T160000')
+        self.assertIn('SUMMARY:Matematyka 1', saturday)
+        self.assertIn('LOCATION:111 58', saturday)
+        # printed in August: the year comes from the semester in the header, not from the update date
+        self.assertIn('X-PLAN-UPDATED:20260826', ics)
+        self.assertIn('X-PLAN-SEMESTER-START:20261002', ics)
+        self.assert_name_free_and_valid(ics, 'WIG26BX1N1')
+
+    def test_a_pdf_of_another_group_or_semester_is_never_filed(self):
+        with self.assertRaises(ValueError):
+            self.convert('WIG26AX2S0', fixture='WIG26AX1S0.pdf')
+        with self.assertRaises(core.NotReady):
+            self.convert('WIG26AX1S0', today=dt.date(2027, 3, 10))
+        with self.assertRaises(ValueError):
+            wig.Driver('wig', WIG_CFG, TODAY).convert(Item('WIG26AX1S0', 'u', 'WIG26AX1S0'), b'<html>error</html>')
+
+    def run_faculty(self, today):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        routes = dict(WIG_ROUTES, **{
+            WIG_BASE + 'budownictwo/stacjonarne/WIG26AX1S0.pdf': Resp(200, page('WIG26AX1S0.pdf')),
+            WIG_BASE + 'budownictwo/niestacjonarne/WIG26BX1N1.pdf': Resp(200, page('WIG26BX1N1.pdf')),
+        })
+        args = refresh.parse(['--out', str(tmp), '--force'])
+        state = core.State(tmp / core.STATE_FILE)
+        with unittest.mock.patch.object(wig.random, 'uniform', return_value=0.0):  # no pause between listings
+            result = refresh.refresh_faculty('wig', WIG_CFG, args, state, today, FakeSession(routes),
+                                             sleep=lambda s: None)
+        return tmp, state, result
+
+    def test_full_faculty_run_publishes_a_name_free_calendar(self):
+        tmp, _, result = self.run_faculty(TODAY)
+        self.assertEqual((sorted(result[0]), result[1], result[2]), (['WIG26AX1S0', 'WIG26BX1N1'], False, True))
+        raw = (tmp / 'timetables' / '2026-27-zima' / 'WIG26AX1S0.ics').read_bytes()
+        self.assertIn(b'\r\n', raw)
+        self.assertNotIn(b'CONTACT', raw)
+        self.assertNotIn('Ptaszek'.encode(), raw)
+
+    def test_a_pdf_of_another_semester_is_not_ready_not_a_failure(self):
+        tmp, state, result = self.run_faculty(dt.date(2027, 3, 10))
+        self.assertEqual(result, ([], False, True))
+        run = state.faculties['wig']['run']
+        self.assertEqual((run['not_ready'], run['skipped'], run['degraded']), (2, 0, False))
+        self.assertFalse((tmp / 'timetables').exists() and any((tmp / 'timetables').rglob('*.ics')))
 
 
 class BlockModelTest(unittest.TestCase):
@@ -1996,6 +2243,39 @@ class FleetPlan(unittest.TestCase):
         self.assertEqual(shares, {'plebania': ['wim']})
         self.assertIn('wcy', result['unassigned'])
 
+    def test_a_preferred_lane_goes_to_its_runner_while_it_is_up(self):
+        keen = [self.FLEET[0], dict(self.FLEET[1], prefers=['wig'])]
+        wanted = self.WANTED + ['wig']
+        result = fleet.plan(keen, wanted, self.STATE, {'planwat-plebania', 'planwat-oracle'})
+        shares = {s['runner']: s['faculties'].split(',') for s in result['shards']}
+        self.assertIn('wig', shares['oracle'])
+        self.assertEqual(sorted(sum(shares.values(), [])), sorted(wanted))
+        # down, or the runner that left it behind (handoff): the lane is balanced as any other
+        result = fleet.plan(keen, wanted, self.STATE, {'planwat-plebania'})
+        self.assertIn('wig', result['shards'][0]['faculties'].split(','))
+        result = fleet.plan(keen, ['wig'], self.STATE, {'planwat-plebania', 'planwat-oracle'}, {'wig': {'oracle'}})
+        self.assertEqual([(s['runner'], s['faculties']) for s in result['shards']], [('plebania', 'wig')])
+
+    def test_the_census_runner_takes_the_census_of_wanted_faculties_only(self):
+        runners = [dict(self.FLEET[0], census=['wig']), dict(self.FLEET[1], census=[])]
+        self.assertEqual(fleet.census_of(runners, self.WANTED + ['wig']), {'plebania': 'wig', 'oracle': ''})
+        self.assertEqual(fleet.census_of(runners, ['wel']), {'plebania': '', 'oracle': ''})  # a run for WEL only
+        real = {r['name']: r['census'] for r in fleet.load_fleet()}
+        self.assertEqual(real['plebania'], ['wig'])
+
+    def test_load_fleet_reads_preferences(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        path = tmp / 'fleet.json'
+        path.write_text(json.dumps({'runners': [{'name': 'oracle', 'label': 'planwat-oracle', 'prefers': ['wig']},
+                                                {'name': 'plebania', 'label': 'planwat-plebania'}]}))
+        self.assertEqual([r['prefers'] for r in fleet.load_fleet(path)], [['wig'], []])
+        for key in ('prefers', 'census'):
+            path.write_text(json.dumps({'runners': [{'name': 'oracle', 'label': 'x', key: 'wig'}]}))
+            with self.assertRaises(ValueError):
+                fleet.load_fleet(path)
+        self.assertTrue(all('prefers' in r for r in fleet.load_fleet()))  # the real fleet.json loads
+
     def test_a_share_keeps_the_order_asked(self):
         shares, _ = self.shares({'planwat-oracle'})
         self.assertEqual(shares['oracle'], self.WANTED)
@@ -2041,7 +2321,7 @@ class FleetPlan(unittest.TestCase):
             values = dict(line.split('=', 1) for line in out.read_text().splitlines())
             self.assertEqual(json.loads(values['matrix']),
                              [{'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wcy,wim', 'wave': 1,
-                               'wait': fleet.BLOCK_WAIT}])  # nobody else up to take over: wait walls out
+                               'wait': fleet.BLOCK_WAIT, 'census': ''}])  # nobody else up to take over: wait walls out
             self.assertEqual(values['shards'], '1')
             self.assertEqual(fleet.main(['plan', '--state', str(tmp / 'state.json'), '--faculty', 'nope']), 2)
 

@@ -277,7 +277,7 @@ liczbę udostępnionych grup na bieżąco.
 | WIM | `plansoft` | |
 | WTC | `wtc` | plany w PDF konwertowane przez `pymupdf` |
 | IOE | `plansoft` | zimowe plany leżą pod katalogiem `lato/`, siatka jest transponowana |
-| WIG | ręcznie | pliki dodane do repozytorium |
+| WIG | `wig` | plany w PDF (wydruki Plansoft) z listingów katalogów wydziału; siatka odtwarzana z linii tabeli i konwertowana przez `wlo2ics` |
 
 Brakuje swojej grupy? Zgłoś [prośbę o plan](https://github.com/kilerdevs/PlanWAT/issues/new?template=timetable.yml) z kodem
 grupy i linkiem do oficjalnego planu.

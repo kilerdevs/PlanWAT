@@ -1203,7 +1203,7 @@ class WizardTest(unittest.TestCase):
         self.assertEqual(doctor.classify(200, 'Request unsuccessful. Incapsula incident ID: 1'), 'blocked')
         self.assertEqual(doctor.classify(403, ''), 'blocked')
         self.assertEqual(doctor.classify(None, ''), 'down')
-        self.assertEqual(set(doctor.faculty_hosts()), {'wlo', 'wel', 'wim', 'ioe', 'wcy', 'wml', 'wtc'})
+        self.assertEqual(set(doctor.faculty_hosts()), {'wlo', 'wel', 'wim', 'ioe', 'wcy', 'wml', 'wtc', 'wig'})
 
     def test_the_offline_doctor_runs_without_a_network(self):
         tmp = Path(tempfile.mkdtemp())

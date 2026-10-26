@@ -832,7 +832,8 @@ class Routing(unittest.TestCase):
 
     def test_faculties_chain(self):
         for host in ('wlo.wat.edu.pl', 'wel.wat.edu.pl', 'www.wim.wat.edu.pl',
-                      'planzajec.wcy.wat.edu.pl', 'wml.wat.edu.pl', 'wtc.wat.edu.pl', 'ioe.wat.edu.pl'):
+                      'planzajec.wcy.wat.edu.pl', 'wml.wat.edu.pl', 'wtc.wat.edu.pl', 'ioe.wat.edu.pl',
+                      'www.wig.wat.edu.pl'):
             self.assertEqual(server.route(host), 'chain', host)
 
     def test_direct_faculty_list_overrides_the_pool(self):
