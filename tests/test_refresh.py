@@ -2263,6 +2263,17 @@ class FleetPlan(unittest.TestCase):
         real = {r['name']: r['census'] for r in fleet.load_fleet()}
         self.assertEqual(real['plebania'], ['wig'])
 
+    def test_the_real_fleet_keeps_each_faculty_where_it_gets_through(self):
+        state = dict(self.STATE, faculties=dict(self.STATE['faculties'], wig={'last_count': 33}))
+        wanted = self.WANTED + ['wig']
+        result = fleet.plan(fleet.load_fleet(), wanted, state, {'planwat', 'planwat-plebania', 'planwat-oracle'})
+        shares = {s['runner']: set(s['faculties'].split(',')) for s in result['shards']}
+        self.assertTrue({'wig', 'ioe'} <= shares['oracle'])
+        self.assertIn('wtc', shares['plebania'])
+        self.assertFalse(shares['oracle'] & {'wtc', 'wlo', 'wel', 'wml'})  # their walls refuse the VPS
+        alone = fleet.plan(fleet.load_fleet(), wanted, state, {'planwat', 'planwat-oracle'})
+        self.assertEqual(alone['shards'][0]['faculties'].split(','), wanted)  # a preference never strands a faculty
+
     def test_load_fleet_reads_preferences(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
