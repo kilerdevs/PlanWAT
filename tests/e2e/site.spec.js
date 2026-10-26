@@ -328,6 +328,8 @@ test('the week sheet closes with Escape and picks a week', async ({ page }) => {
   await expect(sheet).toBeHidden();
   await expect(weekLabel(page)).toHaveText('28.12–02.01');
   await expect(page.locator('.session-banner')).toContainText('Brak zajęć w tym tygodniu');
+  // the banner says it once: no row of day names each reading "Brak zajęć" under it
+  await expect(page.locator('#weekBody .dayhead')).toHaveCount(0);
 });
 
 test('the legend highlights one subject across the week', async ({ page }) => {

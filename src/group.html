@@ -1254,8 +1254,10 @@
   .extra-item .extra-info { display: grid; gap: 1px; min-width: 0; }
   .extra-item .extra-actions { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 2px; align-self: center; }
   .extra-item .extra-actions .link { min-height: 36px; }
-  .extra-form { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
-  .extra-form .fields { margin-top: 0; }
+  /* one rhythm between every row of the form (a label sat flush on the input above it) */
+  .extra-form { display: grid; gap: var(--sp-3); margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+  .extra-form .fields, .extra-form .form-warn, .extra-form .session-actions { margin-top: 0; }
+  .extra-form .check { min-height: 32px; }
   .form-warn { margin-top: var(--sp-2); padding: 8px 10px; border-radius: var(--r-sm, 8px); background: var(--accent-soft); color: var(--t2); font-size: var(--fs-13); }
   .form-warn.clash { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--warn); }
 
@@ -1278,7 +1280,14 @@
   .session-day h3 { margin: 0; }
   .session-day span { margin-left: auto; font-size: var(--fs-13); color: var(--t3); font-variant-numeric: tabular-nums; }
   .session-tag { justify-self: end; }
-  .session-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+  /* the buttons share one height and baseline: .dl's own top margin used to push Save down and stretch Cancel
+     into a tall oval beside it */
+  .session-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); }
+  .session-actions .dl, .session-actions .link { min-height: 40px; margin-top: 0; padding: 8px 18px; }
+  #toolBody .session-actions .dl.primary { background: var(--accent); color: #fff; box-shadow: none; }
+  @media (hover: hover) and (pointer: fine) {
+    #toolBody .session-actions .dl.primary:hover { background: var(--accent-text); }
+  }
 
   /* sharing one day as text or an image */
   .share-preview {
@@ -1799,23 +1808,33 @@
       border-radius: 22px;
     }
     .week .day.is-today .colbg { background: var(--accent-wash); box-shadow: inset 0 0 0 1px var(--accent-ring); }
+    /* the day's name and the "Dziś" pill share a line while they fit; in a narrow column (a seven-day week) the pill
+       wraps under the name instead of covering it, and space-between puts it back on the left there */
     .week .dayhead {
       grid-column: var(--col);
       grid-row: calc(1 + var(--off, 0));
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-areas: "dow pill" "sub sub";
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
       align-items: center;
+      align-content: start;
       gap: 2px var(--sp-2);
       padding: var(--sp-3) var(--sp-2) var(--sp-2);
     }
-    .week .dow { grid-area: dow; font-size: var(--fs-17); }
-    .week .dsub { grid-area: sub; display: flex; gap: var(--sp-2); align-items: baseline; }
+    .week .dow { min-width: 0; font-size: var(--fs-17); }
+    .week .dsub { order: 1; flex: 1 0 100%; display: flex; gap: var(--sp-2); align-items: baseline; }
     .week .date { font-size: var(--fs-13); }
     .week .count, .week .empty-day { margin-left: 0; font-size: var(--fs-13); }
     .week .daymap { margin-left: auto; padding: 2px 6px; }
     .week .daymap span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    .week .today-pill { grid-area: pill; justify-self: end; margin: 0; }
+    .week .today-pill { margin: 0; }
+    /* too narrow for both (a seven-day week): the pill is only read aloud, and the day's name takes the accent; with
+       the column's ring that says "today" without covering the name */
+    .week .day.is-today .dayhead { container-type: inline-size; }
+    @container (max-width: 200px) {
+      .week .today-pill { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      .week .dow { color: var(--accent-text); }
+    }
     .week .day.is-empty { margin-top: 0; }
     .week .lesson {
       grid-column: var(--col);
@@ -2683,6 +2702,9 @@
 
     var col = 0;
     state.days.forEach(function (dayKey) {
+      // a week without a single class says so once, in the banner above: a row of day names each reading
+      // "Brak zajęć" under it only repeats that (the columns still count, so the grid keeps its shape)
+      if (!total) { col++; return; }
       var dt = addDays(monday, DAY_ORDER.indexOf(dayKey));
       var dtIso = isoOf(dt);
       var raw = (week.days && week.days[dayKey]) || [];
@@ -4063,9 +4085,20 @@
         dateField.hidden = weekly;
         dowWrap.hidden = !weekly;
         var item = current();
-        if (!item.title || !validClock(item.start) || !validClock(item.end) || item.start >= item.end) {
+        // one thing at a time, in plain words: what is still missing, or why the hours do not work
+        if (!validClock(item.start) || !validClock(item.end)) {
           warn.className = 'form-warn';
-          warn.textContent = 'Uzupełnij nazwę i godziny (koniec po początku).';
+          warn.textContent = 'Podaj godzinę początku i końca.';
+          return;
+        }
+        if (item.start >= item.end) {
+          warn.className = 'form-warn clash';
+          warn.textContent = 'Koniec musi być później niż początek.';
+          return;
+        }
+        if (!item.title) {
+          warn.className = 'form-warn';
+          warn.textContent = 'Wpisz nazwę, a sprawdzimy, czy nie koliduje z Twoim planem.';
           return;
         }
         if (!item.weekly && (!item.date || item.date < dateIn.min || item.date > dateIn.max)) {
@@ -4089,7 +4122,9 @@
       [title, room, start, end].forEach(function (inp) { inp.addEventListener('input', refresh); });
       dateIn.addEventListener('change', refresh);
       var actions = form.appendChild(el('div', 'session-actions'));
-      var save = actions.appendChild(el('button', 'dl', editing ? 'Zapisz zmiany' : 'Dodaj zajęcia'));
+      // "Add" opens the form with a blank draft (no id): only a saved entry is being changed
+      var changing = !!(editing && editing.id);
+      var save = actions.appendChild(el('button', 'dl primary', changing ? 'Zapisz zmiany' : 'Dodaj zajęcia'));
       save.type = 'button';
       save.id = 'extraSave';
       save.addEventListener('click', function () {
@@ -4097,7 +4132,7 @@
         if (!item.title) { toast('Podaj nazwę zajęć'); title.focus(); return; }
         if (!validClock(item.start) || !validClock(item.end) || item.start >= item.end) { toast('Godzina końca musi być późniejsza'); start.focus(); return; }
         if (!item.weekly && (!item.date || item.date < dateIn.min || item.date > dateIn.max)) { toast('Wybierz dzień w semestrze'); dateIn.focus(); return; }
-        if (!editing && state.extraItems.length >= EXTRA_LIMIT) { toast('Możesz dodać do ' + EXTRA_LIMIT + ' zajęć'); return; }
+        if (!changing && state.extraItems.length >= EXTRA_LIMIT) { toast('Możesz dodać do ' + EXTRA_LIMIT + ' zajęć'); return; }
         if (!item.id) item.id = 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
         if (editing) {
           var at = state.extraItems.map(function (x) { return x.id; }).indexOf(editing.id);
@@ -4105,7 +4140,7 @@
         } else state.extraItems.push(item);
         store.set(extrasKey(), state.extraItems);
         applyExtras();
-        toast(editing ? 'Zapisano zmiany' : 'Dodano zajęcia');
+        toast(changing ? 'Zapisano zmiany' : 'Dodano zajęcia');
         editing = null;
         draw();
         var back = $('extraList') ? $('extraList').querySelector('.link') : $('extraAdd');

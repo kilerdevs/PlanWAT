@@ -124,15 +124,22 @@ class StatusPageTest(unittest.TestCase):
     def test_every_pass_names_its_servers_and_what_each_did(self):
         latest, rows = build.render_status_runs([self.run_record(), self.run_record(id=6, result='blocked')])
         self.assertIn('Ostatni przebieg · 25 paź · 13:00', latest)
-        self.assertIn('<dd>120</dd>', latest)
-        self.assertIn('<dd>41 min</dd>', latest)  # plan to report
+        # the tiles count up (pure CSS); the digits stay in the text for screen readers
+        self.assertIn('<dd><span class="vh">120</span><span class="cu" data-n="120" aria-hidden="true"></span></dd>', latest)
+        self.assertIn('<span class="vh">41</span><span class="cu" data-n="41" aria-hidden="true"></span> min</dd>', latest)
+        self.assertEqual(build.count_up_rules(latest), '.cu[data-n="0"]{--to:0}.cu[data-n="41"]{--to:41}'
+                                                       '.cu[data-n="120"]{--to:120}')
         self.assertEqual(rows.count('<li class="run">'), 2)
         self.assertIn('<span class="srv">oracle</span>', rows)
         self.assertIn('<span class="srv off">plebania<span class="vh"> (wyłączony)</span></span>', rows)
         self.assertIn('<span class="pname">oracle</span><span class="pfacs">WCY, IOE</span>'
                       '<span class="pstate">38 min</span>', rows)
-        self.assertIn('blokada Incapsula · bez planu na ten semestr: 38 · pominięte: 1', rows)
+        self.assertIn('blokada Incapsula · odrzucone strony: 1 · bez planu na ten semestr: 38', rows)
+        self.assertIn('<p class="why">Strona wydziału WCY zablokowała pobieranie.', rows)  # what it means, in words
+        self.assertIn('· automatyczny · trwał 41 min</p>', rows)
         self.assertIn('brak danych z tego przebiegu', rows)  # IOE's numbers were not this pass's
+        self.assertIn('<h3 class="sub">Serwery</h3><ul class="parts"', rows)  # two titled lists, not one long one
+        self.assertIn('<h3 class="sub">Wydziały</h3><ul class="facs"', rows)
         self.assertIn('<a href="https://github.com/kilerdevs/PlanWAT/actions/runs/7">Przebieg #512 na GitHubie</a>', rows)
         self.assertIn('class="dot bad"', rows)
 
@@ -147,14 +154,55 @@ class StatusPageTest(unittest.TestCase):
         _, rows = build.render_status_runs([run])
         self.assertEqual(rows.count('<span class="srv">'), 2)  # each server once
         self.assertIn('<span class="pstate">12 min, zablokowany na WCY</span>', rows)
-        self.assertIn('<span class="pname">plebania</span><span class="pfacs">WCY (od oracle)</span>', rows)
+        # the same server twice says which row is the takeover
+        self.assertIn('<span class="pname">plebania<span class="prole">przejęcie</span></span>'
+                      '<span class="pfacs">WCY (od oracle)</span>', rows)
         self.assertIn('przejęty po blokadzie na oracle', rows)
 
     def test_runner_states(self):
-        self.assertEqual(build.runner_state({'status': 'done', 'minutes': 0}), '0 min')
+        self.assertEqual(build.runner_state({'status': 'done', 'minutes': 0}), '<1 min')  # not "nothing ran"
+        self.assertEqual(build.runner_state({'status': 'degraded', 'minutes': 9, 'degraded_on': ['wel']}),
+                         '9 min, odrzucone strony na WEL')
         self.assertEqual(build.runner_state({'status': 'blocked', 'minutes': 34}), '34 min, zablokowany')
         self.assertEqual(build.runner_state({'status': 'skipped'}), 'nie zaczął na czas')
         self.assertEqual(build.runner_state({'status': 'missing', 'minutes': None}), 'brak raportu')
+
+    def test_each_result_is_explained_in_plain_words(self):
+        facs = [{'id': 'wel', 'fresh': True, 'degraded': True, 'skipped': 3, 'checked': 6},
+                {'id': 'wtc', 'fresh': False}]
+        said = {r: build.run_explanation(self.run_record(result=r, changed=2, faculties=facs))
+                for r in build.RUN_RESULTS}
+        self.assertEqual(said['changed'], 'Pobrano nowe wersje 2 planów.')
+        self.assertIn('(WEL)', said['degraded'])
+        self.assertIn('(WTC)', said['incomplete'])
+        self.assertEqual(len(set(said.values())), len(build.RUN_RESULTS))
+        self.assertEqual(build.faculty_notes(facs[0]), ['odrzucone strony: 3 z 6'])
+
+    def test_plan_statistics_are_measured_against_the_last_pass(self):
+        runs = [self.run_record(ended='2026-10-25T12:00:00')]
+        refreshed = {
+            'WCY26KY3S1': {'checked': '2026-10-25T11:00:00', 'changed': '2026-10-25T10:00:00'},
+            'WCY26KY1S1': {'checked': '2026-10-24T06:00:00', 'changed': '2026-10-01T10:00:00'},  # 30 h before it
+            'WEL25EY1S0': {},  # never confirmed this semester
+        }
+        current = dict.fromkeys(refreshed)
+        stats = build.plan_stats(current, refreshed, runs)
+        self.assertEqual((stats['total'], stats['fresh'], stats['week'], stats['never_changed']), (3, 1, 1, 1))
+        wcy = dict(stats['faculties'])['WCY']
+        self.assertEqual((wcy['fr1'], wcy['fr3']), (1, 1))  # 30 h is "1-3 dni"
+        self.assertEqual(dict(stats['faculties'])['WEL']['frn'], 1)
+        self.assertEqual([g for _, g in stats['stale']], ['WCY26KY1S1'])  # a day or more behind
+        self.assertEqual([g for _, g in stats['recent']], ['WCY26KY3S1', 'WCY26KY1S1'])
+        self.assertEqual(stats['days'][-1][1], 1)  # the last of the 14 days is the pass's own
+        page = build.render_plan_stats(stats)
+        self.assertIn('<a href="../WCY26KY3S1/">WCY26KY3S1</a>', page)
+        self.assertIn('role="img" aria-label="WCY: do 6 h: 1, 1–3 dni: 1"', page)  # each chart says itself
+        self.assertIn('<summary>Liczby w tabeli</summary>', page)
+        self.assertNotIn('style=', page)  # the page's CSP allows no inline style attribute
+        # the same page whenever it is built: no "now" in it
+        self.assertEqual(page, build.render_plan_stats(build.plan_stats(current, refreshed, runs)))
+        self.assertIsNone(build.plan_stats(current, {}, []))
+        self.assertEqual(build.render_plan_stats(None), '')
 
     def test_record_text_is_escaped_and_only_https_links_are_followed(self):
         run = self.run_record(url='javascript:alert(1)', runners=[{'name': '<img src=x>', 'faculties': ['<b>']}])
