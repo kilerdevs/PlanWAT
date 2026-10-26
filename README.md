@@ -1,13 +1,15 @@
 # Odświeżanie planów: ostatnie przebiegi
 
-> [!WARNING]
-> **Ostatni przebieg: z pominięciami.** 26 paź 2026 · 16:19 · **plebania** · **oracle** · 10 min · [przebieg #67](https://github.com/kilerdevs/PlanWAT/actions/runs/40348126142)
+> [!CAUTION]
+> **Ostatni przebieg: zablokowany.** 26 paź 2026 · 20:01 · **plebania** · **oracle** · 60 min · [przebieg #68](https://github.com/kilerdevs/PlanWAT/actions/runs/40382908076)
+> Strona wydziału WML, WIM zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu.
 
-Ostatnie 8 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
+Ostatnie 9 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
 
 | Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |
 |---|---|---|--:|--:|---|
-| 26 paź · 16:19 | Z pominięciami | **plebania** (WLO, WEL, WCY, WML, WTC (od oracle)) · **oracle** (WIM, IOE, WTC) | 110 | 10 min | [#67](https://github.com/kilerdevs/PlanWAT/actions/runs/40348126142) |
+| 26 paź · 20:01 | Zablokowany | **plebania** (WLO, WEL, WCY, WML, WIM (od oracle), WTC (od oracle)) · **oracle** (WIM, IOE, WTC, WML (od plebania)) | 485 | 60 min | [#68](https://github.com/kilerdevs/PlanWAT/actions/runs/40382908076) |
+| 26 paź · 16:19 | Część stron odrzucona | **plebania** (WLO, WEL, WCY, WML, WTC (od oracle)) · **oracle** (WIM, IOE, WTC) | 110 | 10 min | [#67](https://github.com/kilerdevs/PlanWAT/actions/runs/40348126142) |
 | 26 paź · 15:00 | Zmiany w 124 planach | **plebania** (WLO, WEL, WCY, WML, WTC (od oracle)) · **oracle** (WIM, IOE, WTC) | 735 | 41 min | [#66](https://github.com/kilerdevs/PlanWAT/actions/runs/40335568289) |
 | 26 paź · 08:56 | Zablokowany | **oracle** (WLO, WEL, WIM, IOE, WCY, WML, WTC) · ~~plebania~~ | 261 | 55 min | [#65](https://github.com/kilerdevs/PlanWAT/actions/runs/40288910011) |
 | 26 paź · 01:30 | Zablokowany | **oracle** (WLO, WEL, WIM, IOE, WCY, WML, WTC) · ~~plebania~~ | 42 | 32 min | [#64](https://github.com/kilerdevs/PlanWAT/actions/runs/40249645750) |
@@ -19,32 +21,56 @@ Ostatnie 8 przebiegów workflow „Refresh timetables”, od najnowszego, w czas
 ## Szczegóły
 
 <details>
-<summary><b>26 paź · 16:19</b> · Z pominięciami · plebania · oracle</summary>
+<summary><b>26 paź · 20:01</b> · Zablokowany · plebania · oracle</summary>
 
-Przebieg zaplanowany [#67](https://github.com/kilerdevs/PlanWAT/actions/runs/40348126142), od planu do raportu 10 min.
+Strona wydziału WML, WIM zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu. Przebieg uruchomiony ręcznie [#68](https://github.com/kilerdevs/PlanWAT/actions/runs/40382908076), od planu do raportu 60 min.
+
+| Serwer | Wydziały | Zmienione | Stan |
+|---|---|--:|---|
+| **plebania** | WLO, WEL, WCY, WML | 0 | 28 min, zablokowany na WML |
+| **oracle** | WIM, IOE, WTC | 2 | 6 min, zablokowany na WIM, WTC |
+| **plebania** (przejęcie) | WIM (od oracle), WTC (od oracle) | 0 | 4 min, zablokowany na WIM |
+| **oracle** (przejęcie) | WML (od plebania) | 0 | 31 min, zablokowany na WML |
+
+| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
+|---|---|--:|--:|---|
+| WLO | plebania | 131 | 0 |  |
+| WEL | plebania | 158 | 0 | odrzucone strony: 3 |
+| WCY | plebania | 158 | 0 | odrzucone strony: 1, bez planu na ten semestr: 38 |
+| WML | oracle | 0 | 0 | przejęty po blokadzie na plebania, blokada Incapsula |
+| WIM | plebania | 0 | 0 | przejęty po blokadzie na oracle, blokada |
+| IOE | oracle | 15 | 0 |  |
+| WTC | plebania | 23 | 0 | przejęty po blokadzie na oracle, odrzucone strony: 1 |
+
+</details>
+
+<details>
+<summary><b>26 paź · 16:19</b> · Część stron odrzucona · plebania · oracle</summary>
+
+Część stron (WEL) nie przeszła kontroli, więc zostają dla nich poprzednie plany. Przebieg automatyczny [#67](https://github.com/kilerdevs/PlanWAT/actions/runs/40348126142), od planu do raportu 10 min.
 
 | Serwer | Wydziały | Zmienione | Stan |
 |---|---|--:|---|
 | **plebania** | WLO, WEL, WCY, WML | 0 | 9 min, niedokończony |
 | **oracle** | WIM, IOE, WTC | 0 | 6 min, zablokowany na WTC |
-| **plebania** (przejęcie) | WTC (od oracle) | 0 | 0 min |
+| **plebania** (przejęcie) | WTC (od oracle) | 0 | <1 min |
 
 | Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
 |---|---|--:|--:|---|
 | WLO | plebania | 28 | 0 |  |
-| WEL | plebania | 6 | 0 | dużo pominięć, pominięte: 3 |
-| WCY | plebania | 54 | 0 | bez planu na ten semestr: 38, pominięte: 1 |
-| WML | plebania | 11 | 0 | pominięte: 3 |
+| WEL | plebania | 6 | 0 | odrzucone strony: 3 z 6 |
+| WCY | plebania | 54 | 0 | odrzucone strony: 1, bez planu na ten semestr: 38 |
+| WML | plebania | 11 | 0 | odrzucone strony: 3 |
 | WIM | oracle | 10 | 0 |  |
 | IOE | oracle | 0 | 0 |  |
-| WTC | plebania | 1 | 0 | przejęty po blokadzie na oracle, pominięte: 1 |
+| WTC | plebania | 1 | 0 | przejęty po blokadzie na oracle, odrzucone strony: 1 |
 
 </details>
 
 <details>
 <summary><b>26 paź · 15:00</b> · Zmiany w 124 planach · plebania · oracle</summary>
 
-Przebieg ręczny [#66](https://github.com/kilerdevs/PlanWAT/actions/runs/40335568289), od planu do raportu 41 min.
+Pobrano nowe wersje 124 planów. Przebieg uruchomiony ręcznie [#66](https://github.com/kilerdevs/PlanWAT/actions/runs/40335568289), od planu do raportu 41 min.
 
 | Serwer | Wydziały | Zmienione | Stan |
 |---|---|--:|---|
@@ -55,19 +81,19 @@ Przebieg ręczny [#66](https://github.com/kilerdevs/PlanWAT/actions/runs/4033556
 | Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
 |---|---|--:|--:|---|
 | WLO | plebania | 131 | 28 |  |
-| WEL | plebania | 158 | 46 | pominięte: 3 |
-| WCY | plebania | 158 | 31 | bez planu na ten semestr: 38, pominięte: 1 |
-| WML | plebania | 162 | 9 | pominięte: 3 |
+| WEL | plebania | 158 | 46 | odrzucone strony: 3 |
+| WCY | plebania | 158 | 31 | odrzucone strony: 1, bez planu na ten semestr: 38 |
+| WML | plebania | 162 | 9 | odrzucone strony: 3 |
 | WIM | oracle | 88 | 10 |  |
 | IOE | oracle | 15 | 0 |  |
-| WTC | plebania | 23 | 0 | przejęty po blokadzie na oracle, pominięte: 1 |
+| WTC | plebania | 23 | 0 | przejęty po blokadzie na oracle, odrzucone strony: 1 |
 
 </details>
 
 <details>
 <summary><b>26 paź · 08:56</b> · Zablokowany · oracle</summary>
 
-Przebieg zaplanowany [#65](https://github.com/kilerdevs/PlanWAT/actions/runs/40288910011), od planu do raportu 55 min.
+Strona wydziału WLO, WCY, WML, WTC zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu. Przebieg automatyczny [#65](https://github.com/kilerdevs/PlanWAT/actions/runs/40288910011), od planu do raportu 55 min.
 
 | Serwer | Wydziały | Zmienione | Stan |
 |---|---|--:|---|
@@ -77,7 +103,7 @@ Przebieg zaplanowany [#65](https://github.com/kilerdevs/PlanWAT/actions/runs/402
 | Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
 |---|---|--:|--:|---|
 | WLO | oracle | 0 | 0 | blokada Incapsula |
-| WEL | oracle | 158 | 0 | pominięte: 3 |
+| WEL | oracle | 158 | 0 | odrzucone strony: 3 |
 | WIM | oracle | 88 | 2 |  |
 | IOE | oracle | 15 | 0 |  |
 | WCY | oracle | 0 | 0 | blokada Incapsula |
@@ -89,7 +115,7 @@ Przebieg zaplanowany [#65](https://github.com/kilerdevs/PlanWAT/actions/runs/402
 <details>
 <summary><b>26 paź · 01:30</b> · Zablokowany · oracle</summary>
 
-Przebieg zaplanowany [#64](https://github.com/kilerdevs/PlanWAT/actions/runs/40249645750), od planu do raportu 32 min.
+Strona wydziału WLO, WML, WTC zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu. Przebieg automatyczny [#64](https://github.com/kilerdevs/PlanWAT/actions/runs/40249645750), od planu do raportu 32 min.
 
 | Serwer | Wydziały | Zmienione | Stan |
 |---|---|--:|---|
@@ -99,10 +125,10 @@ Przebieg zaplanowany [#64](https://github.com/kilerdevs/PlanWAT/actions/runs/402
 | Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
 |---|---|--:|--:|---|
 | WLO | oracle | 0 | 0 | blokada Incapsula |
-| WEL | oracle | 3 | 0 | pominięte: 3 |
+| WEL | oracle | 3 | 0 | odrzucone strony: 3 |
 | WIM | oracle | 0 | 0 |  |
 | IOE | oracle | 0 | 0 |  |
-| WCY | oracle | 39 | 0 | bez planu na ten semestr: 38, pominięte: 1 |
+| WCY | oracle | 39 | 0 | odrzucone strony: 1, bez planu na ten semestr: 38 |
 | WML | oracle | 0 | 0 | blokada Incapsula |
 | WTC | oracle | 0 | 0 | blokada Incapsula |
 
@@ -111,30 +137,30 @@ Przebieg zaplanowany [#64](https://github.com/kilerdevs/PlanWAT/actions/runs/402
 <details>
 <summary><b>25 paź · 23:24</b> · Bez zmian · plebania · oracle</summary>
 
-Przebieg ręczny [#63](https://github.com/kilerdevs/PlanWAT/actions/runs/40240046249), od planu do raportu 8 min.
+Sprawdzono wszystkie wydziały, żaden plan się nie zmienił. Przebieg uruchomiony ręcznie [#63](https://github.com/kilerdevs/PlanWAT/actions/runs/40240046249), od planu do raportu 8 min.
 
 | Serwer | Wydziały | Zmienione | Stan |
 |---|---|--:|---|
 | **plebania** | WLO, WEL, WCY, WML | 0 | 7 min |
 | **oracle** | WIM, IOE, WTC | 0 | 6 min, zablokowany na WTC |
-| **plebania** (przejęcie) | WTC (od oracle) | 0 | 0 min |
+| **plebania** (przejęcie) | WTC (od oracle) | 0 | <1 min |
 
 | Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
 |---|---|--:|--:|---|
 | WLO | plebania | 0 | 0 |  |
-| WEL | plebania | 3 | 0 | pominięte: 3 |
-| WCY | plebania | 39 | 0 | bez planu na ten semestr: 38, pominięte: 1 |
-| WML | plebania | 3 | 0 | pominięte: 3 |
+| WEL | plebania | 3 | 0 | odrzucone strony: 3 |
+| WCY | plebania | 39 | 0 | odrzucone strony: 1, bez planu na ten semestr: 38 |
+| WML | plebania | 3 | 0 | odrzucone strony: 3 |
 | WIM | oracle | 0 | 0 |  |
 | IOE | oracle | 0 | 0 |  |
-| WTC | plebania | 1 | 0 | przejęty po blokadzie na oracle, pominięte: 1 |
+| WTC | plebania | 1 | 0 | przejęty po blokadzie na oracle, odrzucone strony: 1 |
 
 </details>
 
 <details>
 <summary><b>25 paź · 22:56</b> · Bez zmian · plebania · oracle</summary>
 
-Przebieg ręczny [#62](https://github.com/kilerdevs/PlanWAT/actions/runs/40237831558), od planu do raportu 14 min.
+Sprawdzono wszystkie wydziały, żaden plan się nie zmienił. Przebieg uruchomiony ręcznie [#62](https://github.com/kilerdevs/PlanWAT/actions/runs/40237831558), od planu do raportu 14 min.
 
 | Serwer | Wydziały | Zmienione | Stan |
 |---|---|--:|---|
@@ -145,19 +171,19 @@ Przebieg ręczny [#62](https://github.com/kilerdevs/PlanWAT/actions/runs/4023783
 | Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
 |---|---|--:|--:|---|
 | WLO | plebania | 0 | 0 |  |
-| WEL | plebania | 3 | 0 | pominięte: 3 |
-| WCY | plebania | 39 | 0 | bez planu na ten semestr: 38, pominięte: 1 |
-| WML | plebania | 3 | 0 | pominięte: 3 |
+| WEL | plebania | 3 | 0 | odrzucone strony: 3 |
+| WCY | plebania | 39 | 0 | odrzucone strony: 1, bez planu na ten semestr: 38 |
+| WML | plebania | 3 | 0 | odrzucone strony: 3 |
 | WIM | oracle | 0 | 0 |  |
 | IOE | oracle | 0 | 0 |  |
-| WTC | plebania | 23 | 0 | przejęty po blokadzie na oracle, pominięte: 1 |
+| WTC | plebania | 23 | 0 | przejęty po blokadzie na oracle, odrzucone strony: 1 |
 
 </details>
 
 <details>
 <summary><b>25 paź · 21:59</b> · Zablokowany · plebania · oracle</summary>
 
-Przebieg zaplanowany [#61](https://github.com/kilerdevs/PlanWAT/actions/runs/40233347824), od planu do raportu 50 min.
+Strona wydziału WTC zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu. Przebieg automatyczny [#61](https://github.com/kilerdevs/PlanWAT/actions/runs/40233347824), od planu do raportu 50 min.
 
 | Serwer | Wydziały | Zmienione | Stan |
 |---|---|--:|---|
@@ -167,9 +193,9 @@ Przebieg zaplanowany [#61](https://github.com/kilerdevs/PlanWAT/actions/runs/402
 | Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
 |---|---|--:|--:|---|
 | WLO | plebania | 0 | 0 |  |
-| WEL | plebania | 3 | 0 | pominięte: 3 |
-| WCY | plebania | 95 | 0 | bez planu na ten semestr: 38, pominięte: 1 |
-| WML | plebania | 3 | 0 | pominięte: 3 |
+| WEL | plebania | 3 | 0 | odrzucone strony: 3 |
+| WCY | plebania | 95 | 0 | odrzucone strony: 1, bez planu na ten semestr: 38 |
+| WML | plebania | 3 | 0 | odrzucone strony: 3 |
 | WIM | oracle | 0 | 0 |  |
 | IOE | oracle | 0 | 0 |  |
 | WTC | oracle | 0 | 0 | blokada Incapsula |
@@ -179,7 +205,7 @@ Przebieg zaplanowany [#61](https://github.com/kilerdevs/PlanWAT/actions/runs/402
 <details>
 <summary><b>25 paź · 21:46</b> · Zablokowany · plebania · oracle</summary>
 
-Przebieg ręczny [#60](https://github.com/kilerdevs/PlanWAT/actions/runs/40232365038), od planu do raportu 37 min.
+Strona wydziału WTC zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu. Przebieg uruchomiony ręcznie [#60](https://github.com/kilerdevs/PlanWAT/actions/runs/40232365038), od planu do raportu 37 min.
 
 | Serwer | Wydziały | Zmienione | Stan |
 |---|---|--:|---|
@@ -189,9 +215,9 @@ Przebieg ręczny [#60](https://github.com/kilerdevs/PlanWAT/actions/runs/4023236
 | Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
 |---|---|--:|--:|---|
 | WLO | plebania | 131 | 0 |  |
-| WEL | plebania | 158 | 0 | pominięte: 3 |
-| WCY | plebania | 100 | 0 | bez planu na ten semestr: 38, pominięte: 1 |
-| WML | plebania | 162 | 0 | pominięte: 3 |
+| WEL | plebania | 158 | 0 | odrzucone strony: 3 |
+| WCY | plebania | 100 | 0 | odrzucone strony: 1, bez planu na ten semestr: 38 |
+| WML | plebania | 162 | 0 | odrzucone strony: 3 |
 | WIM | oracle | 88 | 0 |  |
 | IOE | oracle | 15 | 0 |  |
 | WTC | oracle | 0 | 0 | blokada Incapsula |
