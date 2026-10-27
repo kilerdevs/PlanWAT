@@ -3,9 +3,9 @@
 Imperva (Incapsula) in front of most WAT faculties drops datacenter addresses and, after a
 crawl, often the runner's home line too. The public proxy pool in tools/egress can replace
 the address for some hosts, but a verified pool this size has no exit for WTC, WIG and WCY
-(probed 2026-10-27). A small Cloudflare Worker can fetch those pages from Cloudflare's
-egress, which the same wall serves normally; WCY still answers it with 403, so it stays on
-the pool.
+(probed 2026-10-27). A small Cloudflare Worker gets WLO, WEL, WML and WIG through from the
+runners' egress; WTC and WCY still answer it with 403 there, so WTC stays on plebania's
+direct line and WCY on the pool.
 
 This module is the crawler side of that relay. It wraps a curl_cffi session and sends a GET
 for a listed host to ``<PLANWAT_RELAY_URL>?url=<target>`` instead of the target. The caller

@@ -10,7 +10,8 @@ same co w [docs/REFRESH.md](../../docs/REFRESH.md) („Własny runner”):
   ([docs/EGRESS.md](../../docs/EGRESS.md)), który przepuszcza wyłącznie te hosty;
 - WCY blokuje adresy centrów danych, więc idzie zawsze przez pulę (`EGRESS_FAIL_CLOSED`), a pozostałe wydziały
   bezpośrednio. Gdy linia maszyny jest za ścianą, włącz opcjonalny relay Cloudflare (`PLANWAT_RELAY_*`,
-  [docs/EGRESS.md](../../docs/EGRESS.md)): wtedy WLO, WEL, WML, WTC i WIG idą przez Worker, a WCY nadal przez pulę.
+  [docs/EGRESS.md](../../docs/EGRESS.md)): wtedy WLO, WEL, WML i WIG idą przez Worker, a WCY nadal przez pulę. WTC
+  z zachodnich wyjść Cloudflare dostaje 403, więc zostaje z plebanią.
   Zanim użyjesz innej maszyny, sprawdź, które wydziały ją wpuszczają:
 
   ```sh
@@ -61,9 +62,9 @@ entrypoint odtwarza przy starcie, gdy ich brak, zamiast rejestrować runner od n
 raz: `northflank exec service --cmd '/usr/local/bin/planwat-runner state' --shell-cmd 'bash -c'` wypisuje wartość
 (nie pokazuj jej nikomu: to tożsamość runnera). Gdy runner zostanie usunięty w GitHubie albo zarejestrowany od nowa,
 stara wartość przestaje działać: wpisz świeży `RUNNER_TOKEN`, a po starcie zapisz nowy `RUNNER_STATE`. Adres Google Cloud przechodzi
-tylko przez ściany IOE, WIG i WIM (próba 27.10.2026), stąd `faculties` w `fleet.json`. Po włączeniu relaya Cloudflare można
-dopisać do `faculties` także WLO, WEL, WML, WTC i WIG (Worker je pobiera), ale nie WCY — ten wydział nadal wymaga puli,
-której Northflank nie ma. Bez relaya zostaw listę bez zmian.
+tylko przez ściany IOE, WIG i WIM (próba 27.10.2026); po włączeniu relaya Cloudflare może brać także WLO, WEL i WML
+(`faculties` w `fleet.json` już je mają). WTC z zachodnich wyjść Workera dostaje 403, więc zostaje z plebanią, a WCY
+nadal wymaga puli, której Northflank nie ma. Bez relaya usuń WLO, WEL i WML z listy.
 
 ## Utrzymanie
 

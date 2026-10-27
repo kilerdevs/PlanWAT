@@ -86,8 +86,8 @@ przez pulę. Bez zdrowego wyjścia taki host dostaje 403, a GUI pokazuje go jako
 Lista `EGRESS_DIRECT_FACULTY` (nazwy hostów rozdzielone przecinkami lub spacjami, ustawiana w `compose.yml`) wyłącza wybrane
 hosty wydziałów z puli. Publiczne wyjścia dostają od nich blokady Incapsuli, a linia domowa zwykle je serwuje — ale 27.10.2026
 ta sama ściana zamknęła też linię domową `77.222.244.159` dla WTC, WLO, WEL, WML, WIG i WCY (WIM i IOE nadal działały).
-Dlatego w typowym wdrożeniu te hosty idą przez relay Cloudflare (niżej), a `EGRESS_DIRECT_FACULTY` zostaje jako ścieżka
-bezpośrednia dla maszyny, której linia jest czysta. WCY jest wyjątkiem: jego blokuje linia domowa, więc zostaje na puli
+Dlatego w typowym wdrożeniu te hosty idą przez relay Cloudflare (niżej; WTC z zachodnich wyjść Workera dostaje 403
+i zostaje na linii plebanii), a `EGRESS_DIRECT_FACULTY` zostaje jako ścieżka bezpośrednia dla maszyny, której linia jest czysta. WCY jest wyjątkiem: jego blokuje linia domowa, więc zostaje na puli
 (`EGRESS_FAIL_CLOSED`). Host z listy pokazuje w GUI tryb `DIRECT (lista)`. Tylko hosty spoza tej listy są sprawdzane
 i weryfikowane przez pulę. `EGRESS_POOL=off` to tryb wolontariusza: każdy host wydziału (także dodany później do
 `faculty_targets()`) idzie bezpośrednio (w GUI `DIRECT (bez puli)`), a pula nie pobiera list, nie sonduje nikogo i nie wydaje
@@ -97,9 +97,10 @@ dodaniu wydziału.
 ## Relay Cloudflare dla ścian, których pula nie przechodzi
 
 Pula nie ma wyjścia dla każdego wydziału: pomiar z 27.10.2026 na 200 kandydatach dał 37 żywych i 32 zweryfikowane, z pokryciem
-WLO 1, WEL 14, WML 17, a WTC, WIG i WCY 0. Cloudflare Worker pobiera te strony z adresów, które ściana wpuszcza (sprawdzone:
-WTC `index.xml` i PDF-y, WLO/WEL indeksy, WML landing/indeks/grupa, WIG listing — 200; WCY nadal 403). Relay jest opcjonalny
-i domyślnie wyłączony: bez `PLANWAT_RELAY_URL` crawler zachowuje się dokładnie jak wcześniej.
+WLO 1, WEL 14, WML 17, a WTC, WIG i WCY 0. Cloudflare Worker pobiera te strony z adresów, które ściana wpuszcza (sprawdzone
+z polskiej linii 27.10.2026: WLO/WEL indeksy, WML landing/indeks/grupa, WIG listing — 200; WCY nadal 403). WTC przechodził
+tak z polskiej linii, ale z zachodnich wyjść Cloudflare (Frankfurt, Amsterdam) odpowiada 403, więc zostaje z plebanią.
+Relay jest opcjonalny i domyślnie wyłączony: bez `PLANWAT_RELAY_URL` crawler zachowuje się dokładnie jak wcześniej.
 
 Przepływ:
 
@@ -124,7 +125,7 @@ Konfiguracja:
 Wdrożenie Workera: [tools/egress/cloudflare/README.md](../tools/egress/cloudflare/README.md). Po `wrangler deploy` ustaw sekret
 `PLANWAT_RELAY_TOKEN`, wpisz adres i token do `.env` runnera, a hostname Workera do `EGRESS_DIRECT_HOSTS` w `.env` egressu
 (`deploy/runner/.env.example` ma wszystkie cztery miejsca). Sprawdzenie: `curl` z tokenem na
-`?url=https://wtc.wat.edu.pl/Plany/index.xml` ma zwrócić 200 i XML, bez tokenu 401, a host spoza listy 403.
+`?url=https://wml.wat.edu.pl/` ma zwrócić 200, bez tokenu 401, a host spoza listy 403.
 
 Darmowy plan Cloudflare wystarcza: 100 000 żądań dziennie i 10 ms CPU na żądanie (stan 27.10.2026). Jeden pobrany dokument
 to jedno żądanie Workera; pełny przebieg wszystkich wydziałów to setki–tysiące stron, a przebiegi są co 2 h, więc dwa
@@ -133,9 +134,10 @@ trzy przekierowania i każde na liście, bez ciasteczek i bez `Authorization` wy
 unieważnisz nowym sekretem i aktualizacją runnerów.
 
 WCY celowo nie ma na liście Workera: Incapsula odpowiada mu 403 również z Cloudflare, więc ten wydział zostaje na puli
-(`EGRESS_FAIL_CLOSED`, wyżej). Northflank nie ma egressu, więc po ustawieniu `PLANWAT_RELAY_URL`/`PLANWAT_RELAY_TOKEN` może
-brać WLO, WEL, WML, WTC i WIG, ale WCY nadal wymaga puli; bez relaya zostają mu tylko IOE, WIG i WIM. Po włączeniu relaya
-na Northflanku dopisz relayowane wydziały do `faculties` w `tools/refresh/fleet.json` (bez WCY).
+(`EGRESS_FAIL_CLOSED`, wyżej). WTC zostaje z plebanią: Worker z zachodnich wyjść Cloudflare dostaje od niego 403, choć
+polska linia przechodzi. Northflank nie ma egressu, więc po ustawieniu `PLANWAT_RELAY_URL`/`PLANWAT_RELAY_TOKEN` bierze
+WLO, WEL, WML i WIG; jego `faculties` w `tools/refresh/fleet.json` już to uwzględniają (bez WCY i WTC). Bez relaya usuń
+WLO, WEL i WML z tej listy — ściany odrzucają adres Northflanku.
 
 Ten sam obraz chroni crawlery wolontariuszy (`tools/volunteer/compose.volunteer.yml`, publikowany jako
 `ghcr.io/kilerdevs/planwat-crawler-egress`): crawler stoi w sieci bez trasy na zewnątrz, a proxy z `EGRESS_POOL=off` (i, dla

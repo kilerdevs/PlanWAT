@@ -3995,7 +3995,8 @@ class FleetLimitedRunner(unittest.TestCase):
         f = fleet.load_fleet()
         both = fleet.plan(f, fleet.enabled_faculties(), {}, {'planwat-oracle', 'planwat-northflank'})
         by = {s['runner']: s for s in both['shards']}
-        self.assertTrue(set(by['northflank']['faculties'].split(',')) <= {'ioe', 'wig', 'wim'})
+        limited = [r for r in f if r['name'] == 'northflank'][0]
+        self.assertTrue(set(by['northflank']['faculties'].split(',')) <= set(limited['faculties']))
         # oracle's share holds walls northflank may not take: the full wait stays
         self.assertEqual(by['oracle']['wait'], fleet.BLOCK_WAIT)
         everyone = fleet.plan(f, fleet.enabled_faculties(), {},

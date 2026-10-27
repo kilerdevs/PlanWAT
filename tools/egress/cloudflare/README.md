@@ -40,13 +40,13 @@ relay bez usuwania Workera. Wartość pusta oznacza listę domyślną z `worker.
 export RELAY=https://planwat-egress.<konto>.workers.dev
 export TOKEN=...   # ten sam, który ustawiłeś przez `wrangler secret put`
 
-# 200 i prawdziwy XML indeksu:
+# 200 i prawdziwa strona wydziału:
 curl -fsS -H "Authorization: Bearer $TOKEN" \
-  --get --data-urlencode 'url=https://wtc.wat.edu.pl/Plany/index.xml' "$RELAY" | head -c 200
+  --get --data-urlencode 'url=https://wml.wat.edu.pl/' "$RELAY" | head -c 200
 
 # bez tokenu: 401, a nie zawartość wydziału:
 curl -sS -o /dev/null -w '%{http_code}\n' \
-  --get --data-urlencode 'url=https://wtc.wat.edu.pl/Plany/index.xml' "$RELAY"
+  --get --data-urlencode 'url=https://wml.wat.edu.pl/' "$RELAY"
 
 # host spoza listy: 403:
 curl -sS -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
@@ -75,9 +75,9 @@ Bez tego egress odpowie `403` (domyślna odmowa), zanim żądanie dotrze do Work
 ### Northflank
 
 Northflank nie ma egressu, więc ustawia tylko `PLANWAT_RELAY_URL` i `PLANWAT_RELAY_TOKEN` (oraz opcjonalnie
-`PLANWAT_RELAY_HOSTS`). Dzięki temu może brać WLO, WEL, WML, WTC i WIG; WCY nadal wymaga puli, której Northflank
-nie ma. Po włączeniu relaya można dopisać te wydziały do `faculties` w `tools/refresh/fleet.json` — bez relaya
-zostaw listę taką, jaka jest, bo ściany odrzucą jego adres.
+`PLANWAT_RELAY_HOSTS`). Dzięki temu może brać WLO, WEL, WML i WIG; WTC z zachodnich wyjść Workera dostaje 403, więc
+zostaje z plebanią, a WCY nadal wymaga puli, której Northflank nie ma. `faculties` w `tools/refresh/fleet.json` już
+uwzględniają tę listę — bez relaya usuń z niej WLO, WEL i WML, bo ściany odrzucą jego adres.
 
 ## Limity darmowego planu
 

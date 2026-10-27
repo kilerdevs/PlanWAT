@@ -22,18 +22,20 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   tylko przez `PLANWAT_RELAY_URL` (plus `PLANWAT_RELAY_TOKEN`; `PLANWAT_RELAY_HOSTS` zawęża listę), a egress przepuszcza
   jego hostname bezpośrednio przez `EGRESS_DIRECT_HOSTS`. Oryginalny URL wydziału zostaje w `RelayResponse.url`, więc
   adresy grup, odświeżanie warunkowe i wykrywanie blokad działają bez zmian; raport blokady nie trafia do puli dla hosta
-  relayowanego, bo żadne jej wyjście nie brało w nim udziału. 27.10.2026 Worker przeszedł WTC, WLO, WEL, WML i WIG,
-  a WCY nadal odpowiadał mu `403` — dlatego WCY zostaje na puli (`EGRESS_FAIL_CLOSED`). Domyślnie relay jest wyłączony.
+  relayowanego, bo żadne jej wyjście nie brało w nim udziału. 27.10.2026 Worker przechodził WLO, WEL, WML i WIG, a WTC
+  tylko z polskiej linii testowej — z zachodnich wyjść Cloudflare dostaje 403, więc WTC zostaje z plebanią. WCY nadal
+  odpowiadał mu `403` — dlatego WCY zostaje na puli (`EGRESS_FAIL_CLOSED`). Domyślnie relay jest wyłączony.
   Wdrożenie: [tools/egress/cloudflare/README.md](tools/egress/cloudflare/README.md).
 - **Numer zajęć w subskrypcji kalendarza:** tytuł każdego zdarzenia w `plan.ics` i `plan-przypomnienia.ics` mówi, które
   to spotkanie przedmiotu danego rodzaju, np. „Matematyka I (Wykład 3/15)”, tak jak strona pokazuje „Wykład · 3/15”.
   Liczone tak samo jak na stronie (cały semestr, po dacie, zajęcia wpisane dwa razy raz); jednorazowe zajęcia mają sam
   rodzaj. Pobrany ze strony plik `.ics` też ma numery, a strona zdejmuje je przy czytaniu kalendarza.
-- **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze tylko IOE, WIG i WIM,
-  bo ściany pozostałych wydziałów odrzucają jego adres (próba 27.10.2026), więc zwykle crawluje WIM. Z włączonym relayem
-  Cloudflare może brać także WLO, WEL, WML, WTC i WIG (bez WCY, który nadal wymaga puli). Plan skraca
-  czekanie na ścianę do 5 minut tylko wtedy, gdy każdy wydział udziału mógłby przejąć inny włączony runner: oracle bez
-  plebanii czeka nadal pełne 30 minut na WLO, WEL, WML i WTC, których northflank nie może wziąć.
+- **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze IOE, WIG i WIM,
+  a z włączonym relayem Cloudflare może brać także WLO, WEL i WML (WIG miał już wcześniej); WTC nadal odpowiada 403
+  z zachodnich wyjść Cloudflare, więc zostaje z plebanią, a WCY wymaga puli. Bez relayu ściany WLO, WEL i WML
+  odrzucają jego adres (próba 27.10.2026), więc wtedy zwykle crawluje WIM. Plan skraca czekanie na ścianę do 5 minut
+  tylko wtedy, gdy każdy wydział udziału mógłby przejąć inny włączony runner: oracle bez plebanii czeka nadal pełne
+  30 minut tylko na WTC, którego northflank nie bierze.
 - **Pomoc między runnerami w trakcie przebiegu** (`tools/refresh/steal.py`, `board.py`): runner, który skończył swój
   udział, odciąża ten, który jeszcze crawluje: najpierw bierze część grup wydziału crawlowanego właśnie teraz
   (podzieloną według `speed`), a gdy ściana tego wydziału go nie wpuszcza, kolejno wydziały jeszcze niezaczęte. Właściciel
