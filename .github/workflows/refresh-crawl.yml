@@ -18,7 +18,7 @@ on:
         type: string
         required: true
       census:
-        description: Comma-separated faculties whose site census this runner takes first (fleet.json), at most daily.
+        description: Comma-separated faculties whose site census this runner takes after its crawl (fleet.json), at most weekly.
         type: string
         default: ''
       wave:

@@ -15,7 +15,7 @@ inputs:
     description: Comma-separated faculties; empty means every enabled one.
     default: ''
   census:
-    description: Comma-separated faculties whose site census to take first (at most once a day; project mode only).
+    description: Comma-separated faculties whose site census to take after the crawl (at most once a week; project mode only).
     default: ''
   runner:
     description: Project mode, this runner's name in tools/refresh/fleet.json (with `board`, it helps its peers).

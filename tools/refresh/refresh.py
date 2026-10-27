@@ -55,7 +55,10 @@ import fleet  # noqa: E402
 import relay  # noqa: E402
 import steal  # noqa: E402
 
-CENSUS_HOURS = 20  # a census (take_census) at most this often: once a day, a little early so a daily pass never slips
+# A census (take_census) at most this often: weekly, half a day early so a weekly pass never slips. It only finds new
+# programme directories, which come a few times a year, and its Joomla pages are the heaviest load this crawler puts on
+# an Incapsula host.
+CENSUS_HOURS = 6 * 24 + 12
 PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (1.5, 4.0), 'volunteer': (4.0, 9.0)}  # seconds between pages
 # WLO and WEL share one Incapsula policy (cookies for .wat.edu.pl): crawling either too fast blocks both home
 # addresses for hours. The ranges above are for the home line with one request at a time per host; a block
@@ -510,8 +513,9 @@ def noted_change(entry):
     entry['streak'] = 0
 
 
-def take_census(names, sources, state, today, session=None, sleep=time.sleep):
-    """Run the census of each named faculty whose driver has one and whose last census is CENSUS_HOURS old.
+def take_census(names, sources, state, today, session=None, sleep=time.sleep, delay=(1.0, 2.0)):
+    """Run the census of each named faculty whose driver has one and whose last census is CENSUS_HOURS old, its pages
+    `delay` seconds apart stretched by the faculty's learned pacing, like any crawl.
 
     A census reads what lists every group (drivers/wig.py: the Joomla tree a datacenter line cannot reach) and
     keeps it in refresh-state.json under `found`, which refresh_faculty hands back to the driver on any runner. It
@@ -531,7 +535,9 @@ def take_census(names, sources, state, today, session=None, sleep=time.sleep):
         except ValueError:
             pass
         try:
-            found = driver.census(session or new_session())
+            mult = min(3.0, max(1.0, float(state.data.get('pacing', {}).get(core.group_of(name), 1.0))))
+            driver.sleep = sleep
+            found = driver.census(session or new_session(), pause=(delay[0] * mult, delay[1] * mult))
         except Exception as err:  # Blocked included: this line cannot take it today
             log(f'[{name}] census not taken ({err!r}); keeping the last one')
             continue
@@ -917,8 +923,8 @@ def parse(argv=None):
     ap.add_argument('--resume-since', default='',
                     help='skip every group checked at or after this UTC time (YYYY-MM-DDTHH:MM:SS): resuming a run')
     ap.add_argument('--census', default='',
-                    help='comma-separated faculties whose driver takes a census of the site first (at most once in '
-                         f'{CENSUS_HOURS} h; fleet.json names the runner that can)')
+                    help='comma-separated faculties whose driver takes a census of the site after the crawl (at most '
+                         f'once in {CENSUS_HOURS} h; fleet.json names the runner that can)')
     ap.add_argument('--board', default='',
                     help='<planned>-<run id>/w<wave>: the wave\'s work board (steal.py), so the runners of the wave '
                          'help each other; needs --runner and a checkout of this repository in --out')
@@ -1244,9 +1250,6 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     state = core.State(Path(args.out) / core.STATE_FILE)
     if args.faculty_state:
         load_line_state(state, args.faculty_state)
-    census = [f for f in args.census.split(',') if f in sources and sources[f].get('enabled')]
-    if census and not args.dry_run:
-        take_census(census, sources, state, today, session, sleep)
     # One time budget for the whole run, however many faculties and walls it meets: past it, every lane stops after
     # its current page, so the run still saves and pushes inside the job's timeout.
     args.deadline = clock() + args.max_minutes * 60 if args.max_minutes else None
@@ -1323,6 +1326,20 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
                                                  clock, progress)
         finally:
             coord.stop()
+    # The census comes last: the WAT sites behind Incapsula share one wall per address, and on 2026-10-27 plebania met
+    # it on WLO, WEL, WML and WTC four seconds after a census. After the crawl it can cost the census at most, and a
+    # pass that met a wall leaves it to a later one rather than lean on that wall.
+    census = [f for f in args.census.split(',') if f in sources and sources[f].get('enabled')]
+    walled = sorted(n for n in wanted if n in sources
+                    and state.faculties.get(n, {}).get('run', {}).get('cause') == 'wall'
+                    and str(state.faculties[n]['run'].get('at') or '') >= started)
+    if census and not args.dry_run:
+        if walled:
+            log(f'census left for a later pass: this one met a wall ({", ".join(walled)})')
+        elif args.deadline is not None and clock() > args.deadline:
+            log('census left for a later pass: the time budget is used up')
+        else:
+            take_census(census, sources, state, today, session, sleep, args.delay)
     # What another runner took whole (or all that was left of) is its to report; what this one took is this one's.
     gone = pool.gone() if pool is not None else set()
     taken = pool.taken() if pool is not None else {}

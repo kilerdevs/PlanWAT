@@ -6,7 +6,7 @@
       "speed": 4,
       "census": ["wig"],
       "prefers": ["wtc"],
-      "note": "The home server: fast, but often switched off. Takes the lion's share whenever GitHub sees it online. Takes the WIG census (the Joomla tree Incapsula keeps from the VPS's datacenter address), at most once a day, so a new programme directory is crawled by whoever has WIG. Takes WTC whenever it is up: WTC's wall refuses the VPS's address (blocked in 4 of 4 passes up to 2026-10-26, plain HTTPS from the box answers 403), so on oracle it only ever cost a wall wait and a handoff. Since 2026-10-27 the same wall also closes this line for WTC, WLO, WEL, WML and WIG; with PLANWAT_RELAY_URL set they go through the Cloudflare Worker relay (docs/EGRESS.md), and WTC's preference still keeps the fast machine first when its line is clean."
+      "note": "The home server: fast, but often switched off. Takes the lion's share whenever GitHub sees it online. Takes the WIG census (the Joomla tree Incapsula keeps from the VPS's datacenter address), at most once a week and after its own crawl, so a new programme directory is crawled by whoever has WIG. Takes WTC whenever it is up: WTC's wall refuses the VPS's address (blocked in 4 of 4 passes up to 2026-10-26, plain HTTPS from the box answers 403), so on oracle it only ever cost a wall wait and a handoff. Since 2026-10-27 the same wall also closes this line for WTC, WLO, WEL, WML and WIG; with PLANWAT_RELAY_URL set they go through the Cloudflare Worker relay (docs/EGRESS.md), and WTC's preference still keeps the fast machine first when its line is clean."
     },
     {
       "name": "oracle",
