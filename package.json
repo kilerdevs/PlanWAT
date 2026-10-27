@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "python3 build.py --today 2026-10-15 --runs tests/fixtures/refresh-runs.json",
-    "test:unit": "node --test tests/places.test.js tests/ics.test.js tests/insights.test.js tests/campus.test.js && python3 -m unittest discover -s tests -p 'test_*.py'",
+    "test:unit": "node --test tests/places.test.js tests/ics.test.js tests/insights.test.js tests/campus.test.js tests/relay-worker.test.js && python3 -m unittest discover -s tests -p 'test_*.py'",
     "test:e2e": "playwright test",
     "test": "npm run test:unit && npm run build && npm run test:e2e"
   },

@@ -18,7 +18,8 @@ Zastępuje rolę tinyproxy:
 | Cel | Polityka |
 |---|---|
 | infrastruktura (GitHub, PyPI, listy proxy, … na równi z `allow.txt`) | bezpośrednie wyjście |
-| wydziały (`*.wat.edu.pl`) | przez rotującą pulę publicznych proxy, inny adres wyjściowy na każde połączenie; hosty z listy `EGRESS_DIRECT_FACULTY` idą jednak bezpośrednio, bo to wyjścia puli dostają od nich blokady, a linia domowa serwuje je normalnie |
+| relay Cloudflare (opcjonalny Worker, zob. niżej) | bezpośrednie wyjście tylko wtedy, gdy jego dokładny hostname jest w `EGRESS_DIRECT_HOSTS`; inaczej 403 |
+| wydziały (`*.wat.edu.pl`) | przez rotującą pulę publicznych proxy, inny adres wyjściowy na każde połączenie; hosty z listy `EGRESS_DIRECT_FACULTY` idą jednak bezpośrednio, bo to wyjścia puli dostają od nich blokady, a linia domowa zwykle je serwuje |
 | cokolwiek innego | 403 (ta sama domyślna odmowa co w tinyproxy) |
 
 <img src="diagrams/proxy-egress.svg" alt="Runner wysyła ruch przez proxy egress: infrastruktura bezpośrednio, strony wydziałów przez pulę proxy, reszta dostaje 403. Panel monitoringu w LAN odbiera raporty." width="760">
@@ -61,6 +62,12 @@ dotyczyła — a to wycofuje wyjście z ostatniego tunelu do tego hosta. Bez teg
   odczytem ciała, ciało ma sufit 256 KiB, a liczba połączeń jest ograniczona (proxy: `EGRESS_MAX_CONNECTIONS`, domyślnie 96;
   GUI: stałe 32). Tunel kończy się po 120 s ciszy (i najpóźniej po 600 s w ogóle) i zachowuje półzamknięcie, więc klient,
   który skończył wysyłać, wciąż odbiera całą odpowiedź.
+- `tools/refresh/relay.py`: strona crawlująca relayu (opcjonalna): zawija sesję `curl_cffi` i wysyła `GET` do Workera
+  tylko dla hostów z `PLANWAT_RELAY_HOSTS`, zachowując oryginalny URL w `RelayResponse.url`, więc sterowniki dalej budują
+  adresy grup ze swojej bazy, a odświeżanie warunkowe i wykrywanie blokad widzą zwykłą odpowiedź upstreamu. Bez
+  `PLANWAT_RELAY_URL` moduł jest no-opem.
+- `tools/egress/cloudflare/`: Worker Cloudflare (`worker.js`, `wrangler.toml`, `README.md`) z tokenem, dokładną listą
+  hostów i bezpiecznym prowadzeniem przekierowań; wdrażany osobno, poza obrazem egressu.
 - `Dockerfile.egress`, `requirements.txt` (curl_cffi, ta sama wersja co w odświeżaniu), `compose.fragment.yml` (fragment usługi
   do pliku compose plebanii).
 - `tools/egress/prometheus-alerts.yml`, `tools/egress/blackbox-snippet.yml`: gotowy szablon alertów i sondy Blackbox dla
@@ -77,12 +84,60 @@ przez pulę. Bez zdrowego wyjścia taki host dostaje 403, a GUI pokazuje go jako
 `FAIL-CLOSED (pula pusta)`), nie jako DIRECT.
 
 Lista `EGRESS_DIRECT_FACULTY` (nazwy hostów rozdzielone przecinkami lub spacjami, ustawiana w `compose.yml`) wyłącza wybrane
-hosty wydziałów z puli: wszystkie poza `planzajec.wcy.wat.edu.pl` idą bezpośrednio linią domową, bo publiczne wyjścia dostają od
-nich blokady Incapsuli, a linia domowa serwuje je normalnie (WCY odwrotnie: jego blokuje linia domowa, więc zostaje na puli).
-Host z listy pokazuje w GUI tryb `DIRECT (lista)`. Tylko hosty spoza tej listy są sprawdzane i weryfikowane przez pulę.
-`EGRESS_POOL=off` to tryb wolontariusza: każdy host wydziału (także dodany później do `faculty_targets()`) idzie bezpośrednio
-(w GUI `DIRECT (bez puli)`), a pula nie pobiera list, nie sonduje nikogo i nie wydaje żadnego wyjścia, nawet ze starego
-`pool.json`. To przełącznik, a nie ręcznie przepisana lista hostów, która rozjeżdża się po dodaniu wydziału.
+hosty wydziałów z puli. Publiczne wyjścia dostają od nich blokady Incapsuli, a linia domowa zwykle je serwuje — ale 27.10.2026
+ta sama ściana zamknęła też linię domową `77.222.244.159` dla WTC, WLO, WEL, WML, WIG i WCY (WIM i IOE nadal działały).
+Dlatego w typowym wdrożeniu te hosty idą przez relay Cloudflare (niżej; WTC z zachodnich wyjść Workera dostaje 403
+i zostaje na linii plebanii), a `EGRESS_DIRECT_FACULTY` zostaje jako ścieżka bezpośrednia dla maszyny, której linia jest czysta. WCY jest wyjątkiem: jego blokuje linia domowa, więc zostaje na puli
+(`EGRESS_FAIL_CLOSED`). Host z listy pokazuje w GUI tryb `DIRECT (lista)`. Tylko hosty spoza tej listy są sprawdzane
+i weryfikowane przez pulę. `EGRESS_POOL=off` to tryb wolontariusza: każdy host wydziału (także dodany później do
+`faculty_targets()`) idzie bezpośrednio (w GUI `DIRECT (bez puli)`), a pula nie pobiera list, nie sonduje nikogo i nie wydaje
+żadnego wyjścia, nawet ze starego `pool.json`. To przełącznik, a nie ręcznie przepisana lista hostów, która rozjeżdża się po
+dodaniu wydziału.
+
+## Relay Cloudflare dla ścian, których pula nie przechodzi
+
+Pula nie ma wyjścia dla każdego wydziału: pomiar z 27.10.2026 na 200 kandydatach dał 37 żywych i 32 zweryfikowane, z pokryciem
+WLO 1, WEL 14, WML 17, a WTC, WIG i WCY 0. Cloudflare Worker pobiera te strony z adresów, które ściana wpuszcza (sprawdzone
+z polskiej linii 27.10.2026: WLO/WEL indeksy, WML landing/indeks/grupa, WIG listing — 200; WCY nadal 403). WTC przechodził
+tak z polskiej linii, ale z zachodnich wyjść Cloudflare (Frankfurt, Amsterdam) odpowiada 403, więc zostaje z plebanią.
+Relay jest opcjonalny i domyślnie wyłączony: bez `PLANWAT_RELAY_URL` crawler zachowuje się dokładnie jak wcześniej.
+
+Przepływ:
+
+```text
+runner -> egress (bezpośrednio, hostname Workera w EGRESS_DIRECT_HOSTS) -> Worker -> wydział
+```
+
+Runner wysyła `GET <PLANWAT_RELAY_URL>?url=<zakodowany URL>` z `Authorization: Bearer <token>`, a Worker oddaje status,
+`ETag`/`Last-Modified` i treść upstreamu. `RelayResponse.url` to oryginalny adres wydziału, więc względne linki i adresy grup
+nie zmieniają się. Blokady zgłaszane przez crawler nie trafiają do `POST /api/block` dla hostów relayowanych: żadne wyjście
+puli nie brało w nich udziału, więc nie ma czego degradować.
+
+Konfiguracja:
+
+| Zmienna | Gdzie | Znaczenie |
+|---|---|---|
+| `PLANWAT_RELAY_URL` | runner | root Workera, np. `https://planwat-egress.<konto>.workers.dev`; puste = relay wyłączony |
+| `PLANWAT_RELAY_TOKEN` | runner + sekret Workera | token bearer; ten sam po obu stronach |
+| `PLANWAT_RELAY_HOSTS` | runner (opcjonalnie) | hosty relayowane, rozdzielone przecinkami/spacjami; puste = domyślna lista hostów z `relay.py`, `off` = wyłącz relay bez zmiany URL |
+| `EGRESS_DIRECT_HOSTS` | egress | dokładny hostname Workera (bez `https://`), żeby egress przepuścił go bezpośrednio; nie wpisuj całego `workers.dev`, chyba że świadomie |
+
+Wdrożenie Workera: [tools/egress/cloudflare/README.md](../tools/egress/cloudflare/README.md). Po `wrangler deploy` ustaw sekret
+`PLANWAT_RELAY_TOKEN`, wpisz adres i token do `.env` runnera, a hostname Workera do `EGRESS_DIRECT_HOSTS` w `.env` egressu
+(`deploy/runner/.env.example` ma wszystkie cztery miejsca). Sprawdzenie: `curl` z tokenem na
+`?url=https://wml.wat.edu.pl/` ma zwrócić 200, bez tokenu 401, a host spoza listy 403.
+
+Darmowy plan Cloudflare wystarcza: 100 000 żądań dziennie i 10 ms CPU na żądanie (stan 27.10.2026). Jeden pobrany dokument
+to jedno żądanie Workera; pełny przebieg wszystkich wydziałów to setki–tysiące stron, a przebiegi są co 2 h, więc dwa
+runnery mieszczą się w limicie. Worker nie jest otwartym proxy: token, tylko HTTPS, tylko dokładne hosty z listy, maksymalnie
+trzy przekierowania i każde na liście, bez ciasteczek i bez `Authorization` wywołującego w stronę wydziału. Wyciekły token
+unieważnisz nowym sekretem i aktualizacją runnerów.
+
+WCY celowo nie ma na liście Workera: Incapsula odpowiada mu 403 również z Cloudflare, więc ten wydział zostaje na puli
+(`EGRESS_FAIL_CLOSED`, wyżej). WTC zostaje z plebanią: Worker z zachodnich wyjść Cloudflare dostaje od niego 403, choć
+polska linia przechodzi. Northflank nie ma egressu, więc po ustawieniu `PLANWAT_RELAY_URL`/`PLANWAT_RELAY_TOKEN` bierze
+WLO, WEL, WML i WIG; jego `faculties` w `tools/refresh/fleet.json` już to uwzględniają (bez WCY i WTC). Bez relaya usuń
+WLO, WEL i WML z tej listy — ściany odrzucają adres Northflanku.
 
 Ten sam obraz chroni crawlery wolontariuszy (`tools/volunteer/compose.volunteer.yml`, publikowany jako
 `ghcr.io/kilerdevs/planwat-crawler-egress`): crawler stoi w sieci bez trasy na zewnątrz, a proxy z `EGRESS_POOL=off` (i, dla
@@ -150,12 +205,16 @@ pula żywych < 5, dysk maszyny > 85%, runner offline) zasilany sondą `blackbox-
    nietknięty jako wycofanie). GUI jest związane z `127.0.0.1`; jeśli ma być widoczne w LAN, zmień bind na adres LAN i ustaw
    w `.env` `EGRESS_API_TOKEN` — ten sam, który widzi krok odświeżania (crawler wysyła go w `Authorization` i `X-Token`). Akcja odświeżania nie ustawia go jawnie, żeby
    pusta wartość nie nadpisała tokenu odziedziczonego z otoczenia runnera.
-3. `docker compose up -d --build egress`, otwórz `:18080` (tunel SSH albo adres LAN) i poczekaj na odświeżenie puli → ROTATING.
-4. Przełączenie: `HTTP_PROXY/HTTPS_PROXY/http_proxy/https_proxy` runnera → `http://<egress-ip>:8888` z `NO_PROXY` obejmującym
+3. (Opcjonalnie) Wdróż relay Cloudflare według [tools/egress/cloudflare/README.md](../tools/egress/cloudflare/README.md),
+   wpisz `PLANWAT_RELAY_URL`/`PLANWAT_RELAY_TOKEN` do `.env` runnera oraz dokładny hostname Workera do
+   `EGRESS_DIRECT_HOSTS` w `.env` egressu. Bez tego kroku egress działa jak dotąd.
+4. `docker compose up -d --build egress`, otwórz `:18080` (tunel SSH albo adres LAN) i poczekaj na odświeżenie puli → ROTATING.
+5. Przełączenie: `HTTP_PROXY/HTTPS_PROXY/http_proxy/https_proxy` runnera → `http://<egress-ip>:8888` z `NO_PROXY` obejmującym
    podsieć wewnętrzną (`localhost,127.0.0.1,<inner-subnet>`, żeby zapytania GUI i statusu omijały proxy),
    `docker compose up -d runner`.
-5. Uruchom mały przebieg (`--faculty wcy --limit 5 --dry-run`) i obserwuj tryb w GUI oraz tabelę przebiegów.
-6. Wycofanie (przy jakichkolwiek wątpliwościach): skieruj runner z powrotem na `http://<proxy-ip>:8888`, `up -d runner`.
+6. Uruchom mały przebieg (`--faculty wcy --limit 5 --dry-run`) i obserwuj tryb w GUI oraz tabelę przebiegów. Z relayem
+   sprawdź też jeden wydział z listy (np. `--faculty wtc --limit 2`).
+7. Wycofanie (przy jakichkolwiek wątpliwościach): skieruj runner z powrotem na `http://<proxy-ip>:8888`, `up -d runner`.
 
 Zmiana `allow.txt` nie jest potrzebna: pobieranie list i sprawdzanie dzieje się wewnątrz kontenera egress na jego własnej
 bezpośredniej trasie, a ruch odświeżania wciąż płynie przez jedno proxy „dozwolone w duchu”, które egzekwuje tę samą politykę.

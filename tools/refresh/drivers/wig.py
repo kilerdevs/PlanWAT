@@ -11,7 +11,8 @@ static files with `Last-Modified`, so the refresh's conditional fetch answers 30
 
 What the configured directories miss (a new programme) the census finds: `census()` walks the Joomla tree
 itself, every year category of `landing`, and names the directories of all the PDFs it links. It runs where
-Joomla answers (refresh.py --census, the plebania runner via fleet.json, at most once a day); its result is
+Joomla answers (refresh.py --census, the plebania runner via fleet.json, at most once a week, after its crawl and at
+its pace); its result is
 kept in refresh-state.json under `found` and handed back to `discover` as `cfg['found']` on any runner.
 
 Each PDF is a wkhtmltopdf print of a Plansoft group page: a day x slot x week grid with a legend in its last
@@ -370,15 +371,16 @@ class Driver:
                 items.append(Item(code, pdf, stem))
         return items
 
-    def census(self, session):
+    def census(self, session, pause=(1.0, 2.0)):
         """{'dirs': [...], 'pdfs': n}: the directories (relative to `base`) of every PDF the Joomla year categories
-        link. Raises core.Blocked where Incapsula challenges this address (datacenter lines)."""
+        link, `pause` seconds apart (refresh.py passes the crawl's own pace). Raises core.Blocked where Incapsula
+        challenges this address (datacenter lines)."""
         landing, base = self.cfg['landing'], self.cfg['base']
         text = self._get(session, landing, 'category list')
         pdfs = []
         for n, url in enumerate(leaf_categories(text, landing)):
             if n:
-                self.sleep(random.uniform(1.0, 2.0))
+                self.sleep(random.uniform(*pause))
             pdfs += PDF_RE.findall(self._get(session, url, 'category page'))
         dirs = set()
         for pdf in dict.fromkeys(urljoin(landing, p) for p in pdfs):

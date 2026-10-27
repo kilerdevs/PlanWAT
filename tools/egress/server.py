@@ -68,15 +68,23 @@ def env_int(name, default, minimum=1):
     return value if value >= minimum else default
 
 
-# Parity with <runner dir>/allow.txt: everything here goes direct.
+def split_hosts(raw):
+    """Hostnames from a comma/space separated env value: lowercase, no trailing dot."""
+    return tuple(s.strip().lower().rstrip('.')
+                 for s in (raw or '').replace(',', ' ').split() if s.strip())
+
+
+# Parity with <runner dir>/allow.txt: everything here goes direct. EGRESS_DIRECT_HOSTS adds
+# entries without editing this list: the Cloudflare Worker relay (docs/EGRESS.md) lives on
+# <name>.<account>.workers.dev, so set it to that exact hostname (or workers.dev for all).
 DIRECT_SUFFIXES = ('github.com', 'githubusercontent.com', 'actions.githubusercontent.com',
                    'pypi.org', 'pythonhosted.org', 'codeload.github.com',
-                   'blob.core.windows.net')
+                   'blob.core.windows.net') + split_hosts(env('EGRESS_DIRECT_HOSTS', ''))
 DIRECT_EXACT = ('api.github.com',)
 # Faculty traffic rides the rotating pool (CHAIN_SUFFIXES), except the hosts listed here (env,
 # comma or space separated): the pool's public exits are what their WAF blocks, while the
 # operator's own line serves them, so they go direct. wtc.wat.edu.pl is the canonical example.
-DIRECT_FACULTY = tuple(s.lower() for s in env('EGRESS_DIRECT_FACULTY', '').replace(',', ' ').split() if s)
+DIRECT_FACULTY = split_hosts(env('EGRESS_DIRECT_FACULTY', ''))
 CHAIN_SUFFIXES = ('wat.edu.pl',)
 # EGRESS_POOL=off is the volunteer mode: every faculty host goes out directly and the pool is never
 # refreshed, probed or picked from. A mode, not a hand-copied host list that silently starts pool work
@@ -100,8 +108,8 @@ CONNECT_STATUS_RE = re.compile(br'^HTTP/1\.[01] 200')
 _FAIL_CLOSED_RAW = env('EGRESS_FAIL_CLOSED', '').strip().lower()
 FAIL_CLOSED_ALL = _FAIL_CLOSED_RAW in ('1', 'true', 'yes', 'all', '*')
 FAIL_CLOSED = frozenset(
-    s.lower() for s in env('EGRESS_FAIL_CLOSED', '').replace(',', ' ').split()
-    if s and s.lower() not in ('1', 'true', 'yes', 'all', '*')
+    h for h in split_hosts(env('EGRESS_FAIL_CLOSED', ''))
+    if h not in ('1', 'true', 'yes', 'all', '*')
 )
 
 
@@ -174,11 +182,14 @@ def route(host):
     h = canonical_host(host)
     if not h or h in ('localhost',) or h.startswith('127.'):
         return 'deny'
-    if h in DIRECT_EXACT or any(h == s or h.endswith('.' + s) for s in DIRECT_SUFFIXES):
-        return 'direct'
     # A host named on EGRESS_FAIL_CLOSED stays on the pool even if a direct list (or the
     # volunteer mode) also names it: "never from the home line" must win over "go direct".
+    # This includes EGRESS_DIRECT_HOSTS, which exists for infrastructure like the relay Worker:
+    # a typo that puts a faculty host there must not bypass a fail-closed rule.
     pinned = fail_closed_listed(h)
+    if not pinned and (h in DIRECT_EXACT
+                       or any(h == s or h.endswith('.' + s) for s in DIRECT_SUFFIXES)):
+        return 'direct'
     if host_is_direct(h) and not pinned:
         return 'direct'
     if any(h == s or h.endswith('.' + s) for s in CHAIN_SUFFIXES):

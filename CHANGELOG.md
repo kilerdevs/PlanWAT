@@ -16,14 +16,26 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Relay Cloudflare dla wydziałów, których nie wpuszcza żadne wyjście puli** (`tools/refresh/relay.py`,
+  `tools/egress/cloudflare/`): opcjonalny Worker z tokenem i dokładną listą hostów pobiera z adresów Cloudflare strony,
+  które ściana Incapsuli serwuje normalnie, a runnerowi oddaje status, `ETag`/`Last-Modified` i treść. Relay włącza się
+  tylko przez `PLANWAT_RELAY_URL` (plus `PLANWAT_RELAY_TOKEN`; `PLANWAT_RELAY_HOSTS` zawęża listę), a egress przepuszcza
+  jego hostname bezpośrednio przez `EGRESS_DIRECT_HOSTS`. Oryginalny URL wydziału zostaje w `RelayResponse.url`, więc
+  adresy grup, odświeżanie warunkowe i wykrywanie blokad działają bez zmian; raport blokady nie trafia do puli dla hosta
+  relayowanego, bo żadne jej wyjście nie brało w nim udziału. 27.10.2026 Worker przechodził WLO, WEL, WML i WIG, a WTC
+  tylko z polskiej linii testowej — z zachodnich wyjść Cloudflare dostaje 403, więc WTC zostaje z plebanią. WCY nadal
+  odpowiadał mu `403` — dlatego WCY zostaje na puli (`EGRESS_FAIL_CLOSED`). Domyślnie relay jest wyłączony.
+  Wdrożenie: [tools/egress/cloudflare/README.md](tools/egress/cloudflare/README.md).
 - **Numer zajęć w subskrypcji kalendarza:** tytuł każdego zdarzenia w `plan.ics` i `plan-przypomnienia.ics` mówi, które
   to spotkanie przedmiotu danego rodzaju, np. „Matematyka I (Wykład 3/15)”, tak jak strona pokazuje „Wykład · 3/15”.
   Liczone tak samo jak na stronie (cały semestr, po dacie, zajęcia wpisane dwa razy raz); jednorazowe zajęcia mają sam
   rodzaj. Pobrany ze strony plik `.ics` też ma numery, a strona zdejmuje je przy czytaniu kalendarza.
-- **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze tylko IOE, WIG i WIM,
-  bo ściany pozostałych wydziałów odrzucają jego adres (próba 27.10.2026), więc zwykle crawluje WIM. Plan skraca
-  czekanie na ścianę do 5 minut tylko wtedy, gdy każdy wydział udziału mógłby przejąć inny włączony runner: oracle bez
-  plebanii czeka nadal pełne 30 minut na WLO, WEL, WML i WTC, których northflank nie może wziąć.
+- **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze IOE, WIG i WIM,
+  a z włączonym relayem Cloudflare może brać także WLO, WEL i WML (WIG miał już wcześniej); WTC nadal odpowiada 403
+  z zachodnich wyjść Cloudflare, więc zostaje z plebanią, a WCY wymaga puli. Bez relayu ściany WLO, WEL i WML
+  odrzucają jego adres (próba 27.10.2026), więc wtedy zwykle crawluje WIM. Plan skraca czekanie na ścianę do 5 minut
+  tylko wtedy, gdy każdy wydział udziału mógłby przejąć inny włączony runner: oracle bez plebanii czeka nadal pełne
+  30 minut tylko na WTC, którego northflank nie bierze.
 - **Pomoc między runnerami w trakcie przebiegu** (`tools/refresh/steal.py`, `board.py`): runner, który skończył swój
   udział, odciąża ten, który jeszcze crawluje: najpierw bierze część grup wydziału crawlowanego właśnie teraz
   (podzieloną według `speed`), a gdy ściana tego wydziału go nie wpuszcza, kolejno wydziały jeszcze niezaczęte. Właściciel
@@ -126,6 +138,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Plan pamięta, kogo która ściana zatrzymuje** (`fleet.py walled_runners`, z `refresh-runs.json`): runner zablokowany
+  na wydziale w każdym z ostatnich 3 przebiegów (co najmniej 2) dostaje go tylko wtedy, gdy nikt inny nie może, nie
+  skraca innym czekania na ścianę do 5 minut i nie dostaje go w handoffie. 27.10.2026 plebania odpuściła WLO, WEL, WML
+  i WTC po 5 minutach, bo oracle „mógł przejąć”, a oracle od rana stoi przed tymi ścianami.
+- **Spis WIG raz na tydzień, po crawlu i w jego tempie:** wcześniej szedł raz na dobę, przed crawlem, co 1–2 s. Cztery
+  sekundy po nim ściana Incapsula zamknęła łączu plebanii WLO, WEL, WML i WTC naraz. Przebieg, który trafił na ścianę,
+  zostawia spis następnemu.
 - **Bez daremnego czekania na ścianę** (`refresh.py`): ściany, na którą runner już raz czekał co najmniej 15 minut na
   próżno, nie odczekuje ponownie, aż któryś przebieg przez nią przejdzie. Pierwsze zapytanie o listę zostaje próbą, a
   przy odmowie wydział jest odpuszczany od razu. Oracle czekał tak pół godziny na WLO, WML i WTC w każdym przebiegu,

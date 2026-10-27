@@ -1,9 +1,11 @@
 """Offline tests for the egress rotator (tools/egress) and refresh retry/report logic."""
+import os
 import sys
 import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 from collections import deque
 from pathlib import Path
 
@@ -14,6 +16,7 @@ sys.path.insert(0, str(ROOT / 'tools' / 'refresh'))
 import pool  # noqa: E402
 import core  # noqa: E402
 import refresh  # noqa: E402
+import relay  # noqa: E402
 import server  # noqa: E402
 
 
@@ -905,6 +908,204 @@ class Routing(unittest.TestCase):
             self.assertTrue(marker, host)  # every host rejects a marker-less block page
 
 
+class _RelayResponse:
+    def __init__(self, url='https://relay.test/'):
+        self.status_code = 200
+        self.content = b'<html>ok</html>'
+        self.text = self.content.decode('utf-8')
+        self.headers = {'ETag': '"v1"', 'Content-Type': 'text/html; charset=utf-8'}
+        self.url = url
+
+
+class _RecordingSession:
+    def __init__(self):
+        self.calls = []
+        self.headers = {'User-Agent': 'runner-ua', 'Accept-Language': 'pl-PL'}
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return _RelayResponse(url)
+
+
+class RelayClient(unittest.TestCase):
+    """The refresh-side relay: opt-in, exact-host, safe headers, original URL preserved."""
+
+    KEYS = ('PLANWAT_RELAY_URL', 'PLANWAT_RELAY_TOKEN', 'PLANWAT_RELAY_HOSTS')
+
+    def setUp(self):
+        self.saved = {key: os.environ.pop(key, None) for key in self.KEYS}
+        self.addCleanup(self.restore)
+
+    def restore(self):
+        for key, value in self.saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def test_no_url_is_a_no_op(self):
+        session = _RecordingSession()
+        self.assertIs(relay.wrap(session), session)
+        self.assertFalse(relay.host_relayed('wlo.wat.edu.pl'))
+
+    def test_only_an_https_root_without_credentials_or_a_fragment_is_accepted(self):
+        for raw in ('http://relay.test', 'https://', 'https://user:pass@relay.test',
+                    'https://relay.test/#fragment', 'https://relay.test:8443',
+                    'https://relay.test:abc', 'https://relay.test:99999',
+                    'not a url'):
+            os.environ['PLANWAT_RELAY_URL'] = raw
+            self.assertEqual(relay.relay_url(), '', raw)
+            self.assertFalse(relay.host_relayed('wlo.wat.edu.pl'), raw)
+        os.environ['PLANWAT_RELAY_URL'] = 'https://relay.test/'
+        self.assertEqual(relay.relay_url(), 'https://relay.test/')
+
+    def test_default_hosts_override_and_off_switch(self):
+        os.environ['PLANWAT_RELAY_URL'] = 'https://relay.test'
+        for host in relay.DEFAULT_HOSTS:
+            self.assertTrue(relay.host_relayed(host.upper() + '.'), host)
+        self.assertFalse(relay.host_relayed('planzajec.wcy.wat.edu.pl'))
+        self.assertFalse(relay.host_relayed('www.wim.wat.edu.pl'))
+
+        os.environ['PLANWAT_RELAY_HOSTS'] = 'WTC.WAT.EDU.PL., wml.wat.edu.pl.'
+        self.assertTrue(relay.host_relayed('wtc.wat.edu.pl'))
+        self.assertTrue(relay.host_relayed('wml.wat.edu.pl'))
+        self.assertFalse(relay.host_relayed('wlo.wat.edu.pl'))
+
+        os.environ['PLANWAT_RELAY_HOSTS'] = 'off'
+        self.assertFalse(relay.host_relayed('wtc.wat.edu.pl'))
+
+    def test_a_listed_https_get_is_rewritten_to_the_worker(self):
+        os.environ['PLANWAT_RELAY_URL'] = 'https://relay.test'
+        os.environ['PLANWAT_RELAY_TOKEN'] = 's3cret'
+        target = 'https://wlo.wat.edu.pl/plany/2026_sem_zima/index.xml?x=1&y=2'
+        session = _RecordingSession()
+        response = relay.wrap(session).get(target, timeout=30, headers={'Accept': 'text/html'})
+        worker_url, kwargs = session.calls[0]
+        self.assertEqual(worker_url.split('?', 1)[0], 'https://relay.test')
+        from urllib.parse import parse_qs, urlsplit
+        self.assertEqual(parse_qs(urlsplit(worker_url).query)['url'], [target])
+        self.assertEqual(kwargs['timeout'], 30)
+        self.assertEqual(kwargs['headers'],
+                         {'Accept': 'text/html', 'Authorization': 'Bearer s3cret'})
+        self.assertEqual(response.url, target)  # the caller keeps the faculty URL
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, '<html>ok</html>')
+
+    def test_unlisted_hosts_and_plain_http_stay_on_the_original_session(self):
+        os.environ['PLANWAT_RELAY_URL'] = 'https://relay.test'
+        session = _RecordingSession()
+        wrapped = relay.wrap(session)
+        wcy = 'https://planzajec.wcy.wat.edu.pl/pl/rozklad'
+        plain = 'http://wlo.wat.edu.pl/plany/index.xml'
+        wrapped.get(wcy, timeout=5)
+        wrapped.get(plain, timeout=5)
+        self.assertEqual([url for url, _ in session.calls], [wcy, plain])
+
+    def test_only_safe_headers_are_forwarded_and_the_relay_token_replaces_auth(self):
+        os.environ['PLANWAT_RELAY_URL'] = 'https://relay.test'
+        os.environ['PLANWAT_RELAY_TOKEN'] = 'relay-secret'
+        session = _RecordingSession()
+        relay.wrap(session).get(
+            'https://wtc.wat.edu.pl/Plany/index.xml', timeout=5,
+            headers={'Accept': 'text/html', 'Cookie': 'incap=1',
+                     'Authorization': 'Bearer egress-token', 'X-Token': 'egress-token',
+                     'If-None-Match': '"abc"', 'User-Agent': 'runner-ua',
+                     'Referer': 'https://wtc.wat.edu.pl/Plany/'})
+        sent = session.calls[0][1]['headers']
+        self.assertNotIn('Cookie', sent)
+        self.assertNotIn('X-Token', sent)
+        self.assertEqual(sent['Authorization'], 'Bearer relay-secret')
+        self.assertEqual(sent['If-None-Match'], '"abc"')
+        self.assertEqual(sent['User-Agent'], 'runner-ua')
+        self.assertEqual(sent['Referer'], 'https://wtc.wat.edu.pl/Plany/')
+
+    def test_no_token_means_no_authorization_header(self):
+        os.environ['PLANWAT_RELAY_URL'] = 'https://relay.test'
+        session = _RecordingSession()
+        relay.wrap(session).get('https://wtc.wat.edu.pl/Plany/index.xml', timeout=5)
+        self.assertNotIn('Authorization', session.calls[0][1]['headers'])
+
+    def test_a_worker_url_with_a_query_keeps_it_and_a_trailing_slash_is_trimmed(self):
+        for root, prefix in (('https://relay.test/gateway?version=1',
+                              'https://relay.test/gateway?version=1&url='),
+                             ('https://relay.test/', 'https://relay.test?url=')):
+            os.environ['PLANWAT_RELAY_URL'] = root
+            session = _RecordingSession()
+            relay.wrap(session).get('https://wtc.wat.edu.pl/Plany/index.xml', timeout=5)
+            self.assertTrue(session.calls[0][0].startswith(prefix), root)
+
+    def test_session_attributes_are_delegated(self):
+        os.environ['PLANWAT_RELAY_URL'] = 'https://relay.test'
+        session = _RecordingSession()
+        self.assertIs(relay.wrap(session).headers, session.headers)
+
+    def test_a_block_report_for_a_relayed_host_is_not_sent(self):
+        os.environ['PLANWAT_RELAY_URL'] = 'https://relay.test'
+        opened = []
+
+        class Opener:
+            def open(self, *args, **kwargs):
+                opened.append((args, kwargs))
+                raise OSError('offline')
+
+        with unittest.mock.patch('urllib.request.build_opener', return_value=Opener()):
+            refresh.post_block_report('wtc.wat.edu.pl', url='http://egress.test/api/block')
+            self.assertEqual(opened, [])  # relayed: no pool exit to blame
+            refresh.post_block_report('example.test', url='http://egress.test/api/block')
+            self.assertEqual(len(opened), 1)  # everything else still reports
+
+
+class RelayRouting(unittest.TestCase):
+    def test_the_worker_host_is_direct_without_opening_all_workers_dev(self):
+        orig = server.DIRECT_SUFFIXES
+        server.DIRECT_SUFFIXES = orig + ('planwat-egress.example.workers.dev',)
+        try:
+            self.assertEqual(server.route('planwat-egress.example.workers.dev'), 'direct')
+            self.assertEqual(server.route('PLANWAT-EGRESS.EXAMPLE.WORKERS.DEV.'), 'direct')
+            self.assertEqual(server.route('someone-else.workers.dev'), 'deny')
+            self.assertEqual(server.route('planwat-egress.example.workers.dev.evil.test'), 'deny')
+        finally:
+            server.DIRECT_SUFFIXES = orig
+
+    def test_fail_closed_wins_over_the_direct_host_list(self):
+        saved = (server.DIRECT_SUFFIXES, server.DIRECT_FACULTY, server.POOL_OFF,
+                 server.FAIL_CLOSED_ALL, server.FAIL_CLOSED)
+        server.DIRECT_SUFFIXES = saved[0] + ('wat.edu.pl',)
+        server.DIRECT_FACULTY, server.POOL_OFF = (), False
+        server.FAIL_CLOSED_ALL = False
+        server.FAIL_CLOSED = frozenset({'planzajec.wcy.wat.edu.pl'})
+        try:
+            self.assertEqual(server.route('wlo.wat.edu.pl'), 'direct')
+            self.assertEqual(server.route('planzajec.wcy.wat.edu.pl'), 'chain')
+        finally:
+            (server.DIRECT_SUFFIXES, server.DIRECT_FACULTY, server.POOL_OFF,
+             server.FAIL_CLOSED_ALL, server.FAIL_CLOSED) = saved
+
+    def test_host_lists_are_normalized(self):
+        self.assertEqual(server.split_hosts(' WLO.WAT.EDU.PL., wtc.wat.edu.pl. '),
+                         ('wlo.wat.edu.pl', 'wtc.wat.edu.pl'))
+        self.assertEqual(server.split_hosts(''), ())
+
+
+class RelayWiring(unittest.TestCase):
+    def test_runner_and_egress_configs_carry_the_relay_settings(self):
+        runner = (ROOT / 'deploy' / 'runner' / 'compose.yml').read_text(encoding='utf-8')
+        for key in ('PLANWAT_RELAY_URL', 'PLANWAT_RELAY_TOKEN', 'PLANWAT_RELAY_HOSTS',
+                    'EGRESS_DIRECT_HOSTS'):
+            self.assertIn(key, runner)
+        fragment = (ROOT / 'tools' / 'egress' / 'compose.fragment.yml').read_text(encoding='utf-8')
+        self.assertIn('EGRESS_DIRECT_HOSTS', fragment)
+        env = (ROOT / 'deploy' / 'runner' / '.env.example').read_text(encoding='utf-8')
+        for key in ('PLANWAT_RELAY_URL', 'PLANWAT_RELAY_TOKEN', 'PLANWAT_RELAY_HOSTS',
+                    'EGRESS_DIRECT_HOSTS'):
+            self.assertIn(key, env)
+
+    def test_the_worker_token_is_a_secret_not_a_wrangler_var(self):
+        text = (ROOT / 'tools' / 'egress' / 'cloudflare' / 'wrangler.toml').read_text(encoding='utf-8')
+        self.assertNotRegex(text, r'(?m)^\s*PLANWAT_RELAY_TOKEN\s*=')
+        self.assertIn('secret put PLANWAT_RELAY_TOKEN', text)
+
+
 class PlainHeaders(unittest.TestCase):
     class Headers(dict):
         def __init__(self, items, connection_values=()):
@@ -1723,6 +1924,9 @@ class VolunteerMode(unittest.TestCase):
         import re
         text = (ROOT / 'tools' / 'volunteer' / 'compose.volunteer.yml').read_text(encoding='utf-8')
         self.assertRegex(text, r'(?m)^\s+EGRESS_POOL:\s*"off"\s*$')
+        for key in ('PLANWAT_RELAY_URL', 'PLANWAT_RELAY_TOKEN', 'PLANWAT_RELAY_HOSTS',
+                    'EGRESS_DIRECT_HOSTS'):
+            self.assertIn(key, text)
         # The list is what egress images older than EGRESS_POOL read: it must stay complete.
         listed = re.search(r'(?m)^\s+EGRESS_DIRECT_FACULTY:\s*"([^"]*)"', text).group(1)
         listed = set(listed.replace(',', ' ').split())

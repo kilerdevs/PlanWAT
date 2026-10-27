@@ -27,6 +27,11 @@ services:
       no_proxy: egress,localhost,127.0.0.1
       # Sent with those reports; must match the egress below.
       EGRESS_API_TOKEN: ${EGRESS_API_TOKEN:-}
+      # Optional free relay for faculties that wall this box (docs/EGRESS.md): the crawler
+      # fetches those hosts through a token-protected Cloudflare Worker. Empty = off.
+      PLANWAT_RELAY_URL: ${PLANWAT_RELAY_URL:-}
+      PLANWAT_RELAY_TOKEN: ${PLANWAT_RELAY_TOKEN:-}
+      PLANWAT_RELAY_HOSTS: ${PLANWAT_RELAY_HOSTS:-}
     cap_drop: [ALL]
     security_opt: ['no-new-privileges:true']
     mem_limit: 700m
@@ -67,6 +72,9 @@ services:
       # address, so it only ever goes through the pool; the other faculties answer it directly.
       EGRESS_FAIL_CLOSED: "planzajec.wcy.wat.edu.pl"
       EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,www.wig.wat.edu.pl"
+      # The Cloudflare Worker relay is infrastructure, not a faculty target: allow its host
+      # through directly so the crawler can reach it (set to the deployed workers.dev hostname).
+      EGRESS_DIRECT_HOSTS: ${EGRESS_DIRECT_HOSTS:-}
     dns:
       - 1.1.1.1
       - 9.9.9.9

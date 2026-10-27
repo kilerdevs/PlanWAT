@@ -1032,6 +1032,20 @@ class WigCensus(unittest.TestCase):
         self.assertIn('census not taken', log)
         self.assertEqual(state.data['found']['wig']['dirs'], found['dirs'])
 
+    def test_the_census_keeps_the_crawl_s_pace_and_comes_weekly(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        state = core.State(tmp / core.STATE_FILE)
+        state.data['pacing'] = {'wig': 2.0}
+        asked = []
+        with contextlib.redirect_stdout(io.StringIO()), unittest.mock.patch.object(
+                wig.random, 'uniform', side_effect=lambda a, b: asked.append((a, b)) or a):
+            refresh.take_census(['wig'], {'wig': self.CFG}, state, TODAY, FakeSession(self.routes()),
+                                sleep=lambda s: None, delay=(1.5, 4.0))
+        self.assertTrue(asked)
+        self.assertEqual(set(asked), {(3.0, 8.0)})  # the selfhosted pause, stretched by WIG's learned pacing
+        self.assertGreaterEqual(refresh.CENSUS_HOURS, 6 * 24)
+
     def test_a_faculty_run_hands_the_census_to_its_driver(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
@@ -2175,6 +2189,45 @@ class ChronicWalls(unittest.TestCase):
         self.assertEqual(self.wall('wlo')['failed'], 1)
         self.assertIsNone(self.wall('wel'))
 
+class CensusAfterTheCrawl(unittest.TestCase):
+    """The census runs after the runner's own crawl, and not at all in a pass that met a wall."""
+
+    _restore_egress = MainTest._restore_egress
+    main = MainTest.main
+
+    def setUp(self):
+        MainTest.setUp(self)
+        self.order = []
+        test = self
+
+        class Censused(StubDriver):
+            def discover(self, session):
+                test.order.append(('discover', self.faculty))
+                return StubDriver.discover(self, session)
+
+            def census(self, session, pause=(1.0, 2.0)):
+                test.order.append(('census', self.faculty))
+                return {'dirs': [], 'pdfs': 0}
+        refresh.drivers.load = lambda name, faculty, cfg, today: Censused(faculty, cfg, today)
+
+    def run_pass(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.main(['--out', str(self.tmp), '--force', '--faculty', 'wml', '--census', 'wig',
+                       '--max-block-wait-minutes', '0'], None, dt.date(2026, 10, 15))
+        return out.getvalue()
+
+    def test_the_census_comes_after_the_crawl(self):
+        self.run_pass()
+        self.assertEqual(self.order, [('discover', 'wml'), ('census', 'wig')])
+
+    def test_a_pass_that_met_a_wall_leaves_the_census_to_a_later_one(self):
+        StubDriver.fails = {'wml': {'main': 999}}
+        log = self.run_pass()
+        self.assertNotIn(('census', 'wig'), self.order)
+        self.assertIn('census left for a later pass: this one met a wall (wml)', log)
+
+
 class PlansoftXmlFallbackTest(unittest.TestCase):
     def test_single_quoted_attrs_fall_back_to_xml(self):
         index = "<?xml version=\"1.0\"?><index><gro href='WLO26AX1S1.htm'/></index>"
@@ -2675,6 +2728,53 @@ class FleetMerge(unittest.TestCase):
         self.assertEqual(line['blocks'], {'wml': {'durations': [{'dur': 60.0}], 'blocked_at': None, 'cause': None}})
         self.assertEqual(line['pacing'], {'wml': 3.0})
         self.assertIn('wall', state['faculties']['wml'])  # the data branch's copy is left as it was
+
+
+class FleetWalls(unittest.TestCase):
+    """The plan and the handoff do not count on a runner a faculty's wall kept out lately."""
+
+    def entry(self, name, wave, faculties, status, blocked=()):
+        return {'name': name, 'wave': wave, 'faculties': faculties, 'status': status, 'blocked_on': list(blocked)}
+
+    def history(self):
+        return [  # newest first, as refresh-runs.json keeps them
+            {'runners': [self.entry('plebania', 1, ['wlo', 'wel', 'wtc'], 'blocked', ['wlo']),
+                         self.entry('oracle', 1, ['ioe'], 'done')]},
+            {'runners': [self.entry('oracle', 1, ['wlo', 'wel', 'wtc', 'ioe'], 'blocked', ['wlo', 'wtc'])]},
+            {'runners': [self.entry('oracle', 1, ['wlo', 'wel', 'wtc', 'ioe'], 'incomplete')]},  # tells nothing
+            {'runners': [self.entry('oracle', 1, ['wlo', 'wel', 'wtc'], 'blocked', ['wlo', 'wtc']),
+                         self.entry('oracle', 2, ['wtc'], 'done')]},  # got through WTC later in that pass
+            {'runners': [self.entry('oracle', 1, ['wlo'], 'blocked', ['wlo'])]},
+        ]
+
+    def test_three_blocked_passes_in_a_row_make_a_wall(self):
+        walled = fleet.walled_runners(self.history())
+        self.assertEqual(walled, {'wlo': {'oracle'}})  # WTC: one of oracle's last three was a pass it got through
+        self.assertEqual(fleet.walled_runners(self.history()[:2]), {})  # one blocked pass is no wall yet
+        self.assertEqual(fleet.walled_runners(None), {})
+
+    def test_the_plan_keeps_the_full_wait_where_only_a_walled_runner_could_take_over(self):
+        fl = [{'name': 'plebania', 'label': 'p', 'speed': 4.0, 'always_on': False, 'faculties': None, 'prefers': []},
+              {'name': 'oracle', 'label': 'o', 'speed': 1.0, 'always_on': True, 'faculties': None, 'prefers': []}]
+        state = {'faculties': {'wlo': {'last_count': 100}, 'wel': {'last_count': 100}}}
+        plain = fleet.plan(fl, ['wlo', 'wel'], state, {'p', 'o'})
+        self.assertEqual([s['wait'] for s in plain['shards']], [fleet.HANDOFF_WAIT])
+        walled = fleet.plan(fl, ['wlo', 'wel'], state, {'p', 'o'}, walled={'wlo': {'oracle'}})
+        self.assertEqual([(s['runner'], s['wait']) for s in walled['shards']], [('plebania', fleet.BLOCK_WAIT)])
+        # a lane only the walled runner may take still goes to it
+        alone = fleet.plan(fl, ['wlo', 'wel'], state, {'o'}, walled={'wlo': {'oracle'}})
+        self.assertEqual([s['runner'] for s in alone['shards']], ['oracle'])
+
+    def test_the_handoff_gives_no_faculty_to_a_runner_its_wall_kept_out(self):
+        fl = [{'name': 'plebania', 'label': 'p', 'speed': 4.0, 'always_on': False, 'faculties': None, 'prefers': []},
+              {'name': 'oracle', 'label': 'o', 'speed': 1.0, 'always_on': True, 'faculties': None, 'prefers': []}]
+        shards = [{'runner': 'plebania', 'faculties': 'wml', 'wave': 1, 'wait': fleet.BLOCK_WAIT}]
+        outcomes = [{'runner': 'plebania', 'wave': '1', 'blocked': 'true', 'blocked_faculties': 'wml',
+                     'incomplete_faculties': 'wml'}]
+        given = fleet.handoff(fl, shards, outcomes, {}, {'p', 'o'})
+        self.assertEqual([s['runner'] for s in given['shards']], ['oracle'])
+        kept = fleet.handoff(fl, shards, outcomes, {}, {'p', 'o'}, walled={'wml': {'oracle'}})
+        self.assertEqual((kept['shards'], kept['unassigned']), ([], ['wml']))
 
 
 class FleetCombine(unittest.TestCase):
@@ -3895,7 +3995,8 @@ class FleetLimitedRunner(unittest.TestCase):
         f = fleet.load_fleet()
         both = fleet.plan(f, fleet.enabled_faculties(), {}, {'planwat-oracle', 'planwat-northflank'})
         by = {s['runner']: s for s in both['shards']}
-        self.assertTrue(set(by['northflank']['faculties'].split(',')) <= {'ioe', 'wig', 'wim'})
+        limited = [r for r in f if r['name'] == 'northflank'][0]
+        self.assertTrue(set(by['northflank']['faculties'].split(',')) <= set(limited['faculties']))
         # oracle's share holds walls northflank may not take: the full wait stays
         self.assertEqual(by['oracle']['wait'], fleet.BLOCK_WAIT)
         everyone = fleet.plan(f, fleet.enabled_faculties(), {},

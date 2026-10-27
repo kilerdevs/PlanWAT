@@ -44,12 +44,15 @@ jobs:
         with:
           path: src
           persist-credentials: false
-      # The split weighs each faculty by what it listed last time and its learned pacing.
+      # The split weighs each faculty by what it listed last time and its learned pacing; the run history says which
+      # runner a faculty's wall kept out lately (fleet.py walled_runners).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: data
           path: data
-          sparse-checkout: refresh-state.json
+          sparse-checkout: |
+            refresh-state.json
+            refresh-runs.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Ask GitHub which runners are online
@@ -73,7 +76,7 @@ jobs:
         env:
           FACULTY: ${{ inputs.faculty }}
         run: |
-          args=(plan --state data/refresh-state.json --faculty "$FACULTY")
+          args=(plan --state data/refresh-state.json --runs data/refresh-runs.json --faculty "$FACULTY")
           if [ -f runners.json ]; then args+=(--runners runners.json); fi
           python3 src/tools/refresh/fleet.py "${args[@]}"
 
@@ -120,7 +123,9 @@ jobs:
         with:
           ref: data
           path: data
-          sparse-checkout: refresh-state.json
+          sparse-checkout: |
+            refresh-state.json
+            refresh-runs.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Download the shares' outcomes
@@ -145,7 +150,7 @@ jobs:
         env:
           MATRIX: ${{ needs.plan.outputs.matrix }}
         run: |
-          args=(handoff --matrix "$MATRIX" --dir shards --state data/refresh-state.json)
+          args=(handoff --matrix "$MATRIX" --dir shards --state data/refresh-state.json --runs data/refresh-runs.json)
           if [ -f runners.json ]; then args+=(--runners runners.json); fi
           python3 src/tools/refresh/fleet.py "${args[@]}"
 
