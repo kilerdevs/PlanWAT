@@ -38,7 +38,11 @@ Ten sam obraz działa też jako darmowy kontener Northflank (runner `northflank`
 `/deploy/runner/Dockerfile.runner`, kontekst `/deploy/runner`, gałąź `master`, reguła ścieżek **Allow** `deploy/runner/**`
 (inne pushe nie restartują runnera), bez portów. Zmienne środowiskowe (runtime): `RUNNER_REPO_URL`, `RUNNER_NAME=northflank`,
 `RUNNER_LABELS=planwat,planwat-northflank` i `RUNNER_TOKEN` (sekret, ważny godzinę), bez `HTTP(S)_PROXY`. Kontener nie ma
-wolumenu, więc rejestracja ginie przy restarcie: potrzebny jest wtedy nowy `RUNNER_TOKEN`. Adres Google Cloud przechodzi
+wolumenu, więc rejestrację trzyma zmienna `RUNNER_STATE` (sekret): pliki rejestracji jako base64 z tar.gz, które
+entrypoint odtwarza przy starcie, gdy ich brak, zamiast rejestrować runner od nowa. Po pierwszej rejestracji zapisz je
+raz: `northflank exec service --cmd '/usr/local/bin/planwat-runner state' --shell-cmd 'bash -c'` wypisuje wartość
+(nie pokazuj jej nikomu: to tożsamość runnera). Gdy runner zostanie usunięty w GitHubie albo zarejestrowany od nowa,
+stara wartość przestaje działać: wpisz świeży `RUNNER_TOKEN`, a po starcie zapisz nowy `RUNNER_STATE`. Adres Google Cloud przechodzi
 tylko przez ściany IOE, WIG i WIM (próba 27.10.2026), stąd `faculties` w `fleet.json`.
 
 ## Utrzymanie
