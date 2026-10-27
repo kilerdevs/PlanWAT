@@ -46,6 +46,11 @@ REPORT_HOURS = 3
 # when nobody could take over, a short one when another runner is up, which then takes the faculty in the handoff wave.
 BLOCK_WAIT = 30
 HANDOFF_WAIT = 5
+# A runner that ended blocked on a faculty in each of its last WALLED_PASSES passes over it (at least WALLED_MIN of
+# them) stands at that faculty's wall: it is not counted on to take the faculty, so the plan neither gives it the
+# faculty while a runner it lets through is up, nor cuts that runner's wait short for a takeover by it.
+WALLED_PASSES = 3
+WALLED_MIN = 2
 # Every runner of the fleet carries this label besides its own (refresh-crawl.yml's runs-on).
 RUNNER_LABEL = 'planwat'
 NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,38}$')
@@ -140,7 +145,35 @@ def may_take(runner, lane, avoid):
                for f in lane)
 
 
-def plan(fleet, wanted, state, online, avoid=None):
+def walled_runners(runs):
+    """{faculty: {runner}} out of the run history (refresh-runs.json's `runs`, newest first): the runners whose last
+    WALLED_PASSES passes over a faculty all ended blocked on it, counting a pass by the runner's last wave there (a wall
+    it got through later in the pass is no wall) and only passes that ended done or blocked (a cancelled or cut-short
+    one tells nothing)."""
+    seen = {}  # (runner, faculty) -> [blocked?] newest pass first
+    for run in runs if isinstance(runs, list) else []:
+        last = {}  # (runner, faculty) -> (wave, blocked) in this pass
+        for x in (run.get('runners') if isinstance(run, dict) else None) or []:
+            if not isinstance(x, dict) or x.get('status') not in ('done', 'blocked'):
+                continue
+            wave = x.get('wave') if isinstance(x.get('wave'), int) else 1
+            blocked = set(x.get('blocked_on') or [])
+            for f in x.get('faculties') or []:
+                key = (x.get('name'), f)
+                if key not in last or last[key][0] <= wave:
+                    last[key] = (wave, f in blocked)
+        for key, (_, blocked) in last.items():
+            history = seen.setdefault(key, [])
+            if len(history) < WALLED_PASSES:
+                history.append(blocked)
+    out = {}
+    for (runner, f), history in seen.items():
+        if len(history) >= WALLED_MIN and all(history):
+            out.setdefault(f, set()).add(runner)
+    return out
+
+
+def plan(fleet, wanted, state, online, avoid=None, walled=None):
     """Split the lanes of `wanted` over the runners that are up.
 
     `online` is the set of labels GitHub reports online, or None when it could not be asked: then the always-on
@@ -150,13 +183,18 @@ def plan(fleet, wanted, state, online, avoid=None):
     from both machines that crawls as well from either stays off the fast one's share. A lane no runner up may take
     is left for the next pass. `avoid` maps a faculty to the runners that must not take it (the handoff wave: the
     runner that was blocked on it), so a preferred runner that left a lane behind does not get it back.
+    `walled` (walled_runners) maps a faculty to the runners its wall kept out lately: a lane goes to one of them only
+    when no other runner up may take it.
 
     Each shard says how long its runner should wait out a wall (`wait`, minutes): briefly when another runner up could
     take any of its faculties over, else the full wait. The wait is the whole share's, so one faculty nobody else may
     take (a runner limited by `faculties`) keeps the full wait for all of it: letting that one go early would only cost
     a takeover by the same runner for the rest of the wait.
     """
-    avoid = avoid or {}
+    avoid, walled = avoid or {}, walled or {}
+
+    def clear(r, lane):
+        return not any(r['name'] in walled.get(f, ()) for f in lane)
     if online is None:
         up = [r for r in fleet if r['always_on']] or fleet
     else:
@@ -170,6 +208,7 @@ def plan(fleet, wanted, state, online, avoid=None):
         if not able:
             unassigned += lane
             continue
+        able = [r for r in able if clear(r, lane)] or able
         keen = [r for r in able if all(f in r.get('prefers', ()) for f in lane)]
         best = min(keen or able, key=lambda r: ((load[r['name']] + cost) / r['speed'], -r['speed'], r['name']))
         load[best['name']] += cost
@@ -177,7 +216,7 @@ def plan(fleet, wanted, state, online, avoid=None):
     order = {f: i for i, f in enumerate(wanted)}
     out = [{'runner': r['name'], 'label': r['label'], 'faculties': ','.join(sorted(shards[r['name']], key=order.get)),
             'cost': round(load[r['name']]), 'eta': round(load[r['name']] / r['speed']),
-            'wait': HANDOFF_WAIT if all(any(may_take(o, [f], {}) for o in up if o is not r)
+            'wait': HANDOFF_WAIT if all(any(may_take(o, [f], {}) and clear(o, [f]) for o in up if o is not r)
                                         for f in shards[r['name']]) else BLOCK_WAIT}
            for r in up if shards[r['name']]]
     return {'shards': out, 'unassigned': sorted(unassigned, key=order.get), 'known': online is not None,
@@ -186,7 +225,8 @@ def plan(fleet, wanted, state, online, avoid=None):
 
 def census_of(fleet, wanted):
     """{runner: 'wig,...'}: the censuses each runner takes this pass (its fleet.json `census` among the faculties
-    wanted), whoever crawls those faculties. refresh.py runs each at most once a day; a takeover takes none."""
+    wanted), whoever crawls those faculties. refresh.py runs each at most once a week, after the crawl; a takeover
+    takes none."""
     return {r['name']: ','.join(f for f in wanted if f in r.get('census', ())) for r in fleet}
 
 
@@ -234,7 +274,10 @@ def cmd_plan(args):
     wanted = named or [f for f, c in sources.items() if c.get('enabled')]
     runners = load_json(args.runners, None, list) if args.runners else None
     fleet = load_fleet(args.fleet)
-    result = plan(fleet, wanted, load_json(args.state, {}), online_labels(runners))
+    walled = walled_runners(load_json(args.runs, {}).get('runs')) if args.runs else {}
+    for f, names in sorted(walled.items()):
+        log(f"{f}: its wall kept {', '.join(sorted(names))} out lately; not counted on to take it")
+    result = plan(fleet, wanted, load_json(args.state, {}), online_labels(runners), walled=walled)
     census = census_of(fleet, wanted)
     for s in result['shards']:
         log(f"{s['runner']}: {s['faculties']} (work {s['cost']}, relative time {s['eta']})")
@@ -419,7 +462,7 @@ def _wait(shard):
     return wait if 0 <= wait <= BLOCK_WAIT else BLOCK_WAIT
 
 
-def handoff(fleet, shards, outcomes, state, online):
+def handoff(fleet, shards, outcomes, state, online, walled=None):
     """The handoff wave: what the plan's runners left blocked or unfinished, for another runner that is up now.
 
     `online` is asked afresh (a runner may have come up or gone since the plan). A faculty does not go back to the
@@ -429,7 +472,11 @@ def handoff(fleet, shards, outcomes, state, online):
     One exception keeps the plan's promise of a full wait: a lane its runner let go blocked after only the short wait,
     because the plan saw another runner up that has gone since, goes back to that runner (when it is still up) for the
     rest of the wait. The takeover's `from` then names the runner itself.
+
+    Nor does a faculty go to a runner its wall kept out lately (`walled`, walled_runners): a takeover there would only
+    cost a job, so the runner that left it gets the rest of its wait instead, or the next pass the faculty.
     """
+    walled = walled or {}
     got = {shard_key(o): o for o in outcomes if isinstance(o, dict)}
     avoid, origin, wanted, waited = {}, {}, [], {}
     left = [(f, why, s['runner'], _wait(s)) for s in shards for f, why in left_over(s, got.get(shard_key(s)))]
@@ -438,6 +485,7 @@ def handoff(fleet, shards, outcomes, state, online):
     for f, why, runner, wait in left:
         # two runners may leave one faculty (a part each, steal.py): both are avoided, a wall is what is reported
         avoid.setdefault(f, set()).add(runner)
+        avoid[f] |= walled.get(f, set())
         if f not in origin or (why == 'blocked' and origin[f]['why'] != 'blocked'):
             origin[f] = {'runner': runner, 'why': why}
             waited[f] = wait
@@ -549,8 +597,9 @@ def handoff_summary(result):
 
 def cmd_handoff(args):
     runners = load_json(args.runners, None, list) if args.runners else None
+    walled = walled_runners(load_json(args.runs, {}).get('runs')) if args.runs else {}
     result = handoff(load_fleet(args.fleet), _matrix(args.matrix), read_outcomes(args.dir), load_json(args.state, {}),
-                     online_labels(runners))
+                     online_labels(runners), walled)
     for f, o in result['left'].items():
         log(f"{f}: left {o['why']} by {o['runner']}")
     for s in result['shards']:
@@ -605,6 +654,7 @@ def parse(argv=None):
     p = sub.add_parser('plan', help='split a pass over the runners that are online')
     p.add_argument('--state', default='data/refresh-state.json', help="the data branch's refresh-state.json")
     p.add_argument('--runners', help="GitHub's runner list (JSON array); missing = unknown")
+    p.add_argument('--runs', help="the data branch's refresh-runs.json: who met which wall lately (walled_runners)")
     p.add_argument('--faculty', default='', help='comma-separated faculties (default: every enabled one)')
     p.add_argument('--fleet', default=str(FLEET))
     p.add_argument('--sources', default=str(SOURCES))
@@ -625,6 +675,7 @@ def parse(argv=None):
     p.add_argument('--dir', required=True, help="where the plan's shard-*.json outcomes are")
     p.add_argument('--state', default='data/refresh-state.json', help="the data branch's refresh-state.json")
     p.add_argument('--runners', help="GitHub's runner list now (JSON array); missing = unknown")
+    p.add_argument('--runs', help="the data branch's refresh-runs.json: who met which wall lately (walled_runners)")
     p.add_argument('--fleet', default=str(FLEET))
     p = sub.add_parser('combine', help="add the shards' outcomes up for pages.yml")
     p.add_argument('--matrix', default='[]', help="the plan's matrix (JSON)")

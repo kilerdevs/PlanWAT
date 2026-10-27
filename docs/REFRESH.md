@@ -140,7 +140,9 @@ Joomlę: Incapsula odpowiada na strony Joomli wyzwaniem (403) z adresów centró
 26.10.2026), a listingi i PDF-y podaje obu runnerom; dwa poziomy małych listingów są też tańsze niż 60 stron kategorii.
 Listing ponad kierunkami jest ukryty, więc katalogi kierunków wymienia `dirs` w `sources.json`, a ich podkatalogi trybów
 znajduje przejście. Żeby nowy kierunek nie umknął, plebania robi **spis** (`--census wig`, `census` w `fleet.json`, najwyżej
-raz na dobę): przechodzi drzewo Joomli, które jej łącze widzi, i zapisuje katalogi wszystkich wymienionych tam PDF-ów w
+raz na tydzień, po własnym crawlu i w jego tempie; przebieg, który trafił na ścianę, zostawia spis następnemu, bo
+27.10.2026 cztery sekundy po spisie ściana Incapsula zamknęła łączu plebanii WLO, WEL, WML i WTC naraz): przechodzi
+drzewo Joomli, które jej łącze widzi, i zapisuje katalogi wszystkich wymienionych tam PDF-ów w
 `refresh-state.json` (`found`). Wykrywanie czyta je razem z `dirs` na każdym runnerze, więc grupa nowego kierunku trafia na
 stronę w pierwszym przebiegu po spisie, nawet gdy WIG crawluje oracle. Spis loguje katalogi spoza `dirs` do dopisania;
 zablokowany albo nieudany spis zostawia poprzedni i nie psuje przebiegu (26.10.2026 jedynie „Bud. dróg i mostów” nie miał
@@ -204,7 +206,12 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
    nie crawluje, a następny planuje od nowa. Podział widać w podsumowaniu zadania. Gdy każdy wydział udziału mógłby przejąć
    inny włączony runner, plan każe czekać na zejście ściany tylko 5 minut zamiast 30 (`max-block-wait-minutes`):
    zamiast czekać, lepiej oddać wydział. Czekanie dotyczy całego udziału, więc jeden wydział, którego nikt inny nie może
-   wziąć (runner ograniczony przez `faculties`), zostawia pełne 30 minut.
+   wziąć (runner ograniczony przez `faculties`), zostawia pełne 30 minut. **Runner zatrzymany ostatnio przez ścianę
+   wydziału nie liczy się do jego przejęcia** (`fleet.py walled_runners`): kto w ostatnich 3 przebiegach z tym wydziałem
+   (co najmniej 2, licząc tylko zakończone `done` albo `blocked`) za każdym razem kończył na nim zablokowany, ten dostaje
+   wydział tylko wtedy, gdy nikt inny go nie może wziąć, i nie skraca innym czekania. Plan czyta to z historii przebiegów
+   (`refresh-runs.json`). Tak oracle, stojący przed ścianami WLO, WML, WTC i WCY, nie skraca już plebanii czekania do 5
+   minut (27.10.2026 plebania odpuściła je po 5 minutach, a przejęcie przez oracle nic nie dało).
 2. **crawl** (po jednym zadaniu na runner, macierz): każdy runner crawluje swoje wydziały (`--faculty`) i wypycha wynik na
    `data`. Runnery wypychają równolegle, więc push nie robi rebase: każda próba zaczyna od najnowszego commita gałęzi,
    kładzie na nim kalendarze tego przebiegu i scala `refresh-state.json` (`fleet.py merge`: stemple grup zmienione w tym
@@ -220,7 +227,9 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
    GitHub **jeszcze raz**, kto jest teraz `online` (plebania mogła się w międzyczasie włączyć albo zgasnąć), i dzieli
    zostawione ścieżki tak jak plan (`fleet.py handoff`). Liczy się tylko runner, który ma też etykietę `planwat`, bo bez
    niej zadanie nigdy by na niego nie trafiło. Wydział nie wraca do runnera, który go zostawił; ścieżka (np. WLO z WEL)
-   przechodzi w całości. Każdy runner zgłasza w wyniku dokładnie, które wydziały zostawił zablokowane i których nie
+   przechodzi w całości; nie trafia też do runnera, którego jego ściana ostatnio zatrzymywała (wtedy runner, który go
+   zostawił, dostaje resztę czekania albo wydział czeka na następny przebieg). Każdy runner zgłasza w wyniku dokładnie,
+   które wydziały zostawił zablokowane i których nie
    skończył (`blocked_faculties`, `incomplete_faculties` z `refresh.py`). Jedyny wyjątek: jeśli runner oddał
    zablokowaną ścieżkę po krótkim czekaniu, bo plan widział drugi runner, a ten zdążył zgasnąć, ścieżka wraca do niego
    na resztę czekania (25 minut), o ile nadal jest włączony. Wtedy każdy wydział i tak dostaje pełne 30 minut. Bez

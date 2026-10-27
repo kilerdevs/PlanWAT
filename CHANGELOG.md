@@ -126,6 +126,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Plan pamięta, kogo która ściana zatrzymuje** (`fleet.py walled_runners`, z `refresh-runs.json`): runner zablokowany
+  na wydziale w każdym z ostatnich 3 przebiegów (co najmniej 2) dostaje go tylko wtedy, gdy nikt inny nie może, nie
+  skraca innym czekania na ścianę do 5 minut i nie dostaje go w handoffie. 27.10.2026 plebania odpuściła WLO, WEL, WML
+  i WTC po 5 minutach, bo oracle „mógł przejąć”, a oracle od rana stoi przed tymi ścianami.
+- **Spis WIG raz na tydzień, po crawlu i w jego tempie:** wcześniej szedł raz na dobę, przed crawlem, co 1–2 s. Cztery
+  sekundy po nim ściana Incapsula zamknęła łączu plebanii WLO, WEL, WML i WTC naraz. Przebieg, który trafił na ścianę,
+  zostawia spis następnemu.
 - **Bez daremnego czekania na ścianę** (`refresh.py`): ściany, na którą runner już raz czekał co najmniej 15 minut na
   próżno, nie odczekuje ponownie, aż któryś przebieg przez nią przejdzie. Pierwsze zapytanie o listę zostaje próbą, a
   przy odmowie wydział jest odpuszczany od razu. Oracle czekał tak pół godziny na WLO, WML i WTC w każdym przebiegu,
