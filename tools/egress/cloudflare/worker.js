@@ -10,9 +10,10 @@
  *   - only HTTPS targets on the exact hosts in PLANWAT_RELAY_HOSTS are fetched;
  *   - redirects are followed manually, at most three, and every hop stays on that list;
  *   - the caller's cookies and Authorization header are never forwarded upstream. Cookies an
- *     upstream sets are replayed only along that request's redirect chain (Incapsula answers a
- *     first visit with a same-URL 307 plus cookies), and upstream Set-Cookie,
- *     Content-Encoding and Content-Length headers are not returned.
+ *     upstream sets are replayed along that request's redirect chain and kept per host for a
+ *     short while (Incapsula answers a first visit with a same-URL 307 plus cookies, and treats
+ *     a client that keeps them as one session), and upstream Set-Cookie, Content-Encoding and
+ *     Content-Length headers are not returned.
  *
  * Configuration: see wrangler.toml and README.md.
  */
@@ -56,6 +57,7 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECTS = 3;
 const MAX_TARGET_LENGTH = 4096;
 const FETCH_TIMEOUT_MS = 45000;
+const COOKIE_TTL_S = 600;
 
 class RelayError extends Error {
   constructor(status, message) {
@@ -145,6 +147,39 @@ function cookieSnapshot(jar) {
   return [...jar.values()].join('; ');
 }
 
+// Incapsula binds its session cookie to the address and treats every request without it as a
+// new visitor; a burst of new visitors from one relay address is what its wall blocks. Keeping
+// the cookies per host for a few minutes makes the crawler one returning session instead.
+function cookieCacheKey(host) {
+  return new Request(`https://planwat-relay.invalid/cookies/${host}`);
+}
+
+async function loadCookies(host) {
+  if (typeof caches === 'undefined') return new Map();
+  try {
+    const hit = await caches.default.match(cookieCacheKey(host));
+    if (!hit) return new Map();
+    const pairs = await hit.json();
+    return new Map(pairs.map((pair) => [pair.slice(0, pair.indexOf('=')), pair]));
+  } catch {
+    return new Map();
+  }
+}
+
+async function saveCookies(host, jar) {
+  if (typeof caches === 'undefined' || !jar.size) return;
+  try {
+    await caches.default.put(cookieCacheKey(host), new Response(JSON.stringify([...jar.values()]), {
+      headers: {
+        'Cache-Control': `max-age=${COOKIE_TTL_S}`,
+        'Content-Type': 'application/json',
+      },
+    }));
+  } catch {
+    // The handshake still worked for this request; the next one starts a new session.
+  }
+}
+
 function responseHeaders(upstream) {
   const headers = new Headers();
   for (const name of RESPONSE_HEADERS) {
@@ -200,7 +235,7 @@ async function fetchAllowed(
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return textResponse(405, 'method not allowed');
     }
@@ -216,7 +251,11 @@ export default {
     if (!hosts.size) return textResponse(403, 'relay has no allowed hosts');
 
     try {
-      const upstream = await fetchAllowed(target, request, hosts);
+      const jar = await loadCookies(target.hostname);
+      const upstream = await fetchAllowed(target, request, hosts, MAX_REDIRECTS, new Set(), jar);
+      const saving = saveCookies(target.hostname, jar);
+      if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(saving);
+      else await saving;
       const noBody = request.method === 'HEAD'
         || upstream.status === 204
         || upstream.status === 205

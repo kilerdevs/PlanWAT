@@ -198,6 +198,51 @@ test('a same-URL redirect that sets a cookie is retried with it', async () => {
   }
 });
 
+test('upstream cookies are kept per host between requests', async () => {
+  const handler = (await worker()).default;
+  const store = new Map();
+  globalThis.caches = {
+    default: {
+      async match(request) {
+        const body = store.get(request.url);
+        return body === undefined ? undefined : new Response(body);
+      },
+      async put(request, response) {
+        store.set(request.url, await response.text());
+      },
+    },
+  };
+  let first = true;
+  const stub = stubFetch((url, init) => {
+    if (first) {
+      assert.equal(init.headers.get('cookie'), null);
+      first = false;
+      return new Response(null, {
+        status: 307,
+        headers: {
+          Location: 'https://wtc.wat.edu.pl/Plany/index.xml',
+          'Set-Cookie': 'incap_ses_1=abc; Path=/; Domain=.wat.edu.pl',
+        },
+      });
+    }
+    return new Response('plan', { status: 200 });
+  });
+  try {
+    const a = await handler.fetch(relayRequest('https://wtc.wat.edu.pl/Plany/index.xml'), ENV);
+    assert.equal(a.status, 200);
+
+    stub.calls.length = 0;
+    first = false;  // the second request starts with the cached cookie, no challenge
+    const b = await handler.fetch(relayRequest('https://wtc.wat.edu.pl/Plany/index.xml'), ENV);
+    assert.equal(b.status, 200);
+    assert.equal(stub.calls.length, 1);
+    assert.equal(stub.calls[0].init.headers.get('cookie'), 'incap_ses_1=abc');
+  } finally {
+    stub.restore();
+    delete globalThis.caches;
+  }
+});
+
 test('a same-URL redirect without cookies is a loop, not a retry', async () => {
   const handler = (await worker()).default;
   const stub = stubFetch(() => new Response(null, {
