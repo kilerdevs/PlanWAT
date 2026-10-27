@@ -6,8 +6,9 @@ name: Refresh timetables
 # Crawls only on the project's self-hosted runners (label "planwat"): the faculty sites' Incapsula wall blocks
 # GitHub's datacenter addresses on the first request, so a hosted runner can only fail. There are two of them
 # (tools/refresh/fleet.json): plebania, fast but often switched off, and an always-on but slow VPS. A hosted job
-# asks GitHub which of them is online and splits the faculties between those, weighted by speed. What one of them
-# leaves blocked or unfinished, another one that is online then takes over (the handoff). A last hosted job adds
+# asks GitHub which of them is online and splits the faculties between those, weighted by speed. One that is done
+# early takes work off the other while it still crawls (tools/refresh/steal.py, over git refs that the report job
+# deletes). What one of them leaves blocked or unfinished, another one that is online then takes over (the handoff). A last hosted job adds
 # their outcomes up for pages.yml and the "blocked" issues, and records the pass in the run history (README.md on the
 # data branch, the site's /stan/ page).
 on:
@@ -251,6 +252,12 @@ jobs:
             refresh-runs.json
             README.md
           sparse-checkout-cone-mode: false
+      # The runners talked over refs/planwat/pass/<...>-<run id>/ while they crawled (tools/refresh/board.py): gone
+      # with the pass, as are any a pass cut short left behind.
+      - name: Clear the pass's work board
+        if: steps.history.outcome == 'success'
+        continue-on-error: true
+        run: python3 src/tools/refresh/board.py sweep --repo data --run-id "$GITHUB_RUN_ID"
       - name: Record this pass in the run history
         if: steps.history.outcome == 'success'
         continue-on-error: true

@@ -16,6 +16,19 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze tylko IOE, WIG i WIM,
+  bo ściany pozostałych wydziałów odrzucają jego adres (próba 27.10.2026), więc zwykle crawluje WIM. Plan skraca
+  czekanie na ścianę do 5 minut tylko wtedy, gdy każdy wydział udziału mógłby przejąć inny włączony runner: oracle bez
+  plebanii czeka nadal pełne 30 minut na WLO, WEL, WML i WTC, których northflank nie może wziąć.
+- **Pomoc między runnerami w trakcie przebiegu** (`tools/refresh/steal.py`, `board.py`): runner, który skończył swój
+  udział, odciąża ten, który jeszcze crawluje: najpierw bierze część grup wydziału crawlowanego właśnie teraz
+  (podzieloną według `speed`), a gdy ściana tego wydziału go nie wpuszcza, kolejno wydziały jeszcze niezaczęte. Właściciel
+  zablokowany na ścianie oddaje całą resztę i przestaje czekać. Runnery rozmawiają przez dokumenty JSON na własnych
+  referencjach gita (`refs/planwat/pass/…`, każdą pisze tylko jeden runner), które zadanie report usuwa po przebiegu.
+  Oddawane grupy są rezerwowane, zanim zgoda zostanie wypchnięta, więc żadna nie jest crawlowana dwa razy ani nie ginie;
+  milczący runner przestaje być uznawany po 4 minutach. Wyniki udziałów mówią, co kto wziął i oddał (`took`, `gave`),
+  a `combine` i handoff liczą wydział podzielony między runnery i oddanie bez potwierdzenia jako niedokończone. Czekanie
+  na ścianę kończy się wcześniej, gdy nie ma już na co czekać. Historia przebiegów i `/stan/` pokazują, kto komu pomógł.
 - **WIG w automatycznym odświeżaniu** (sterownik `wig`): plany wydziału, dotąd dodawane ręcznie, są czytane z otwartych
   listingów jego katalogów plików (strony Joomli Incapsula blokuje adresom centrów danych, listingów i PDF-ów nie). Katalogi
   kierunków wymienia `dirs` w `sources.json`. Każdy PDF to wydruk strony Plansoft; sterownik odtwarza z linii
@@ -60,7 +73,7 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
     sprawdzenie grupy nigdy nie nadpisują nowszego planu.
 - „Sprawdzono” na stronie grupy uwzględnia także sprawdzenia wolontariuszy, a domowy runner pomija grupy, które
   wolontariusze właśnie potwierdzili.
-- **Dwa runnery odświeżania z podziałem pracy** ([docs/REFRESH.md](docs/REFRESH.md#dwa-runnery-i-podział-pracy)):
+- **Dwa runnery odświeżania z podziałem pracy** ([docs/REFRESH.md](docs/REFRESH.md#runnery-i-podział-pracy)):
   każdy przebieg sprawdza, które runnery są włączone, i dzieli wydziały między szybką, ale często wyłączoną plebanię a
   wolny, zawsze włączony VPS, według ich szybkości (`tools/refresh/fleet.json`). Gdy plebania śpi, wszystko robi VPS, a
   żadne zadanie nie wisi w kolejce. Runnery wypychają na `data` równolegle i scalają stan zamiast się nadpisywać, każdy
@@ -69,7 +82,7 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   padnie lub w ogóle nie ruszy), przebieg pyta GitHub, kto jest teraz włączony, i oddaje go drugiemu runnerowi, który
   zaczyna tam, gdzie tamten skończył. Gdy przejęcie jest możliwe, runner czeka na ścianę 5 minut zamiast 30. Przebieg
   liczy wydział tak, jak zostawił go ostatni runner, a historia przebiegów pokazuje, kto co od kogo przejął
-  ([docs/REFRESH.md](docs/REFRESH.md#dwa-runnery-i-podział-pracy)). Gdy drugi runner zgaśnie przed przejęciem, wydział
+  ([docs/REFRESH.md](docs/REFRESH.md#runnery-i-podział-pracy)). Gdy drugi runner zgaśnie przed przejęciem, wydział
   wraca do pierwszego na resztę 30 minut („ponowna próba”), więc nikt nie traci pełnego czekania. Przejmowany jest też
   udział, który GitHub anulował w kolejce.
 - **Limit czasu odświeżania obejmuje cały przebieg:** `--max-minutes` liczył się osobno dla każdego wydziału, więc runner

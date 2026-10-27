@@ -165,14 +165,15 @@ Każdy, kto może uruchomić workflow w repozytorium, może uruchomić kod na ru
   własną rejestracją; zarejestruj go na poziomie repozytorium z etykietą `planwat`;
 - zablokuj cały ruch przychodzący do hosta i zezwól na wychodzący wyłącznie do GitHub i hostów wydziałów.
 
-### Dwa runnery i podział pracy
+### Runnery i podział pracy
 
-Projekt ma dwa runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh/fleet.json):
+Projekt ma trzy runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh/fleet.json):
 
 | Runner | Etykieta | `speed` | Charakter |
 |---|---|---|---|
 | plebania | `planwat-plebania` | 4 | prywatny serwer: szybki, ale często wyłączony |
 | oracle | `planwat-oracle` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
+| northflank | `planwat-northflank` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): tylko IOE, WIG i WIM (`faculties`), bo pozostałe ściany odrzucają jego adres |
 
 Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wspólny workflow `refresh-crawl.yml`):
 
@@ -182,9 +183,10 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
    tempa. Ścieżki idą od największej, każda do runnera, który skończy ją najwcześniej (obciążenie / `speed`), więc
    szybka plebania bierze większość, a VPS resztę, i oba kończą mniej więcej razem. Wyłączony runner nie dostaje nic,
    więc żadne zadanie nie czeka w kolejce na maszynę, która nie przyjdzie. Gdy nic nie jest włączone, przebieg niczego
-   nie crawluje, a następny planuje od nowa. Podział widać w podsumowaniu zadania. Gdy jest włączony drugi runner, który
-   mógłby przejąć wydział, plan każe czekać na zejście ściany tylko 5 minut zamiast 30 (`max-block-wait-minutes`):
-   zamiast czekać, lepiej oddać wydział.
+   nie crawluje, a następny planuje od nowa. Podział widać w podsumowaniu zadania. Gdy każdy wydział udziału mógłby przejąć
+   inny włączony runner, plan każe czekać na zejście ściany tylko 5 minut zamiast 30 (`max-block-wait-minutes`):
+   zamiast czekać, lepiej oddać wydział. Czekanie dotyczy całego udziału, więc jeden wydział, którego nikt inny nie może
+   wziąć (runner ograniczony przez `faculties`), zostawia pełne 30 minut.
 2. **crawl** (po jednym zadaniu na runner, macierz): każdy runner crawluje swoje wydziały (`--faculty`) i wypycha wynik na
    `data`. Runnery wypychają równolegle, więc push nie robi rebase: każda próba zaczyna od najnowszego commita gałęzi,
    kładzie na nim kalendarze tego przebiegu i scala `refresh-state.json` (`fleet.py merge`: stemple grup zmienione w tym
@@ -220,8 +222,56 @@ włączony, niezależnie od obciążenia. Gdy jest wyłączony albo to on ją zo
 inna. Oracle preferuje WIG i IOE: oba runnery przeszły 26.10.2026 po dwa przebiegi WIG (33 z 33 grup, identyczne kalendarze), a
 IOE z oracle przeszedł czysto 9 przebiegów z 9. Plebania preferuje WTC, bo ściana WTC odrzuca adres VPS (zablokowany w 4
 przebiegach z 4, zwykłe HTTPS z maszyny dostaje 403): na oracle WTC kosztował tylko czekanie na ścianę i przekazanie.
-Przy obu włączonych oracle dostaje WIM, IOE i WIG, a plebania WLO z WEL, WCY, WML i WTC. Runner może też robić **spis** wydziału
+Przy wszystkich włączonych oracle dostaje IOE i WIG, northflank WIM, a plebania WLO z WEL, WCY, WML i WTC; bez
+plebanii northflank bierze WIM, a oracle resztę. Runner może też robić **spis** wydziału
 (`census`): plebania robi spis WIG, bo tylko jej łącze widzi strony Joomli wydziału (zob. uwagi o WIG wyżej).
+
+#### Pomoc w trakcie przebiegu
+
+Plan dzieli pracę z góry, według szacunku, który tempo i ściany łatwo psują: oracle kończy WIG i IOE w kilka minut,
+a plebania crawluje jeszcze WML, WCY i ścieżkę WLO→WEL. Dlatego runnery jednej fali rozmawiają ze sobą w trakcie
+crawlowania ([`steal.py`](../tools/refresh/steal.py)) i runner, który skończył swój udział, odciąża ten, który jeszcze pracuje:
+
+1. Najpierw próbuje wydziału, który tamten **crawluje teraz**: sam wylicza jego grupy (to jedno zapytanie o listę, i tak
+   potrzebne do adresów stron) i prosi o **część** pozostałych grup. Właściciel oddaje koniec swojej listy, podzielony
+   według `speed` obu runnerów (plebania oddaje oracle piątą część, oracle plebanii cztery piąte). Gdy zostało mniej niż
+   8 grup albo udział wyszedłby mniejszy niż 4, właściciel kończy sam. Gdy właściciel stoi akurat przed ścianą, oddaje
+   **wszystko**, co mu zostało, i przestaje czekać.
+2. Gdy ściana tego wydziału nie wpuszcza pomocnika, ten próbuje kolejno **wydziałów, których tamten jeszcze nie zaczął**
+   (np. WEL czekającego w ścieżce za WLO) i prosi o cały wydział, razem z przebiegiem nadchodzącego semestru.
+3. Ścianę, na którą pomocnik trafił niedawno (na swoim udziale albo pomagając), omija tak długo, jak jego łącze
+   nauczyło się, że trwa ([czas blokady](#jak-zachowuje-się-przebieg)): nie traci zapytania na pewną odmowę.
+
+Kanałem jest **tablica** ([`board.py`](../tools/refresh/board.py)): każdy runner trzyma jeden mały dokument JSON na
+własnej referencji gita w tym repozytorium, `refs/planwat/pass/<plan>-<przebieg>/w<fala>/<runner>`, i tylko on ją zapisuje,
+więc dwa zapisy nigdy się nie ścigają. Pozostali czytają ją `git ls-remote` (jedno zapytanie mówi, co się zmieniło) i
+pobierają tylko zmienione. Uprawnienia daje checkout `data`, ruch gita nie zjada limitu API, a referencje spoza
+`heads/` i `tags/` nie uruchamiają żadnego workflow. Zadanie report usuwa tablicę przebiegu
+(`board.py sweep`) razem z resztkami przebiegów przerwanych ponad 6 h temu.
+
+Dlaczego żadna grupa nie jest crawlowana dwa razy i żadna nie ginie:
+
+- **O tym, co opuszcza listę, decyduje tylko właściciel**, pod jedną blokadą wspólną dla jego ścieżek: ścieżka bierze
+  grupy z puli po jednej, a prośbę rozpatruje osobny wątek. Grupy do oddania są najpierw **rezerwowane**, potem
+  odpowiedź jest wypychana na tablicę i dopiero udany push je oddaje; nieudany zwalnia je, a prośba jest rozpatrywana
+  od nowa. Ścieżka nie bierze grupy zarezerwowanej, pomocnik nie zaczyna, zanim nie przeczyta zgody.
+- **Runner, który przestał się odzywać** (dokument bez zmian przez 4 minuty przy biciu serca co minutę, mierzone zegarem
+  czytającego, nie piszącego), jest uznany za nieobecny: nikt na niego nie czeka i nic mu się nie oddaje. Pomocnik,
+  który zrezygnował z czekania na odpowiedź, odwołuje prośbę; zgodę, która mimo to przyszła, i tak realizuje.
+- Pomocnik, którego ściana zatrzymała w połowie, **nie czeka na nią**: reszta zostaje w jego puli, skąd właściciel może
+  ją odebrać tą samą drogą, a on idzie do następnego wydziału. Pomocnik bez pracy czeka bezczynnie (`idle`), dopóki
+  któryś runner jeszcze pracuje, bo tamten może trafić na ścianę; fala i tak kończy się z najwolniejszym runnerem.
+- **Rozliczenie**: każdy runner zgłasza w wyniku, co wziął (`took`) i co oddał (`gave`). Wydział liczy się tak, jak
+  zostawili go wszyscy, którzy mieli jego część w ostatniej fali (niedokończony, jeśli którakolwiek część jest
+  niedokończona), a oddanie, którego biorący nie potwierdził (awaria, brak wyniku), czyni go niedokończonym: handoff
+  przekazuje go dalej, z pominięciem milczącego runnera. Pomocnik zablokowany na wziętym wydziale jest omijany, więc w
+  handoffie wydział wraca do właściciela. Rekord wydziału w `refresh-state.json` publikuje runner, który ma jego
+  całość (`owned_faculties` → `fleet.py merge --owned`); część wzięta zostawia rekord właścicielowi, a grupy
+  pomocnika i tak trafiają na `data`. Historia przebiegów pokazuje pomoc: „WML (pomoc dla plebania)” przy serwerze i
+  „z pomocą oracle” przy wydziale.
+
+Gdy tablica jest nieosiągalna, runnery po prostu sobie nie pomagają, a przebieg działa jak wcześniej. Wolontariusze i
+przebiegi próbne (`--dry-run`) nie używają tablicy.
 
 Każdy runner ma też **własny stan łącza** (wyuczone tempo, czasy blokad, ostatni przebieg wydziału): różne adresy
 trafiają na różne ściany, więc trzyma go w `$RUNNER_TOOL_CACHE/planwat/refresh-line.json`, zasiany raz z gałęzi `data`.
