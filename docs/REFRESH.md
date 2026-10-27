@@ -41,6 +41,10 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   strona nie jest wdrażana kilkanaście razy dziennie dla samej godziny. Przebieg, który nic nie wypchnął, nie wdraża nic.
   Wyjątek: przebieg, który skończył się inaczej niż poprzedni (inny wynik albo inne serwery, `history=new`), odbudowuje
   stronę od razu, żeby [`/stan/`](#historia-przebiegów) go pokazała.
+- **Strona listy, której już nie ma, to nie ściana.** 404 albo 410 na stronie, z której crawl bierze listę grup, znaczy,
+  że wydział przeniósł plany (WML usunął `/rozklady-zajec/` 27.10.2026): bez czekania i bez ponowień wydział jest oznaczany
+  jako niewylistowany i `degraded`, więc przebieg kończy się jako niepełny i otwiera zgłoszenie. Dla nadchodzącego semestru
+  to po prostu „jeszcze nieopublikowany”.
 - **Blokada odkłada wydział, nie kończy przebiegu.** Każdy status inny niż 200 (z wyjątkiem 304 i 404) albo strona incydentu
   Incapsula to najpierw odpowiedź blokady, nie wyrok: crawl zgłasza ją do proxy wyjściowego (które wycofuje wyjście, jakie ją
   przewiozło — w tunelu CONNECT proxy nie widzi strony blokady), a potem ponawia na świeżym połączeniu, czyli na innym wyjściu
@@ -88,6 +92,12 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   pokazuje bieżący semestr, kasuje znacznik.
 - Strona jest publikowana tylko wtedy, gdy kalendarz przechodzi własną walidację serwisu (`build.load_term`), nosi kod grupy
   swojego pliku i nie stracił więcej niż 40% zdarzeń. W przeciwnym razie stary kalendarz zostaje, a grupa trafia do logu.
+  Wyjątek: plan, który stracił więcej, ale wraca dokładnie taki sam w co najmniej 3 przebiegach rozłożonych na 12 h
+  (`SHRINK_PASSES`, `SHRINK_HOURS`), jest przyjmowany. Strona zepsuta w połowie rzadko psuje się tak samo przez pół doby, a
+  wydział, który naprawdę obciął plan (WCY25IX4S0: 157 zajęć zimą → 46), inaczej zostawiałby na stronie zajęcia, których
+  już nie ma. Część sali, która wygląda na osobę (tytuł przed nazwiskiem albo alias prowadzącego, ta sama reguła co w
+  walidacji, `core.public_room`), jest w kalendarzu WTC usuwana, zamiast odrzucać cały plan (WTC22CO1S0 był odrzucany w
+  każdym przebiegu).
 - Kalendarz jest nadpisywany tylko wtedy, gdy plan się zmienił (data wygenerowania jest ignorowana), więc historia `data`
   pokazuje prawdziwe zmiany planu.
 
@@ -99,8 +109,8 @@ Wydziały wymienia `tools/refresh/sources.json`. Każdy wskazuje sterownik w `to
 |---|---|---|
 | WLO, WEL, WIM | `plansoft` | włączone |
 | IOE | `plansoft` (przypięta baza: zimowe plany leżą pod nieaktualnym katalogiem `lato/`, siatka jest transponowana, a jej komórki odczytywane jako PRZEDMIOT/rodzaj/sala/alias, konwertowane przez `wlo2ics --faculty ioe`) | włączone |
-| WML | `wml` (strony Plansoft, żywy `index.xml` rozpoznawany przez ramkę strony głównej, bo wydział publikuje ponownie w katalogach z rewizją) | włączone |
-| WCY | `wcy` | włączone: zwykłe HTTP działa (sprawdzono 14.10.2026), a strony pokazujące inny semestr (lub pustą siatkę) są liczone jako „jeszcze nieopublikowane” — stare kalendarze zostają do publikacji nowego planu i nie oznaczają przebiegu jako pogorszony; stary kalendarz jest przed porównaniem przycinany do semestru, więc oczyszczenie pliku niosącego jeszcze lekcje poprzedniego lata nie jest czytane jako podejrzany skurcz planu |
+| WML | `wml` (strony Plansoft; `index.xml` bieżącego semestru wybierany z odnośników strony głównej, najnowsza rewizja katalogu `<rok>_sem_<pora>[_n]`, bo wydział publikuje ponownie w nowych katalogach i przenosi stronę z planami) | włączone |
+| WCY | `wcy` | włączone: zwykłe HTTP działa (sprawdzono 14.10.2026); wspólne strumienie zajęć z gwiazdką w nazwie (`WCY26*Fiz1a`) są crawlowane jako `WCY26_Fiz1a`, pod kodem, pod jakim strona je publikuje (do 27.10.2026 były pomijane); grupy WIM z menu WCY (`WME…B…`), których własny indeks WIM nie wymienia (`foreign` w `sources.json`), WCY bierze sam, bo tylko tu jest ich plan, a te z indeksu WIM zostają przy WIM (nieczytelny indeks WIM: żadnej nie bierze); strony pokazujące inny semestr (lub pustą siatkę) są liczone jako „jeszcze nieopublikowane” — stare kalendarze zostają do publikacji nowego planu i nie oznaczają przebiegu jako pogorszony; stary kalendarz jest przed porównaniem przycinany do semestru, więc oczyszczenie pliku niosącego jeszcze lekcje poprzedniego lata nie jest czytane jako podejrzany skurcz planu |
 | WTC | `wtc` | włączone: płaski `index.xml` (`/Plany/`) nazywa semestr, który wymienia (`<period>`), a sterownik publikuje PDF-y tylko dla odświeżanego semestru; konwersja przez `pymupdf` (instalowany przez akcję odświeżania) |
 | WIG | `wig` | włączone: otwarte listingi katalogów Phoca Download (`/cpp/phocadownloadpap/`), w nich PDF-y będące wydrukami stron Plansoft; sterownik odtwarza siatkę z linii tabeli i oddaje ją `wlo2ics`, a semestr i grupę bierze z nagłówka PDF-u (`pymupdf`, jak przy WTC) |
 
@@ -296,7 +306,9 @@ przebiegi próbne (`--dry-run`) nie używają tablicy.
 
 Każdy runner ma też **własny stan łącza** (wyuczone tempo, czasy blokad, ostatni przebieg wydziału): różne adresy
 trafiają na różne ściany, więc trzyma go w `$RUNNER_TOOL_CACHE/planwat/refresh-line.json`, zasiany raz z gałęzi `data`.
-Na `data` trafia stan łącza tego runnera, który ostatnio crawlował dany wydział.
+Na `data` trafia stan łącza tego runnera, który ostatnio crawlował dany wydział, więc zasiew pomija ściany, przed którymi
+stał tamten (`fleet.py seed`: epizod ściany, czekanie, otwarta blokada), a epizod ściany nosi nazwę runnera (`by`) i
+liczy się tylko dla niego: plebania nie pomija już WML przez ścianę oracle.
 
 Konfiguracja (jednorazowo):
 
@@ -328,8 +340,10 @@ przebiegu; inaczej wydział ma „brak danych z tego przebiegu”.
 
 `/stan/` pokazuje też **stan opublikowanych planów** (z `refresh-state.json`, liczony na koniec ostatniego przebiegu, więc
 strona zbudowana później mówi to samo): jak dawno sprawdzono plany każdego wydziału, dzień ostatniej zmiany planu z 14
-dni, plany najdawniej sprawdzone (dzień lub więcej), ostatnio zmienione i najdłużej bez zmian. Plan, którego wydział nie
-potwierdził w tym semestrze (strona pokazuje jeszcze inny semestr), liczy się osobno jako „bez potwierdzenia”. Wykresy są
+dni, plany najdawniej sprawdzone (dzień lub więcej), ostatnio zmienione i najdłużej bez zmian. Plan niepotwierdzony w
+tym semestrze ma jeden z dwóch osobnych kolorów: „wydział nie ma planu”, gdy crawl sprawdził grupę, a jej strona pokazuje
+jeszcze inny semestr (nie ma czego potwierdzić; tak jest z 38 grupami WCY zimą 2026/27), i „bez potwierdzenia”, gdy nikt
+grupy jeszcze nie sprawdził. Wykresy są
 w SVG bez skryptu, z tabelą liczb pod każdym.
 
 Zapisuje je zadanie **report** (`tools/refresh/runs.py record`): dopisuje przebieg do `refresh-runs.json` na `data` (od

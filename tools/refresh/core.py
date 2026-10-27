@@ -31,6 +31,11 @@ class Blocked(Exception):
     """The host answered with a block page or an unexpected status. The run must stop, never retry."""
 
 
+class Gone(Exception):
+    """A listing page answered 404 or 410: the faculty moved or removed it. Not a wall (nothing to wait out): the
+    main pass reports the faculty unlisted and degraded, the coming semester's pass reads it as not published yet."""
+
+
 class NotReady(Exception):
     """A converter found a healthy plan of another semester (a PDF, which page_ok/not_ready cannot read)."""
 
@@ -112,6 +117,24 @@ class BlockModel:
         del entry['durations'][:-BLOCK_KEEP]
         entry['cause'] = None
         return duration
+
+
+def public_room(room):
+    """A room text that may be published: every ';'/','-separated part naming a person (build's own rule: a title before
+    a name, or a lecturer alias) is dropped, so a cell parsed into the wrong column never puts staff into a calendar
+    nor keeps the whole plan out. A room without such a part comes back unchanged."""
+    parts = [p.strip() for p in re.split(r'[;,]', room or '')]
+    if not any(p and build.names_person(p) for p in parts):
+        return room
+    return ';'.join(p for p in parts if p and not build.names_person(p))
+
+
+def check_listing(status, text, what):
+    """A listing page's answer: Gone for 404/410 (the page moved), Blocked for a wall (is_blocked), else nothing."""
+    if status in (404, 410):
+        raise Gone(f'{what}: HTTP {status}, the page is gone')
+    if is_blocked(status, text):
+        raise Blocked(f'{what}: HTTP {status}')
 
 
 def is_blocked(status, text):

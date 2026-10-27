@@ -151,6 +151,30 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **WIM: grupy, których plan jest tylko na stronie WCY** (`WME25BX3S1` i 5 innych `WME…B…`): nikt ich nie crawlował, bo
+  indeks WIM ich nie wymienia. Teraz bierze je WCY, ale tylko te, których WIM nie ma, więc żadna grupa nie ma dwóch
+  kalendarzy.
+- **WTC: nazwisko w kolumnie sali** nie odrzuca już całego planu (WTC22CO1S0 odrzucany w każdym przebiegu): ta część sali
+  jest pomijana, reszta planu trafia na stronę.
+- **WCY: wspólne strumienie zajęć** (`WCY26*Fiz1a`, `WCY26*M1`, …): crawl pomijał 16 grup z gwiazdką w nazwie, bo
+  menu wydziału podaje je jako `%2A`. Teraz są pobierane jako `WCY26_Fiz1a`, pod kodem, pod jakim strona je publikuje
+  (15 z nich nie było nigdy sprawdzonych; `WCY26*M1` ma już plan zimowy).
+- **Plan, który wydział naprawdę obciął, w końcu trafia na stronę:** strażnik „nie więcej niż 40% zdarzeń mniej” odrzucał
+  go w każdym przebiegu, więc na stronie zostawały nieistniejące zajęcia (WCY25IX4S0: 157 zajęć zimą zamiast 46). Ten
+  sam mniejszy plan widziany w 3 przebiegach przez co najmniej 12 h jest przyjmowany.
+- **`/stan/` odróżnia „wydział nie ma planu” od „bez potwierdzenia”:** grupy, których strona pokazuje jeszcze inny
+  semestr (38 grup WCY zimą 2026/27), mają własny kolor i nie wyglądają już jak zaniedbane przez crawl.
+- **Liczba „niegotowych” w części wziętej od innego runnera** nie jest już liczona drugi raz (WCY pokazywał 76
+  zamiast 38).
+- **WML znów odświeżany:** wydział usunął stronę `/rozklady-zajec/` (404), z której ramki crawl brał adres planów. Sterownik
+  bierze teraz `index.xml` bieżącego semestru z odnośników strony głównej (najnowszą rewizję katalogu), a semestr jeszcze
+  niepodlinkowany traktuje jako nieopublikowany.
+- **Strona listy, której nie ma (404/410), to nie ściana:** wcześniej przeniesiona strona wyglądała w przebiegu jak blokada
+  Incapsula i nie była nawet odczekiwana. Teraz wydział jest od razu oznaczany jako niewylistowany i `degraded` (zgłoszenie),
+  bez ponowień.
+- **Ściana jednego runnera nie przechodzi na drugi:** zasiew stanu łącza z gałęzi `data` pomija ściany, czekania i otwarte
+  blokady runnera, który zapisał rekord, a epizod ściany liczy się tylko dla runnera, który go zapisał. Plebania pomijała
+  WML z powodu ściany oracle.
 - **`/stan/` mówi po ludzku:** pod wynikiem przebiegu jest zdanie, co znaczy dla planów („Część stron (WEL) nie
   przeszła kontroli, więc zostają dla nich poprzednie plany”). Serwer, który tylko odrzucił strony, nie jest już
   „niedokończony”, przejęcie ma podpis, krótki udział to „<1 min”, a nie „0 min”, „pominięte” to „odrzucone strony”,

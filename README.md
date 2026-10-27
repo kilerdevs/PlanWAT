@@ -271,7 +271,7 @@ liczbę udostępnionych grup na bieżąco.
 | Wydział | Sterownik | Uwagi |
 |---|---|---|
 | WML | `wml` | strony Plansoft, aktualny `index.xml` odnajdywany przez ramkę strony głównej |
-| WCY | `wcy` | lista grup z menu skoku; strony z planem poprzedniego semestru są pomijane |
+| WCY | `wcy` | lista grup z menu skoku, ze wspólnymi strumieniami (`WCY26*Fiz1a` jako `WCY26_Fiz1a`); strony z planem poprzedniego semestru są pomijane |
 | WEL | `plansoft` | wspólna polityka dostępu z WLO |
 | WLO | `plansoft` | |
 | WIM | `plansoft` | |

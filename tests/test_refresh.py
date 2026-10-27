@@ -600,6 +600,37 @@ class WcyReadiness(unittest.TestCase):
                'page': 'https://example.test/pl/rozklad?grupa_id={group}'}
         return wcy.Driver('wcy', cfg, TODAY)
 
+    def test_the_shared_streams_are_listed_under_their_filed_codes(self):
+        menu = ('<select><option value="">- Wybierz grupę -</option>'
+                '<option value="/pl/rozklad?grupa_id=WCY26KY3S1">WCY26KY3S1</option>'
+                '<option value="/pl/rozklad?grupa_id=WCY26%2AFiz1a">WCY26*Fiz1a</option>'
+                '<option value="/pl/rozklad?grupa_id=WCY26*M1">WCY26*M1</option>'
+                '<option value="/pl/rozklad?grupa_id=WME26BX1S1">WME26BX1S1</option></select>')
+        items = self.driver().discover(FakeSession({'https://example.test/pl/rozklad': Resp(200, menu.encode())}))
+        self.assertEqual([(i.code, i.url) for i in items], [
+            ('WCY26KY3S1', 'https://example.test/pl/rozklad?grupa_id=WCY26KY3S1'),
+            ('WCY26_Fiz1a', 'https://example.test/pl/rozklad?grupa_id=WCY26%2AFiz1a'),  # never crawled before
+            ('WCY26_M1', 'https://example.test/pl/rozklad?grupa_id=WCY26%2AM1')])  # WIM's groups stay WIM's
+
+    def test_another_faculty_s_groups_only_this_menu_lists_are_taken(self):
+        menu = ('<select><option value="/pl/rozklad?grupa_id=WCY26KY3S1">x</option>'
+                '<option value="/pl/rozklad?grupa_id=WME23BE1S1">x</option>'  # WIM lists it: WIM's
+                '<option value="/pl/rozklad?grupa_id=WME25BX3S1">x</option></select>')  # only here: taken here
+        cfg = dict(self.driver().cfg, foreign={'prefix': 'WME', 'owner_index': 'https://example.test/wim/{season}/index.xml'})
+        d = wcy.Driver('wcy', cfg, TODAY)
+        owner = '<xml><data><gro href="WME23BE1S1.htm"/><gro href="WME24BM1S1.htm"/></data></xml>'
+        routes = {'https://example.test/pl/rozklad': Resp(200, menu.encode()),
+                  'https://example.test/wim/zima/index.xml': Resp(200, owner.encode())}
+        self.assertEqual([i.code for i in d.discover(FakeSession(routes))], ['WCY26KY3S1', 'WME25BX3S1'])
+        del routes['https://example.test/wim/zima/index.xml']  # the owner's index unreadable: none is taken
+        self.assertEqual([i.code for i in d.discover(FakeSession(routes))], ['WCY26KY3S1'])
+
+    def test_a_room_part_naming_a_person_is_dropped_not_the_whole_plan(self):
+        # WTC22CO1S0 was rejected in every pass: a teacher read into the room column
+        self.assertEqual(core.public_room('109/ 3;dr inż. Kowalski'), '109/ 3')
+        self.assertEqual(core.public_room('AKowalski'), '')
+        self.assertEqual(core.public_room('314 S'), '314 S')
+
     def test_a_page_of_this_semester_is_ok(self):
         d = self.driver()
         text = wcy_page(['2026_10_05'])
@@ -694,9 +725,32 @@ class WmlDiscovery(unittest.TestCase):
                          'https://example.test/plany/2026_sem_zima_2/WMT26AX1S1.htm')
         self.assertEqual(items[0].page, 'WMT26AX1S1')
 
-    def test_a_page_without_the_embed_is_not_a_block(self):
-        _, items = self.discover(b'<html><body>no timetables here</body></html>')
-        self.assertEqual(items, [])
+    def test_a_page_linking_no_index_is_gone_not_a_wall(self):
+        with self.assertRaises(core.Gone):
+            self.discover(b'<html><body>no timetables here</body></html>')
+
+    def test_a_landing_page_that_is_gone_is_not_a_wall(self):
+        # 2026-10-27: WML removed /rozklady-zajec/; the crawler read the 404 as a wall and stopped waiting for it
+        driver = wml.Driver('wml', WML_CFG, TODAY)
+        with self.assertRaises(core.Gone) as caught:
+            driver.discover(FakeSession({}))
+        self.assertNotIsInstance(caught.exception, core.Blocked)
+
+    def test_the_homepage_menu_gives_the_semester_crawled_in_its_newest_revision(self):
+        up = 'https://example.test/wp-content/uploads/rozklady_zajec/'
+        home = ('<html><body><nav>'
+                f'<a href="{up}2026_sem_zima/index.xml">Rozkłady zajęć</a>'
+                f'<a class="x" href="{up}2026_sem_zima_2/index.xml">poprawione</a>'
+                f'<a href="{up}2025_sem_lato/index.xml">r.a. 2025/2026 - LATO</a>'
+                f'<a href="{up}2025_sem_zima/index.xml">r.a. 2025/2026 - ZIMA</a>'
+                '</nav></body></html>')
+        driver = wml.Driver('wml', WML_CFG, TODAY)
+        items = driver.discover(FakeSession({self.LANDING: Resp(200, home.encode()),
+                                             f'{up}2026_sem_zima_2/index.xml': Resp(200, WML_INDEX.encode())}))
+        self.assertEqual([i.url for i in items], [f'{up}2026_sem_zima_2/WMT26AX1S1.htm'])
+        summer = wml.Driver('wml', WML_CFG, dt.date(2027, 3, 1))  # the coming semester, not linked yet
+        with self.assertRaises(core.Gone):
+            summer.discover(FakeSession({self.LANDING: Resp(200, home.encode())}))
 
     def test_a_blocked_landing_page_raises(self):
         driver = wml.Driver('wml', WML_CFG, TODAY)
@@ -710,6 +764,53 @@ class WmlDiscovery(unittest.TestCase):
                                self.INDEX: Resp(403, b'')})
         with self.assertRaises(core.Blocked):
             driver.discover(session)
+
+
+class GoneListing(unittest.TestCase):
+    """A listing page that answers 404 moved: no wall, no wait, no retries; a degraded run, or for the coming semester
+    nothing published yet."""
+
+    class Driver:
+        calls = 0
+
+        def __init__(self, faculty, cfg, today):
+            pass
+
+        def discover(self, session):
+            GoneListing.Driver.calls += 1
+            raise core.Gone('index.xml: HTTP 404, the page is gone')
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        orig = refresh.drivers.load
+        refresh.drivers.load = lambda name, faculty, cfg, today: GoneListing.Driver(faculty, cfg, today)
+        self.addCleanup(setattr, refresh.drivers, 'load', orig)
+        GoneListing.Driver.calls = 0
+        self.state = core.State(self.tmp / core.STATE_FILE)
+
+    def crawl(self, ahead=False):
+        args = refresh.parse(['--out', str(self.tmp), '--force'])
+        return refresh.refresh_faculty('wml', {'driver': 'stub', 'label': 'WML'}, args, self.state, TODAY,
+                                       FakeSession({}), sleep=lambda s: None, ahead=ahead)
+
+    def test_the_main_pass_is_unlisted_and_degraded_not_blocked(self):
+        self.assertEqual(self.crawl(), ([], False, False))
+        run = self.state.faculties['wml']['run']
+        self.assertEqual((run['blocked'], run['cause'], run['degraded']), (False, 'listing', True))
+        self.assertNotIn('blocked_at', self.state.faculties['wml'])
+        self.assertEqual(GoneListing.Driver.calls, 1)  # asking again changes nothing
+
+    def test_the_coming_semester_is_just_not_published_yet(self):
+        self.assertEqual(self.crawl(ahead=True), ([], False, True))
+
+    def test_check_listing_tells_a_moved_page_from_a_wall(self):
+        self.assertIsNone(core.check_listing(200, '<xml/>', 'index.xml'))
+        for status in (404, 410):
+            with self.assertRaises(core.Gone):
+                core.check_listing(status, '', 'index.xml')
+        with self.assertRaises(core.Blocked):
+            core.check_listing(403, '', 'index.xml')
 
 
 class WmlConversion(unittest.TestCase):
@@ -1437,6 +1538,15 @@ class NotReadyBackoff(unittest.TestCase):
                                 sleep=lambda s: None)
         return [u for u in asked if u.endswith('.htm')]
 
+    def test_a_part_taken_does_not_count_the_owners_not_ready_groups(self):
+        self.crawl()
+        args = refresh.parse(['--out', str(self.tmp)])
+        args.today = TODAY
+        # a grant holds groups the owner was to check, never one still backing off (its todo left those out)
+        refresh._refresh_faculty('wcy', {'driver': 'stub', 'label': 'WCY'}, args, self.state, TODAY,
+                                 FakeSession(self.pages), sleep=lambda s: None, only=['WCY26X01S1'])
+        self.assertEqual(self.state.faculties['wcy']['run']['not_ready'], 0)
+
     def test_a_group_not_ready_is_not_asked_again_so_soon_but_still_counts(self):
         self.assertEqual(len(self.crawl()), 6)
         self.assertEqual(self.crawl(), [])
@@ -1475,6 +1585,31 @@ class NotReadyBackoff(unittest.TestCase):
         self.crawl()
         self.assertNotIn('not_ready', self.state.groups['WCY26A01S1'])
         self.assertIn('not_ready', self.state.groups['WCY26A11S1'])
+
+class SteadyShrink(unittest.TestCase):
+    """A plan that lost more than validate allows is kept out once, and taken when it shows the same way for long."""
+
+    def setUp(self):
+        self.clock = [dt.datetime(2026, 10, 27, 8, 0)]
+        patcher = unittest.mock.patch.object(core, 'now_utc', lambda: self.clock[0])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_it_takes_the_same_plan_seen_three_times_over_half_a_day(self):
+        entry = {}
+        for hours, expected in ((0, False), (5, False), (10, False), (15, True)):
+            self.clock[0] = dt.datetime(2026, 10, 27, 8, 0) + dt.timedelta(hours=hours)
+            self.assertEqual(refresh.steady_shrink(entry, 'BEGIN:VEVENT\nSUMMARY:A\nEND:VEVENT\n'), expected, hours)
+        self.assertEqual(entry['shrink']['seen'], 4)
+
+    def test_another_plan_starts_the_count_again(self):
+        entry = {}
+        refresh.steady_shrink(entry, 'BEGIN:VEVENT\nSUMMARY:A\nEND:VEVENT\n')
+        self.clock[0] += dt.timedelta(hours=20)
+        refresh.steady_shrink(entry, 'BEGIN:VEVENT\nSUMMARY:A\nEND:VEVENT\n')
+        self.assertFalse(refresh.steady_shrink(entry, 'BEGIN:VEVENT\nSUMMARY:B\nEND:VEVENT\n'))
+        self.assertEqual(entry['shrink']['seen'], 1)
+
 
 class BlockReports(unittest.TestCase):
     def test_faculty_host_reads_the_config_urls(self):
@@ -2020,6 +2155,18 @@ class ChronicWalls(unittest.TestCase):
         self.assertEqual(len(self.wait_calls), 2)
         self.assertEqual(self.wall('wml')['failed'], 0)
 
+    def test_another_runners_wall_is_not_this_ones(self):
+        # plebania once started from the data branch's copy of oracle's records and skipped WML on oracle's wall
+        state = core.State(self.tmp / 'x.json')
+        state.faculties['wml'] = {'wall': {'since': '2026-10-27T13:23:00', 'failed': 1, 'by': 'oracle'}}
+        self.assertTrue(refresh.chronic(state, 'wml', 'oracle'))
+        self.assertFalse(refresh.chronic(state, 'wml', 'plebania'))
+        refresh.note_wall(state, 'wml', 'wall', 'plebania')
+        self.assertEqual((state.faculties['wml']['wall']['by'], state.faculties['wml']['wall']['failed']),
+                         ('plebania', 0))
+        refresh.note_wall(state, 'wml', 'flaky', 'oracle')  # a flaky line is no wall
+        self.assertEqual(state.faculties['wml']['wall']['by'], 'plebania')
+
     def test_a_clean_neighbour_behind_the_same_policy_leaves_the_wall_on_record(self):
         StubDriver.fails = {'wlo': {'main': 999}}
         self.run_pass('wlo,wel')
@@ -2516,6 +2663,18 @@ class FleetMerge(unittest.TestCase):
             line = json.loads((tmp / 'cache' / 'line.json').read_text())
             self.assertEqual(set(line), set(core.LINE_KEYS))
             self.assertEqual(line['pacing'], {'wcy': 2.0})
+
+    def test_a_seed_leaves_out_the_walls_its_writer_stood_at(self):
+        state = {'faculties': {'wml': {'last_count': 162, 'wall': {'since': 'x', 'failed': 1, 'by': 'oracle'},
+                                       'wait': {'waited': 1800}, 'blocked_at': 'y', 'walled_at': 'z',
+                                       'run': {'checked': 0}}},
+                 'blocks': {'wml': {'durations': [{'dur': 60.0}], 'blocked_at': 'y', 'cause': 'wall'}},
+                 'pacing': {'wml': 3.0}}
+        line = fleet.seed_line(state)
+        self.assertEqual(line['faculties'], {'wml': {'last_count': 162, 'run': {'checked': 0}}})
+        self.assertEqual(line['blocks'], {'wml': {'durations': [{'dur': 60.0}], 'blocked_at': None, 'cause': None}})
+        self.assertEqual(line['pacing'], {'wml': 3.0})
+        self.assertIn('wall', state['faculties']['wml'])  # the data branch's copy is left as it was
 
 
 class FleetCombine(unittest.TestCase):
