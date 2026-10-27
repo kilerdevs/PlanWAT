@@ -451,13 +451,14 @@ _TITLED = re.compile(r'(?<!\w)(?:(?i:' + '|'.join(sorted(_TITLES, key=len, rever
                      r'(?=[A-ZĄĆĘŁŃÓŚŹŻ])')
 
 
+def names_person(part):
+    """True when one part of a LOCATION holds a title followed by a name, or is a bare lecturer alias."""
+    return bool(_ALIAS.fullmatch(part.strip()) or _TITLED.search(part))
+
+
 def _names_person(location):
-    """True when any ';'/','-separated part of a LOCATION value holds a title followed by a name, or is a bare
-    lecturer alias."""
-    for part in re.split(r'(?:\\[;,]|[;,])', location):
-        if _ALIAS.fullmatch(part.strip()) or _TITLED.search(part):
-            return True
-    return False
+    """True when any ';'/','-separated part of a LOCATION value names a person (names_person)."""
+    return any(names_person(part) for part in re.split(r'(?:\\[;,]|[;,])', location))
 
 
 def _fold(line):
@@ -1461,8 +1462,10 @@ def render_status_runs(runs):
 
 
 # How long ago a published plan was last confirmed, as the ordinal steps of the /stan/ freshness bars (hours; None:
-# older). Plans never confirmed this semester (the faculty still shows another one) are a bucket of their own.
+# older). A plan never confirmed this semester is one of two buckets: the crawler found that the faculty still shows
+# another semester for the group (no plan of this one to confirm), or it has nothing on record at all.
 FRESH_BUCKETS = (('fr1', 'do 6 h', 6), ('fr2', '6–24 h', 24), ('fr3', '1–3 dni', 72), ('fr4', 'dawniej', None))
+FRESH_NOPLAN = ('frx', 'wydział nie ma planu')
 FRESH_NONE = ('frn', 'bez potwierdzenia')
 CHANGE_DAYS = 14
 LIST_LEN = 5
@@ -1493,20 +1496,24 @@ def plan_stats(current, refreshed, runs):
     is on record): how long ago each faculty's plans were confirmed, when plans last changed, and the extremes.
     None when nothing was ever checked. Every age is against that moment, not the build's clock, so a page rebuilt
     later without a new pass says the same."""
-    stamps = {}
+    stamps, noplan = {}, set()
     for g in sorted(current):
         entry = refreshed.get(g) if isinstance(refreshed.get(g), dict) else {}
         stamps[g] = (utc_moment(entry.get('checked')) if entry.get('checked') else None,
                      utc_moment(entry.get('changed')) if entry.get('changed') else None)
+        mark, term = entry.get('not_ready'), getattr(current[g], 'term_id', None)
+        if isinstance(mark, dict) and (term is None or mark.get('term') == term):
+            noplan.add(g)  # tools/refresh: the page still shows another semester
     ref = utc_moment(runs[0]['ended']) if runs and runs[0].get('ended') else None
     ref = ref or max((c for c, _ in stamps.values() if c), default=None)
     if ref is None or not stamps:
         return None
     faculties = {}
     for g, (checked, _) in stamps.items():
-        row = faculties.setdefault(faculty_of(g), {k: 0 for k, _, _ in FRESH_BUCKETS} | {FRESH_NONE[0]: 0})
+        row = faculties.setdefault(faculty_of(g), {k: 0 for k, _, _ in FRESH_BUCKETS}
+                                   | {FRESH_NOPLAN[0]: 0, FRESH_NONE[0]: 0})
         if checked is None:
-            row[FRESH_NONE[0]] += 1
+            row[(FRESH_NOPLAN if g in noplan else FRESH_NONE)[0]] += 1
             continue
         hours = (ref - checked).total_seconds() / 3600
         row[next(k for k, _, limit in FRESH_BUCKETS if limit is None or hours <= limit)] += 1
@@ -1567,7 +1574,7 @@ def render_plan_stats(stats):
     share = round(100 * stats['fresh'] / total)
     tiles = [('Wszystkie plany', count_up(total)), ('Sprawdzone w ostatnich 6 h', f"{count_up(stats['fresh'])} <small>{count_up(share)}%</small>"),
              ('Zmienione w ostatnich 7 dniach', count_up(stats['week']))]
-    buckets = [(k, label) for k, label, _ in FRESH_BUCKETS] + [FRESH_NONE]
+    buckets = [(k, label) for k, label, _ in FRESH_BUCKETS] + [FRESH_NOPLAN, FRESH_NONE]
     legend = ''.join(f'<li>{_swatch(k)}{e(label)}</li>' for k, label in buckets)
     rows, table = [], []
     for code, row in stats['faculties']:

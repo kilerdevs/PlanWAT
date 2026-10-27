@@ -28,8 +28,7 @@ class Driver:
     def discover(self, session):
         r = session.get(self.base + 'index.xml', timeout=30)
         text = decode(r.content)
-        if core.is_blocked(r.status_code, text):
-            raise core.Blocked(f'index.xml: HTTP {r.status_code}')
+        core.check_listing(r.status_code, text, 'index.xml')
         return self.items(text)
 
     def items(self, text):

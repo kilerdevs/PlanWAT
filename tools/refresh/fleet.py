@@ -255,10 +255,28 @@ def cmd_plan(args):
     return 0
 
 
+# What a faculty's record says about the runner that wrote it: the walls it met and its waits for them. A wall stands
+# in front of one address, so a runner seeded from that record must not inherit them.
+OWN_WALLS = ('wall', 'wait', 'blocked_at', 'walled_at')
+
+
+def seed_line(state):
+    """A runner's first line state out of the data branch's refresh-state.json: the faculties' records, the learned
+    cooldowns and the pacing, without the walls whoever wrote them was standing at."""
+    line = {k: copy.deepcopy(state.get(k)) if isinstance(state.get(k), dict) else {} for k in core.LINE_KEYS}
+    for fac in line['faculties'].values():
+        if isinstance(fac, dict):
+            for key in OWN_WALLS:
+                fac.pop(key, None)
+    for entry in line['blocks'].values():
+        if isinstance(entry, dict):
+            entry['blocked_at'], entry['cause'] = None, None  # an open episode is that runner's
+    return line
+
+
 def cmd_seed(args):
     """A runner's first line state: the data branch's numbers, the best guess there is."""
-    state = load_json(args.state, {})
-    line = {k: state.get(k) if isinstance(state.get(k), dict) else {} for k in core.LINE_KEYS}
+    line = seed_line(load_json(args.state, {}))
     out = Path(args.out)
     try:
         out.parent.mkdir(parents=True, exist_ok=True)

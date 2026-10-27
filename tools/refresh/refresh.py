@@ -271,20 +271,28 @@ def wait_for_recovery(name, probe, model, budget, max_probes=5, sleep=time.sleep
 CHRONIC_MIN_WAIT = 15 * 60
 
 
-def note_wall(state, name, cause):
-    """A wall met here (not a flaky line): the episode starts now, unless one is already open."""
+def _own_wall(wall, runner):
+    """A wall episode on record that this runner met: one another runner met (a state copied from it) is not."""
+    return (isinstance(wall, dict) and isinstance(wall.get('since'), str)
+            and (not runner or wall.get('by') in (None, runner)))
+
+
+def note_wall(state, name, cause, runner=''):
+    """A wall met here (not a flaky line): the episode starts now, unless this runner's is already open. The record
+    names the runner, since a wall stands in front of one address."""
     if cause != 'wall':
         return
     fac = state.faculties.setdefault(name, {})
-    wall = fac.get('wall')
-    if not (isinstance(wall, dict) and isinstance(wall.get('since'), str)):
+    if not _own_wall(fac.get('wall'), runner):
         fac['wall'] = {'since': core.now_utc().isoformat(), 'failed': 0}
+    if runner:
+        fac['wall']['by'] = runner
 
 
-def chronic(state, name):
+def chronic(state, name, runner=''):
     """Whether this runner already waited out the faculty's current wall in vain (CHRONIC_MIN_WAIT)."""
     wall = state.faculties.get(name, {}).get('wall')
-    failed = wall.get('failed') if isinstance(wall, dict) else None
+    failed = wall.get('failed') if _own_wall(wall, runner) else None
     return isinstance(failed, int) and not isinstance(failed, bool) and failed >= 1
 
 
@@ -301,6 +309,8 @@ def discover_with_retry(driver, session, retries=2, backoff=2.0, sleep=time.slee
     for attempt in range(retries + 1):
         try:
             return driver.discover(session)
+        except core.Gone:
+            raise  # the page moved: asking again changes nothing
         except core.Blocked as err:
             last = err
             if not block_retries:
@@ -419,6 +429,26 @@ def noted_not_ready(entry, tid):
     if not isinstance(streak, int) or isinstance(streak, bool) or streak < 0:
         streak = 0
     entry['not_ready'] = {'at': core.now_utc().isoformat(), 'term': tid, 'streak': streak + 1}
+
+
+# A calendar that lost more than core.validate allows is taken once the same plan came back this many times, this many
+# hours apart at least: a page broken half-way rarely breaks the same way for half a day.
+SHRINK_PASSES = 3
+SHRINK_HOURS = 12
+
+
+def steady_shrink(entry, ics):
+    """Note one more sighting of a shrunken plan; whether it has now shown the same way long enough to be the plan."""
+    digest, now = core.plan_hash(ics), core.now_utc()
+    mark = entry.get('shrink')
+    if not (isinstance(mark, dict) and mark.get('hash') == digest and isinstance(mark.get('seen'), int)):
+        mark = entry['shrink'] = {'hash': digest, 'seen': 0, 'first': now.isoformat()}
+    mark['seen'] += 1
+    try:
+        hours = (now - dt.datetime.fromisoformat(mark['first'])).total_seconds() / 3600
+    except (TypeError, ValueError):
+        mark['first'], hours = now.isoformat(), 0
+    return mark['seen'] >= SHRINK_PASSES and hours >= SHRINK_HOURS
 
 
 def accepted_checked(state, code, tid):
@@ -575,6 +605,16 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
                       'not_ready': 0, 'blocked': True, 'ahead': ahead, 'cause': 'wall', 'degraded': False}
         pace(True)
         return [], True, False
+    except core.Gone as err:
+        if ahead:
+            # the coming semester's listing is not up yet: nothing there, which is no failure
+            log(f'[{name}] the coming semester is not published yet ({err})')
+            return [], False, True
+        log(f'[{name}] cannot list groups, the listing page is gone: {err}; the faculty moved its timetable?')
+        fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0, 'changed': 0,
+                      'skipped': 0, 'not_ready': 0, 'blocked': False, 'ahead': ahead,
+                      'cause': 'listing', 'degraded': True}
+        return [], False, False
     except Exception as err:
         log(f'[{name}] cannot list groups: {err}')
         # The report reads fac['run']: leaving the previous entry here would resend the last
@@ -636,6 +676,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
     if only is not None:
         keep = set(only)
         todo = [i for i in todo if i.code in keep]
+        waiting &= keep  # a part taken: the owner counts the rest of the faculty's not-ready groups
     if args.limit:
         todo = todo[:args.limit]
     if pool is not None:
@@ -781,10 +822,20 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
         # its cleaned-up version is not read as the page suddenly losing most of its plan.
         previous = core.clip_to_term(old, tid) if old is not None else None
         ok, why = core.validate(ics, item.code, tid, previous)
+        if not ok and previous is not None and core.validate(ics, item.code, tid)[0]:
+            # Only the shrink guard says no. A half-broken page shrinks once; a faculty that really cut the plan shows the
+            # same smaller one pass after pass, and keeping the old one would leave classes on the site that are gone.
+            if steady_shrink(entry, ics):
+                log(f'[{name}] {item.code}: {why}, the same plan in {SHRINK_PASSES}+ passes over '
+                    f'{SHRINK_HOURS} h+; accepted')
+                ok = True
+            else:
+                why += f', seen {entry["shrink"]["seen"]} of {SHRINK_PASSES} times'
         if not ok:
             log(f'[{name}] {item.code}: rejected ({why}), keeping the old calendar')
             failed += 1
             continue
+        entry.pop('shrink', None)
         entry.update(hash=digest, checked=core.now_utc().isoformat(), term=tid)
         if core.same_plan(old, ics):
             noted_quiet(entry)
@@ -948,14 +999,14 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
         if was_blocked:
             cause = state.faculties.get(name, {}).get('run', {}).get('cause')
             model.note_blocked(name, cause)
-            note_wall(state, name, cause)
+            note_wall(state, name, cause, args.runner)
             deferred.append((name, False))
             continue
         if coming and refresh_ahead(name, sources, args, state, today, session, coming,
                                     tallies, sleep, clock, progress=progress, pool=pool):
             cause = state.faculties.get(name, {}).get('run', {}).get('cause')
             model.note_blocked(name, cause)
-            note_wall(state, name, cause)
+            note_wall(state, name, cause, args.runner)
             deferred.append((name, True))
     if wait_budget is None:
         wait_budget = args.max_block_wait_minutes * 60
@@ -964,7 +1015,7 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
         wait_budget = min(wait_budget, args.deadline - clock())
     if not deferred or wait_budget <= 0:
         return tallies
-    if all(chronic(state, n) for n, _ in deferred):
+    if all(chronic(state, n, args.runner) for n, _ in deferred):
         # Every wall here already outlasted a full wait: another one would only keep the pass from ending.
         for n, _ in deferred:
             wall = state.faculties[n]['wall']
@@ -973,7 +1024,7 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
             state.faculties[n]['wait'] = {'waited': 0, 'probes': 0, 'recovered': False, 'chronic': True}
         return tallies
     # probe through a wall that may still drop, not through one already waited out in vain
-    first = next(n for n, _ in deferred if not chronic(state, n))
+    first = next(n for n, _ in deferred if not chronic(state, n, args.runner))
     group = core.group_of(first)
     driver = drivers.load(sources[first]['driver'], first, sources[first], today)
     probe_session = new_session()  # probe with a clean jar, like a new visitor
@@ -1031,7 +1082,7 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
             if was_blocked:
                 cause = state.faculties.get(name, {}).get('run', {}).get('cause')
                 model.note_blocked(name, cause)
-                note_wall(state, name, cause)
+                note_wall(state, name, cause, args.runner)
                 continue
             if coming:
                 refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock,

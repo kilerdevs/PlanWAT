@@ -184,19 +184,21 @@ class StatusPageTest(unittest.TestCase):
             'WCY26KY3S1': {'checked': '2026-10-25T11:00:00', 'changed': '2026-10-25T10:00:00'},
             'WCY26KY1S1': {'checked': '2026-10-24T06:00:00', 'changed': '2026-10-01T10:00:00'},  # 30 h before it
             'WEL25EY1S0': {},  # never confirmed this semester
+            'WCY24IY4S1': {'not_ready': {'at': '2026-10-25T11:00:00', 'term': '2026-27-zima', 'streak': 3}},
         }
         current = dict.fromkeys(refreshed)
         stats = build.plan_stats(current, refreshed, runs)
-        self.assertEqual((stats['total'], stats['fresh'], stats['week'], stats['never_changed']), (3, 1, 1, 1))
+        self.assertEqual((stats['total'], stats['fresh'], stats['week'], stats['never_changed']), (4, 1, 1, 2))
         wcy = dict(stats['faculties'])['WCY']
         self.assertEqual((wcy['fr1'], wcy['fr3']), (1, 1))  # 30 h is "1-3 dni"
+        self.assertEqual((wcy['frx'], wcy['frn']), (1, 0))  # the faculty shows another semester: no plan to confirm
         self.assertEqual(dict(stats['faculties'])['WEL']['frn'], 1)
         self.assertEqual([g for _, g in stats['stale']], ['WCY26KY1S1'])  # a day or more behind
         self.assertEqual([g for _, g in stats['recent']], ['WCY26KY3S1', 'WCY26KY1S1'])
         self.assertEqual(stats['days'][-1][1], 1)  # the last of the 14 days is the pass's own
         page = build.render_plan_stats(stats)
         self.assertIn('<a href="../WCY26KY3S1/">WCY26KY3S1</a>', page)
-        self.assertIn('role="img" aria-label="WCY: do 6 h: 1, 1–3 dni: 1"', page)  # each chart says itself
+        self.assertIn('role="img" aria-label="WCY: do 6 h: 1, 1–3 dni: 1, wydział nie ma planu: 1"', page)  # each says itself
         self.assertIn('<summary>Liczby w tabeli</summary>', page)
         self.assertNotIn('style=', page)  # the page's CSP allows no inline style attribute
         # the same page whenever it is built: no "now" in it

@@ -6,6 +6,7 @@ import re
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote, unquote
 
 import core
 import rozklad2ics
@@ -19,16 +20,42 @@ class Driver:
     def discover(self, session):
         r = session.get(self.cfg['index'], timeout=30)
         text = r.content.decode('utf-8', errors='replace')
-        if core.is_blocked(r.status_code, text):
-            raise core.Blocked(f'group list: HTTP {r.status_code}')
-        items, seen = [], set()
-        # The group list is a Drupal jump menu: <option value="...rozklad?grupa_id=WCY21IT1S0">.
+        core.check_listing(r.status_code, text, 'group list')
+        items, seen, foreign = [], set(), []
+        # The group list is a Drupal jump menu: <option value="...rozklad?grupa_id=WCY21IT1S0">. The shared lecture and
+        # exercise streams are named with a star (grupa_id=WCY26%2AFiz1a for "WCY26*Fiz1a"): the site files them as
+        # WCY26_Fiz1a, a code a file and a URL can carry, and the page is asked for under the faculty's own name.
+        other = self.cfg.get('foreign') or {}
         for value in re.findall(r'<option[^>]*value="[^"]*grupa_id=([^"&]+)', text):
-            code = value.strip()
-            if code not in seen and core.group_code(code, '') == code and code.upper().startswith('WCY'):
-                seen.add(code)
-                items.append(Item(code, self.cfg['page'].format(group=code), code))
-        return items
+            raw = value.strip()
+            code = unquote(raw).replace('*', '_')
+            if code in seen or core.group_code(code, '') != code:
+                continue
+            seen.add(code)
+            item = Item(code, self.cfg['page'].format(group=quote(unquote(raw), safe='')), code)
+            if code.upper().startswith('WCY'):
+                items.append(item)
+            elif other.get('prefix') and code.upper().startswith(other['prefix']):
+                foreign.append(item)
+        return items + self._unowned(session, foreign)
+
+    def _unowned(self, session, foreign):
+        """Another faculty's groups this menu lists (WIM's WME..B.. groups) that their own faculty does not: only this
+        site has their plan. One the owner lists is the owner's, so no group gets two calendars; when the owner's
+        index cannot be read, none is taken."""
+        other = self.cfg.get('foreign') or {}
+        if not foreign or not other.get('owner_index'):
+            return []
+        try:
+            r = session.get(other['owner_index'].format(season=core.season_of(self.today)[0]), timeout=30)
+            text = r.content.decode('cp1250', errors='replace')
+            core.check_listing(r.status_code, text, 'owner index')
+        except Exception:  # noqa: BLE001 (a wall, a moved page, a dead line: take none rather than guess)
+            return []
+        owned = {stem.upper() for stem in re.findall(r'href="([^"/]+)\.htm"', text)}
+        if not owned:
+            return []
+        return [i for i in foreign if i.code.upper() not in owned]
 
     def _term_start(self):
         """The first day of the term being refreshed, as YYYYMMDD."""

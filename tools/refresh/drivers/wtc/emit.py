@@ -20,6 +20,8 @@ refresh item).
 import re
 from collections import Counter
 
+import core
+
 from . import cells as C
 from . import match as M
 from .parse import BLOCKS, TYPEMAP, parse_cell, parse_legend_full
@@ -135,7 +137,7 @@ def convert_pdf(group, pdf_path, today, period):
             skips['empty-summary:' + r['subj']] += 1
             continue
         cat = TYPEMAP.get(r['type'], r['type']) if r.get('type') else None
-        room = r['room'].strip()
+        room = core.public_room(r['room'].strip())  # a teacher read into the room column is dropped, not published
         if not room and (r.get('type') or '').endswith('/wyj'):
             room = 'wyjazd studyjny'
         desc = []
