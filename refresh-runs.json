@@ -2,6 +2,93 @@
  "version": 1,
  "runs": [
   {
+   "id": 40499062574,
+   "number": 74,
+   "attempt": 1,
+   "event": "workflow_dispatch",
+   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/40499062574",
+   "planned": "2026-10-27T11:49:57",
+   "ended": "2026-10-27T12:05:51",
+   "result": "incomplete",
+   "changed": 0,
+   "checked": 0,
+   "not_ready": 0,
+   "runners": [
+    {
+     "name": "oracle",
+     "faculties": [
+      "wlo",
+      "wel",
+      "ioe",
+      "wcy",
+      "wml",
+      "wtc",
+      "wig"
+     ],
+     "status": "incomplete",
+     "minutes": 15,
+     "changed": 0,
+     "wave": 1
+    },
+    {
+     "name": "northflank",
+     "faculties": [
+      "wim"
+     ],
+     "status": "missing",
+     "minutes": null,
+     "changed": 0,
+     "wave": 1
+    }
+   ],
+   "offline": [
+    "plebania"
+   ],
+   "unassigned": [],
+   "faculties": [
+    {
+     "id": "wlo",
+     "runner": "oracle",
+     "fresh": false
+    },
+    {
+     "id": "wel",
+     "runner": "oracle",
+     "fresh": false
+    },
+    {
+     "id": "ioe",
+     "runner": "oracle",
+     "fresh": false
+    },
+    {
+     "id": "wcy",
+     "runner": "oracle",
+     "fresh": false
+    },
+    {
+     "id": "wml",
+     "runner": "oracle",
+     "fresh": false
+    },
+    {
+     "id": "wtc",
+     "runner": "oracle",
+     "fresh": false
+    },
+    {
+     "id": "wig",
+     "runner": "oracle",
+     "fresh": false
+    },
+    {
+     "id": "wim",
+     "runner": "northflank",
+     "fresh": false
+    }
+   ]
+  },
+  {
    "id": 40470944765,
    "number": 73,
    "attempt": 1,
@@ -1187,132 +1274,6 @@
      "blocked": true,
      "degraded": false,
      "cause": "wall"
-    },
-    {
-     "id": "wml",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": true,
-     "degraded": false,
-     "cause": "wall"
-    },
-    {
-     "id": "wtc",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": true,
-     "degraded": false,
-     "cause": "wall"
-    }
-   ]
-  },
-  {
-   "id": 40249645750,
-   "number": 64,
-   "attempt": 1,
-   "event": "schedule",
-   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/40249645750",
-   "planned": "2026-10-26T00:30:02",
-   "ended": "2026-10-26T01:02:18",
-   "result": "blocked",
-   "changed": 0,
-   "checked": 42,
-   "not_ready": 38,
-   "runners": [
-    {
-     "name": "oracle",
-     "faculties": [
-      "wlo",
-      "wel",
-      "wim",
-      "ioe",
-      "wcy",
-      "wml",
-      "wtc"
-     ],
-     "status": "blocked",
-     "minutes": 31,
-     "changed": 0,
-     "wave": 1,
-     "blocked_on": [
-      "wlo",
-      "wml",
-      "wtc"
-     ]
-    }
-   ],
-   "offline": [
-    "plebania"
-   ],
-   "unassigned": [],
-   "faculties": [
-    {
-     "id": "wlo",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": true,
-     "degraded": false,
-     "cause": "wall"
-    },
-    {
-     "id": "wel",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 3,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 3,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "wim",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "ioe",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "wcy",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 39,
-     "changed": 0,
-     "not_ready": 38,
-     "skipped": 1,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
     },
     {
      "id": "wml",
