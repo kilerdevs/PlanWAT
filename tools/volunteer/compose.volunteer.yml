@@ -32,6 +32,11 @@ services:
       PLANWAT_EGRESS_STATUS: http://egress:8080/api/run
       PLANWAT_EGRESS_HEALTH: http://egress:8080/api/status
       EGRESS_API_TOKEN: "${EGRESS_API_TOKEN:-}"
+      # Optional Cloudflare Worker relay (docs/EGRESS.md): set the URL and token in .env when
+      # your own line is walled by a faculty. Empty keeps the relay off.
+      PLANWAT_RELAY_URL: "${PLANWAT_RELAY_URL:-}"
+      PLANWAT_RELAY_TOKEN: "${PLANWAT_RELAY_TOKEN:-}"
+      PLANWAT_RELAY_HOSTS: "${PLANWAT_RELAY_HOSTS:-}"
     read_only: true
     user: "10003:10003"
     cap_drop: [ALL]
@@ -77,6 +82,9 @@ services:
       # rotating public proxy pool instead (only worth it for a host that blocks your line), remove
       # EGRESS_POOL and that host from this list.
       EGRESS_DIRECT_FACULTY: "wlo.wat.edu.pl,wel.wat.edu.pl,www.wim.wat.edu.pl,ioe.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,www.wig.wat.edu.pl,planzajec.wcy.wat.edu.pl"
+      # Optional Cloudflare Worker relay hostname (docs/EGRESS.md): the crawler reaches it
+      # directly, outside the faculty list. Leave empty when the relay is off.
+      EGRESS_DIRECT_HOSTS: "${EGRESS_DIRECT_HOSTS:-}"
     volumes:
       - egress:/data
     ports:

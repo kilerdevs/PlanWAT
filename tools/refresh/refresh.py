@@ -52,6 +52,7 @@ import board as boards  # noqa: E402
 import core  # noqa: E402
 import drivers  # noqa: E402
 import fleet  # noqa: E402
+import relay  # noqa: E402
 import steal  # noqa: E402
 
 CENSUS_HOURS = 20  # a census (take_census) at most this often: once a day, a little early so a daily pass never slips
@@ -150,12 +151,16 @@ def post_block_report(host, url=None, timeout=5):
     carried the response (inside a CONNECT tunnel the egress cannot see the block itself; the
     crawler can, and most recent tunnel is the one to blame). Best effort, never fails the crawl.
 
+    A host fetched through the Worker relay never rode a pool exit, so there is nothing for the
+    egress to demote; reporting it would blame whichever exit happened to carry that host last.
+
     Opt-in: reporting is enabled by setting PLANWAT_EGRESS_BLOCK to the egress' /api/block URL
     (the refresh action does); without it the call is a no-op, keeping offline tests offline.
     """
     url = url or os.environ.get('PLANWAT_EGRESS_BLOCK', '')
-    if not url or not host:
+    if not url or not host or relay.host_relayed(host):
         return
+
     import urllib.request
     try:
         req = urllib.request.Request(url, data=json.dumps({'host': host}).encode('utf-8'),
@@ -380,7 +385,7 @@ def new_session():
     # (chrome131 was kept long after Chrome moved on) is itself a bot signal to Incapsula.
     s = cr.Session(impersonate='chrome')
     s.headers['Accept-Language'] = 'pl-PL,pl;q=0.9'
-    return s
+    return relay.wrap(s)
 
 
 def conditional_headers(entry):

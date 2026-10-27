@@ -14,6 +14,10 @@ __pycache__/
 /.impeccable/review/
 /.impeccable/hook.cache.json
 
+# Cloudflare Worker local dev (tools/egress/cloudflare)
+/tools/egress/cloudflare/.dev.vars
+/tools/egress/cloudflare/.wrangler/
+
 # Refresh times copied in from the data branch by the Pages workflow
 /refresh-state.json
 /volunteer-state.json

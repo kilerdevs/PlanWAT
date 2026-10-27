@@ -124,9 +124,11 @@ głównej były spójne. Strony niebędące kodami grup (kursy, np. `Kurs_-_…`
 wydziału (crawl obejmuje tylko strony `^WMT`) i są wyświetlane w sekcji WML. Grupy WIM zachowują swoje kody `WME` i są
 wyświetlane w sekcji WIM.
 
-Uwagi o WTC: serwis stoi za Incapsulą, a publiczne wyjścia puli dostają od niego blokady, podczas gdy linia domowa odpowiada
-normalnie. Dlatego WTC — podobnie jak pozostałe wydziały poza WCY — jest na liście ruchu bezpośredniego proxy wyjściowego
-(`EGRESS_DIRECT_FACULTY`, zob. docs/EGRESS.md), a przez pulę musi iść wyłącznie WCY. Indeks wydziału jest płaski
+Uwagi o WTC: serwis stoi za Incapsulą, a publiczne wyjścia puli dostają od niego blokady. Linia domowa długo odpowiadała
+normalnie, ale 27.10.2026 ta sama ściana zamknęła też domowy adres `77.222.244.159` dla WTC, WLO, WEL, WML i WIG. Dlatego WTC —
+podobnie jak pozostałe wydziały poza WCY — jest na liście ruchu bezpośredniego proxy wyjściowego (`EGRESS_DIRECT_FACULTY`,
+zob. docs/EGRESS.md), a gdy linia jest za ścianą, idzie przez relay Cloudflare (`PLANWAT_RELAY_URL`, tamże). Przez pulę musi
+iść wyłącznie WCY: Worker także dostaje od niego 403. Indeks wydziału jest płaski
 (`https://wtc.wat.edu.pl/Plany/index.xml`) i nazywa semestr, który wymienia; sterownik plikuje PDF-y tylko wtedy, gdy to
 odświeżany semestr, a pobiera je z indeksem jako Referer, po jednym naraz. Konwerter wymaga `pip install pymupdf` na każdej
 maszynie uruchamiającej crawl (codzienna akcja instaluje go do jednorazowego venv w `$RUNNER_TEMP`, bo wbudowany w runner
@@ -139,7 +141,8 @@ roczników, ale same pliki leżą w zwykłych katalogach (`/cpp/phocadownloadpap
 Joomlę: Incapsula odpowiada na strony Joomli wyzwaniem (403) z adresów centrów danych (runner oracle, sprawdzono
 26.10.2026), a listingi i PDF-y podaje obu runnerom; dwa poziomy małych listingów są też tańsze niż 60 stron kategorii.
 Listing ponad kierunkami jest ukryty, więc katalogi kierunków wymienia `dirs` w `sources.json`, a ich podkatalogi trybów
-znajduje przejście. Żeby nowy kierunek nie umknął, plebania robi **spis** (`--census wig`, `census` w `fleet.json`, najwyżej
+znajduje przejście. Gdy linia runnera jest za ścianą, listingi i PDF-y idą przez relay Cloudflare (WIG jest na jego liście
+domyślnej, zob. docs/EGRESS.md). Żeby nowy kierunek nie umknął, plebania robi **spis** (`--census wig`, `census` w `fleet.json`, najwyżej
 raz na dobę): przechodzi drzewo Joomli, które jej łącze widzi, i zapisuje katalogi wszystkich wymienionych tam PDF-ów w
 `refresh-state.json` (`found`). Wykrywanie czyta je razem z `dirs` na każdym runnerze, więc grupa nowego kierunku trafia na
 stronę w pierwszym przebiegu po spisie, nawet gdy WIG crawluje oracle. Spis loguje katalogi spoza `dirs` do dopisania;
@@ -191,7 +194,13 @@ Projekt ma trzy runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh
 |---|---|---|---|
 | plebania | `planwat-plebania` | 4 | prywatny serwer: szybki, ale często wyłączony |
 | oracle | `planwat-oracle` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
-| northflank | `planwat-northflank` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): tylko IOE, WIG i WIM (`faculties`), bo pozostałe ściany odrzucają jego adres |
+| northflank | `planwat-northflank` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): domyślnie tylko IOE, WIG i WIM (`faculties`), bo pozostałe ściany odrzucają jego adres; z `PLANWAT_RELAY_*` może brać WLO, WEL, WML, WTC i WIG, ale WCY nadal wymaga puli |
+
+**Relay Cloudflare** (`PLANWAT_RELAY_URL`, szczegóły w [docs/EGRESS.md](EGRESS.md)) jest opcjonalny i domyślnie wyłączony:
+gdy linia runnera jest za ścianą, WLO, WEL, WML, WTC i WIG idą przez Worker zamiast bezpośrednio, a WCY zostaje na puli.
+Na oracle wystarczy ustawić URL i token relaya oraz dopisać hostname Workera do `EGRESS_DIRECT_HOSTS` egressu; Northflank
+nie ma egressu, więc ustawia tylko URL i token. Po włączeniu relaya na Northflanku można dopisać relayowane wydziały do
+`faculties` w `fleet.json` (bez WCY). Bez relaya zachowanie jest takie jak dotąd.
 
 Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wspólny workflow `refresh-crawl.yml`):
 
@@ -240,6 +249,8 @@ włączony, niezależnie od obciążenia. Gdy jest wyłączony albo to on ją zo
 inna. Oracle preferuje WIG i IOE: oba runnery przeszły 26.10.2026 po dwa przebiegi WIG (33 z 33 grup, identyczne kalendarze), a
 IOE z oracle przeszedł czysto 9 przebiegów z 9. Plebania preferuje WTC, bo ściana WTC odrzuca adres VPS (zablokowany w 4
 przebiegach z 4, zwykłe HTTPS z maszyny dostaje 403): na oracle WTC kosztował tylko czekanie na ścianę i przekazanie.
+Gdy oracle ma włączony relay, WTC działa też na oracle, ale preferencja zostaje — plebania jest szybsza i jako pierwsza
+przechodzi ścianę, gdy jej linia jest czysta.
 Przy wszystkich włączonych oracle dostaje IOE i WIG, northflank WIM, a plebania WLO z WEL, WCY, WML i WTC; bez
 plebanii northflank bierze WIM, a oracle resztę. Runner może też robić **spis** wydziału
 (`census`): plebania robi spis WIG, bo tylko jej łącze widzi strony Joomli wydziału (zob. uwagi o WIG wyżej).
