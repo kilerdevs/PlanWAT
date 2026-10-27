@@ -5,6 +5,11 @@ main = "worker.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
 
+# Run near the faculties (all in Poland) rather than near the caller: Cloudflare's egress
+# ranges differ by data centre, and some are walled while others are served normally.
+[placement]
+mode = "smart"
+
 [vars]
 # Exact hostnames the Worker may fetch. Keep in step with DEFAULT_HOSTS in
 # tools/refresh/relay.py. WCY is absent on purpose: Incapsula answers Cloudflare's
