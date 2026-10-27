@@ -17,6 +17,14 @@ inputs:
   census:
     description: Comma-separated faculties whose site census to take first (at most once a day; project mode only).
     default: ''
+  runner:
+    description: Project mode, this runner's name in tools/refresh/fleet.json (with `board`, it helps its peers).
+    default: ''
+  board:
+    description: >
+      Project mode, the wave's work board (<planned>-<run id>/w<wave>, tools/refresh/board.py): the runners of a wave
+      take work off each other while they crawl. Empty: no help.
+    default: ''
   max-minutes:
     description: Stop gracefully after this many minutes.
     default: '100'
@@ -59,6 +67,12 @@ outputs:
   incomplete-faculties:
     description: Comma-separated faculties this pass did not finish (the blocked ones included)
     value: ${{ steps.run.outputs.incomplete_faculties }}
+  took-faculties:
+    description: faculty:runner pairs this runner took work of from a peer during the wave
+    value: ${{ steps.run.outputs.took_faculties }}
+  gave-faculties:
+    description: faculty:runner pairs this runner handed work of to a peer during the wave
+    value: ${{ steps.run.outputs.gave_faculties }}
   changed:
     description: Number of calendars that changed
     value: ${{ steps.run.outputs.changed }}
@@ -95,6 +109,8 @@ runs:
         PROFILE: ${{ inputs.profile }}
         FACULTY: ${{ inputs.faculty }}
         CENSUS: ${{ inputs.census }}
+        RUNNER: ${{ inputs.runner }}
+        BOARD: ${{ inputs.board }}
         MAX_MINUTES: ${{ inputs.max-minutes }}
         BLOCK_WAIT: ${{ inputs.max-block-wait-minutes }}
         ADAPTIVE_HOURS: ${{ inputs.adaptive-hours }}
@@ -136,6 +152,8 @@ runs:
             args+=(--faculty-state "$line")
           fi
           if [ -n "$CENSUS" ]; then args+=(--census "$CENSUS"); fi
+          # The runners of a wave help each other through git refs pushed with the data checkout's credentials.
+          if [ -n "$BOARD" ] && [ -n "$RUNNER" ]; then args+=(--board "$BOARD" --runner "$RUNNER"); fi
         fi
         "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}"
         code=$?
@@ -157,6 +175,10 @@ runs:
       env:
         SOURCE: ${{ inputs.source }}
         FACULTY: ${{ inputs.faculty }}
+        # The faculties whose records this pass publishes: its own but those it handed on whole, plus those it took
+        # whole (refresh.py). Exact, and may be empty; an older crawl without it falls back to the share's faculties.
+        OWNED: ${{ steps.run.outputs.owned_faculties }}
+        OWNED_KNOWN: ${{ steps.run.outputs.owned_known }}
       run: |
         # Publish whatever was refreshed, even from a run that was blocked half-way. Another runner may push to the
         # same branch while this one crawls (other faculties, see tools/refresh/fleet.json), and so may the volunteer
@@ -166,13 +188,14 @@ runs:
         git config user.email 'planwat-refresh@users.noreply.github.com'
         fleet="$GITHUB_WORKSPACE/$SOURCE/tools/refresh/fleet.py"
         cp refresh-state.json "$RUNNER_TEMP/state-mine.json"
+        if [ "$OWNED_KNOWN" = true ]; then owned=(--owned "$OWNED"); else owned=(--faculty "$FACULTY"); fi
         git ls-files -z -m -o --exclude-standard -- . ':!refresh-state.json' | tar --null -T - -cf "$RUNNER_TEMP/publish.tar"
         for attempt in 1 2 3 4 5; do
           git fetch -q --depth 1 origin data
           git reset -q --hard FETCH_HEAD
           tar -xf "$RUNNER_TEMP/publish.tar"
           "$PLANWAT_PY" "$fleet" merge --base "$RUNNER_TEMP/state-base.json" --mine "$RUNNER_TEMP/state-mine.json" \
-            --into refresh-state.json --faculty "$FACULTY"
+            --into refresh-state.json "${owned[@]}"
           git add -A
           if git diff --cached --quiet; then
             echo 'nothing to publish'

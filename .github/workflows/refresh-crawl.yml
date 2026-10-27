@@ -82,6 +82,9 @@ jobs:
           profile: selfhosted
           faculty: ${{ inputs.faculties }}
           census: ${{ inputs.census }}
+          # The wave's runners take work off each other while they crawl (tools/refresh/steal.py).
+          runner: ${{ inputs.runner }}
+          board: ${{ inputs.planned }}-${{ github.run_id }}/w${{ inputs.wave }}
           max-minutes: '90'
           max-block-wait-minutes: ${{ inputs.wait }}
       # The handoff and the report read these. A shard that never wrote one (a crash before this, a runner lost
@@ -101,6 +104,8 @@ jobs:
           DEGRADED: ${{ steps.refresh.outputs.degraded || 'false' }}
           BLOCKED_FACULTIES: ${{ steps.refresh.outputs.blocked-faculties }}
           INCOMPLETE_FACULTIES: ${{ steps.refresh.outputs.incomplete-faculties }}
+          TOOK: ${{ steps.refresh.outputs.took-faculties }}
+          GAVE: ${{ steps.refresh.outputs.gave-faculties }}
           OUTCOME: ${{ steps.refresh.outcome }}
         run: |
           # A refresh step that failed outright leaves its outputs empty: nothing it did can be trusted as done.
@@ -110,7 +115,8 @@ jobs:
           jq -n --arg runner "$SHARD" --arg wave "$WAVE" --arg faculties "$FACULTIES" --arg skipped "$SKIPPED" \
             --arg pushed "$PUSHED" --arg changed "$CHANGED" --arg blocked "$BLOCKED" --arg incomplete "$INCOMPLETE" \
             --arg degraded "$DEGRADED" --arg failed "$FAILED" --arg blocked_faculties "$BLOCKED_FACULTIES" \
-            --arg incomplete_faculties "$INCOMPLETE_FACULTIES" --arg started "$STARTED" --arg ended "$(date +%s)" \
+            --arg incomplete_faculties "$INCOMPLETE_FACULTIES" --arg took "$TOOK" --arg gave "$GAVE" \
+            --arg started "$STARTED" --arg ended "$(date +%s)" \
             '$ARGS.named' > "shard/shard-$WAVE-$SHARD.json"
           cat "shard/shard-$WAVE-$SHARD.json"
       - name: Upload this share's outcome

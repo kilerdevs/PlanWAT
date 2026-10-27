@@ -9,6 +9,10 @@ The fleet is a fast machine that is often switched off and a slow one that is al
   seed     gives a runner that has never crawled its own line state, copied from the data branch.
   merge    folds one runner's refresh-state.json into the data branch's newer one: the runners crawl disjoint
            faculties side by side and push to the same branch, so neither may overwrite what the other learned.
+  help     (steal.py, during the crawl) a runner done with its own share takes work off one still at its: a part of
+           the faculty it is crawling, or one it has not started. Each shard reports what it took and gave (`took`,
+           `gave`), so the faculty counts as the runners that last held it left it, and a grant nobody confirmed as
+           unfinished.
   handoff  (a GitHub-hosted job, after the crawl) gives what a runner left blocked or unfinished to another runner
            that is online now: a wall stands in front of one address, so the other machine often gets through. The
            plan has a runner wait a wall out only briefly when such a takeover is possible; when the other runner is
@@ -148,7 +152,9 @@ def plan(fleet, wanted, state, online, avoid=None):
     runner that was blocked on it), so a preferred runner that left a lane behind does not get it back.
 
     Each shard says how long its runner should wait out a wall (`wait`, minutes): briefly when another runner up could
-    take one of its faculties over, else the full wait.
+    take any of its faculties over, else the full wait. The wait is the whole share's, so one faculty nobody else may
+    take (a runner limited by `faculties`) keeps the full wait for all of it: letting that one go early would only cost
+    a takeover by the same runner for the rest of the wait.
     """
     avoid = avoid or {}
     if online is None:
@@ -171,7 +177,7 @@ def plan(fleet, wanted, state, online, avoid=None):
     order = {f: i for i, f in enumerate(wanted)}
     out = [{'runner': r['name'], 'label': r['label'], 'faculties': ','.join(sorted(shards[r['name']], key=order.get)),
             'cost': round(load[r['name']]), 'eta': round(load[r['name']] / r['speed']),
-            'wait': HANDOFF_WAIT if any(may_take(o, [f], {f: {r['name']}}) for o in up if o is not r
+            'wait': HANDOFF_WAIT if all(any(may_take(o, [f], {}) for o in up if o is not r)
                                         for f in shards[r['name']]) else BLOCK_WAIT}
            for r in up if shards[r['name']]]
     return {'shards': out, 'unassigned': sorted(unassigned, key=order.get), 'known': online is not None,
@@ -297,7 +303,10 @@ def merge_state(base, mine, theirs, owned):
 
 
 def cmd_merge(args):
-    owned = [f.strip() for f in args.faculty.split(',') if f.strip()] or enabled_faculties(args.sources)
+    if args.owned is not None:  # exact, and may be empty: a runner that handed everything on owns no record
+        owned = [f.strip() for f in args.owned.split(',') if f.strip()]
+    else:
+        owned = [f.strip() for f in args.faculty.split(',') if f.strip()] or enabled_faculties(args.sources)
     mine = load_json(args.mine, None)
     if mine is None:
         log(f'{args.mine} is not a state file; nothing to merge')
@@ -318,6 +327,41 @@ def _names(value):
     return [f for f in str(value or '').split(',') if f]
 
 
+def _pairs(value):
+    """[(faculty, runner)] out of 'wel:oracle,wml:plebania' (an outcome's `took` or `gave`)."""
+    out = []
+    for item in _names(value):
+        f, _, r = item.partition(':')
+        if f and r:
+            out.append((f, r))
+    return out
+
+
+def held(shard, outcome):
+    """The faculties a shard ended its wave holding: its own and those it took from a peer (steal.py). One it handed
+    on whole stays listed; its outcome then counts it neither blocked nor unfinished."""
+    names = _names(shard.get('faculties'))
+    if isinstance(outcome, dict):
+        names += [f for f, _ in _pairs(outcome.get('took'))]
+    return list(dict.fromkeys(names))
+
+
+def unconfirmed(shards, got):
+    """What a runner gave a peer that the peer's outcome does not say it took: [(faculty, peer, wave)]. The peer
+    crashed, never read the grant or never reported, so the faculty is not done, whatever the giver says."""
+    out = []
+    for s in shards:
+        o = got.get(shard_key(s))
+        if not isinstance(o, dict):
+            continue
+        wave = shard_key(s)[1]
+        for f, to in _pairs(o.get('gave')):
+            r = got.get((to, wave))
+            if not (isinstance(r, dict) and not _flag(r, 'skipped') and (f, s['runner']) in _pairs(r.get('took'))):
+                out.append((f, to, wave))
+    return out
+
+
 def shard_key(shard):
     """A shard's identity in a pass: its runner and its wave (1 the plan, 2 the handoff)."""
     try:
@@ -332,8 +376,9 @@ def left_over(shard, outcome):
 
     A shard that never reported, was skipped (stale plan) or crashed leaves all of them; one that reported leaves those
     it ended blocked on and those it did not finish (a time limit, a page it could not read). A report without the
-    per-faculty lists (an older crawl) leaves everything when it was blocked or incomplete at all."""
-    names = _names(shard.get('faculties'))
+    per-faculty lists (an older crawl) leaves everything when it was blocked or incomplete at all. What the shard took
+    from a peer during the wave counts like its own."""
+    names = held(shard, outcome)
     if not isinstance(outcome, dict) or _flag(outcome, 'skipped') or _flag(outcome, 'failed'):
         return [(f, 'unfinished') for f in names]
     if 'blocked_faculties' in outcome or 'incomplete_faculties' in outcome:
@@ -369,11 +414,16 @@ def handoff(fleet, shards, outcomes, state, online):
     """
     got = {shard_key(o): o for o in outcomes if isinstance(o, dict)}
     avoid, origin, wanted, waited = {}, {}, [], {}
-    for s in shards:
-        for f, why in left_over(s, got.get(shard_key(s))):
-            avoid.setdefault(f, set()).add(s['runner'])
-            origin[f] = {'runner': s['runner'], 'why': why}
-            waited[f] = _wait(s)
+    left = [(f, why, s['runner'], _wait(s)) for s in shards for f, why in left_over(s, got.get(shard_key(s)))]
+    # a grant the peer never confirmed: that peer may have crashed, so it is avoided like one that left it
+    left += [(f, 'unfinished', to, BLOCK_WAIT) for f, to, _ in unconfirmed(shards, got)]
+    for f, why, runner, wait in left:
+        # two runners may leave one faculty (a part each, steal.py): both are avoided, a wall is what is reported
+        avoid.setdefault(f, set()).add(runner)
+        if f not in origin or (why == 'blocked' and origin[f]['why'] != 'blocked'):
+            origin[f] = {'runner': runner, 'why': why}
+            waited[f] = wait
+        if f not in wanted:
             wanted.append(f)
     if not wanted:
         return {'shards': [], 'unassigned': [], 'left': {}, 'known': online is not None}
@@ -410,16 +460,21 @@ def combine(shards, outcomes, age_hours):
     """One outcome for the pass out of its shards' outcomes (refresh-outcome.json, read by pages.yml's gate).
 
     `shards` lists the plan's shards and then the handoff's (wave 2). A faculty counts as the last wave that had it left
-    it: blocked on oracle and then crawled cleanly by plebania is not blocked. `pushed` is "true" when any shard
+    it: blocked on oracle and then crawled cleanly by plebania is not blocked. Within that wave every runner that held
+    a part of it counts (steal.py), and a grant nobody confirmed leaves it unfinished. `pushed` is "true" when any shard
     pushed and "false" only when every shard reported it did not; a shard that never reported leaves it empty, which the
     gate reads as "rebuild". A faculty whose last shard never reported makes the pass incomplete, so it neither files
     nor closes issues on what it did not see.
     """
     got = {shard_key(o): o for o in outcomes if isinstance(o, dict)}
-    last = {}
+    last = {}  # faculty -> (its last wave, the shards that held it then)
     for s in sorted(shards, key=lambda s: shard_key(s)[1]):
-        for f in _names(s.get('faculties')):
-            last[f] = s
+        wave = shard_key(s)[1]
+        for f in held(s, got.get(shard_key(s))):
+            if f not in last or last[f][0] < wave:
+                last[f] = (wave, [s])
+            elif s not in last[f][1]:
+                last[f][1].append(s)
     seen = [got[shard_key(s)] for s in shards if shard_key(s) in got and not _flag(got[shard_key(s)], 'skipped')]
     missing = [s['runner'] for s in shards if shard_key(s) not in got or _flag(got[shard_key(s)], 'skipped')]
     if any(_flag(o, 'pushed') for o in seen):
@@ -435,11 +490,14 @@ def combine(shards, outcomes, age_hours):
         except (TypeError, ValueError):
             pass
     blocked, unfinished = [], []
-    for f, s in last.items():
-        for g, why in left_over(s, got.get(shard_key(s))):
-            if g == f:
-                (blocked if why == 'blocked' else unfinished).append(f)
-    finals = [got[k] for k in {shard_key(s) for s in last.values()} if k in got]
+    lost = {f for f, _, wave in unconfirmed(shards, got) if f in last and last[f][0] == wave}
+    for f, (_, held_by) in last.items():
+        whys = {why for s in held_by for g, why in left_over(s, got.get(shard_key(s))) if g == f}
+        if 'blocked' in whys:
+            blocked.append(f)
+        elif whys or f in lost:
+            unfinished.append(f)
+    finals = [got[k] for k in {shard_key(s) for _, held_by in last.values() for s in held_by} if k in got]
     return {'pushed': pushed, 'changed': str(changed),
             'blocked': str(bool(blocked)).lower(),
             'incomplete': str(bool(blocked or unfinished) or not shards).lower(),
@@ -540,6 +598,9 @@ def parse(argv=None):
     p.add_argument('--mine', required=True, help='the state the pass ended with')
     p.add_argument('--into', required=True, help="the branch's newest state; overwritten with the merge")
     p.add_argument('--faculty', default='', help='the faculties this pass crawled (default: every enabled one)')
+    p.add_argument('--owned', default=None,
+                   help="exactly the faculties whose records this runner publishes (refresh.py's owned_faculties); "
+                        'overrides --faculty, may be empty')
     p.add_argument('--sources', default=str(SOURCES))
     p = sub.add_parser('handoff', help='give what one runner left blocked or unfinished to another one that is up')
     p.add_argument('--matrix', default='[]', help="the plan's matrix (JSON)")

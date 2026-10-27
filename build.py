@@ -1222,7 +1222,8 @@ def runner_state(r):
 
 def runner_share(r):
     """A server's faculties in a pass; a takeover says whose they were: 'WTC (od oracle)', or 'WTC (ponownie)' when the
-    server gets back what it let go after a short wait (nobody else was up to take it)."""
+    server gets back what it let go after a short wait (nobody else was up to take it). What it took off another server
+    during the pass comes last: 'WML (pomoc dla plebania)'."""
     return ', '.join(label for _, label in share_parts(r))
 
 
@@ -1234,7 +1235,11 @@ def share_parts(r):
         if not isinstance(took.get(f), str):
             return ''
         return ' (ponownie)' if took[f] == r.get('name') else f' (od {took[f]})'
-    return [(f, f.upper() + note(f)) for f in r.get('faculties', []) if isinstance(f, str)]
+    own = [f for f in r.get('faculties', []) if isinstance(f, str)]
+    helped = r.get('helped') if isinstance(r.get('helped'), dict) else {}
+    return ([(f, f.upper() + note(f)) for f in own]
+            + [(f, f'{f.upper()} (pomoc dla {who})') for f, who in helped.items()
+               if isinstance(f, str) and isinstance(who, str) and f not in own])
 
 
 def runner_role(r):
@@ -1259,6 +1264,9 @@ def faculty_notes(f):
         else:
             notes.append(f"przejęty po blokadzie na {handed['runner']}" if handed.get('why') == 'blocked'
                          else f"przejęty od {handed['runner']}, który go nie skończył")
+    helpers = [h for h in f.get('helpers', []) if isinstance(h, str)] if isinstance(f.get('helpers'), list) else []
+    if helpers:
+        notes.append(f"z pomocą {', '.join(helpers)}")
     if not f.get('fresh'):
         return notes + ['brak danych z tego przebiegu']
     cause = f.get('cause')

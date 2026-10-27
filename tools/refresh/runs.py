@@ -43,13 +43,17 @@ def runner_entry(name, faculties, outcome, wave=1, took=None):
     """One server's part in the pass, from its shard outcome (None: it never reported).
 
     A takeover (wave 2) says whose faculties it took (`from`: {faculty: runner}); a share that ended blocked says on
-    which faculties (`blocked_on`)."""
+    which faculties (`blocked_on`); one that took work off a peer during the wave says which and whose (`helped`:
+    {faculty: runner}, steal.py)."""
     entry = {'name': name, 'faculties': faculties, 'status': 'missing', 'minutes': None, 'changed': 0, 'wave': wave}
     if took:
         entry['from'] = took
     if not isinstance(outcome, dict):
         return entry
-    blocked_on = [f for f in str(outcome.get('blocked_faculties') or '').split(',') if f in faculties]
+    helped = dict(fleet._pairs(outcome.get('took')))
+    if helped:
+        entry['helped'] = helped
+    blocked_on = [f for f in str(outcome.get('blocked_faculties') or '').split(',') if f in faculties or f in helped]
     if blocked_on:
         entry['blocked_on'] = blocked_on
     try:
@@ -60,7 +64,8 @@ def runner_entry(name, faculties, outcome, wave=1, took=None):
         entry['changed'] = max(0, int(outcome.get('changed') or 0))
     except (TypeError, ValueError):
         pass
-    unfinished = [f for f in str(outcome.get('incomplete_faculties') or '').split(',') if f in faculties]
+    unfinished = [f for f in str(outcome.get('incomplete_faculties') or '').split(',')
+                  if f in faculties or f in helped]
     if _flag(outcome, 'skipped'):
         entry['status'] = 'skipped'
     elif _flag(outcome, 'blocked'):
@@ -76,16 +81,20 @@ def runner_entry(name, faculties, outcome, wave=1, took=None):
     return entry
 
 
-def faculty_entry(name, runner, state, since, handed=None):
+def faculty_entry(name, runner, state, since, handed=None, helpers=()):
     """What the pass did on one faculty: its `run` entry in the state, when that is from this pass.
 
-    `runner` is the last one that had it; `handed` ({'runner', 'why'}) the one that let it go to that one."""
+    `runner` is the last one that had it; `handed` ({'runner', 'why'}) the one that let it go to that one; `helpers`
+    the runners that took a part of it (or all of it) off `runner` during the wave."""
     fac = state.get('faculties', {}).get(name) if isinstance(state.get('faculties'), dict) else None
     run = fac.get('run') if isinstance(fac, dict) else None
     at = build.utc_moment(run.get('at')) if isinstance(run, dict) else None
     entry = {'id': name, 'runner': runner}
     if handed:
         entry['from'] = handed
+    helpers = [h for h in helpers if h != runner]
+    if helpers:
+        entry['helpers'] = helpers
     if at is None or at < since - SLACK:
         entry['fresh'] = False
         return entry
@@ -113,8 +122,16 @@ def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, ou
                 left = dict(fleet.left_over(last[f], was))
                 handed[f] = {'runner': last[f]['runner'], 'why': left.get(f, 'unfinished')}
             last[f] = m
+    helpers = {}
+    for o in outcomes:
+        if isinstance(o, dict) and isinstance(o.get('runner'), str):
+            for f, _ in fleet._pairs(o.get('took')):
+                helpers.setdefault(f, [])
+                if o['runner'] not in helpers[f]:
+                    helpers[f].append(o['runner'])
     order = [f for m in shards[:len(matrix)] for f in m['faculties'].split(',') if f]
-    faculties = [faculty_entry(f, last[f]['runner'], state, planned, handed.get(f)) for f in order]
+    faculties = [faculty_entry(f, last[f]['runner'], state, planned, handed.get(f), helpers.get(f, ()))
+                 for f in order]
     for r, m in zip(runners, shards):
         degraded_on = [f['id'] for f in faculties if f.get('degraded') and last[f['id']] is m]
         if degraded_on and r['status'] == 'degraded':

@@ -2,7 +2,7 @@
 
 Własny runner `refresh.yml` (etykiety `planwat` i `planwat-oracle`) razem z proxy wyjściowym, na jednej maszynie z Dockerem.
 To wolniejszy, zawsze włączony runner projektu: każdy przebieg dzieli wydziały między niego a plebanię, gdy ta jest
-włączona ([docs/REFRESH.md](../../docs/REFRESH.md#dwa-runnery-i-podział-pracy), `tools/refresh/fleet.json`). Zasady są te
+włączona ([docs/REFRESH.md](../../docs/REFRESH.md#runnery-i-podział-pracy), `tools/refresh/fleet.json`). Zasady są te
 same co w [docs/REFRESH.md](../../docs/REFRESH.md) („Własny runner”):
 
 - runner działa w kontenerze jako użytkownik bez uprawnień, bez gniazda Dockera i bez montowań hosta;
@@ -30,6 +30,16 @@ Na maszynie potrzebny jest Docker z Compose i ok. 1 GB RAM (przy 1 GB dodaj swap
 4. Actions → *Refresh timetables* → Run workflow, wydział `wim`.
 
 GUI egressu: `ssh -L 18080:127.0.0.1:18080 <host>`, potem <http://localhost:18080> (zaloguj się tokenem z `.env`).
+
+## Northflank
+
+Ten sam obraz działa też jako darmowy kontener Northflank (runner `northflank` w
+[`fleet.json`](../../tools/refresh/fleet.json)), bez egress: usługa budowana z repozytorium, Dockerfile
+`/deploy/runner/Dockerfile.runner`, kontekst `/deploy/runner`, gałąź `master`, reguła ścieżek **Allow** `deploy/runner/**`
+(inne pushe nie restartują runnera), bez portów. Zmienne środowiskowe (runtime): `RUNNER_REPO_URL`, `RUNNER_NAME=northflank`,
+`RUNNER_LABELS=planwat,planwat-northflank` i `RUNNER_TOKEN` (sekret, ważny godzinę), bez `HTTP(S)_PROXY`. Kontener nie ma
+wolumenu, więc rejestracja ginie przy restarcie: potrzebny jest wtedy nowy `RUNNER_TOKEN`. Adres Google Cloud przechodzi
+tylko przez ściany IOE, WIG i WIM (próba 27.10.2026), stąd `faculties` w `fleet.json`.
 
 ## Utrzymanie
 
