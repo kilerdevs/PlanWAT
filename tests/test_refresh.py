@@ -1409,6 +1409,73 @@ class NotReadyTest(unittest.TestCase):
         self.assertFalse(run['degraded'])
 
 
+class NotReadyBackoff(unittest.TestCase):
+    """A group whose page still shows another semester is asked again later and later, outside the publication
+    windows, and still counts as not ready."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        orig_load = refresh.drivers.load
+        refresh.drivers.load = lambda name, faculty, cfg, today: NotReadyTest.Driver(faculty, cfg, today)
+        self.addCleanup(setattr, refresh.drivers, 'load', orig_load)
+        self.state = core.State(self.tmp / core.STATE_FILE)
+        self.pages = {f'https://example.test/wcy{i}.htm': Resp(200, b'old semester grid') for i in range(6)}
+
+    def crawl(self, today=TODAY):
+        args = refresh.parse(['--out', str(self.tmp)])
+        args.today = today
+        session = FakeSession(self.pages)
+        asked = []
+        orig_get = session.get
+
+        def get(url, timeout=0, headers=None):
+            asked.append(url)
+            return orig_get(url, timeout, headers)
+        session.get = get
+        refresh.refresh_faculty('wcy', {'driver': 'stub', 'label': 'WCY'}, args, self.state, TODAY, session,
+                                sleep=lambda s: None)
+        return [u for u in asked if u.endswith('.htm')]
+
+    def test_a_group_not_ready_is_not_asked_again_so_soon_but_still_counts(self):
+        self.assertEqual(len(self.crawl()), 6)
+        self.assertEqual(self.crawl(), [])
+        self.assertEqual(self.state.faculties['wcy']['run']['not_ready'], 6)
+        mark = self.state.groups['WCY26A01S1']['not_ready']
+        self.assertEqual((mark['term'], mark['streak']), (core.term_id(TODAY), 1))
+
+    def test_the_wait_doubles_up_to_the_cap(self):
+        entry = {'not_ready': {'at': '2026-10-15T10:00:00', 'term': '2026-27-zima', 'streak': 1}}
+        self.assertEqual(core.not_ready_wait(entry, '2026-27-zima', 1.0, TODAY), 2)
+        entry['not_ready']['streak'] = 3
+        self.assertEqual(core.not_ready_wait(entry, '2026-27-zima', 1.0, TODAY), 8)
+        entry['not_ready']['streak'] = 9
+        self.assertEqual(core.not_ready_wait(entry, '2026-27-zima', 1.0, TODAY), core.NOT_READY_CAP_HOURS)
+        self.assertEqual(core.not_ready_wait(entry, '2026-27-lato', 1.0, TODAY), 0)  # another term: ask
+        self.assertEqual(core.not_ready_wait({'not_ready': 'torn'}, '2026-27-zima', 1.0, TODAY), 0)
+
+    def test_after_the_wait_it_is_asked_again_and_waits_longer(self):
+        self.crawl()
+        past = (core.now_utc() - dt.timedelta(hours=3)).isoformat()
+        for i in range(6):
+            self.state.groups[f'WCY26A{i}1S1']['not_ready']['at'] = past
+        self.assertEqual(len(self.crawl()), 6)
+        self.assertEqual(self.state.groups['WCY26A01S1']['not_ready']['streak'], 2)
+
+    def test_in_a_publication_window_every_pass_asks(self):
+        self.crawl(dt.date(2026, 8, 20))
+        self.assertEqual(len(self.crawl(dt.date(2026, 8, 20))), 6)
+
+    def test_a_page_that_reads_ready_clears_the_mark(self):
+        self.crawl()
+        past = (core.now_utc() - dt.timedelta(hours=3)).isoformat()
+        for i in range(6):
+            self.state.groups[f'WCY26A{i}1S1']['not_ready']['at'] = past
+        self.pages['https://example.test/wcy0.htm'] = Resp(200, b'ready grid')
+        self.crawl()
+        self.assertNotIn('not_ready', self.state.groups['WCY26A01S1'])
+        self.assertIn('not_ready', self.state.groups['WCY26A11S1'])
+
 class BlockReports(unittest.TestCase):
     def test_faculty_host_reads_the_config_urls(self):
         self.assertEqual(refresh.faculty_host({'base': 'https://wlo.wat.edu.pl/planzajec/{season}/'}),
@@ -1907,6 +1974,59 @@ class MainTest(unittest.TestCase):
         self.assertIn('degraded=true', exported)
         self.assertIn('incomplete=true', exported)
 
+
+class ChronicWalls(unittest.TestCase):
+    """A wall this runner already waited out in vain is not waited out again, until a pass gets through it."""
+
+    _restore_egress = MainTest._restore_egress
+    main = MainTest.main
+
+    def setUp(self):
+        MainTest.setUp(self)
+
+    def run_pass(self, faculty='wml', wait=30):
+        return self.main(['--out', str(self.tmp), '--force', '--faculty', faculty,
+                          '--max-block-wait-minutes', str(wait)], None, dt.date(2026, 10, 15))
+
+    def wall(self, name):
+        return core.State(self.tmp / core.STATE_FILE).faculties[name].get('wall')
+
+    def test_a_wall_waited_out_in_vain_is_not_waited_out_again(self):
+        StubDriver.fails = {'wml': {'main': 999}}
+        self.assertEqual(self.run_pass(), 3)
+        self.assertEqual(len(self.wait_calls), 1)
+        self.assertEqual(self.wall('wml')['failed'], 1)
+        since = self.wall('wml')['since']
+        self.assertEqual(self.run_pass(), 3)
+        self.assertEqual(len(self.wait_calls), 1)  # no second wait
+        state = core.State(self.tmp / core.STATE_FILE)
+        self.assertTrue(state.faculties['wml']['wait']['chronic'])
+        self.assertEqual(self.wall('wml')['since'], since)  # one episode across the passes
+
+    def test_a_pass_that_gets_through_ends_the_episode(self):
+        StubDriver.fails = {'wml': {'main': 999}}
+        self.run_pass()
+        StubDriver.fails = {}
+        self.assertEqual(self.run_pass(), 0)
+        self.assertIsNone(self.wall('wml'))
+        StubDriver.fails = {'wml': {'main': 999}}
+        self.run_pass()
+        self.assertEqual(len(self.wait_calls), 2)  # a new wall gets its wait again
+
+    def test_a_short_wait_proves_nothing(self):
+        StubDriver.fails = {'wml': {'main': 999}}
+        self.run_pass(wait=5)
+        self.run_pass(wait=5)
+        self.assertEqual(len(self.wait_calls), 2)
+        self.assertEqual(self.wall('wml')['failed'], 0)
+
+    def test_a_clean_neighbour_behind_the_same_policy_leaves_the_wall_on_record(self):
+        StubDriver.fails = {'wlo': {'main': 999}}
+        self.run_pass('wlo,wel')
+        self.run_pass('wlo,wel')
+        self.assertEqual(len(self.wait_calls), 1)
+        self.assertEqual(self.wall('wlo')['failed'], 1)
+        self.assertIsNone(self.wall('wel'))
 
 class PlansoftXmlFallbackTest(unittest.TestCase):
     def test_single_quoted_attrs_fall_back_to_xml(self):
@@ -2805,7 +2925,8 @@ import steal  # noqa: E402
 
 def quick_board(test):
     """Board timings in milliseconds for the length of a test."""
-    for name, value in (('POLL_BUSY', 0.01), ('POLL_IDLE', 0.05), ('HEARTBEAT', 0.05), ('STALE', 1.0)):
+    for name, value in (('POLL_REPLY', 0.005), ('POLL_BUSY', 0.01), ('POLL_IDLE', 0.05), ('HEARTBEAT', 0.05),
+                        ('STALE', 1.0)):
         orig = getattr(steal, name)
         setattr(steal, name, value)
         test.addCleanup(setattr, steal, name, orig)
@@ -2813,16 +2934,20 @@ def quick_board(test):
 
 class Sim:
     """A runner of a wave, without the sites: its Pool and Coordinator on a shared MemoryBoard, lanes that "fetch"
-    a faculty's codes one by one (refresh_faculty's calls to the pool), and help_peers when its own work is done."""
+    a faculty's codes one by one (refresh_faculty's calls to the pool), and help_peers when its own work is done, or
+    alongside its lanes (`eager`, as refresh.main runs it: never on an own lane's group, `workers` crawls in all)."""
 
     def __init__(self, name, store, lock, own, codes, fetched, speed=1.0, speeds=None, walls=(), probe_walls=(),
-                 delay=0.002, wall_wait=0.0):
+                 delay=0.002, wall_wait=0.0, may=None, eager=False, workers=2, groups=None):
         self.name, self.codes, self.fetched = name, codes, fetched
+        self.may, self.ended = may, None
         self.walls, self.probe_walls = set(walls), set(probe_walls)
         self.delay, self.wall_wait, self.own = delay, wall_wait, own
+        self.eager, self.workers, self.groups = eager, workers, groups or {}
+        self.stamps, self.lane_ended = [], {}  # (faculty, code, when) of each fetch here; faculty -> its lane's end
         self.pool = steal.Pool(name, speed, speeds or {}, lambda peer, f: True)
         for f in own:
-            self.pool.add(f, f)
+            self.pool.add(f, self.groups.get(f, f))
         self.board = board.MemoryBoard(store, name, lock)
         self.coord = steal.Coordinator(self.board, self.pool, log=lambda m: None)
         self.log = []
@@ -2842,6 +2967,7 @@ class Sim:
                     status = 'blocked'
                     break
                 self.fetched.append((self.name, c))
+                self.stamps.append((f, c, time.monotonic()))
                 time.sleep(random.uniform(0, self.delay))
         finally:
             self.pool.finish(key, status)
@@ -2859,11 +2985,26 @@ class Sim:
 
     def run(self):
         self.coord.start()
-        lanes = [threading.Thread(target=self.lane, args=(f,)) for f in self.own]
+        running = {self.groups.get(f, f) for f in self.own}
+
+        def lane(f):
+            try:
+                self.lane(f)
+            finally:
+                self.lane_ended[f] = time.monotonic()
+                with self.pool.cond:
+                    running.discard(self.groups.get(f, f))
+                    self.pool.cond.notify_all()
+
+        def own_groups():
+            with self.pool.cond:
+                return set(running)
+        lanes = [threading.Thread(target=lane, args=(f,)) for f in self.own]
         for th in lanes:
             th.start()
-        for th in lanes:
-            th.join()
+        if not self.eager:
+            for th in lanes:
+                th.join()
 
         def probe(faculty, term):
             if faculty in self.probe_walls:
@@ -2872,8 +3013,13 @@ class Sim:
 
         def crawl(key, items):
             return self.crawl_slot(key, self.pool.slot(key)['fixed'])
-        steal.help_peers(self.coord, self.pool, probe, crawl, time.monotonic() + 3600, workers=2,
-                         log=self.log.append)
+        alongside = ({'own_groups': own_groups, 'capacity': lambda: self.workers - len(own_groups())}
+                     if self.eager else {})
+        steal.help_peers(self.coord, self.pool, probe, crawl, time.monotonic() + 3600, workers=self.workers,
+                         log=self.log.append, may=self.may, group_of=lambda f: self.groups.get(f, f), **alongside)
+        for th in lanes:
+            th.join()
+        self.ended = time.monotonic()
         self.coord.stop()
 
 
@@ -2979,6 +3125,24 @@ class StealProtocol(unittest.TestCase):
         self.assertTrue(any(f == 'wml' and p == 'oracle' for f, p, _ in a.pool.took))
         self.assertEqual(b.pool.taken(), {})  # oracle holds nothing it did not finish
 
+    def test_a_helper_with_nothing_it_may_take_leaves_at_once(self):
+        # northflank's case: done with WIM, while oracle still crawls faculties northflank may not take
+        codes = {'wcy': self.codes('WCY', 60), 'wim': self.codes('WIM', 3)}
+        a = Sim('oracle', self.store, self.lock, ['wcy'], codes, self.fetched, delay=0.04)
+        b = Sim('northflank', self.store, self.lock, ['wim'], codes, self.fetched, may=lambda f: f in {'ioe', 'wig', 'wim'})
+        run_sims(a, b)
+        self.assertLess(b.ended + 0.5, a.ended)  # it did not sit out oracle's whole share
+        self.assertEqual([c for r, c in self.fetched if r == 'northflank'], codes['wim'])
+        self.assertEqual(sorted(c for r, c in self.fetched if r == 'oracle'), codes['wcy'])
+
+    def test_a_helper_waits_for_work_it_may_take(self):
+        codes = {'wcy': self.codes('WCY', 60), 'wim': self.codes('WIM', 3)}
+        a = Sim('oracle', self.store, self.lock, ['wcy'], codes, self.fetched, delay=0.04)
+        b = Sim('northflank', self.store, self.lock, ['wim'], codes, self.fetched)
+        run_sims(a, b)
+        self.assertTrue(any(c.startswith('WCY') for r, c in self.fetched if r == 'northflank'))  # it helped
+        self.assertEqual(Counter(c for _, c in self.fetched).most_common(1)[0][1], 1)
+
     def test_a_peer_that_goes_quiet_is_not_waited_for(self):
         codes = {'wml': self.codes('WML', 30), 'ioe': self.codes('IOE', 1)}
         # plebania's doc says it is crawling wml, then it never speaks again (a crashed runner)
@@ -3067,6 +3231,105 @@ class StealProtocol(unittest.TestCase):
         self.assertEqual(len(owner.slots['wml'].given), 13)  # half of the 27 left
 
 
+    def test_randomized_interleavings_with_help_alongside_the_lanes(self):
+        # refresh.main's way with a board: help from the first free lane on, both runners at once
+        for seed in range(12):
+            with self.subTest(seed=seed):
+                random.seed(seed)
+                self.store.clear()
+                self.fetched = []
+                codes = {'wml': self.codes('WML', random.randint(20, 80)), 'wcy': self.codes('WCY', random.randint(5, 40)),
+                         'ioe': self.codes('IOE', random.randint(1, 30)), 'wig': self.codes('WIG', random.randint(1, 30))}
+                speeds = {'plebania': random.choice([1, 4]), 'oracle': 1}
+                a = Sim('plebania', self.store, self.lock, ['wml', 'wcy'], codes, self.fetched, speeds['plebania'],
+                        speeds, delay=0.004, eager=True, workers=random.choice([2, 3, 4]))
+                b = Sim('oracle', self.store, self.lock, ['ioe', 'wig'], codes, self.fetched, 1, speeds, delay=0.004,
+                        eager=True, workers=random.choice([2, 3, 4]))
+                run_sims(a, b)
+                seen = Counter(c for _, c in self.fetched)
+                every = [c for cs in codes.values() for c in cs]
+                self.assertEqual(sorted(seen), sorted(every))
+                self.assertEqual(max(seen.values()), 1, [c for c, n in seen.items() if n > 1])
+
+    def test_a_free_lane_helps_while_another_lane_still_runs(self):
+        codes = {'wml': self.codes('WML', 60), 'ioe': self.codes('IOE', 1), 'wig': self.codes('WIG', 40)}
+        a = Sim('plebania', self.store, self.lock, ['wml'], codes, self.fetched, delay=0.02)
+        b = Sim('oracle', self.store, self.lock, ['ioe', 'wig'], codes, self.fetched, delay=0.02, eager=True,
+                workers=2)
+        run_sims(a, b)
+        helped = [t for f, c, t in b.stamps if f == 'wml']
+        self.assertTrue(helped)
+        self.assertLess(min(helped), b.lane_ended['wig'])  # wig's lane was still running
+        self.assertEqual(Counter(c for _, c in self.fetched).most_common(1)[0][1], 1)
+
+    def test_help_never_joins_a_policy_group_an_own_lane_still_crawls(self):
+        groups = {'wlo': 'wat-edge', 'wel': 'wat-edge'}
+        codes = {'wel': self.codes('WEL', 60), 'wlo': self.codes('WLO', 30)}
+        a = Sim('plebania', self.store, self.lock, ['wel'], codes, self.fetched, delay=0.02, groups=groups)
+        b = Sim('oracle', self.store, self.lock, ['wlo'], codes, self.fetched, delay=0.02, eager=True, workers=3,
+                groups=groups)
+        run_sims(a, b)
+        helped = [t for f, c, t in b.stamps if f == 'wel']
+        self.assertTrue(helped)  # once its own wlo was done
+        self.assertGreater(min(helped), b.lane_ended['wlo'])
+        self.assertEqual(Counter(c for _, c in self.fetched).most_common(1)[0][1], 1)
+
+    def test_walled_on_one_faculty_of_a_policy_it_still_takes_the_other(self):
+        # oracle meets WLO's wall while WEL lets it in, though both stand behind one policy
+        groups = {'wlo': 'wat-edge', 'wel': 'wat-edge'}
+        codes = {'wlo': self.codes('WLO', 60), 'wel': self.codes('WEL', 20), 'ioe': self.codes('IOE', 2)}
+        a = Sim('plebania', self.store, self.lock, [], codes, self.fetched, delay=0.01, groups=groups)
+        a.own = ['wlo']
+        a.pool.add('wlo', 'wat-edge')
+        a.pool.add('wel', 'wat-edge')
+
+        def lane(f):
+            Sim.lane(a, 'wlo')
+            a.crawl_slot('wel')
+        a.lane = lane
+        b = Sim('oracle', self.store, self.lock, ['ioe'], codes, self.fetched, probe_walls={'wlo'}, groups=groups)
+        run_sims(a, b)
+        self.assertTrue(any('wlo refuses this runner' in m for m in b.log))
+        self.assertIn(('wel', 'plebania', True), b.pool.took)
+        self.assertFalse(any(c.startswith('WLO') for r, c in self.fetched if r == 'oracle'))
+        seen = Counter(c for _, c in self.fetched)
+        self.assertEqual((sorted(seen), max(seen.values())), (sorted(c for cs in codes.values() for c in cs), 1))
+
+    def test_a_runner_stays_for_what_it_left_at_a_wall_and_a_peer_takes_it_in_the_wave(self):
+        codes = {'wtc': self.codes('WTC', 20), 'wml': self.codes('WML', 30)}
+        # refresh.py's may(): a faculty walled here lately is not asked again, so oracle never takes wtc back
+        a = Sim('oracle', self.store, self.lock, ['wtc'], codes, self.fetched, walls={('wtc', 'WTC000')},
+                may=lambda f: f not in ('wml', 'wtc'))
+        b = Sim('plebania', self.store, self.lock, ['wml'], codes, self.fetched, delay=0.02)
+        run_sims(a, b)
+        self.assertEqual(sorted(c for r, c in self.fetched if r == 'plebania' and c.startswith('WTC')), codes['wtc'])
+        self.assertEqual(a.pool.gone(), {'wtc'})  # handed on in the wave: nothing left for a handoff
+        self.assertIn(('wtc', 'oracle', True), b.pool.took)
+
+    def test_runners_that_both_wait_for_the_other_both_leave(self):
+        codes = {'wtc': self.codes('WTC', 10), 'wcy': self.codes('WCY', 10)}
+        a = Sim('oracle', self.store, self.lock, ['wtc'], codes, self.fetched, walls={('wtc', 'WTC000')},
+                may=lambda f: f == 'wtc')
+        b = Sim('plebania', self.store, self.lock, ['wcy'], codes, self.fetched, walls={('wcy', 'WCY000')},
+                may=lambda f: f == 'wcy')
+        started = time.monotonic()
+        run_sims(a, b)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(self.fetched, [])
+        self.assertEqual((a.pool.gone(), b.pool.gone()), (set(), set()))
+
+    def test_a_runner_with_a_request_out_reads_the_board_at_the_reply_pace(self):
+        pool = steal.Pool('oracle')
+        coord = steal.Coordinator(board.MemoryBoard(self.store, 'oracle', self.lock), pool, busy=10, idle=60, reply=5)
+        self.assertEqual(coord._interval(), 60)
+        coord.peers['plebania'] = {'mode': 'helping', 'idle': True, 'slots': {}, 'requests': [], 'answers': {}}
+        coord.seen['plebania'] = (('n', 1), coord.clock())
+        self.assertEqual(coord._interval(), 60)  # an idle helper asks nothing
+        coord.peers['plebania']['idle'] = False
+        self.assertEqual(coord._interval(), 10)
+        coord.request('plebania', 'wml', 'part', None)
+        self.assertEqual(coord._interval(), 5)
+
 class PoolDecisions(unittest.TestCase):
     """steal.Pool: what an owner hands on, and when its lanes skip or wait."""
 
@@ -3097,6 +3360,18 @@ class PoolDecisions(unittest.TestCase):
         self.assertFalse(self.pool(n=19).decide('oracle', 'n', self.req())[0]['ok'])       # 3 for the slow helper
         self.assertFalse(self.pool().decide('oracle', 'n', self.req(room=3))[0]['ok'])    # no time to do them
         self.assertEqual(len(self.pool().decide('oracle', 'n', self.req(room=5))[0]['grant'][0]['codes']), 5)
+
+    def test_a_whole_faculty_asked_for_as_it_starts_is_answered_with_a_part(self):
+        pool = steal.Pool('plebania')
+        pool.add('wml', 'wml')
+        pool.start('wml')
+        pool.running('wml', [f'WML{i:03d}' for i in range(20)])
+        answer, token = pool.decide('oracle', 'n', {'slot': 'wml', 'kind': 'whole', 'room': None})
+        self.assertTrue(answer['ok'])
+        self.assertEqual(answer['grant'][0]['codes'], [f'WML{i:03d}' for i in range(10, 20)])
+        self.assertFalse(answer['rest'])
+        pool.commit(token)
+        self.assertEqual(pool.slots['wml'].state, 'running')
 
     def test_what_the_lane_took_is_never_given(self):
         p = self.pool(speed=1.0)
@@ -3129,7 +3404,9 @@ class PoolDecisions(unittest.TestCase):
 
     def test_a_started_faculty_is_not_given_whole_nor_one_off_its_list(self):
         p = self.pool()
-        self.assertEqual(p.decide('oracle', 'n', self.req(kind='whole'))[0]['ok'], False)
+        answer = p.decide('oracle', 'n', self.req(kind='whole'))[0]  # a part of it at most, never its record
+        self.assertIsNotNone(answer['grant'][0]['codes'])
+        self.assertFalse(answer['rest'])
         self.assertEqual(p.decide('oracle', 'n', self.req(slot='wtc', kind='whole'))[0]['why'],
                          "not on that runner's list")
         self.assertEqual(p.decide('oracle', 'n', self.req(slot='wig', kind='whole'))[0]['ok'], False)
@@ -3344,6 +3621,22 @@ class StealInRefresh(unittest.TestCase):
         self.assertEqual(out['took_faculties'], 'wim:plebania')
         self.assertEqual(out['owned_faculties'], 'ioe')  # a part: the record stays the owner's
         self.assertEqual(out['incomplete'], 'false')
+
+    def test_a_runner_helps_while_its_own_lane_still_runs(self):
+        StubDriver.counts = {'ioe': 30, 'wim': 40}
+        wim = [self.code('wim', i) for i in range(40)]
+        owner = Sim('plebania', self.store, self.lock, ['wim'], {'wim': wim}, [], delay=0.03)
+        th = threading.Thread(target=owner.run)
+        th.start()
+        self.main_as('oracle', 'ioe')
+        th.join(30)
+        pages = [u.rsplit('/', 1)[1][:-4] for u in self.fetched if u.endswith('.htm')]
+        last_ioe = max(i for i, c in enumerate(pages) if c.startswith('IOE'))
+        self.assertTrue(any(c.startswith('WIM') for c in pages[:last_ioe]))  # before its own ioe was done
+        theirs = [c for _, c in owner.fetched]  # plebania, done early, may help with ioe in turn
+        every = pages + theirs
+        self.assertEqual(len(every), len(set(every)))
+        self.assertEqual(set(every), set(wim) | {self.code('ioe', i) for i in range(30)})
 
     def test_without_a_board_nothing_changes(self):
         StubDriver.counts = {'ioe': 2}

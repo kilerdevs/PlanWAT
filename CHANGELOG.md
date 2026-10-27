@@ -29,6 +29,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   milczący runner przestaje być uznawany po 4 minutach. Wyniki udziałów mówią, co kto wziął i oddał (`took`, `gave`),
   a `combine` i handoff liczą wydział podzielony między runnery i oddanie bez potwierdzenia jako niedokończone. Czekanie
   na ścianę kończy się wcześniej, gdy nie ma już na co czekać. Historia przebiegów i `/stan/` pokazują, kto komu pomógł.
+  Pomocnik, który nie może wziąć niczego z pracy pozostałych (wydziały spoza jego listy albo za ścianą), kończy od razu
+  i wypycha swoje wyniki, zamiast czekać na koniec cudzego udziału.
+  Pomoc zaczyna się od pierwszej wolnej ścieżki, nie dopiero po całym własnym udziale (`--lanes` liczy własne ścieżki i
+  pomoc razem, pomoc nie wchodzi do grupy polityki własnej ścieżki). Ściana odmawia jednemu wydziałowi, nie całej
+  polityce, więc oracle odbity od WLO bierze WEL z tej samej ścieżki. Runner zostawiony przed ścianą czeka, aż pracujący
+  runner przejmie jego wydział jeszcze w tej samej fali, zamiast zostawiać go handoffowi; prośba o wydział, który
+  właśnie się zaczął, dostaje od razu część, a czekający na odpowiedź czyta tablicę co 5 s.
 - **WIG w automatycznym odświeżaniu** (sterownik `wig`): plany wydziału, dotąd dodawane ręcznie, są czytane z otwartych
   listingów jego katalogów plików (strony Joomli Incapsula blokuje adresom centrów danych, listingów i PDF-ów nie). Katalogi
   kierunków wymienia `dirs` w `sources.json`. Każdy PDF to wydruk strony Plansoft; sterownik odtwarza z linii
@@ -115,6 +122,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Bez daremnego czekania na ścianę** (`refresh.py`): ściany, na którą runner już raz czekał co najmniej 15 minut na
+  próżno, nie odczekuje ponownie, aż któryś przebieg przez nią przejdzie. Pierwsze zapytanie o listę zostaje próbą, a
+  przy odmowie wydział jest odpuszczany od razu. Oracle czekał tak pół godziny na WLO, WML i WTC w każdym przebiegu,
+  więc przebieg kończy się zaraz po ostatnim wydziale, który dał się pobrać.
+- **Grupy „jeszcze nieopublikowane” poza sezonem publikacji** (`refresh.py`, `core.not_ready_wait`): przerwa przed
+  ponownym zapytaniem podwaja się do 12 h; w sierpniu, styczniu i lutym są sprawdzane przy każdym przebiegu. Wciąż
+  liczą się jako niegotowe. 38 takich grup WCY kosztowało kilka minut najdłuższej ścieżki w każdym przebiegu.
 - **Plan na pierwszym ekranie komputera:** na szerokim ekranie (od 1080 px) nagłówek strony grupy jest niższy, a
   tydzień zaczyna się ok. 340 px od góry zamiast 565 px. Narzędzia (Plan, Eksport, Analiza) wysuwają się z boku po
   kliknięciu „Narzędzia” obok przełącznika widoku. Zamyka je Esc, kliknięcie obok albo ×. Telefony i tablety bez zmian.

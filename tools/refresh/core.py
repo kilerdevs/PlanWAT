@@ -143,15 +143,47 @@ def term_id(today):
     return f'{year}-{(year + 1) % 100:02d}-{season}'
 
 
-def effective_fresh_hours(base, today):
-    """The skip threshold actually used: halved during the publication windows.
+def publishing(today):
+    """Whether `today` falls in a publication window: August (winter plans) and January/February (summer plans),
+    when the faculties publish the coming semester."""
+    return today.month in (1, 2, 8)
 
-    In August (winter plans) and January/February (summer plans) the faculties
-    publish the coming semester, so pages go stale twice as fast.
+
+def effective_fresh_hours(base, today):
+    """The skip threshold actually used: halved during the publication windows (publishing), when pages go stale
+    twice as fast.
     """
-    if today.month in (1, 2, 8):
+    if publishing(today):
         return base / 2
     return base
+
+
+# A group whose page still shows another semester is asked again after fresh hours doubled per such check, at most
+# this many hours apart; in a publication window every pass asks it, the plan may appear any time.
+NOT_READY_CAP_HOURS = 12
+
+
+def not_ready_wait(entry, tid, base_hours, today):
+    """Hours a group found not ready for `tid` may go unasked (0: ask it now)."""
+    mark = entry.get('not_ready') if isinstance(entry, dict) else None
+    if publishing(today) or not isinstance(mark, dict) or mark.get('term') != tid:
+        return 0
+    streak = mark.get('streak')
+    if not isinstance(streak, int) or isinstance(streak, bool) or streak < 1:
+        return 0
+    return min(NOT_READY_CAP_HOURS, base_hours * 2 ** min(streak, 16))
+
+
+def still_not_ready(entry, tid, now, base_hours, today):
+    """Whether a group found not ready for `tid` is still inside its wait (not_ready_wait) at `now`."""
+    hours = not_ready_wait(entry, tid, base_hours, today)
+    if not hours:
+        return False
+    try:
+        at = dt.datetime.fromisoformat(entry['not_ready']['at'])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return at <= now and now - at < dt.timedelta(hours=hours)
 
 
 def quiet_interval(entry, base_hours, cap_hours):

@@ -58,7 +58,12 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   (`cause: flaky`), a kolejka idzie od najdawniej sprawdzonych, więc przerwany przebieg zawsze obejmuje najdłużej niewidziane
   grupy. WLO i WEL dzielą jedną politykę Incapsula (`wat-edge`): jedno oczekiwanie obejmuje oba, potem każdy wznawia na własnej
   świeżej sesji. Wyuczony czas ochłodzenia zastąpił dawną stałą regułę 24–48 h (stan zachowuje przez ten czas ostatnie
-  poprawne kalendarze).
+  poprawne kalendarze). **Ściany, na którą runner już raz czekał na próżno, nie odczekuje ponownie**: gdy czekanie
+  trwało co najmniej 15 minut i ściana nie zeszła, w kolejnych przebiegach jedyną próbą jest pierwsze zapytanie o listę,
+  a przy odmowie wydział jest od razu odpuszczany, zamiast trzymać przebieg pół godziny (oracle stał tak przed WLO, WML i
+  WTC w każdym przebiegu). Taki epizod (`wall` w stanie łącza runnera) jest liczony dla każdego wydziału osobno, bo oracle
+  dostaje 403 od WLO, a WEL za tą samą polityką go wpuszcza; kończy go dopiero czysty przebieg wydziału. Krótkie czekanie
+  (5 minut z planu) ani przerwane przejęciem nic nie dowodzi.
 - **Postęp na żywo w panelu egressu.** Przebieg wysyła najlepszym wysiłkiem na `POST /api/progress` egressu
   (`PLANWAT_EGRESS_PROGRESS`, ustawiany w akcji odświeżania; puste wyłącza) grube zdarzenia: start przebiegu z układem
   ścieżek, start wydziału z liczbą grup, przycinane próbki postępu (≈4 s na wydział), koniec wydziału (z blokadą albo
@@ -75,9 +80,12 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   wyszedł ten sam (również `304`), podwaja przerwę przed następnym sprawdzeniem tej grupy: 1 h, 2 h, 4 h… — do sufitu
   `--adaptive-hours` (w akcji 4 h; 0 wyłącza rozciąganie i przywraca sprawdzanie przy każdym przebiegu). Miesiące publikacji
   (połowa `--fresh-hours`) podsuwają całą drabinkę na dwukrotnie niższy start, więc nadchodzący semestr jest sprawdzany
-  częściej. Zmiana planu zeruje przerwę: grupa natychmiast wraca do sprawdzania przy każdym przebiegu. Grupy „jeszcze
-  nieopublikowane” i strony z upadłą konwersją nie dostają stempla „sprawdzono”, więc czeka na nie sprawdzanie przy każdym
-  przebiegu — to one niosą publikowany nowy semestr.
+  częściej. Zmiana planu zeruje przerwę: grupa natychmiast wraca do sprawdzania przy każdym przebiegu. Strony z upadłą
+  konwersją nie dostają stempla „sprawdzono”, więc są sprawdzane przy każdym przebiegu. Grupy „jeszcze nieopublikowane”
+  (strona pokazuje inny semestr) w sierpniu, styczniu i lutym też, bo to one niosą publikowany nowy semestr; poza tymi
+  miesiącami ich przerwa podwaja się od `--fresh-hours` do 12 h (`NOT_READY_CAP_HOURS`), bo inaczej 38 takich grup WCY
+  kosztowało kilka minut najdłuższej ścieżki w każdym przebiegu. Wciąż liczą się jako niegotowe, a strona, która znów
+  pokazuje bieżący semestr, kasuje znacznik.
 - Strona jest publikowana tylko wtedy, gdy kalendarz przechodzi własną walidację serwisu (`build.load_term`), nosi kod grupy
   swojego pliku i nie stracił więcej niż 40% zdarzeń. W przeciwnym razie stary kalendarz zostaje, a grupa trafia do logu.
 - Kalendarz jest nadpisywany tylko wtedy, gdy plan się zmienił (data wygenerowania jest ignorowana), więc historia `data`
@@ -230,7 +238,11 @@ plebanii northflank bierze WIM, a oracle resztę. Runner może też robić **spi
 
 Plan dzieli pracę z góry, według szacunku, który tempo i ściany łatwo psują: oracle kończy WIG i IOE w kilka minut,
 a plebania crawluje jeszcze WML, WCY i ścieżkę WLO→WEL. Dlatego runnery jednej fali rozmawiają ze sobą w trakcie
-crawlowania ([`steal.py`](../tools/refresh/steal.py)) i runner, który skończył swój udział, odciąża ten, który jeszcze pracuje:
+crawlowania ([`steal.py`](../tools/refresh/steal.py)) i runner z wolną ścieżką odciąża ten, który jeszcze pracuje. Nie
+czeka przy tym na koniec całego swojego udziału: pomaga od pierwszej minuty, gdy jego własnych ścieżek jest mniej niż
+`--lanes` (northflank z samym WIM), albo od chwili, gdy skończy się którakolwiek z nich. `--lanes` ogranicza własne
+ścieżki i pomoc razem, a pomoc nigdy nie wchodzi do grupy polityki, którą crawluje jeszcze własna ścieżka: wciąż jedno
+zapytanie naraz na politykę.
 
 1. Najpierw próbuje wydziału, który tamten **crawluje teraz**: sam wylicza jego grupy (to jedno zapytanie o listę, i tak
    potrzebne do adresów stron) i prosi o **część** pozostałych grup. Właściciel oddaje koniec swojej listy, podzielony
@@ -238,7 +250,10 @@ crawlowania ([`steal.py`](../tools/refresh/steal.py)) i runner, który skończy�
    8 grup albo udział wyszedłby mniejszy niż 4, właściciel kończy sam. Gdy właściciel stoi akurat przed ścianą, oddaje
    **wszystko**, co mu zostało, i przestaje czekać.
 2. Gdy ściana tego wydziału nie wpuszcza pomocnika, ten próbuje kolejno **wydziałów, których tamten jeszcze nie zaczął**
-   (np. WEL czekającego w ścieżce za WLO) i prosi o cały wydział, razem z przebiegiem nadchodzącego semestru.
+   (np. WEL czekającego w ścieżce za WLO) i prosi o cały wydział, razem z przebiegiem nadchodzącego semestru. Ściana
+   odmawia jednemu wydziałowi, nie całej polityce: oracle odbity od WLO bierze WEL z tej samej ścieżki, więc najdłuższa
+   ścieżka pełnego przebiegu idzie z dwóch adresów naraz. Prośba o cały wydział, który właściciel zdążył już zacząć,
+   dostaje od razu część, bez drugiej rundy.
 3. Ścianę, na którą pomocnik trafił niedawno (na swoim udziale albo pomagając), omija tak długo, jak jego łącze
    nauczyło się, że trwa ([czas blokady](#jak-zachowuje-się-przebieg)): nie traci zapytania na pewną odmowę.
 
@@ -259,8 +274,14 @@ Dlaczego żadna grupa nie jest crawlowana dwa razy i żadna nie ginie:
   czytającego, nie piszącego), jest uznany za nieobecny: nikt na niego nie czeka i nic mu się nie oddaje. Pomocnik,
   który zrezygnował z czekania na odpowiedź, odwołuje prośbę; zgodę, która mimo to przyszła, i tak realizuje.
 - Pomocnik, którego ściana zatrzymała w połowie, **nie czeka na nią**: reszta zostaje w jego puli, skąd właściciel może
-  ją odebrać tą samą drogą, a on idzie do następnego wydziału. Pomocnik bez pracy czeka bezczynnie (`idle`), dopóki
-  któryś runner jeszcze pracuje, bo tamten może trafić na ścianę; fala i tak kończy się z najwolniejszym runnerem.
+  ją odebrać tą samą drogą, a on idzie do następnego wydziału. Runner, który skończył własne ścieżki, a nie ma czego
+  wziąć, czeka bezczynnie (`idle`, czytając tablicę co 10 s) tylko wtedy, gdy któryś pracujący runner ma jeszcze coś, co
+  ten mógłby wziąć (wydział z jego listy, bez ściany dla niego, w obsługiwanym semestrze: tamten może trafić na
+  ścianę), albo gdy sam trzyma coś niedokończonego, co tamten mógłby wziąć: niedokończoną wziętą pracę, ale też
+  **własny wydział zostawiony przed ścianą**. Wtedy pracujący runner przejmuje go jeszcze w tej samej fali, bez
+  osobnego zadania handoffu. W przeciwnym razie kończy od razu, a jego zadanie wypycha wyniki: northflank po WIM nie
+  czeka, aż oracle skończy wydziały, których i tak nie może wziąć. Dwóch czekających na siebie nawzajem nie czeka:
+  bezczynny runner nie liczy się jako pracujący. Kto czeka na odpowiedź na swoją prośbę, czyta tablicę co 5 s.
 - **Rozliczenie**: każdy runner zgłasza w wyniku, co wziął (`took`) i co oddał (`gave`). Wydział liczy się tak, jak
   zostawili go wszyscy, którzy mieli jego część w ostatniej fali (niedokończony, jeśli którakolwiek część jest
   niedokończona), a oddanie, którego biorący nie potwierdził (awaria, brak wyniku), czyni go niedokończonym: handoff

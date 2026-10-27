@@ -93,7 +93,9 @@ class GitBoard:
             changed = [n for n, sha in refs.items() if self.seen.get(n, (None,))[0] != sha]
             if changed:
                 try:
-                    self._git('fetch', '-q', '--no-tags', self.remote, *[ref_of(self.key, n) for n in changed])
+                    # FETCH_HEAD stays the data branch's: the push step resets the checkout to it
+                    self._git('fetch', '-q', '--no-tags', '--no-write-fetch-head', self.remote,
+                              *[ref_of(self.key, n) for n in changed])
                 except BoardError:
                     return None
             for name in changed:
