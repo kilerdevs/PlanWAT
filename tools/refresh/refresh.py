@@ -17,7 +17,8 @@ A block (any status but 200/304/404, an Incapsula incident page) no longer ends 
 deferred while the others are covered, then the run sleeps out the block and resumes. How long to sleep is
 learned per policy group from past recoveries (median, 20 min .. 12 h, 2 h without history; wall-caused
 episodes count more than flaky ones), recovery is probed with cheap index fetches on a sparse-then-dense
-schedule (--block-probes), and the whole wait is capped (--max-block-wait-minutes). A block response is not
+schedule (--block-probes), and the whole wait is capped (--max-block-wait-minutes); a wall this runner already
+waited out in vain (CHRONIC_MIN_WAIT) is not waited out again until a pass gets through it. A block response is not
 taken at face value at once: it is reported to the egress (which demotes the exit that carried it, see
 PLANWAT_EGRESS_BLOCK) and retried on a fresh connection (--block-retries), so one flagged exit in the
 rotating pool no longer reads as a wall; only a sustained block is one. While it crawls, the run also streams
@@ -265,6 +266,28 @@ def wait_for_recovery(name, probe, model, budget, max_probes=5, sleep=time.sleep
     return False, waited, probes
 
 
+# A wall that outlasted a wait this long (in an earlier pass or this one) is not waited out again: until a pass gets
+# through it (its first request each pass is the probe), each pass lets the faculty go at once.
+CHRONIC_MIN_WAIT = 15 * 60
+
+
+def note_wall(state, name, cause):
+    """A wall met here (not a flaky line): the episode starts now, unless one is already open."""
+    if cause != 'wall':
+        return
+    fac = state.faculties.setdefault(name, {})
+    wall = fac.get('wall')
+    if not (isinstance(wall, dict) and isinstance(wall.get('since'), str)):
+        fac['wall'] = {'since': core.now_utc().isoformat(), 'failed': 0}
+
+
+def chronic(state, name):
+    """Whether this runner already waited out the faculty's current wall in vain (CHRONIC_MIN_WAIT)."""
+    wall = state.faculties.get(name, {}).get('wall')
+    failed = wall.get('failed') if isinstance(wall, dict) else None
+    return isinstance(failed, int) and not isinstance(failed, bool) and failed >= 1
+
+
 def discover_with_retry(driver, session, retries=2, backoff=2.0, sleep=time.sleep,
                         block_retries=0, on_block=None):
     """List the groups, riding out flaky transports, then a single flagged exit.
@@ -387,6 +410,15 @@ def noted_quiet(entry):
         entry['streak'] = int(entry.get('streak', 0)) + 1
     except (TypeError, ValueError):
         entry['streak'] = 1
+
+
+def noted_not_ready(entry, tid):
+    """The page still shows another semester: the group's next ask waits longer (core.not_ready_wait)."""
+    mark = entry.get('not_ready')
+    streak = mark.get('streak') if isinstance(mark, dict) and mark.get('term') == tid else 0
+    if not isinstance(streak, int) or isinstance(streak, bool) or streak < 0:
+        streak = 0
+    entry['not_ready'] = {'at': core.now_utc().isoformat(), 'term': tid, 'streak': streak + 1}
 
 
 def accepted_checked(state, code, tid):
@@ -580,6 +612,12 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
     todo = [i for i in items if args.force or not state.fresh(
         key(i.code), now, core.quiet_interval(state.groups.get(key(i.code), {}),
                                               fresh_hours, args.adaptive_hours), tid)]
+    # A page that still showed another semester is asked again later and later (up to core.NOT_READY_CAP_HOURS),
+    # except while the faculties publish: it still counts as not ready.
+    real_day = getattr(args, 'today', None) or now.date()
+    waiting = set() if args.force else {i.code for i in todo if core.still_not_ready(
+        state.groups.get(key(i.code), {}), tid, now, fresh_hours, real_day)}
+    todo = [i for i in todo if i.code not in waiting]
     # Stalest first: a run cut short by --max-minutes, --limit or a block refreshes the groups
     # unseen the longest. Never-checked ('') sorts before any ISO timestamp; the code breaks ties
     # so the order is deterministic. The limit slices after the sort, keeping the stalest N.
@@ -602,14 +640,15 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
         todo = todo[:args.limit]
     if pool is not None:
         pool.running(pool_key, [i.code for i in todo])
-    log(f'[{name}] {len(items)} groups, {len(items) - len(todo)} fresh, {len(todo)} to check (term {tid})'
-        + (f'; a part of {len(only)} taken over' if only is not None else ''))
+    log(f'[{name}] {len(items)} groups, {len(items) - len(todo) - len(waiting)} fresh, '
+        + (f'{len(waiting)} not ready yet (not asked again so soon), ' if waiting else '')
+        + f'{len(todo)} to check (term {tid})' + (f'; a part of {len(only)} taken over' if only is not None else ''))
     slot = name if not ahead else f'{name}~{tid}'
     if progress is not None:
         progress.send('faculty_start', slot=slot, faculty=name, lane=group, total=len(todo),
                       fresh=len(items) - len(todo), listed=len(items), ahead=ahead, term=tid)
     started, changed, failed, checked = clock(), [], 0, 0
-    not_ready = 0
+    not_ready = len(waiting)
     # --max-minutes is the whole run's (main sets the deadline once); a faculty refreshed on its own gets all of it.
     deadline = getattr(args, 'deadline', None)
     if deadline is None and args.max_minutes:
@@ -682,6 +721,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             # The server says the page is byte-identical: no download, no conversion, just a fresh check mark.
             remember_validators(entry, r)
             entry['checked'] = core.now_utc().isoformat()
+            entry.pop('not_ready', None)
             noted_quiet(entry)
             note_outcome(args, item.code, tid, 'unchanged')
             continue
@@ -694,6 +734,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
         if not driver.page_ok(text):
             if getattr(driver, 'not_ready', None) and driver.not_ready(text):
                 not_ready += 1
+                noted_not_ready(entry, tid)
                 log(f'[{name}] {item.code}: not ready for {tid} yet (the faculty still shows '
                     f'another semester); keeping the old calendar')
                 note_outcome(args, item.code, tid, 'not_ready')
@@ -702,6 +743,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             failed += 1
             continue
         remember_validators(entry, r)
+        entry.pop('not_ready', None)  # the page reads as a timetable of this semester
         digest = core.sha256(raw)
         path = out / 'timetables' / tid / f'{item.code}.ics'
         old = path.read_text(encoding='utf-8') if path.is_file() else None
@@ -714,6 +756,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             ics = core.to_crlf(driver.convert(item, raw))
         except core.NotReady as err:  # a PDF of another semester: what not_ready(text) tells for HTML pages
             not_ready += 1
+            noted_not_ready(entry, tid)
             log(f'[{name}] {item.code}: not ready for {tid} yet ({err}); keeping the old calendar')
             note_outcome(args, item.code, tid, 'not_ready')
             continue
@@ -766,6 +809,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
     if not ahead:
         fac['last_ok'] = core.now_utc().isoformat()
         fac['blocked_at'] = None
+        fac.pop('wall', None)  # the wall this runner met here is down (run_lane: chronic walls)
     fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': checked,
                   'changed': len(changed), 'skipped': failed, 'not_ready': not_ready,
                   'blocked': False, 'ahead': ahead, 'cause': None, 'degraded': degraded}
@@ -902,12 +946,16 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
             progress.send('faculty_done', slot=name, faculty=name, lane=core.group_of(name),
                           changed=len(done), blocked=was_blocked, complete=complete)
         if was_blocked:
-            model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
+            cause = state.faculties.get(name, {}).get('run', {}).get('cause')
+            model.note_blocked(name, cause)
+            note_wall(state, name, cause)
             deferred.append((name, False))
             continue
         if coming and refresh_ahead(name, sources, args, state, today, session, coming,
                                     tallies, sleep, clock, progress=progress, pool=pool):
-            model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
+            cause = state.faculties.get(name, {}).get('run', {}).get('cause')
+            model.note_blocked(name, cause)
+            note_wall(state, name, cause)
             deferred.append((name, True))
     if wait_budget is None:
         wait_budget = args.max_block_wait_minutes * 60
@@ -916,7 +964,16 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
         wait_budget = min(wait_budget, args.deadline - clock())
     if not deferred or wait_budget <= 0:
         return tallies
-    first = deferred[0][0]
+    if all(chronic(state, n) for n, _ in deferred):
+        # Every wall here already outlasted a full wait: another one would only keep the pass from ending.
+        for n, _ in deferred:
+            wall = state.faculties[n]['wall']
+            log(f"[{n}] walled here since {wall['since'][:16].replace('T', ' ')} ({wall['failed']} "
+                f"{'wait' if wall['failed'] == 1 else 'waits'} in vain); not waiting this pass")
+            state.faculties[n]['wait'] = {'waited': 0, 'probes': 0, 'recovered': False, 'chronic': True}
+        return tallies
+    # probe through a wall that may still drop, not through one already waited out in vain
+    first = next(n for n, _ in deferred if not chronic(state, n))
     group = core.group_of(first)
     driver = drivers.load(sources[first]['driver'], first, sources[first], today)
     probe_session = new_session()  # probe with a clean jar, like a new visitor
@@ -938,6 +995,11 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
     stop = (lambda: not pool.has_work(keys)) if pool is not None else None
     recovered, waited, probes = wait_for_recovery(group, probe, model, wait_budget,
                                                    args.block_probes, sleep, clock, stop)
+    if not recovered and waited >= CHRONIC_MIN_WAIT and not (stop is not None and stop()):
+        for n, _ in deferred:
+            wall = state.faculties.get(n, {}).get('wall')
+            if isinstance(wall, dict) and isinstance(wall.get('failed'), int):
+                wall['failed'] += 1
     if progress is not None:
         progress.send('wait_end', id=group, lane=group, faculties=[n for n, _ in deferred],
                       slots=wait_slots, waited=round(waited), probes=probes,
@@ -967,7 +1029,9 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
                 progress.send('faculty_done', slot=name, faculty=name, lane=core.group_of(name),
                               changed=len(done), blocked=was_blocked, complete=complete)
             if was_blocked:
-                model.note_blocked(name, state.faculties.get(name, {}).get('run', {}).get('cause'))
+                cause = state.faculties.get(name, {}).get('run', {}).get('cause')
+                model.note_blocked(name, cause)
+                note_wall(state, name, cause)
                 continue
             if coming:
                 refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock,
@@ -1028,9 +1092,10 @@ def open_board(args, wanted, coming, board=None):
     return pool, coord
 
 
-def help_peers(pool, coord, sources, args, state, model, today, coming, sleep, clock, progress):
-    """This runner's own share is done: take work off the peers still at theirs (steal.help_peers). Returns the
-    codes it changed."""
+def help_peers(pool, coord, sources, args, state, model, today, coming, sleep, clock, progress, own_groups=None,
+               capacity=None):
+    """Take work off the peers still at their shares (steal.help_peers), after this runner's own lanes or alongside
+    them (`own_groups`, `capacity`). Returns the codes it changed."""
     me = {r['name']: r for r in fleet.load_fleet(args.fleet)}[args.runner]
     ahead = core.term_id(coming) if coming else None
     changed, lock = [], threading.Lock()
@@ -1092,7 +1157,8 @@ def help_peers(pool, coord, sources, args, state, model, today, coming, sleep, c
 
     deadline = args.deadline if args.deadline is not None else float('inf')
     steal.help_peers(coord, pool, probe, crawl, deadline, clock=clock, workers=args.lanes, room_of=room_of, may=may,
-                     group_of=core.group_of, log=log)
+                     group_of=core.group_of, terms={''} | ({ahead} if ahead else set()), log=log,
+                     own_groups=own_groups, capacity=capacity)
     return changed
 
 
@@ -1101,6 +1167,7 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     today = today or core.now_utc().date()
     started = core.now_utc().isoformat()
     args.started = started
+    args.today = today
     sources = json.loads((HERE / 'sources.json').read_text(encoding='utf-8'))
     named = [f for f in args.faculty.split(',') if f]
     wanted = named or [f for f, c in sources.items() if c.get('enabled')]
@@ -1143,13 +1210,42 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
         return run_lane(names, sources, args, state, model, today, coming, sleep, clock,
                         session=session, wait_budget=wait_budget, progress=progress, pool=pool)
 
-    if parallel:
+    # With a board the runner helps its peers as soon as a lane of its own is done (steal.py), not only after all
+    # of them: --lanes caps its own lanes and its help crawls together, and no help crawl joins a policy group an
+    # own lane still crawls.
+    eager = coord is not None and session is None and args.lanes > 1
+    helped = []
+    if parallel or eager:
         # Different policy groups are different walls, so they crawl side by side: the pause between pages
         # is per host and unchanged, only the wall-clock time of a full pass shrinks. Each lane waits out
         # its own wall concurrently, so each may spend the whole wait budget.
         from concurrent.futures import ThreadPoolExecutor
+        running = {core.group_of(ns[0]) for ns in lanes}
+
+        def tracked(names):
+            try:
+                return lane(names)
+            finally:
+                if pool is not None:
+                    with pool.cond:
+                        running.discard(core.group_of(names[0]))
+                        pool.cond.notify_all()
+
+        def own_groups():
+            with pool.cond:
+                return set(running)
+
         with ThreadPoolExecutor(max_workers=min(args.lanes, len(lanes))) as ex:
-            results = list(ex.map(lane, lanes))
+            futures = [ex.submit(tracked, ns) for ns in lanes]
+            try:
+                if eager:
+                    helped = help_peers(pool, coord, sources, args, state, model, today, coming, sleep, clock,
+                                        progress, own_groups=own_groups,
+                                        capacity=lambda: args.lanes - len(own_groups()))
+            except BaseException:
+                coord.stop()
+                raise
+            results = [f.result() for f in futures]
     else:
         # One after another the waits add up, so they share the budget: each wait is capped to its fair share
         # of what is left (but always gets a real chance: at least 15 minutes).
@@ -1163,10 +1259,12 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
         tallies['changed'] += res['changed']
         tallies['blocked'] |= res['blocked']
         tallies['incomplete'] |= res['incomplete']
+    tallies['changed'] += helped
     if coord is not None:
         try:
-            tallies['changed'] += help_peers(pool, coord, sources, args, state, model, today, coming, sleep, clock,
-                                             progress)
+            if not eager:
+                tallies['changed'] += help_peers(pool, coord, sources, args, state, model, today, coming, sleep,
+                                                 clock, progress)
         finally:
             coord.stop()
     # What another runner took whole (or all that was left of) is its to report; what this one took is this one's.

@@ -1,4 +1,4 @@
-"""Work stealing within a crawl wave: a runner that has finished its own share helps one that is still crawling.
+"""Work stealing within a crawl wave: a runner with a free lane helps one that is still crawling.
 
 The plan (fleet.py) splits a pass between the runners up front, by an estimate that pacing and walls easily throw off.
 So the runners also talk during the wave, over the board (board.py: one JSON doc per runner, written only by it):
@@ -9,19 +9,25 @@ So the runners also talk during the wave, over the board (board.py: one JSON doc
           groups are left. Only the owner decides what leaves its pool: its Coordinator thread answers the requests
           the others put in their docs, under the pool's lock, so a lane never crawls what was given and a helper never
           starts before it has read the grant.
-  helper  Once its own lanes are done, a runner looks at the busy peers' docs: first at the faculty a peer is crawling
-          right now, then at those it has not started. It lists the faculty itself first (a probe it needs anyway for
-          the pages' addresses): a wall there sends it on to the next faculty. Otherwise it asks: for a part of a
-          running faculty (the tail of its groups, shared by the runners' speeds) or for a whole queued one.
+  helper  As soon as a lane of its own is done (a free lane: --lanes caps own and help crawls together), a runner
+          looks at the busy peers' docs: first at the faculty a peer is crawling right now, then at those it has not
+          started. Never at a policy group its own lanes still crawl: one request at a time per policy group. It
+          lists the faculty itself first (a probe it needs anyway for the pages' addresses): a wall there sends it
+          on to the next faculty, also one behind the same policy (walls stand in front of a host: oracle meets
+          WLO's while WEL lets it in). Otherwise it asks: for a part of a running faculty (the tail of its groups,
+          shared by the runners' speeds) or for a whole queued one.
 
 A grant goes out in this order: the groups (or the slot) are reserved under the lock, the answer is published, and only
 a successful push gives them away; a failed one releases them and the request is decided again on the next tick. A
 peer whose doc stops changing for STALE seconds (its own heartbeat is HEARTBEAT) counts as gone, on the reader's own
 clock, so no runner waits for a dead one. What a helper took and could not finish (a wall in the middle) stays in its
 own pool, where a peer can ask for it back, and is reported like any unfinished faculty: the handoff (fleet.py) still
-takes it in the next wave. A grant nobody confirmed in its outcome is unfinished too, never silently done. A helper
-with nothing to take waits (marked `idle`) while any peer is still at its share, which may yet meet a wall; once every
-peer is done or idle too, it stops.
+takes it in the next wave. A grant nobody confirmed in its outcome is unfinished too, never silently done. Once its
+own lanes are done, a helper with nothing to take waits (marked `idle`, reading the board at the busy pace) only while
+a peer still at work holds something it could take, which may yet come up when that peer meets a wall, or could take
+what this runner holds unfinished: taken work, and its own faculties left at a wall, which the peer then takes in the
+same wave rather than in the handoff after it. Otherwise it stops at once, so its job pushes without sitting out the
+others.
 """
 import re
 import threading
@@ -32,7 +38,8 @@ from concurrent.futures import ThreadPoolExecutor
 SPLIT_MIN_LEFT = 8      # a running slot with fewer groups left is not split
 SPLIT_MIN_SHARE = 4     # nor is a smaller share given
 WHOLE_MIN_SECONDS = 600  # a helper with less time left asks for no whole faculty
-POLL_BUSY = 15          # seconds between board reads while a peer is helping or a request is out
+POLL_REPLY = 5          # seconds between board reads while this runner waits for an answer
+POLL_BUSY = 10          # while a peer is looking for work, or this runner is
 POLL_IDLE = 60
 HEARTBEAT = 60          # a doc is pushed at least this often
 STALE = 240             # a doc unchanged this long is a runner that is gone
@@ -259,7 +266,9 @@ class Pool:
             if not self.allowed(peer, s.faculty):
                 return deny('not on that runner\'s list')
             ask = self.ask(s)
-            if ask is None or ask != req['kind']:
+            if ask == 'part' and req['kind'] == 'whole':
+                pass  # it started since the peer looked: a part of it, rather than a second round trip
+            elif ask is None or ask != req['kind']:
                 return deny({'running': 'too little left', 'done': 'finished', 'given': 'given away',
                              'incomplete': 'stopped'}.get(s.state, 'not available'))
             if ask == 'whole':
@@ -393,8 +402,9 @@ class Coordinator:
     """The runner's link to the board: one thread that publishes the pool and answers the peers' requests."""
 
     def __init__(self, board, pool, clock=time.monotonic, log=print, busy=None, idle=None, heartbeat=None,
-                 stale=None):
+                 stale=None, reply=None):
         self.board, self.pool, self.clock, self.log = board, pool, clock, log
+        self.reply = POLL_REPLY if reply is None else reply
         self.busy = POLL_BUSY if busy is None else busy
         self.idle = POLL_IDLE if idle is None else idle
         self.heartbeat = HEARTBEAT if heartbeat is None else heartbeat
@@ -431,8 +441,13 @@ class Coordinator:
         with self.pool.cond:
             out = any(r['id'] not in self.cancelled and not self._answer_locked(r['to'], r['id'])
                       for r in self.requests)
-            helping = any(d['mode'] == 'helping' and self._status_locked(n) == 'live' for n, d in self.peers.items())
-            return self.busy if out or helping else self.idle
+            if out:
+                return min(self.reply, self.busy)
+            # a peer looking for work may ask any moment; an idle one asks nothing
+            helping = any(d['mode'] == 'helping' and not d.get('idle') and self._status_locked(n) == 'live'
+                          for n, d in self.peers.items())
+            # a helper reads the others at the busy pace, also while it waits: it leaves as soon as they do
+            return self.busy if helping or self.pool.mode == 'helping' else self.idle
 
     def stop(self):
         """Last word: mode done, every request still open denied. Grants already pushed stand."""
@@ -553,10 +568,10 @@ class Coordinator:
         with self.pool.cond:
             return self._status_locked(name)
 
-    def waited_for(self):
-        """Whether a peer is still at work and may yet take what this runner holds: up, and not merely waiting too."""
+    def working_peers(self):
+        """{name: doc} of the peers that are up and still at work (not finished, not merely waiting like this one)."""
         with self.pool.cond:
-            return any(self._status_locked(n) == 'live' and not d.get('idle') for n, d in self.peers.items())
+            return {n: d for n, d in self.peers.items() if self._status_locked(n) == 'live' and not d.get('idle')}
 
     def live_peers(self):
         """{name: doc} of the peers that are up and still at it."""
@@ -613,18 +628,45 @@ class Coordinator:
 
 
 def help_peers(coord, pool, probe, crawl, deadline, clock=time.monotonic, workers=2, room_of=None,
-               may=None, group_of=None, log=print, poll=None):
+               may=None, group_of=None, terms=None, log=print, poll=None, own_groups=None, capacity=None):
     """Help the busy peers until none has anything this runner can take.
 
     probe(faculty, term) lists the faculty from here: the items, or raises Walled when this runner meets its wall.
     crawl(key, items) crawls one slot of this pool and answers 'done', 'blocked' or 'incomplete'. may(faculty) says
-    whether this runner may and should try it at all; room_of(faculty) how many groups it can still do in time."""
+    whether this runner may and should try it at all; room_of(faculty) how many groups it can still do in time; `terms`
+    which semesters it can crawl ('' the running one, the ahead slots' terms; None: any).
+
+    It may run alongside the runner's own lanes: own_groups() names the policy groups they still crawl (never taken
+    here: one request at a time per policy group) and capacity() how many help crawls may run at once next to them.
+    While own lanes run, a worker with nothing to take waits. Once they are done it ends as soon as waiting cannot
+    pay off: when no peer still at work holds anything this runner could take (allowed, not walled here, a semester it
+    crawls), and nothing this runner holds unfinished is anything such a peer could take. Its job goes on to push."""
     poll = coord.busy if poll is None else poll
     group_of = group_of or (lambda faculty: faculty)
+    own_groups = own_groups or (lambda: set())
     may = may or (lambda faculty: True)
     room_of = room_of or (lambda faculty: None)
     lock = threading.Lock()
+    # walls stand in front of a faculty's host: one walled here says nothing of the others behind its policy
     walled, busy_groups, refused, honoured = set(), set(), set(), set()
+    active = [0]  # help crawls under way (a probe, a request or a crawl)
+
+    def reachable(key, s):
+        """Whether a peer's slot is something this runner could ever take in this wave."""
+        return (s['state'] not in ('done', 'given') and faculty_of(key) not in walled and may(faculty_of(key))
+                and (terms is None or term_of(key) in terms))
+
+    def worth_waiting():
+        working = coord.working_peers()
+        with lock:
+            if any(reachable(k, s) for d in working.values() for k, s in d['slots'].items()):
+                return True
+        # what this runner holds and cannot finish: taken work, and its own left at a wall, which a peer may take
+        with pool.cond:
+            mine = [s.faculty for s in pool.slots.values()
+                    if (s.origin is not None and s.state not in ('done', 'given'))
+                    or (s.origin is None and s.state == 'blocked' and pool.ask(s))]
+        return any(pool.allowed(name, f) for name in working for f in mine)
     with pool.cond:
         pool.mode = 'helping'
         pool._changed()
@@ -644,22 +686,27 @@ def help_peers(coord, pool, probe, crawl, deadline, clock=time.monotonic, worker
         return out
 
     def pick():
+        mine = own_groups()
+        room = None if capacity is None else capacity()
         with lock:
+            if room is not None and active[0] >= room:
+                return None, True  # the own lanes need the room for now
             later = False
             for name, key, s in candidates():
-                if (name, key, s['ask']) in refused or s['group'] in walled or not may(faculty_of(key)):
+                if (name, key, s['ask']) in refused or faculty_of(key) in walled or not may(faculty_of(key)):
                     continue
-                if s['group'] in busy_groups:
+                if s['group'] in busy_groups or s['group'] in mine:
                     later = True
                     continue
                 if s['ask'] == 'whole' and deadline - clock() < WHOLE_MIN_SECONDS:
                     continue
                 busy_groups.add(s['group'])
+                active[0] += 1
                 return (name, key, s), False
             # a faculty a peer is still listing may turn out worth a part once its groups are known
             for name, doc in coord.live_peers().items():
                 for key, s in doc['slots'].items():
-                    if (s['state'] == 'running' and s['left'] is None and s['group'] not in walled
+                    if (s['state'] == 'running' and s['left'] is None and faculty_of(key) not in walled
                             and may(faculty_of(key))):
                         later = True
             return None, later
@@ -692,16 +739,16 @@ def help_peers(coord, pool, probe, crawl, deadline, clock=time.monotonic, worker
             late()
             found, later = pick()
             if found is None:
-                if not later:
+                busy = bool(own_groups())
+                if not later and not busy:
                     if not synced:
                         coord.sync()  # nothing to take, as far as this runner knows: make sure that is still so
                         synced = True
                         continue
-                    # Nothing to take now, but a peer still at its share may yet meet a wall (all it has left then
-                    # comes up for the asking) or take back what this runner could not finish. Waiting costs a board
-                    # read now and then, and the wave ends with its busiest runner anyway; once every peer is done or
-                    # waiting too, so is this one.
-                    if not coord.waited_for():
+                    # Nothing to take now. A peer still at work may yet meet a wall (all it has left then comes up
+                    # for the asking) or take what this runner could not finish; worth a board read now and then,
+                    # but only for work this runner could take or give: otherwise it leaves at once.
+                    if not worth_waiting():
                         return
                     pool.set_idle(True)
                 with pool.cond:
@@ -719,7 +766,7 @@ def help_peers(coord, pool, probe, crawl, deadline, clock=time.monotonic, worker
                 except Walled as err:
                     log(f'help: {faculty} refuses this runner ({err}); trying the next faculty')
                     with lock:
-                        walled.add(group)
+                        walled.add(faculty)
                     continue
                 except Exception as err:
                     log(f'help: cannot list {faculty} ({err!r}); trying the next faculty')
@@ -750,10 +797,11 @@ def help_peers(coord, pool, probe, crawl, deadline, clock=time.monotonic, worker
                 if run_grant(peer, answer, group, items, term_of(key)) == 'blocked':
                     log(f'help: blocked on {faculty} halfway; what is left stays open for {peer} to take back')
                     with lock:
-                        walled.add(group)
+                        walled.add(faculty)
             finally:
                 with lock:
                     busy_groups.discard(group)
+                    active[0] -= 1
                 with pool.cond:
                     pool.cond.notify_all()
 
