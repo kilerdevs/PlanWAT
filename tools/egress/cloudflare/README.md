@@ -11,7 +11,9 @@ obsługuje WCY i wszystkie hosty, które sama przepuszcza. Runner korzysta z Wor
 - Pobiera wyłącznie `https://` z dokładnie wymienionych hostów (`PLANWAT_RELAY_HOSTS`); nie jest otwartym proxy.
 - Sam prowadzi przekierowania (najwyżej 3), ale każdy krok musi zostać na liście hostów.
 - Nie przekazuje dalej ciasteczek ani nagłówka `Authorization` wywołującego; nie oddaje też `Set-Cookie`
-  ani `Content-Encoding`/`Content-Length` upstreamu.
+  ani `Content-Encoding`/`Content-Length` upstreamu. Ciasteczka ustawione przez upstream odtwarza tylko w ramach
+  łańcucha przekierowań jednego żądania — Incapsula odpowiada na pierwsze wejście `307` na ten sam URL i oczekuje
+  swoich ciasteczek w powtórce.
 - Oddaje `ETag` i `Last-Modified`, więc odświeżanie warunkowe (`304`) działa przez relay tak samo jak bezpośrednio.
 - WCY celowo nie ma na liście: ten host odpowiada Workerowi `403`, więc zostaje na rotującej puli proxy.
 

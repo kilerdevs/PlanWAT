@@ -169,6 +169,50 @@ test('redirects are followed manually and must stay on the allowlist', async () 
   }
 });
 
+test('a same-URL redirect that sets a cookie is retried with it', async () => {
+  const handler = (await worker()).default;
+  const stub = stubFetch((url, init) => {
+    if (stub.calls.length === 1) {
+      return new Response(null, {
+        status: 307,
+        headers: {
+          Location: 'https://wtc.wat.edu.pl/Plany/index.xml',
+          'Set-Cookie': 'incap_ses_1=abc; Path=/; Domain=.wat.edu.pl; Secure; HttpOnly',
+        },
+      });
+    }
+    return new Response('plan', { status: 200 });
+  });
+  try {
+    const response = await handler.fetch(relayRequest('https://wtc.wat.edu.pl/Plany/index.xml', {
+      headers: { Cookie: 'runner=1' },
+    }), ENV);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'plan');
+    assert.equal(stub.calls.length, 2);
+    assert.equal(stub.calls[0].init.headers.get('cookie'), null);
+    assert.equal(stub.calls[1].init.headers.get('cookie'), 'incap_ses_1=abc');
+    assert.equal(response.headers.get('set-cookie'), null);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('a same-URL redirect without cookies is a loop, not a retry', async () => {
+  const handler = (await worker()).default;
+  const stub = stubFetch(() => new Response(null, {
+    status: 307,
+    headers: { Location: 'https://wtc.wat.edu.pl/Plany/index.xml' },
+  }));
+  try {
+    const response = await handler.fetch(relayRequest('https://wtc.wat.edu.pl/Plany/index.xml'), ENV);
+    assert.equal(response.status, 502);
+    assert.equal(stub.calls.length, 1);
+  } finally {
+    stub.restore();
+  }
+});
+
 test('a redirect loop stops after three hops', async () => {
   const handler = (await worker()).default;
   const stub = stubFetch((url) => new Response(null, {

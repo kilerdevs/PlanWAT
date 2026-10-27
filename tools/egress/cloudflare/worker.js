@@ -9,8 +9,10 @@
  *   - PLANWAT_RELAY_TOKEN must be set (wrangler secret put) and sent as a bearer token;
  *   - only HTTPS targets on the exact hosts in PLANWAT_RELAY_HOSTS are fetched;
  *   - redirects are followed manually, at most three, and every hop stays on that list;
- *   - cookies and the caller's Authorization header are never forwarded upstream, and
- *     upstream Set-Cookie/Content-Encoding/Content-Length headers are not returned.
+ *   - the caller's cookies and Authorization header are never forwarded upstream. Cookies an
+ *     upstream sets are replayed only along that request's redirect chain (Incapsula answers a
+ *     first visit with a same-URL 307 plus cookies), and upstream Set-Cookie,
+ *     Content-Encoding and Content-Length headers are not returned.
  *
  * Configuration: see wrangler.toml and README.md.
  */
@@ -124,6 +126,25 @@ function upstreamHeaders(request) {
   return headers;
 }
 
+// Incapsula's first answer is a 307 to the same URL with its session cookies; a browser (and
+// curl_cffi on the crawler) stores them and retries. Keep that handshake inside one Worker
+// request: the caller's own cookies stay behind, and nothing is kept between requests.
+function setUpstreamCookies(jar, upstream) {
+  const lines = typeof upstream.headers.getSetCookie === 'function'
+    ? upstream.headers.getSetCookie()
+    : [upstream.headers.get('set-cookie')].filter(Boolean);
+  for (const line of lines) {
+    const pair = line.split(';', 1)[0].trim();
+    const eq = pair.indexOf('=');
+    if (eq > 0) jar.set(pair.slice(0, eq), pair);
+  }
+  return jar;
+}
+
+function cookieSnapshot(jar) {
+  return [...jar.values()].join('; ');
+}
+
 function responseHeaders(upstream) {
   const headers = new Headers();
   for (const name of RESPONSE_HEADERS) {
@@ -135,23 +156,31 @@ function responseHeaders(upstream) {
   return headers;
 }
 
-async function fetchAllowed(target, request, hosts, redirects = MAX_REDIRECTS, seen = new Set()) {
+async function fetchAllowed(
+  target, request, hosts, redirects = MAX_REDIRECTS, seen = new Set(), jar = new Map()) {
   const host = target.hostname.toLowerCase().replace(/\.$/, '');
   if (!hosts.has(host)) throw new RelayError(403, 'host not allowed');
   if (redirects < 0 || seen.has(target.href)) throw new RelayError(502, 'too many redirects');
   seen.add(target.href);
 
+  const headers = upstreamHeaders(request);
+  if (jar.size) headers.set('cookie', cookieSnapshot(jar));
+
   let upstream;
   try {
     upstream = await fetch(target.href, {
       method: request.method,
-      headers: upstreamHeaders(request),
+      headers,
       redirect: 'manual',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch {
     throw new RelayError(502, 'upstream fetch failed');
   }
+
+  const before = cookieSnapshot(jar);
+  setUpstreamCookies(jar, upstream);
+  const learned = cookieSnapshot(jar) !== before;
 
   const location = upstream.headers.get('Location');
   if (REDIRECT_STATUSES.has(upstream.status) && location) {
@@ -162,7 +191,10 @@ async function fetchAllowed(target, request, hosts, redirects = MAX_REDIRECTS, s
       throw new RelayError(502, 'bad redirect');
     }
     next.hash = '';
-    return fetchAllowed(next, request, hosts, redirects - 1, seen);
+    // A same-URL redirect is Incapsula's cookie handshake when it set a cookie, and a loop
+    // when it did not.
+    if (learned && next.href === target.href) seen.delete(target.href);
+    return fetchAllowed(next, request, hosts, redirects - 1, seen, jar);
   }
   return upstream;
 }
