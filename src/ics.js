@@ -287,19 +287,24 @@
 
   /* ---------- the class type in the title ---------- */
   /* Calendar apps show an event's title and little else, so the published calendars carry the class type after the
-     subject: "Matematyka I (Wykład)" (build.py, with_type_titles; toIcs below does the same). Everything here keys on
-     the subject alone (colours, "my subjects", counters), so reading a calendar takes the type back off, but only when
-     it is exactly the event's own type */
+     subject, and which meeting of that subject and type the class is: "Matematyka I (Wykład 3/15)" (build.py,
+     with_type_titles; toIcs below does the same; a one-off keeps "(Wykład)"). Everything here keys on the subject alone
+     (colours, "my subjects", counters), so reading a calendar takes the type and number back off, but only when it is
+     exactly the event's own type */
   var NO_TITLE = { '': true, '-': true, '–': true };
-  function typedTitle(subject, type) {
-    var tail = ' (' + type + ')';
+  /* nth: {n, of}, the page's ordinals (insights.js); shown from two meetings up */
+  function typedTitle(subject, type, nth) {
     if (NO_TITLE[subject] || NO_TITLE[type] || !type) return subject;
-    return subject.slice(-tail.length) === tail ? subject : subject + tail;
+    var count = nth && nth.n >= 1 && nth.of >= 2 && nth.n <= nth.of && Math.floor(nth.n) === nth.n &&
+      Math.floor(nth.of) === nth.of ? ' ' + nth.n + '/' + nth.of : '';
+    return plainTitle(subject, type) + ' (' + type + count + ')';
   }
   function plainTitle(summary, type) {
-    var tail = ' (' + type + ')';
-    if (!type || NO_TITLE[type] || summary.length <= tail.length || summary.slice(-tail.length) !== tail) return summary;
-    return summary.slice(0, -tail.length);
+    if (!type || NO_TITLE[type]) return summary;
+    var head = ' (' + type, at = summary.lastIndexOf(head);
+    if (at <= 0 || summary.charAt(summary.length - 1) !== ')') return summary;
+    var rest = summary.slice(at + head.length, -1);
+    return rest === '' || /^ \d+\/\d+$/.test(rest) ? summary.slice(0, at) : summary;
   }
   function untype(ev) {
     if (!ev.SUMMARY || !ev.CATEGORIES) return;
@@ -493,6 +498,8 @@
   }
   function wallClock(date, time) { return date.replace(/-/g, '') + 'T' + time.replace(/:/g, '') + '00'; }
 
+  /* a lesson may carry `ordinal` ({n, of}, insights.js ordinals): its title then says "(Wykład 3/15)" like the
+     published calendars */
   function toIcs(lessons, opts) {
     opts = opts || {};
     var now = opts.now == null ? new Date() : new Date(opts.now);
@@ -524,7 +531,8 @@
       lines.push(contentLine('DTSTAMP', stamp));
       lines.push(contentLine('DTSTART;TZID=Europe/Warsaw', wallClock(l.date, l.start)));
       lines.push(contentLine('DTEND;TZID=Europe/Warsaw', wallClock(l.date, l.end)));
-      lines.push(contentLine('SUMMARY', escapeText(typedTitle(l.subject_full, l.type_full))));
+      var title = typedTitle(l.subject_full, l.type_full, raw.ordinal);
+      lines.push(contentLine('SUMMARY', escapeText(title)));
       if (l.type_full && l.type_full !== '-' && l.type_full !== '–') {
         lines.push(contentLine('CATEGORIES', escapeText(l.type_full)));
       }
@@ -535,7 +543,7 @@
       reminders.forEach(function (m) {
         lines.push('BEGIN:VALARM');
         lines.push('ACTION:DISPLAY');
-        lines.push(contentLine('DESCRIPTION', escapeText('Przypomnienie: ' + typedTitle(l.subject_full, l.type_full))));
+        lines.push(contentLine('DESCRIPTION', escapeText('Przypomnienie: ' + title)));
         lines.push(contentLine('TRIGGER', '-PT' + m + 'M'));
         lines.push('END:VALARM');
       });

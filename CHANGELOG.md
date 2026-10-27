@@ -16,6 +16,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Numer zajęć w subskrypcji kalendarza:** tytuł każdego zdarzenia w `plan.ics` i `plan-przypomnienia.ics` mówi, które
+  to spotkanie przedmiotu danego rodzaju, np. „Matematyka I (Wykład 3/15)”, tak jak strona pokazuje „Wykład · 3/15”.
+  Liczone tak samo jak na stronie (cały semestr, po dacie, zajęcia wpisane dwa razy raz); jednorazowe zajęcia mają sam
+  rodzaj. Pobrany ze strony plik `.ics` też ma numery, a strona zdejmuje je przy czytaniu kalendarza.
 - **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze tylko IOE, WIG i WIM,
   bo ściany pozostałych wydziałów odrzucają jego adres (próba 27.10.2026), więc zwykle crawluje WIM. Plan skraca
   czekanie na ścianę do 5 minut tylko wtedy, gdy każdy wydział udziału mógłby przejąć inny włączony runner: oracle bez
