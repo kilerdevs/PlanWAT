@@ -320,7 +320,7 @@ class BuildRealSiteTest(unittest.TestCase):
     def test_group_calendar_is_the_current_term_with_the_class_type_in_each_title(self):
         published = (self.out / 'WCY26KY3S1' / 'plan.ics').read_bytes()
         self.assertEqual(published, build.with_type_titles((ROOT / 'timetables' / '2026-27-zima' / 'WCY26KY3S1.ics').read_bytes()))
-        self.assertIn('SUMMARY:Matematyka I (Wykład)\r\n', published.decode('utf-8'))
+        self.assertIn('SUMMARY:Matematyka I (Wykład 1/15)\r\n', published.decode('utf-8'))  # the 1st of 15 lectures
 
     def test_offline_worker_manifests_and_icons(self):
         sw = (self.out / 'sw.js').read_text(encoding='utf-8')
@@ -415,7 +415,7 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertEqual(lines[-1], b'')
         self.assertNotIn(b'\n', b''.join(lines))  # CRLF only
         self.assertTrue(all(len(l) <= 75 for l in lines), 'a line longer than 75 octets')
-        self.assertIn('BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Matematyka I (Wykład)\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT', text)
+        self.assertIn('BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Matematyka I (Wykład 1/15)\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT', text)
         # the same events, and every group gets one
         plain = (self.out / 'WCY26KY3S1' / 'plan.ics').read_text(encoding='utf-8')
         self.assertEqual(re.findall(r'^UID:[^\r\n]*', text, re.M), re.findall(r'^UID:[^\r\n]*', plain, re.M))
@@ -844,6 +844,31 @@ class TypeTitlesTest(unittest.TestCase):
         self.assertIn('DESCRIPTION:Chemia\r\n', text)  # only the event's own title
         self.assertEqual(build.with_type_titles(out), out)
         self.assertNotIn(b'\n', out.replace(b'\r\n', b''))
+
+    def test_each_class_says_which_meeting_of_its_subject_and_type_it_is(self):
+        def ev(uid, day, hour, summary, kind='', room='1 S'):
+            return (f'BEGIN:VEVENT\nUID:{uid}\nDTSTART;TZID=Europe/Warsaw:202610{day:02d}T{hour:02d}0000\n'
+                    f'DTEND;TZID=Europe/Warsaw:202610{day:02d}T{hour:02d}3000\nSUMMARY:{summary}\n'
+                    + (f'CATEGORIES:{kind}\n' if kind else '') + f'LOCATION:{room}\nEND:VEVENT\n')
+        cal = ('BEGIN:VCALENDAR\n'
+               + ev(3, 9, 8, 'Fizyka', 'Wykład')            # listed out of order: numbered by date
+               + ev(1, 5, 8, 'Fizyka', 'Wykład')
+               + ev(2, 7, 8, 'Fizyka', 'Ćwiczenia')          # another type counts on its own: a one-off
+               + ev(4, 9, 8, 'Fizyka', 'Wykład', '1  S')     # listed twice (the same room, once spaces are read)
+               + ev(5, 12, 8, 'Fizyka (Wykład 9/9)', 'Wykład')  # a stale number is replaced
+               + ev(6, 5, 10, '-', 'Rezerwacja') + ev(7, 6, 10, '-', 'Rezerwacja')  # placeholders: never
+               + ev(8, 5, 12, 'Sesja', 'Sesja egzaminacyjna') + ev(9, 6, 12, 'Sesja', 'Sesja egzaminacyjna')
+               + ev(10, 5, 14, 'Koło') + ev(11, 6, 14, 'Koło')  # no type: no title change at all
+               + 'END:VCALENDAR\n')
+        out = build.with_type_titles(cal.encode('utf-8')).decode('utf-8').replace('\r\n ', '')
+        titles = dict(re.findall(r'UID:(\d+)\r\n(?:[^\r\n]*\r\n)*?SUMMARY:([^\r\n]*)', out))
+        self.assertEqual(titles, {'1': 'Fizyka (Wykład 1/3)', '2': 'Fizyka (Ćwiczenia)', '3': 'Fizyka (Wykład 2/3)',
+                                  '4': 'Fizyka (Wykład 2/3)', '5': 'Fizyka (Wykład 3/3)', '6': '-', '7': '-',
+                                  '8': 'Sesja (Sesja egzaminacyjna)', '9': 'Sesja (Sesja egzaminacyjna)',
+                                  '10': 'Koło', '11': 'Koło'})
+        self.assertEqual(build.with_type_titles(out.encode('utf-8')).decode('utf-8').replace('\r\n ', ''), out)
+        self.assertEqual(build.plain_title('Fizyka (Wykład 2/3)', 'Wykład'), 'Fizyka')
+        self.assertEqual(build.plain_title('Fizyka (Wykład 2/3)', 'Ćwiczenia'), 'Fizyka (Wykład 2/3)')
 
     def test_long_titles_fold_on_character_boundaries(self):
         cal = 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:' + 'Ż' * 40 + '\nCATEGORIES:Laboratorium\nEND:VEVENT\nEND:VCALENDAR\n'

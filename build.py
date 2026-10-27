@@ -480,34 +480,95 @@ def _escape(value):
     return value.replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,').replace('\n', '\\n')
 
 
-def typed_title(subject, kind):
-    """ "Matematyka I" + "Wykład" -> "Matematyka I (Wykład)"; placeholders and an already typed title stay as they are."""
-    if subject in NO_TITLE or kind in NO_TITLE or subject.endswith(f' ({kind})'):
+def typed_title(subject, kind, nth=None):
+    """ "Matematyka I" + "Wykład" -> "Matematyka I (Wykład)", with `nth` = (3, 15) "Matematyka I (Wykład 3/15)";
+    placeholders stay as they are and an already typed title is typed afresh, never twice."""
+    if subject in NO_TITLE or kind in NO_TITLE:
         return subject
-    return f'{subject} ({kind})'
+    subject = plain_title(subject, kind)
+    return f'{subject} ({kind} {nth[0]}/{nth[1]})' if nth else f'{subject} ({kind})'
 
 
-def with_type_titles(raw):
-    """The calendar with each class's type after its subject in SUMMARY ("Matematyka I (Wykład)"): calendar apps show
-    the title and little else. The type is the first of the event's CATEGORIES; events without one keep their title.
-    Only the published files get it: the build's own data and the source calendars keep the plain subject, and the
-    page takes the type off again when it reads the file (ics.js). CRLF, refolded."""
-    text = raw.decode('utf-8').lstrip('\ufeff')
-    out, stack, event, summary, kind = [], [], None, None, ''
+def plain_title(summary, kind):
+    """The subject of a typed title: "Fizyka (Ćwiczenia)" and "Fizyka (Ćwiczenia 2/7)" -> "Fizyka", but only for the
+    event's own type (ics.js plainTitle)."""
+    if kind in NO_TITLE:
+        return summary
+    m = re.fullmatch(r'(.+) \(' + re.escape(kind) + r'(?: \d+/\d+)?\)', summary, re.S)
+    return m.group(1) if m else summary
+
+
+# A session period ("Sesja egz. zasadnicza"), not a class: the page shows it as a banner, never numbered (insights.js).
+SESSION_RE = re.compile(r'^sesja\b', re.I)
+
+
+def _norm(value):
+    return ' '.join(value.lower().split())
+
+
+def class_numbers(events, tz=None):
+    """Which meeting of its subject and type each event is, as the page numbers it (insights.js ordinals: "Wykład ·
+    3/15"): {event index: (n, of)}. Counted over the whole calendar in date and time order, a class the faculty listed
+    twice (same time, subject, type and room) once, the way the page reads the file (ics.js toPlan). `events` are the
+    property dicts calendar_lessons reads. Only real classes of a kind that meets more than once get a number: no
+    placeholder ("-"), no session period, no class that recurs (one event, several dates)."""
+    kept, seen, single = [], set(), {}  # single: event index -> its one class
+    for i, ev in enumerate(events):
+        found = _event_lessons(ev, tz, None)
+        for day, start, end, summary, category, location in found:
+            subject = plain_title(summary, category)
+            if not subject:
+                continue
+            room = ' '.join(re.sub(r'\s*/\s*', '/', location).split())
+            key = (day, start, end, subject, category, room)
+            if key not in seen:
+                seen.add(key)
+                kept.append((day, start, key, f'{_norm(subject)}|{_norm(category) or "inne"}'))
+            if len(found) == 1:
+                single[i] = key
+    kept.sort(key=lambda k: (k[0], k[1]))
+    totals, counted, numbers = {}, {}, {}
+    for *_, kind in kept:
+        totals[kind] = totals.get(kind, 0) + 1
+    for _, _, key, kind in kept:
+        counted[kind] = counted.get(kind, 0) + 1
+        numbers[key] = (counted[kind], totals[kind])
+    out = {}
+    for i, key in single.items():
+        subject, category = key[3], key[4]
+        if subject in NO_TITLE or category in NO_TITLE or SESSION_RE.match(_norm(category)):
+            continue
+        if numbers[key][1] >= 2:
+            out[i] = numbers[key]
+    return out
+
+
+def with_type_titles(raw, tz=None):
+    """The calendar with each class's type after its subject in SUMMARY, and which meeting of that subject and type it
+    is: "Matematyka I (Wykład 3/15)" (class_numbers; a one-off keeps "(Wykład)"). Calendar apps show the title and
+    little else, a subscription included. The type is the first of the event's CATEGORIES; events without one keep
+    their title. Only the published files get it: the build's own data and the source calendars keep the plain
+    subject, and the page takes the type and the number off again when it reads the file (ics.js). CRLF, refolded."""
+    text = raw.decode('utf-8').lstrip('﻿')
+    tz = tz or _tz()
+    out, stack, event, summary, kind, props = [], [], None, None, '', None
+    events = []  # (out index of the event's lines, SUMMARY's index in them, kind, properties)
     for line in (l for l in re.sub(r'\r?\n[ \t]', '', text).splitlines() if l):
         name, _, value = line.partition(':')
-        name = name.split(';', 1)[0].upper()
+        key, _, params = name.partition(';')
+        name = key.upper()
         if name == 'BEGIN':
             stack.append(value.strip().upper())
             if stack[-1] == 'VEVENT':
-                event, summary, kind = [], None, ''
+                event, summary, kind, props = [], None, '', {'EXDATE': []}
         elif name == 'END':
             if value.strip().upper() == 'VEVENT' and stack[-1:] == ['VEVENT'] and event is not None:
-                if summary is not None and kind:
-                    head, _, title = event[summary].partition(':')
-                    event[summary] = head + ':' + _escape(typed_title(_unescape(title), kind))
-                out += event
+                event.append(line)
+                events.append((len(out), summary, kind, props))
+                out.append(event)
                 event = None
+                stack.pop()
+                continue
             if stack:
                 stack.pop()
         elif stack[-1:] == ['VEVENT'] and event is not None:
@@ -515,8 +576,19 @@ def with_type_titles(raw):
                 summary = len(event)
             elif name == 'CATEGORIES' and not kind:
                 kind = _unescape(re.split(r'(?<!\\),', value, maxsplit=1)[0])
+            if name == 'EXDATE':
+                props['EXDATE'].extend(value.split(','))
+            elif name not in props:
+                props[name] = (params, value)
         (event if event is not None else out).append(line)
-    return ''.join(_fold(l) + '\r\n' for l in out).encode('utf-8')
+    numbers = class_numbers([props for _, _, _, props in events], tz)
+    for i, (at, summary, kind, _) in enumerate(events):
+        if summary is not None and kind:
+            lines = out[at]
+            head, _, title = lines[summary].partition(':')
+            lines[summary] = head + ':' + _escape(typed_title(_unescape(title), kind, numbers.get(i)))
+    flat = [l for item in out for l in (item if isinstance(item, list) else [item])]
+    return ''.join(_fold(l) + '\r\n' for l in flat).encode('utf-8')
 
 
 def with_reminders(raw):

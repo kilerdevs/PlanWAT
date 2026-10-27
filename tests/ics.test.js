@@ -346,6 +346,53 @@ test('the class type goes into a calendar title and comes back off when the page
   assert.ok(text.includes('SUMMARY:Fizyka (Wykład)'));
 });
 
+test('the meeting number goes into the title next to the type and comes back off too', () => {
+  assert.equal(PlanICS.typedTitle('Matematyka I', 'Wykład', { n: 3, of: 15 }), 'Matematyka I (Wykład 3/15)');
+  assert.equal(PlanICS.typedTitle('Matematyka I (Wykład 9/9)', 'Wykład', { n: 3, of: 15 }), 'Matematyka I (Wykład 3/15)');
+  assert.equal(PlanICS.typedTitle('Matematyka I', 'Wykład', { n: 1, of: 1 }), 'Matematyka I (Wykład)');  // a one-off
+  assert.equal(PlanICS.typedTitle('Matematyka I', 'Wykład', { n: 'x', of: 2 }), 'Matematyka I (Wykład)');
+  assert.equal(PlanICS.plainTitle('Fizyka (Ćwiczenia 2/7)', 'Ćwiczenia'), 'Fizyka');
+  assert.equal(PlanICS.plainTitle('Fizyka (Ćwiczenia 2/7)', 'Wykład'), 'Fizyka (Ćwiczenia 2/7)');
+  assert.equal(PlanICS.plainTitle('Fizyka (Ćwiczenia x)', 'Ćwiczenia'), 'Fizyka (Ćwiczenia x)');
+  const typed = cal([...event(['UID:1', 'DTSTART:20261015T100000', 'DTEND:20261015T113000', 'SUMMARY:Fizyka (Wykład 1/2)',
+    'CATEGORIES:Wykład'])]);
+  assert.deepEqual(allLessons(PlanICS.toPlan(PlanICS.parse(typed))).map((l) => l.subject_full), ['Fizyka']);
+  const lesson = { date: '2026-10-15', start: '08:00', end: '09:35', subject_full: 'Fizyka', type_full: 'Wykład', room: '1 S',
+    ordinal: { n: 2, of: 7 } };
+  const ics = PlanICS.toIcs([lesson], { name: 'x', reminders: [10], now: NOW });
+  assert.ok(ics.includes('SUMMARY:Fizyka (Wykład 2/7)\r\n'));
+  assert.ok(ics.includes('DESCRIPTION:Przypomnienie: Fizyka (Wykład 2/7)\r\n'));
+});
+
+test('the subscription numbers each class as the page does', () => {
+  // build.py writes the published calendar; the page counts its classes with insights.js ordinals: they must agree
+  const PlanInsights = require('../src/insights.js');
+  const { execFileSync } = require('node:child_process');
+  const source = path.join(ROOT, 'timetables', '2026-27-zima', 'WCY26KY3S1.ics');
+  const published = execFileSync('python3', ['-c',
+    'import sys; sys.path.insert(0, sys.argv[1]); import build; from pathlib import Path; '
+    + 'sys.stdout.write(build.with_type_titles(Path(sys.argv[2]).read_bytes()).decode("utf-8"))', ROOT, source],
+  { encoding: 'utf-8' });
+  const page = PlanICS.toPlan(PlanICS.parse(PlanICS.decode(fs.readFileSync(source))));
+  const ord = PlanInsights.ordinals(page);
+  const expected = {};
+  PlanInsights.lessons(page).forEach((l) => {
+    const o = ord[PlanInsights.lessonKey(l)];
+    expected[l.date + 'T' + l.start] = PlanICS.typedTitle(l.subject_full, l.type_full, o);
+  });
+  const got = {};
+  const parsed = PlanICS.parse(published);
+  parsed.events.forEach((ev) => {
+    const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/.exec(ev.DTSTART[0].value);
+    got[m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5]] = published.replace(/\r\n /g, '')
+      .split('\r\n').find((line, i, all) => line.startsWith('SUMMARY:') && all.slice(0, i).reverse()
+        .find((x) => x.startsWith('UID:')) === 'UID:' + ev.UID[0].value).slice(8).replace(/\\,/g, ',');
+  });
+  assert.ok(Object.keys(expected).length > 20);
+  assert.ok(Object.values(expected).some((t) => / \d+\/\d+\)$/.test(t)));
+  Object.keys(expected).forEach((k) => assert.equal(got[k], expected[k], k));
+});
+
 test('physical education without a room is held at the SWF', () => {
   const text = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//t//t//PL', 'X-PLAN-GROUP:G',

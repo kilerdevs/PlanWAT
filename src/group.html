@@ -3802,7 +3802,9 @@
         end: l.end,
         subject_full: isReservation(l) ? subjectLabel(l) : l.subject_full,
         type_full: l.type_full,
-        room: l.room
+        room: l.room,
+        /* "(Wykład 3/15)" in the title, counted over the whole plan like the page and the subscription */
+        ordinal: isReservation(l) || l.extra ? null : (state.ord && state.ord[PI.lessonKey(l)]) || null
       };
     });
   }

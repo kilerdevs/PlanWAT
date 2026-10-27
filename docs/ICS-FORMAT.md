@@ -62,10 +62,14 @@ Alarmy (`VALARM`) wewnątrz zdarzenia są ignorowane przez stronę. Budowa publi
 `plan-przypomnienia.ics` z alarmem `DISPLAY` 15 minut przed każdym zdarzeniem, które go nie ma (zakończenia linii CRLF, linie
 składane ponownie po 75 oktetach, `X-WR-CALNAME` z dopiskiem „ (przypomnienia)”).
 
-W obu opublikowanych plikach `SUMMARY` ma po przedmiocie rodzaj zajęć w nawiasie, np. `Matematyka I (Wykład)`, bo aplikacje
-kalendarza pokazują głównie tytuł. Rodzaj to pierwsza wartość `CATEGORIES`; zdarzenia bez niej i tytuły zastępcze (`-`) zostają
-bez zmian. W `timetables/` `SUMMARY` to sama nazwa przedmiotu: strona przy czytaniu pliku zdejmuje dopisek z powrotem, więc
-kolory, „Moje przedmioty” i statystyki nadal grupują po przedmiocie.
+W obu opublikowanych plikach `SUMMARY` ma po przedmiocie rodzaj zajęć w nawiasie i numer spotkania, np.
+`Matematyka I (Wykład 3/15)`: trzeci z piętnastu wykładów, tak jak strona pokazuje „Wykład · 3/15”, bo aplikacje kalendarza
+(także w subskrypcji) pokazują głównie tytuł. Rodzaj to pierwsza wartość `CATEGORIES`. Numer liczy zajęcia tego samego
+przedmiotu i rodzaju w całym semestrze, po dacie i godzinie, zajęcia wpisane przez wydział dwa razy raz; zajęcia jednorazowe
+mają sam rodzaj (`Matematyka I (Wykład)`), a okresy sesji numeru nie dostają. Zdarzenia bez `CATEGORIES` i tytuły zastępcze
+(`-`) zostają bez zmian. W `timetables/` `SUMMARY` to sama nazwa przedmiotu: strona przy czytaniu pliku zdejmuje dopisek z
+powrotem, więc kolory, „Moje przedmioty” i statystyki nadal grupują po przedmiocie. Pobrany ze strony plik `.ics` ma te same
+tytuły.
 
 ## Przykład
 
