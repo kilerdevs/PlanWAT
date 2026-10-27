@@ -1,13 +1,14 @@
 # Odświeżanie planów: ostatnie przebiegi
 
 > [!CAUTION]
-> **Ostatni przebieg: zablokowany.** 27 paź 2026 · 21:51 · **plebania** · **oracle** · **northflank** · 17 min · [przebieg #80](https://github.com/kilerdevs/PlanWAT/actions/runs/40581697606)
-> Strona wydziału WLO, WML, WTC zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu.
+> **Ostatni przebieg: zablokowany.** 27 paź 2026 · 23:56 · **oracle** · **northflank** · ~~plebania~~ · 43 min · [przebieg #81](https://github.com/kilerdevs/PlanWAT/actions/runs/40598480384)
+> Strona wydziału WTC, WLO zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu.
 
 Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
 
 | Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |
 |---|---|---|--:|--:|---|
+| 27 paź · 23:56 | Zablokowany | **oracle** (WIM, IOE, WCY, WTC, WIG, WEL (pomoc dla northflank)) · **northflank** (WLO, WEL, WML, WIM (pomoc dla oracle), WIG (pomoc dla oracle)) · ~~plebania~~ | 311 | 43 min | [#81](https://github.com/kilerdevs/PlanWAT/actions/runs/40598480384) |
 | 27 paź · 21:51 | Zablokowany | **plebania** (WLO, WEL, WCY, WML, WTC) · **oracle** (IOE, WIG, WLO (od plebania), WEL (od plebania), WML (od plebania), WTC (od plebania)) · **northflank** (WIM) | 81 | 17 min | [#80](https://github.com/kilerdevs/PlanWAT/actions/runs/40581697606) |
 | 27 paź · 21:48 | Niedokończony | **plebania** (WLO, WEL, WCY, WML, WTC) · **oracle** (IOE, WIG) · **northflank** (WIM) | 0 | 2 min | [#79](https://github.com/kilerdevs/PlanWAT/actions/runs/40581351708) |
 | 27 paź · 19:24 | Zablokowany | **plebania** (WLO, WEL, WCY, WML, WTC, WIM (pomoc dla northflank), WIG (pomoc dla oracle)) · **oracle** (IOE, WIG, WEL (pomoc dla plebania), WIM (pomoc dla northflank), WCY (pomoc dla plebania), WML (od plebania)) · **northflank** (WIM) | 504 | 34 min | [#78](https://github.com/kilerdevs/PlanWAT/actions/runs/40559688724) |
@@ -17,9 +18,32 @@ Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w cza
 | 27 paź · 12:49 | Niedokończony | **oracle** (WLO, WEL, IOE, WCY, WML, WTC, WIG) · **northflank** (WIM) · ~~plebania~~ | 0 | 16 min | [#74](https://github.com/kilerdevs/PlanWAT/actions/runs/40499062574) |
 | 27 paź · 09:03 | Zablokowany | **oracle** (WLO, WEL, WIM, IOE, WCY, WML, WTC, WIG) · ~~plebania~~ | 349 | 55 min | [#73](https://github.com/kilerdevs/PlanWAT/actions/runs/40470944765) |
 | 27 paź · 02:32 | Zablokowany | **oracle** (WLO, WEL, WIM, IOE, WCY, WML, WTC, WIG) · ~~plebania~~ | 393 | 48 min | [#72](https://github.com/kilerdevs/PlanWAT/actions/runs/40433154047) |
-| 27 paź · 00:00 | Bez zmian | **plebania** (WLO, WEL, WCY, WML, WTC) · **oracle** (WIM, IOE, WIG) | 126 | 11 min | [#71](https://github.com/kilerdevs/PlanWAT/actions/runs/40416669173) |
 
 ## Szczegóły
+
+<details>
+<summary><b>27 paź · 23:56</b> · Zablokowany · oracle · northflank</summary>
+
+Strona wydziału WTC, WLO zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu. Przebieg uruchomiony ręcznie [#81](https://github.com/kilerdevs/PlanWAT/actions/runs/40598480384), od planu do raportu 43 min.
+
+| Serwer | Wydziały | Zmienione | Stan |
+|---|---|--:|---|
+| **oracle** | WIM, IOE, WCY, WTC, WIG, WEL (pomoc dla northflank) | 2 | 42 min, zablokowany na WTC |
+| **northflank** | WLO, WEL, WML, WIM (pomoc dla oracle), WIG (pomoc dla oracle) | 0 | 41 min, zablokowany na WLO |
+| plebania | | | wyłączony |
+
+| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
+|---|---|--:|--:|---|
+| WIM | oracle | 48 | 0 | z pomocą northflank |
+| IOE | oracle | 15 | 2 |  |
+| WCY | oracle | 150 | 0 | odrzucone strony: 2, bez planu na ten semestr: 51 |
+| WTC | oracle | 0 | 0 | blokada Incapsula |
+| WIG | oracle | 26 | 0 | z pomocą northflank |
+| WLO | northflank | 0 | 0 | blokada Incapsula |
+| WEL | northflank | 72 | 0 | z pomocą oracle, odrzucone strony: 3 |
+| WML | northflank | 0 | 0 | nie udało się pobrać listy grup, lista grup podejrzanie krótka |
+
+</details>
 
 <details>
 <summary><b>27 paź · 21:51</b> · Zablokowany · plebania · oracle · northflank</summary>
@@ -234,28 +258,5 @@ Strona wydziału WLO, WML, WTC zablokowała pobieranie. Zostają poprzednie plan
 | WML | oracle | 0 | 0 | blokada Incapsula |
 | WTC | oracle | 0 | 0 | blokada Incapsula |
 | WIG | oracle | 33 | 0 |  |
-
-</details>
-
-<details>
-<summary><b>27 paź · 00:00</b> · Bez zmian · plebania · oracle</summary>
-
-Sprawdzono wszystkie wydziały, żaden plan się nie zmienił. Przebieg uruchomiony ręcznie [#71](https://github.com/kilerdevs/PlanWAT/actions/runs/40416669173), od planu do raportu 11 min.
-
-| Serwer | Wydziały | Zmienione | Stan |
-|---|---|--:|---|
-| **plebania** | WLO, WEL, WCY, WML, WTC | 0 | 10 min |
-| **oracle** | WIM, IOE, WIG | 0 | 1 min |
-
-| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
-|---|---|--:|--:|---|
-| WLO | plebania | 19 | 0 |  |
-| WEL | plebania | 46 | 0 | odrzucone strony: 3 |
-| WCY | plebania | 55 | 0 | odrzucone strony: 1, bez planu na ten semestr: 38 |
-| WML | plebania | 4 | 0 | odrzucone strony: 3 |
-| WTC | plebania | 1 | 0 | odrzucone strony: 1 |
-| WIM | oracle | 1 | 0 |  |
-| IOE | oracle | 0 | 0 |  |
-| WIG | oracle | 0 | 0 |  |
 
 </details>
