@@ -194,9 +194,12 @@ Projekt ma trzy runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh
 
 | Runner | Etykieta | `speed` | Charakter |
 |---|---|---|---|
-| plebania | `planwat-plebania` | 4 | prywatny serwer: szybki, ale często wyłączony |
+| plebania | `planwat-plebania` | 1 | prywatny serwer: szybki, ale często wyłączony |
 | oracle | `planwat-oracle` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
 | northflank | `planwat-northflank` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): IOE, WIG, WIM oraz przez relay WLO, WEL i WML (`faculties`); WTC nadal odpowiada 403 z zachodnich wyjść Cloudflare, a WCY wymaga puli |
+
+Indeksy `speed` są jednakowe dla całej floty (1), więc plan dzieli pracę po równo; szybsza plebania po swoim udziale
+pomaga pozostałym runnerom w trakcie przebiegu (`steal.py`).
 
 **Relay Cloudflare** (`PLANWAT_RELAY_URL`, szczegóły w [docs/EGRESS.md](EGRESS.md)) jest opcjonalny i domyślnie wyłączony:
 gdy linia runnera jest za ścianą, WLO, WEL, WML i WIG idą przez Worker zamiast bezpośrednio, a WTC próbuje przez Worker
@@ -210,8 +213,9 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
 1. **plan** (runner GitHub, bez dostępu do wydziałów): pyta API GitHub, które runnery są `online`, i dzieli między nie
    ścieżki polityk Incapsula (`tools/refresh/fleet.py plan`). Ścieżka nigdy nie jest dzielona (WLO i WEL stoją za jedną
    ścianą i czekają razem). Praca ścieżki to liczba grup, które jej wydziały wymieniły ostatnio, razy wyuczony mnożnik
-   tempa. Ścieżki idą od największej, każda do runnera, który skończy ją najwcześniej (obciążenie / `speed`), więc
-   szybka plebania bierze większość, a VPS resztę, i oba kończą mniej więcej razem. Wyłączony runner nie dostaje nic,
+   tempa. Ścieżki idą od największej, każda do runnera, który skończy ją najwcześniej (obciążenie / `speed`); przy
+   równych indeksach (tak jak teraz) oznacza to równy podział pracy, a nie przewagę jednej maszyny. Wyłączony runner nie
+   dostaje nic,
    więc żadne zadanie nie czeka w kolejce na maszynę, która nie przyjdzie. Gdy nic nie jest włączone, przebieg niczego
    nie crawluje, a następny planuje od nowa. Podział widać w podsumowaniu zadania. Gdy każdy wydział udziału mógłby przejąć
    inny włączony runner, plan każe czekać na zejście ściany tylko 5 minut zamiast 30 (`max-block-wait-minutes`):
@@ -277,7 +281,7 @@ zapytanie naraz na politykę.
 
 1. Najpierw próbuje wydziału, który tamten **crawluje teraz**: sam wylicza jego grupy (to jedno zapytanie o listę, i tak
    potrzebne do adresów stron) i prosi o **część** pozostałych grup. Właściciel oddaje koniec swojej listy, podzielony
-   według `speed` obu runnerów (plebania oddaje oracle piątą część, oracle plebanii cztery piąte). Gdy zostało mniej niż
+   według `speed` obu runnerów (przy równych indeksach po połowie). Gdy zostało mniej niż
    8 grup albo udział wyszedłby mniejszy niż 4, właściciel kończy sam. Gdy właściciel stoi akurat przed ścianą, oddaje
    **wszystko**, co mu zostało, i przestaje czekać.
 2. Gdy ściana tego wydziału nie wpuszcza pomocnika, ten próbuje kolejno **wydziałów, których tamten jeszcze nie zaczął**
@@ -340,9 +344,9 @@ Konfiguracja (jednorazowo):
    uprawnieniem **Administration: Read-only** (listy runnerów nie da się odczytać `GITHUB_TOKEN`). Zapisz go jako sekret
    Actions `PLANWAT_RUNNERS_TOKEN`. Bez niego (albo gdy API zawiedzie) wszystko bierze runner `always_on`, jak dawniej
    jedyny runner.
-3. Dostrajanie: kolumna „minutes” w podsumowaniu zadania report pokazuje, ile trwał udział każdego runnera. Gdy jeden
-   regularnie kończy dużo później, zmień `speed` w `fleet.json`. Pole `faculties` (lista) ogranicza runner do tych
-   wydziałów, np. gdy któryś wydział nie wpuszcza adresu VPS-a.
+3. Dostrajanie: kolumna „minutes” w podsumowaniu zadania report pokazuje, ile trwał udział każdego runnera. Indeksy
+   `speed` są celowo jednakowe (1), więc plan dzieli pracę po równo; różnicowanie ich przywraca ważenie udziałów według
+   tempa. Pole `faculties` (lista) ogranicza runner do tych wydziałów, np. gdy któryś wydział nie wpuszcza adresu VPS-a.
 
 ### Historia przebiegów
 

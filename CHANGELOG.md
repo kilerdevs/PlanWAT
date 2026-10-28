@@ -138,6 +138,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Jednakowy `speed` całej floty** (`tools/refresh/fleet.json`): plebania, oracle i northflank mają teraz `speed` 1,
+  więc plan dzieli pracę po równo zamiast dawać plebanii cztery razy większy udział. Różnicowanie indeksów nadal
+  działa, ale nie jest już domyślnym ustawieniem; szybsza maszyna po swoim udziale pomaga pozostałym (`steal.py`).
 - **Plan pamięta, kogo która ściana zatrzymuje** (`fleet.py walled_runners`, z `refresh-runs.json`): runner zablokowany
   na wydziale w każdym z ostatnich 3 przebiegów (co najmniej 2) dostaje go tylko wtedy, gdy nikt inny nie może, nie
   skraca innym czekania na ścianę do 5 minut i nie dostaje go w handoffie. 27.10.2026 plebania odpuściła WLO, WEL, WML

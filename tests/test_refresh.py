@@ -2586,13 +2586,20 @@ class FleetPlan(unittest.TestCase):
     def test_the_real_fleet_keeps_each_faculty_where_it_gets_through(self):
         state = dict(self.STATE, faculties=dict(self.STATE['faculties'], wig={'last_count': 33}))
         wanted = self.WANTED + ['wig']
-        result = fleet.plan(fleet.load_fleet(), wanted, state, {'planwat', 'planwat-plebania', 'planwat-oracle'})
+        all_up = {'planwat', 'planwat-plebania', 'planwat-oracle', 'planwat-northflank'}
+        result = fleet.plan(fleet.load_fleet(), wanted, state, all_up)
         shares = {s['runner']: set(s['faculties'].split(',')) for s in result['shards']}
-        self.assertTrue({'wig', 'ioe'} <= shares['oracle'])
+        self.assertTrue({'wig', 'ioe'} <= shares['oracle'])  # preferences keep them off the others' share
         self.assertIn('wtc', shares['plebania'])
-        self.assertFalse(shares['oracle'] & {'wtc', 'wlo', 'wel', 'wml'})  # their walls refuse the VPS
-        alone = fleet.plan(fleet.load_fleet(), wanted, state, {'planwat', 'planwat-oracle'})
-        self.assertEqual(alone['shards'][0]['faculties'].split(','), wanted)  # a preference never strands a faculty
+        self.assertIn('wcy', shares['plebania'])  # only this line has the pool WCY needs
+        self.assertFalse(shares['northflank'] & {'wcy', 'wtc'})  # limited by fleet.json's faculties
+        self.assertEqual(set().union(*shares.values()), set(wanted))
+        # With equal speeds the rest balances by load; WLO/WEL and WML may ride the relay.
+        only_oracle = fleet.plan(fleet.load_fleet(), wanted, state, {'planwat', 'planwat-oracle'})
+        self.assertEqual(only_oracle['shards'][0]['faculties'].split(','), wanted)  # a preference never strands a faculty
+
+    def test_the_real_fleet_has_one_speed_for_every_runner(self):
+        self.assertEqual({r['speed'] for r in fleet.load_fleet()}, {1.0})
 
     def test_load_fleet_reads_preferences(self):
         tmp = Path(tempfile.mkdtemp())
