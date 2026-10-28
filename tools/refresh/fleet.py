@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Spread one refresh pass over the project's own runners (tools/refresh/fleet.json, docs/REFRESH.md).
 
-The fleet is a fast machine that is often switched off and a slow one that is always up. Each pass:
+The fleet is a fast home server that is often switched off, a slow always-on VPS and a free container. Each pass:
 
   plan     (a GitHub-hosted job) asks GitHub which runners are online and splits the policy-group lanes between
-           them, weighted by each runner's speed, so both finish at about the same time. A runner that is off gets
-           nothing, so no job ever waits in the queue for a machine that is not coming.
+           them, weighted by each runner's speed (all equal today, so the work is split evenly), so they finish at
+           about the same time. A runner that is off gets nothing, so no job ever waits in the queue for a machine
+           that is not coming.
   seed     gives a runner that has never crawled its own line state, copied from the data branch.
   merge    folds one runner's refresh-state.json into the data branch's newer one: the runners crawl disjoint
            faculties side by side and push to the same branch, so neither may overwrite what the other learned.
