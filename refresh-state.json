@@ -79,8 +79,8 @@
    ]
   },
   "wml": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-10-28T22:44:18",
+   "cause": "wall",
    "durations": [
     {
      "at_iso": "2026-10-15T19:54:58",
@@ -220,20 +220,30 @@
    }
   },
   "wml": {
-   "blocked_at": null,
+   "blocked_at": "2026-10-28T22:44:18",
    "last_count": 162,
-   "last_ok": "2026-10-28T17:03:02",
+   "last_ok": "2026-10-24T16:21:34",
    "run": {
     "ahead": false,
-    "at": "2026-10-28T17:03:02",
-    "blocked": false,
-    "cause": null,
-    "changed": 87,
-    "checked": 162,
+    "at": "2026-10-28T22:44:18",
+    "blocked": true,
+    "cause": "wall",
+    "changed": 0,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
-    "skipped": 0,
-    "term": "2026-27-zima"
+    "skipped": 0
+   },
+   "wait": {
+    "chronic": true,
+    "probes": 0,
+    "recovered": false,
+    "waited": 0
+   },
+   "wall": {
+    "by": "northflank",
+    "failed": 1,
+    "since": "2026-10-28T08:46:17"
    }
   },
   "wtc": {
@@ -7152,7 +7162,7 @@
   "wcy": 1.5943230000000004,
   "wig": 1.0,
   "wim": 1.0,
-  "wml": 2.7,
+  "wml": 3.0,
   "wtc": 2.7
  },
  "robots": {
