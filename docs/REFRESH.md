@@ -196,19 +196,20 @@ Projekt ma trzy runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh
 |---|---|---|---|
 | plebania | `planwat-plebania` | 1 | prywatny serwer: szybki, ale często wyłączony |
 | oracle | `planwat-oracle` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
-| northflank | `planwat-northflank` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): IOE, WIG, WIM oraz przez relay WLO, WEL i WML (`faculties`); WTC nadal odpowiada 403 z zachodnich wyjść Cloudflare, a WCY wymaga puli |
+| northflank | `planwat-northflank` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): IOE, WIG, WIM (`faculties`); WLO, WML i WTC dostają z Cloudflare 403 (relay przechodzi tylko WEL i WIG, a WEL dzieli ścieżkę z WLO), WCY wymaga puli |
 
 Indeksy `speed` są jednakowe dla całej floty (1), więc plan dzieli pracę po równo; szybsza plebania po swoim udziale
 pomaga pozostałym runnerom w trakcie przebiegu (`steal.py`).
 
 **Relay Cloudflare** (`PLANWAT_RELAY_URL`, szczegóły w [docs/EGRESS.md](EGRESS.md)) jest opcjonalny i domyślnie wyłączony:
-gdy linia runnera jest za ścianą, WLO, WEL, WML i WIG idą przez Worker zamiast bezpośrednio, a WTC próbuje przez Worker
-(z zachodnich wyjść Cloudflare dostaje 403, więc zwykle zostaje z plebanią); WCY zostaje na puli. Cloudflare odpowiada
-nierówno — ta sama strona raz przechodzi, a raz dostaje 403 — więc Worker ponawia 403 dwa razy bez zapamiętanych
-ciasteczek (i usuwa ciasteczka strony blokady), zanim crawler uzna odpowiedź za ścianę.
-Na oracle wystarczy ustawić URL i token relaya oraz dopisać hostname Workera do `EGRESS_DIRECT_HOSTS` egressu; Northflank
-nie ma egressu, więc ustawia tylko URL i token, a jego `faculties` w `fleet.json` obejmują już WLO, WEL i WML (bez WCY
-i WTC). Bez `PLANWAT_RELAY_*` usuń te trzy wydziały z listy Northflanku — ich ściany odrzucają jego adres.
+gdy linia runnera jest za ścianą, WEL i WIG idą przez Worker zamiast bezpośrednio. WLO, WML i WTC dostają z Cloudflare
+403 (sprawdzone 29.10.2026 z AMS i FRA; z WLO przechodziła tylko strona główna, nie plan), więc zostają z plebanią, gdy
+jej linia jest czysta; WCY zostaje na puli. Cloudflare odpowiada nierówno na WEL i WIG — ta sama strona raz przechodzi, a
+raz dostaje 403 — więc Worker ponawia 403 dwa razy bez zapamiętanych ciasteczek (i usuwa ciasteczka strony blokady), zanim
+crawler uzna odpowiedź za ścianę. Na oracle wystarczy ustawić URL i token relaya oraz dopisać hostname Workera do
+`EGRESS_DIRECT_HOSTS` egressu; Northflank nie ma egressu, więc ustawia tylko URL i token, ale jego `faculties` w
+`fleet.json` obejmują IOE, WIG i WIM — relay nie daje mu WLO, WML ani WTC, a WEL dzieli ścieżkę z WLO. Bez
+`PLANWAT_RELAY_*` nic się nie zmienia: IOE, WIG i WIM działają bezpośrednio.
 
 Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wspólny workflow `refresh-crawl.yml`):
 
@@ -264,12 +265,13 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
 Runner może też **preferować** wydziały (`prefers` w `fleet.json`): ścieżkę złożoną z nich dostaje zawsze, gdy jest
 włączony, niezależnie od obciążenia. Gdy jest wyłączony albo to on ją zostawił (handoff), ścieżka jest dzielona jak każda
 inna. Oracle preferuje WIG i IOE: oba runnery przeszły 26.10.2026 po dwa przebiegi WIG (33 z 33 grup, identyczne kalendarze), a
-IOE z oracle przeszedł czysto 9 przebiegów z 9. Plebania preferuje WTC, bo ściana WTC odrzuca adres VPS (zablokowany w 4
-przebiegach z 4, zwykłe HTTPS z maszyny dostaje 403): na oracle WTC kosztował tylko czekanie na ścianę i przekazanie.
-Relay tego nie zmienia: Worker z zachodnich wyjść Cloudflare dostaje od WTC 403, więc plebania zostaje jedynym runnerem,
-który przechodzi tamtą ścianę, gdy jej linia jest czysta.
-Przy wszystkich włączonych oracle dostaje IOE i WIG, northflank WIM, a plebania WLO z WEL, WCY, WML i WTC; bez
-plebanii northflank bierze WLO z WEL, WIM i WML, a oracle IOE, WIG, WCY i WTC. Runner może też robić **spis** wydziału
+IOE z oracle przeszedł czysto 9 przebiegów z 9. Plebania preferuje WTC, WLO i WEL: WTC odrzuca adres VPS (zablokowany w 4
+przebiegach z 4, zwykłe HTTPS z maszyny dostaje 403), a 29.10.2026 WLO i WTC odpowiadały 403 także przez relay Cloudflare
+z AMS i FRA; WEL dzieli z WLO jedną ścieżkę polityki (`wat-edge`). Gdy linia plebanii jest czysta, tylko ona przechodzi te
+ściany; relay daje pozostałym runnerom WEL i WIG, ale nie WLO, WML ani WTC.
+Przy wszystkich włączonych plebania dostaje WLO, WEL i WTC (preferencje), a resztę dzielą równo: oracle IOE, WIG, WCY
+i WML, northflank WIM; bez plebanii oracle bierze wszystko poza WIM, northflank zostaje przy WIM, a gdy online jest
+tylko northflank, WLO, WEL, WCY, WML i WTC zostają nieprzydzielone. Runner może też robić **spis** wydziału
 (`census`): plebania robi spis WIG, bo tylko jej łącze widzi strony Joomli wydziału (zob. uwagi o WIG wyżej).
 
 #### Pomoc w trakcie przebiegu

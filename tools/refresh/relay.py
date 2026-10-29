@@ -3,9 +3,9 @@
 Imperva (Incapsula) in front of most WAT faculties drops datacenter addresses and, after a
 crawl, often the runner's home line too. The public proxy pool in tools/egress can replace
 the address for some hosts, but a verified pool this size has no exit for WTC, WIG and WCY
-(probed 2026-10-27). A small Cloudflare Worker gets WLO, WEL, WML and WIG through from the
-runners' egress; WTC and WCY still answer it with 403 there, so WTC stays on plebania's
-direct line and WCY on the pool.
+(probed 2026-10-27). A small Cloudflare Worker gets WEL and WIG through from the runners'
+egress; WLO, WML, WTC and WCY answer it with 403 from Cloudflare's western egress (AMS and
+FRA, checked 2026-10-29), so WLO/WML/WTC stay on plebania's direct line and WCY on the pool.
 
 This module is the crawler side of that relay. It wraps a curl_cffi session and sends a GET
 for a listed host to ``<PLANWAT_RELAY_URL>?url=<target>`` instead of the target. The caller
@@ -29,8 +29,11 @@ to it must leave the egress directly, not through the pool: list its exact hostn
 import os
 from urllib.parse import quote, urlsplit
 
-# Hosts that the 2026-10-27 deployment needed the relay for. WIG is listed with both spellings
-# because the crawler uses www.wig for listings while some site links use the bare name.
+# Faculty hosts the relay is asked for by default: the ones that wall the runners' addresses.
+# On 2026-10-29 only WEL and WIG got through Cloudflare; WLO, WML and WTC answered 403 there,
+# but keeping them listed lets a later Worker deployment cover them without touching runners.
+# WIG is listed with both spellings because the crawler uses www.wig for listings while some
+# site links use the bare name.
 DEFAULT_HOSTS = (
     'wlo.wat.edu.pl',
     'wel.wat.edu.pl',
