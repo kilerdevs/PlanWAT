@@ -111,7 +111,9 @@ runner -> egress (bezpośrednio, hostname Workera w EGRESS_DIRECT_HOSTS) -> Work
 Runner wysyła `GET <PLANWAT_RELAY_URL>?url=<zakodowany URL>` z `Authorization: Bearer <token>`, a Worker oddaje status,
 `ETag`/`Last-Modified` i treść upstreamu. `RelayResponse.url` to oryginalny adres wydziału, więc względne linki i adresy grup
 nie zmieniają się. Blokady zgłaszane przez crawler nie trafiają do `POST /api/block` dla hostów relayowanych: żadne wyjście
-puli nie brało w nich udziału, więc nie ma czego degradować.
+puli nie brało w nich udziału, więc nie ma czego degradować. Gdy upstream odpowie `403`, Worker usuwa zapamiętane
+ciasteczka hosta i ponawia żądanie dwa razy z czystą sesją: z różnych wyjść Cloudflare ta sama strona raz przechodzi, a raz
+nie, więc pojedynczy `403` nie jest jeszcze ścianą.
 
 Konfiguracja:
 

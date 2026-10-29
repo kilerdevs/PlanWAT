@@ -38,6 +38,27 @@ function stubFetch(respond) {
   return { calls, restore: () => { globalThis.fetch = original; } };
 }
 
+function stubCaches(initial = []) {
+  const store = new Map(initial);
+  globalThis.caches = {
+    default: {
+      async match(request) {
+        const body = store.get(request.url);
+        return body === undefined ? undefined : new Response(body);
+      },
+      async put(request, response) {
+        store.set(request.url, await response.text());
+      },
+      async delete(request) {
+        store.delete(request.url);
+      },
+    },
+  };
+  return { store, restore: () => { delete globalThis.caches; } };
+}
+
+const COOKIE_KEY = 'https://planwat-relay.invalid/cookies/wtc.wat.edu.pl';
+
 test('host list defaults, trims and can be switched off', async () => {
   const { hostSet } = await worker();
   const defaults = hostSet({});
@@ -240,6 +261,58 @@ test('upstream cookies are kept per host between requests', async () => {
   } finally {
     stub.restore();
     delete globalThis.caches;
+  }
+});
+
+test('a 403 is retried from a fresh session and drops the cached cookies', async () => {
+  const handler = (await worker()).default;
+  const cache = stubCaches([[COOKIE_KEY, JSON.stringify(['incap_ses_1=stale'])]]);
+  let first = true;
+  const stub = stubFetch((url, init) => {
+    if (first) {
+      first = false;
+      assert.equal(init.headers.get('cookie'), 'incap_ses_1=stale');
+      return new Response('blocked', {
+        status: 403,
+        headers: { 'Set-Cookie': 'incap_ses_1=blocked; Path=/' },
+      });
+    }
+    assert.equal(init.headers.get('cookie'), null);  // the stale session did not ride along
+    return new Response('plan', {
+      status: 200,
+      headers: { 'Set-Cookie': 'incap_ses_1=fresh; Path=/' },
+    });
+  });
+  try {
+    const response = await handler.fetch(relayRequest('https://wtc.wat.edu.pl/Plany/index.xml'), ENV);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'plan');
+    assert.equal(stub.calls.length, 2);
+    assert.deepEqual(JSON.parse(cache.store.get(COOKIE_KEY)), ['incap_ses_1=fresh']);
+  } finally {
+    stub.restore();
+    cache.restore();
+  }
+});
+
+test('a wall that survives every retry is returned without poisoning the cookie cache', async () => {
+  const handler = (await worker()).default;
+  const cache = stubCaches([[COOKIE_KEY, JSON.stringify(['incap_ses_1=stale'])]]);
+  const stub = stubFetch(() => new Response('blocked', {
+    status: 403,
+    headers: { 'Set-Cookie': 'incap_ses_1=blocked; Path=/' },
+  }));
+  try {
+    const response = await handler.fetch(relayRequest('https://wtc.wat.edu.pl/'), ENV);
+    assert.equal(response.status, 403);
+    assert.equal(stub.calls.length, 3);  // initial + two fresh-session retries
+    assert.equal(stub.calls[0].init.headers.get('cookie'), 'incap_ses_1=stale');
+    assert.equal(stub.calls[1].init.headers.get('cookie'), null);
+    assert.equal(stub.calls[2].init.headers.get('cookie'), null);
+    assert.equal(cache.store.has(COOKIE_KEY), false);
+  } finally {
+    stub.restore();
+    cache.restore();
   }
 });
 

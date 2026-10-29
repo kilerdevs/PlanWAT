@@ -14,6 +14,9 @@ obsługuje WCY i wszystkie hosty, które sama przepuszcza. Runner korzysta z Wor
   ani `Content-Encoding`/`Content-Length` upstreamu. Ciasteczka ustawione przez upstream odtwarza w ramach łańcucha
   przekierowań jednego żądania i trzyma per host w Cache API przez 10 minut — Incapsula odpowiada na pierwsze wejście
   `307` na ten sam URL i oczekuje swoich ciasteczek w powtórce, a bez nich każde żądanie wygląda jak nowy gość.
+- `403` to jeszcze nie wyrok: Worker usuwa wtedy ciasteczka hosta i ponawia żądanie dwa razy z czystą sesją. Cloudflare
+  wychodzi na zewnątrz różnymi adresami i ta sama strona raz przechodzi, a raz dostaje `403`; dopiero odpowiedź po
+  ponowieniach wraca do crawlera, a ciasteczka strony blokady nie zostają w Cache API.
 - Oddaje `ETag` i `Last-Modified`, więc odświeżanie warunkowe (`304`) działa przez relay tak samo jak bezpośrednio.
 - WCY celowo nie ma na liście: ten host odpowiada Workerowi `403`, więc zostaje na rotującej puli proxy.
 
