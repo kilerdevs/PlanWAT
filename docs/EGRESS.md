@@ -127,6 +127,10 @@ Konfiguracja:
 | `PLANWAT_RELAY_HOSTS` | runner (opcjonalnie) | hosty relayowane, rozdzielone przecinkami/spacjami; puste = domyślna lista hostów z `relay.py`, `off` = wyłącz relay bez zmiany URL |
 | `EGRESS_DIRECT_HOSTS` | egress | dokładny hostname Workera (bez `https://`), żeby egress przepuścił go bezpośrednio; nie wpisuj całego `workers.dev`, chyba że świadomie |
 
+Relay zastępuje żądanie bezpośrednie, nie jest fallbackiem: host z listy zawsze idzie przez Workera. Plebania, której linia
+domowa przechodzi WLO, WML i WTC, powinna więc ustawić `PLANWAT_RELAY_HOSTS=wel,wig` (albo nie włączać relaya), bo
+domyślna lista obejmuje też WLO, WML i WTC, a Cloudflare odpowiada im 403.
+
 Wdrożenie Workera: [tools/egress/cloudflare/README.md](../tools/egress/cloudflare/README.md). Po `wrangler deploy` ustaw sekret
 `PLANWAT_RELAY_TOKEN`, wpisz adres i token do `.env` runnera, a hostname Workera do `EGRESS_DIRECT_HOSTS` w `.env` egressu
 (`deploy/runner/.env.example` ma wszystkie cztery miejsca). Sprawdzenie: `curl` z tokenem na
