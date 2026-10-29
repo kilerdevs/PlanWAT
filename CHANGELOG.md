@@ -23,19 +23,20 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   jego hostname bezpośrednio przez `EGRESS_DIRECT_HOSTS`. Oryginalny URL wydziału zostaje w `RelayResponse.url`, więc
   adresy grup, odświeżanie warunkowe i wykrywanie blokad działają bez zmian; raport blokady nie trafia do puli dla hosta
   relayowanego, bo żadne jej wyjście nie brało w nim udziału. 27.10.2026 Worker przechodził WLO, WEL, WML i WIG, a WTC
-  tylko z polskiej linii testowej — z zachodnich wyjść Cloudflare dostaje 403, więc WTC zostaje z plebanią. WCY nadal
-  odpowiadał mu `403` — dlatego WCY zostaje na puli (`EGRESS_FAIL_CLOSED`). Domyślnie relay jest wyłączony.
+  tylko z polskiej linii testowej; 29.10.2026 z zachodnich wyjść Cloudflare (AMS i FRA) przechodziły już tylko WEL i WIG,
+  a strony planów WLO, WML i WTC dostawały 403 — dlatego zostają one z plebanią. WCY nadal odpowiadał mu `403` — dlatego
+  WCY zostaje na puli (`EGRESS_FAIL_CLOSED`). Domyślnie relay jest wyłączony.
   Wdrożenie: [tools/egress/cloudflare/README.md](tools/egress/cloudflare/README.md).
 - **Numer zajęć w subskrypcji kalendarza:** tytuł każdego zdarzenia w `plan.ics` i `plan-przypomnienia.ics` mówi, które
   to spotkanie przedmiotu danego rodzaju, np. „Matematyka I (Wykład 3/15)”, tak jak strona pokazuje „Wykład · 3/15”.
   Liczone tak samo jak na stronie (cały semestr, po dacie, zajęcia wpisane dwa razy raz); jednorazowe zajęcia mają sam
   rodzaj. Pobrany ze strony plik `.ics` też ma numery, a strona zdejmuje je przy czytaniu kalendarza.
-- **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze IOE, WIG i WIM,
-  a z włączonym relayem Cloudflare może brać także WLO, WEL i WML (WIG miał już wcześniej); WTC nadal odpowiada 403
-  z zachodnich wyjść Cloudflare, więc zostaje z plebanią, a WCY wymaga puli. Bez relayu ściany WLO, WEL i WML
-  odrzucają jego adres (próba 27.10.2026), więc wtedy zwykle crawluje WIM. Plan skraca czekanie na ścianę do 5 minut
-  tylko wtedy, gdy każdy wydział udziału mógłby przejąć inny włączony runner: oracle bez plebanii czeka nadal pełne
-  30 minut tylko na WTC, którego northflank nie bierze.
+- **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze IOE, WIG i WIM.
+  Z włączonym relayem Cloudflare przechodzą mu jeszcze WEL i WIG, ale WLO, WML i WTC odpowiadają z zachodnich wyjść
+  Workera 403 (sprawdzone 29.10.2026 z AMS i FRA), a WEL dzieli ścieżkę polityki z WLO — dlatego `faculties` obejmują
+  tylko IOE, WIG i WIM, a te trzy działają także bez relaya. WCY wymaga puli, której northflank nie ma. Plan skraca
+  czekanie na ścianę do 5 minut tylko wtedy, gdy każdy wydział udziału mógłby przejąć inny włączony runner: oracle bez
+  plebanii czeka nadal pełne 30 minut, bo northflank nie bierze WLO, WEL, WML ani WTC.
 - **Pomoc między runnerami w trakcie przebiegu** (`tools/refresh/steal.py`, `board.py`): runner, który skończył swój
   udział, odciąża ten, który jeszcze crawluje: najpierw bierze część grup wydziału crawlowanego właśnie teraz
   (podzieloną według `speed`), a gdy ściana tego wydziału go nie wpuszcza, kolejno wydziały jeszcze niezaczęte. Właściciel
@@ -138,6 +139,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Flota wraca do wydziałów, które naprawdę przechodzą przez relay** (`tools/refresh/fleet.json`, `docs/`): 29.10.2026
+  strony planów WLO, WML i WTC odpowiadały Workerowi `403` z AMS i FRA (z WLO przechodziła tylko strona główna), a WEL
+  i WIG działały. Northflank bierze więc znowu tylko IOE, WIG i WIM, a plebania preferuje WTC, WLO i WEL, żeby jej czysta
+  linia domowa dostawała je pierwsza; relay zostaje dla WEL i WIG. Przy wszystkich runnerach plan daje plebanii WLO, WEL
+  i WTC, oracle IOE, WIG, WCY i WML, a northflankowi WIM; przy samym northflanku WLO, WEL, WCY, WML i WTC zostają
+  nieprzydzielone, zamiast trafiać do ściany.
 - **Jednakowy `speed` całej floty** (`tools/refresh/fleet.json`): plebania, oracle i northflank mają teraz `speed` 1,
   więc plan dzieli pracę po równo zamiast dawać plebanii cztery razy większy udział. Różnicowanie indeksów nadal
   działa, ale nie jest już domyślnym ustawieniem; szybsza maszyna po swoim udziale pomaga pozostałym (`steal.py`).

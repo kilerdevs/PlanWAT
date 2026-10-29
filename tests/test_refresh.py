@@ -2586,16 +2586,20 @@ class FleetPlan(unittest.TestCase):
     def test_the_real_fleet_keeps_each_faculty_where_it_gets_through(self):
         state = dict(self.STATE, faculties=dict(self.STATE['faculties'], wig={'last_count': 33}))
         wanted = self.WANTED + ['wig']
+        runners = {r['name']: r for r in fleet.load_fleet()}
+        self.assertEqual(runners['northflank']['faculties'], ['ioe', 'wig', 'wim'])
+        self.assertEqual(runners['plebania']['prefers'], ['wtc', 'wlo', 'wel'])
+        self.assertEqual(set(runners['oracle']['prefers']), {'wig', 'ioe'})
         all_up = {'planwat', 'planwat-plebania', 'planwat-oracle', 'planwat-northflank'}
-        result = fleet.plan(fleet.load_fleet(), wanted, state, all_up)
+        result = fleet.plan(list(runners.values()), wanted, state, all_up)
         shares = {s['runner']: set(s['faculties'].split(',')) for s in result['shards']}
         self.assertTrue({'wig', 'ioe'} <= shares['oracle'])  # preferences keep them off the others' share
-        self.assertIn('wtc', shares['plebania'])
-        self.assertIn('wcy', shares['plebania'])  # only this line has the pool WCY needs
-        self.assertFalse(shares['northflank'] & {'wcy', 'wtc'})  # limited by fleet.json's faculties
+        self.assertTrue({'wtc', 'wlo', 'wel'} <= shares['plebania'])  # only its clean direct line gets them
+        self.assertEqual(shares['northflank'], {'wim'})  # limited by fleet.json's faculties
+        self.assertNotIn('wcy', shares['northflank'])  # WCY needs the pool, which Northflank lacks
         self.assertEqual(set().union(*shares.values()), set(wanted))
-        # With equal speeds the rest balances by load; WLO/WEL and WML may ride the relay.
-        only_oracle = fleet.plan(fleet.load_fleet(), wanted, state, {'planwat', 'planwat-oracle'})
+        # With equal speeds the rest balances by load; nothing preferred is left to a walled line.
+        only_oracle = fleet.plan(list(runners.values()), wanted, state, {'planwat', 'planwat-oracle'})
         self.assertEqual(only_oracle['shards'][0]['faculties'].split(','), wanted)  # a preference never strands a faculty
 
     def test_the_real_fleet_has_one_speed_for_every_runner(self):

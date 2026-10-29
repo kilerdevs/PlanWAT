@@ -78,9 +78,9 @@ Bez tego egress odpowie `403` (domyślna odmowa), zanim żądanie dotrze do Work
 ### Northflank
 
 Northflank nie ma egressu, więc ustawia tylko `PLANWAT_RELAY_URL` i `PLANWAT_RELAY_TOKEN` (oraz opcjonalnie
-`PLANWAT_RELAY_HOSTS`). Dzięki temu może brać WLO, WEL, WML i WIG; WTC z zachodnich wyjść Workera dostaje 403, więc
-zostaje z plebanią, a WCY nadal wymaga puli, której Northflank nie ma. `faculties` w `tools/refresh/fleet.json` już
-uwzględniają tę listę — bez relaya usuń z niej WLO, WEL i WML, bo ściany odrzucą jego adres.
+`PLANWAT_RELAY_HOSTS`). Relay daje mu WEL i WIG, ale WLO, WML i WTC odpowiadają z zachodnich wyjść Workera 403
+(sprawdzone 29.10.2026 z AMS i FRA), a WEL dzieli ścieżkę polityki z WLO; WCY nadal wymaga puli, której Northflank nie
+ma. Dlatego `faculties` w `tools/refresh/fleet.json` obejmują tylko IOE, WIG i WIM — te trzy działają także bez relaya.
 
 ## Limity darmowego planu
 
