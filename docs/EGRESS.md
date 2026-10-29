@@ -130,7 +130,7 @@ Wdrożenie Workera: [tools/egress/cloudflare/README.md](../tools/egress/cloudfla
 `?url=https://wml.wat.edu.pl/` ma zwrócić 200, bez tokenu 401, a host spoza listy 403.
 
 Darmowy plan Cloudflare wystarcza: 100 000 żądań dziennie i 10 ms CPU na żądanie (stan 27.10.2026). Jeden pobrany dokument
-to jedno żądanie Workera; pełny przebieg wszystkich wydziałów to setki–tysiące stron, a przebiegi są co 2 h, więc dwa
+to jedno żądanie Workera; pełny przebieg wszystkich wydziałów to setki–tysiące stron, a przebiegi są co 2 h, więc trzy
 runnery mieszczą się w limicie. Worker nie jest otwartym proxy: token, tylko HTTPS, tylko dokładne hosty z listy, maksymalnie
 trzy przekierowania i każde na liście, bez ciasteczek i bez `Authorization` wywołującego w stronę wydziału. Wyciekły token
 unieważnisz nowym sekretem i aktualizacją runnerów.

@@ -86,7 +86,7 @@ uwzględniają tę listę — bez relaya usuń z niej WLO, WEL i WML, bo ściany
 
 - 100 000 żądań dziennie i 10 ms CPU na żądanie (stan na 2026-10-27). Relay zużywa jedno żądanie na stronę;
   przekierowanie to dodatkowe podżądanie, ale nadal jedno żądanie Workera.
-- Pełny przebieg wszystkich wydziałów to rząd kilkuset–tysiąca stron, a przebiegi są co 2 h; przy dwóch runnerach
+- Pełny przebieg wszystkich wydziałów to rząd kilkuset–tysiąca stron, a przebiegi są co 2 h; przy trzech runnerach
   dzienny ruch pozostaje poniżej limitu. Gdyby limit został osiągnięty, Worker zacznie odpowiadać błędami, a crawler
   potraktuje to jak chwilową awarię i ponowi próbę w następnym przebiegu.
 - Cloudflare może zmienić limity; sprawdź aktualny cennik przed wdrożeniem.

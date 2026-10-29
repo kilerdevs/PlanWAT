@@ -284,7 +284,7 @@ zapytanie naraz na politykę.
 
 1. Najpierw próbuje wydziału, który tamten **crawluje teraz**: sam wylicza jego grupy (to jedno zapytanie o listę, i tak
    potrzebne do adresów stron) i prosi o **część** pozostałych grup. Właściciel oddaje koniec swojej listy, podzielony
-   według `speed` obu runnerów (przy równych indeksach po połowie). Gdy zostało mniej niż
+   według `speed` obu stron (przy równych indeksach po połowie). Gdy zostało mniej niż
    8 grup albo udział wyszedłby mniejszy niż 4, właściciel kończy sam. Gdy właściciel stoi akurat przed ścianą, oddaje
    **wszystko**, co mu zostało, i przestaje czekać.
 2. Gdy ściana tego wydziału nie wpuszcza pomocnika, ten próbuje kolejno **wydziałów, których tamten jeszcze nie zaczął**
