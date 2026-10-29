@@ -2,6 +2,127 @@
  "version": 1,
  "runs": [
   {
+   "id": 40942759019,
+   "number": 92,
+   "attempt": 1,
+   "event": "schedule",
+   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/40942759019",
+   "planned": "2026-10-29T19:44:25",
+   "ended": "2026-10-29T20:01:57",
+   "result": "incomplete",
+   "changed": 0,
+   "checked": 2,
+   "not_ready": 0,
+   "runners": [
+    {
+     "name": "plebania",
+     "faculties": [
+      "wlo",
+      "wel",
+      "wcy",
+      "wml",
+      "wtc"
+     ],
+     "status": "missing",
+     "minutes": null,
+     "changed": 0,
+     "wave": 1
+    },
+    {
+     "name": "oracle",
+     "faculties": [
+      "ioe",
+      "wig"
+     ],
+     "status": "done",
+     "minutes": 8,
+     "changed": 0,
+     "wave": 1,
+     "helped": {
+      "wcy": "plebania"
+     }
+    },
+    {
+     "name": "northflank",
+     "faculties": [
+      "wim"
+     ],
+     "status": "done",
+     "minutes": 2,
+     "changed": 0,
+     "wave": 1
+    }
+   ],
+   "offline": [],
+   "unassigned": [],
+   "faculties": [
+    {
+     "id": "wlo",
+     "runner": "plebania",
+     "fresh": false
+    },
+    {
+     "id": "wel",
+     "runner": "plebania",
+     "fresh": false
+    },
+    {
+     "id": "wcy",
+     "runner": "plebania",
+     "helpers": [
+      "oracle"
+     ],
+     "fresh": false
+    },
+    {
+     "id": "wml",
+     "runner": "plebania",
+     "fresh": false
+    },
+    {
+     "id": "wtc",
+     "runner": "plebania",
+     "fresh": false
+    },
+    {
+     "id": "ioe",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 2,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wig",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 0,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wim",
+     "runner": "northflank",
+     "fresh": true,
+     "checked": 0,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    }
+   ]
+  },
+  {
    "id": 40920279500,
    "number": 91,
    "attempt": 1,
@@ -1524,162 +1645,6 @@
      ],
      "fresh": true,
      "checked": 72,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 3,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "wml",
-     "runner": "northflank",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": true,
-     "degraded": false,
-     "cause": "wall"
-    }
-   ]
-  },
-  {
-   "id": 40615344614,
-   "number": 82,
-   "attempt": 1,
-   "event": "schedule",
-   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/40615344614",
-   "planned": "2026-10-28T01:29:31",
-   "ended": "2026-10-28T02:01:45",
-   "result": "blocked",
-   "changed": 9,
-   "checked": 58,
-   "not_ready": 51,
-   "runners": [
-    {
-     "name": "oracle",
-     "faculties": [
-      "wim",
-      "ioe",
-      "wcy",
-      "wtc",
-      "wig"
-     ],
-     "status": "blocked",
-     "minutes": 9,
-     "changed": 9,
-     "wave": 1,
-     "helped": {
-      "wel": "northflank"
-     },
-     "blocked_on": [
-      "wtc"
-     ]
-    },
-    {
-     "name": "northflank",
-     "faculties": [
-      "wlo",
-      "wel",
-      "wml"
-     ],
-     "status": "blocked",
-     "minutes": 31,
-     "changed": 0,
-     "wave": 1,
-     "blocked_on": [
-      "wlo",
-      "wml"
-     ]
-    }
-   ],
-   "offline": [
-    "plebania"
-   ],
-   "unassigned": [],
-   "faculties": [
-    {
-     "id": "wim",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 1,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "ioe",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 2,
-     "changed": 1,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "wcy",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 43,
-     "changed": 8,
-     "not_ready": 51,
-     "skipped": 2,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "wtc",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": true,
-     "degraded": false,
-     "cause": "wall"
-    },
-    {
-     "id": "wig",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "wlo",
-     "runner": "northflank",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": true,
-     "degraded": false,
-     "cause": "wall"
-    },
-    {
-     "id": "wel",
-     "runner": "northflank",
-     "helpers": [
-      "oracle"
-     ],
-     "fresh": true,
-     "checked": 12,
      "changed": 0,
      "not_ready": 0,
      "skipped": 3,
