@@ -13,7 +13,9 @@
  *     upstream sets are replayed along that request's redirect chain and kept per host for a
  *     short while (Incapsula answers a first visit with a same-URL 307 plus cookies, and treats
  *     a client that keeps them as one session), and upstream Set-Cookie, Content-Encoding and
- *     Content-Length headers are not returned.
+ *     Content-Length headers are not returned. A 403 drops the cached cookies and is retried
+ *     from a fresh session before it is returned: the wall commonly lets the same page through
+ *     a moment later, from another egress.
  *
  * Configuration: see wrangler.toml and README.md.
  */
@@ -58,6 +60,11 @@ const MAX_REDIRECTS = 3;
 const MAX_TARGET_LENGTH = 4096;
 const FETCH_TIMEOUT_MS = 45000;
 const COOKIE_TTL_S = 600;
+// Incapsula answers a relay request with 403 often enough that the same page works a moment
+// later from another Cloudflare egress or with a fresh session. A wall is a verdict only after
+// these retries; each starts without the cached cookies that may belong to the egress that
+// just answered with the block.
+const WALL_RETRIES = 2;
 
 class RelayError extends Error {
   constructor(status, message) {
@@ -180,6 +187,23 @@ async function saveCookies(host, jar) {
   }
 }
 
+async function forgetCookies(host) {
+  if (typeof caches === 'undefined') return;
+  try {
+    if (typeof caches.default.delete === 'function') await caches.default.delete(cookieCacheKey(host));
+  } catch {
+    // The cache is only an optimisation; a miss just starts a new session.
+  }
+}
+
+async function discard(response) {
+  try {
+    if (response.body) await response.body.cancel();
+  } catch {
+    // The body may already be closed or consumed.
+  }
+}
+
 function responseHeaders(upstream) {
   const headers = new Headers();
   for (const name of RESPONSE_HEADERS) {
@@ -250,12 +274,26 @@ export default {
     const hosts = hostSet(env);
     if (!hosts.size) return textResponse(403, 'relay has no allowed hosts');
 
+    const host = target.hostname;
     try {
-      const jar = await loadCookies(target.hostname);
-      const upstream = await fetchAllowed(target, request, hosts, MAX_REDIRECTS, new Set(), jar);
-      const saving = saveCookies(target.hostname, jar);
-      if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(saving);
-      else await saving;
+      let jar = await loadCookies(host);
+      let upstream = await fetchAllowed(target, request, hosts, MAX_REDIRECTS, new Set(), jar);
+      for (let attempt = 0; upstream.status === 403 && attempt < WALL_RETRIES; attempt += 1) {
+        // A cookie cached on one Cloudflare egress can be the very thing Incapsula refuses on
+        // another. Drop it and start the retry as a new visitor before calling this a wall.
+        await forgetCookies(host);
+        await discard(upstream);
+        jar = new Map();
+        upstream = await fetchAllowed(target, request, hosts, MAX_REDIRECTS, new Set(), jar);
+      }
+      if (upstream.status === 403) {
+        // Do not persist the block page's cookies: the next request deserves a clean start.
+        await forgetCookies(host);
+      } else {
+        const saving = saveCookies(host, jar);
+        if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(saving);
+        else await saving;
+      }
       const noBody = request.method === 'HEAD'
         || upstream.status === 204
         || upstream.status === 205

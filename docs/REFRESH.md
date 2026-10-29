@@ -203,7 +203,9 @@ pomaga pozostałym runnerom w trakcie przebiegu (`steal.py`).
 
 **Relay Cloudflare** (`PLANWAT_RELAY_URL`, szczegóły w [docs/EGRESS.md](EGRESS.md)) jest opcjonalny i domyślnie wyłączony:
 gdy linia runnera jest za ścianą, WLO, WEL, WML i WIG idą przez Worker zamiast bezpośrednio, a WTC próbuje przez Worker
-(z zachodnich wyjść Cloudflare dostaje 403, więc zwykle zostaje z plebanią); WCY zostaje na puli.
+(z zachodnich wyjść Cloudflare dostaje 403, więc zwykle zostaje z plebanią); WCY zostaje na puli. Cloudflare odpowiada
+nierówno — ta sama strona raz przechodzi, a raz dostaje 403 — więc Worker ponawia 403 dwa razy bez zapamiętanych
+ciasteczek (i usuwa ciasteczka strony blokady), zanim crawler uzna odpowiedź za ścianę.
 Na oracle wystarczy ustawić URL i token relaya oraz dopisać hostname Workera do `EGRESS_DIRECT_HOSTS` egressu; Northflank
 nie ma egressu, więc ustawia tylko URL i token, a jego `faculties` w `fleet.json` obejmują już WLO, WEL i WML (bez WCY
 i WTC). Bez `PLANWAT_RELAY_*` usuń te trzy wydziały z listy Northflanku — ich ściany odrzucają jego adres.
@@ -248,7 +250,8 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
    zablokowaną ścieżkę po krótkim czekaniu, bo plan widział drugi runner, a ten zdążył zgasnąć, ścieżka wraca do niego
    na resztę czekania (25 minut), o ile nadal jest włączony. Wtedy każdy wydział i tak dostaje pełne 30 minut. Bez
    drugiego włączonego runnera wydział, który miał już pełne czekanie, czeka na następny przebieg, jak dawniej.
-   Anulowanie całego przebiegu zatrzymuje handoff i przejęcie.
+   Anulowanie całego przebiegu zatrzymuje handoff, przejęcie i report: anulowany przebieg nie ma wyniku, więc nie
+   trafia do historii jako zablokowany.
 4. **takeover** (macierz, tak jak crawl): przejmujący runner crawluje te wydziały, czekając na ścianę pełne 30 minut, bo
    po nim nikt już ich nie przejmie. Zaczyna tam, gdzie poprzedni skończył: grupy, które tamten sprawdził i wypchnął, są
    świeże i zostają pominięte. Przejmowanie jest jednokrotne (jeden etap), więc przebieg nie może krążyć w kółko.
@@ -281,7 +284,7 @@ zapytanie naraz na politykę.
 
 1. Najpierw próbuje wydziału, który tamten **crawluje teraz**: sam wylicza jego grupy (to jedno zapytanie o listę, i tak
    potrzebne do adresów stron) i prosi o **część** pozostałych grup. Właściciel oddaje koniec swojej listy, podzielony
-   według `speed` obu runnerów (przy równych indeksach po połowie). Gdy zostało mniej niż
+   według `speed` obu stron (przy równych indeksach po połowie). Gdy zostało mniej niż
    8 grup albo udział wyszedłby mniejszy niż 4, właściciel kończy sam. Gdy właściciel stoi akurat przed ścianą, oddaje
    **wszystko**, co mu zostało, i przestaje czekać.
 2. Gdy ściana tego wydziału nie wpuszcza pomocnika, ten próbuje kolejno **wydziałów, których tamten jeszcze nie zaczął**

@@ -111,7 +111,9 @@ runner -> egress (bezpośrednio, hostname Workera w EGRESS_DIRECT_HOSTS) -> Work
 Runner wysyła `GET <PLANWAT_RELAY_URL>?url=<zakodowany URL>` z `Authorization: Bearer <token>`, a Worker oddaje status,
 `ETag`/`Last-Modified` i treść upstreamu. `RelayResponse.url` to oryginalny adres wydziału, więc względne linki i adresy grup
 nie zmieniają się. Blokady zgłaszane przez crawler nie trafiają do `POST /api/block` dla hostów relayowanych: żadne wyjście
-puli nie brało w nich udziału, więc nie ma czego degradować.
+puli nie brało w nich udziału, więc nie ma czego degradować. Gdy upstream odpowie `403`, Worker usuwa zapamiętane
+ciasteczka hosta i ponawia żądanie dwa razy z czystą sesją: z różnych wyjść Cloudflare ta sama strona raz przechodzi, a raz
+nie, więc pojedynczy `403` nie jest jeszcze ścianą.
 
 Konfiguracja:
 
@@ -128,7 +130,7 @@ Wdrożenie Workera: [tools/egress/cloudflare/README.md](../tools/egress/cloudfla
 `?url=https://wml.wat.edu.pl/` ma zwrócić 200, bez tokenu 401, a host spoza listy 403.
 
 Darmowy plan Cloudflare wystarcza: 100 000 żądań dziennie i 10 ms CPU na żądanie (stan 27.10.2026). Jeden pobrany dokument
-to jedno żądanie Workera; pełny przebieg wszystkich wydziałów to setki–tysiące stron, a przebiegi są co 2 h, więc dwa
+to jedno żądanie Workera; pełny przebieg wszystkich wydziałów to setki–tysiące stron, a przebiegi są co 2 h, więc trzy
 runnery mieszczą się w limicie. Worker nie jest otwartym proxy: token, tylko HTTPS, tylko dokładne hosty z listy, maksymalnie
 trzy przekierowania i każde na liście, bez ciasteczek i bez `Authorization` wywołującego w stronę wydziału. Wyciekły token
 unieważnisz nowym sekretem i aktualizacją runnerów.

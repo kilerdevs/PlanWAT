@@ -173,6 +173,15 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Relay Cloudflare nie poddaje się pojedynczemu `403`** (`tools/egress/cloudflare/worker.js`): Cloudflare wychodzi na
+  zewnątrz różnymi adresami i ta sama strona raz przechodzi, a raz dostaje `403`, więc Worker po `403` usuwa zapamiętane
+  ciasteczka hosta i ponawia żądanie dwa razy z czystą sesją; ciasteczka strony blokady nie trafiają do Cache API.
+  Wcześniej jeden pechowy `403` wystarczał, by runner uznał WLO albo WML za zablokowane i zostawił wydział handoffowi
+  (przebieg 88 przy wyłączonej plebanii).
+- **Anulowany przebieg nie zapisuje się jako zablokowany** (`.github/workflows/refresh.yml`): zadanie report ma teraz
+  `!cancelled()`, więc anulowanie całego przebiegu (np. gdy w połowie zgaśnie plebania) nie dopisuje do
+  `refresh-runs.json` wyniku `blocked` ani nie otwiera zgłoszenia. Przebieg, który po prostu nie ma wyniku, nie jest
+  przebiegiem nieudanym.
 - **WIM: grupy, których plan jest tylko na stronie WCY** (`WME25BX3S1` i 5 innych `WME…B…`): nikt ich nie crawlował, bo
   indeks WIM ich nie wymienia. Teraz bierze je WCY, ale tylko te, których WIM nie ma, więc żadna grupa nie ma dwóch
   kalendarzy.
