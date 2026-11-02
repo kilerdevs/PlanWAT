@@ -269,9 +269,10 @@ IOE z oracle przeszedł czysto 9 przebiegów z 9. Plebania preferuje WTC, WLO i 
 przebiegach z 4, zwykłe HTTPS z maszyny dostaje 403), a 29.10.2026 WLO i WTC odpowiadały 403 także przez relay Cloudflare
 z AMS i FRA; WEL dzieli z WLO jedną ścieżkę polityki (`wat-edge`). Gdy linia plebanii jest czysta, tylko ona przechodzi te
 ściany; relay daje pozostałym runnerom WEL i WIG, ale nie WLO, WML ani WTC.
-Przy wszystkich włączonych plebania dostaje WLO, WEL i WTC (preferencje), a resztę dzielą równo: oracle IOE, WIG, WCY
-i WML, northflank WIM; bez plebanii oracle bierze wszystko poza WIM, northflank zostaje przy WIM, a gdy online jest
-tylko northflank, WLO, WEL, WCY, WML i WTC zostają nieprzydzielone. Runner może też robić **spis** wydziału
+Przy wszystkich włączonych plebania dostaje WLO, WEL i WTC (preferencje), a resztę plan dzieli według obciążenia i
+historii ścian; northflank może dostać tylko WIM. W przebiegu 91 (29.10.2026) plebania wzięła też WCY i WML, a oracle
+IOE i WIG. Bez plebanii oracle bierze wszystko poza WIM, northflank zostaje przy WIM, a gdy online jest tylko
+northflank, WLO, WEL, WCY, WML i WTC zostają nieprzydzielone. Runner może też robić **spis** wydziału
 (`census`): plebania robi spis WIG, bo tylko jej łącze widzi strony Joomli wydziału (zob. uwagi o WIG wyżej).
 
 #### Pomoc w trakcie przebiegu
