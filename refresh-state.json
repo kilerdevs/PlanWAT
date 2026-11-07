@@ -58,8 +58,8 @@
    ]
   },
   "wim": {
-   "blocked_at": "2026-10-26T19:04:58",
-   "cause": "flaky",
+   "blocked_at": null,
+   "cause": null,
    "durations": [
     {
      "at_iso": "2026-10-17T09:06:52",
@@ -188,10 +188,10 @@
   "wim": {
    "blocked_at": null,
    "last_count": 88,
-   "last_ok": "2026-11-05T07:07:40",
+   "last_ok": "2026-11-05T07:07:29",
    "run": {
     "ahead": false,
-    "at": "2026-11-07T16:59:19",
+    "at": "2026-11-07T22:06:23",
     "blocked": false,
     "cause": "listing",
     "changed": 0,
@@ -200,11 +200,6 @@
     "not_ready": 0,
     "skipped": 0,
     "term": "2026-27-zima"
-   },
-   "wait": {
-    "probes": 1,
-    "recovered": true,
-    "waited": 12
    }
   },
   "wlo": {
@@ -361,10 +356,10 @@
   },
   "IOE25HX1S0": {
    "changed": "2026-11-06T07:06:01",
-   "checked": "2026-11-07T16:35:14",
-   "hash": "adce4df38222fe0149f83d363e0d65cb627f8a834aae9378d4f89071f6521bf8",
+   "checked": "2026-11-07T22:06:47",
+   "hash": "046791906e2204aab7b5530edee2883a4a722468688eabd3355407b5214badd2",
    "modified": "Fri, 06 Nov 2026 09:46:26 GMT",
-   "streak": 5,
+   "streak": 6,
    "term": "2026-27-zima"
   },
   "IOE25VX1S1": {
@@ -401,10 +396,10 @@
   },
   "IOE25WX1S1": {
    "changed": "2026-10-31T12:52:53",
-   "checked": "2026-11-07T16:35:19",
-   "hash": "235e96aaf9eee37e4048106c617fe28200f77aea093e8b46e682ed6d2e979470",
+   "checked": "2026-11-07T22:06:52",
+   "hash": "471165a369490823e8d6d3969378d1a986e02f95f8eb00cb28f1024676638f6b",
    "modified": "Fri, 06 Nov 2026 09:46:29 GMT",
-   "streak": 24,
+   "streak": 25,
    "term": "2026-27-zima"
   },
   "IOE26HX1S0": {
@@ -417,18 +412,18 @@
   },
   "IOE26VX1S1": {
    "changed": "2026-11-03T12:08:46",
-   "checked": "2026-11-07T16:35:23",
-   "hash": "4b0c0bf1b5d6e1d547cd7d9ee573bc897ffc8bb1dd44581d61030e05b3d430dd",
+   "checked": "2026-11-07T22:06:55",
+   "hash": "1ff2a35e896248fb7b2c9c1471dc57801e2338919fa9c9134d1580bc396e3a58",
    "modified": "Fri, 06 Nov 2026 09:46:30 GMT",
-   "streak": 14,
+   "streak": 15,
    "term": "2026-27-zima"
   },
   "IOE26WX1S1": {
    "changed": "2026-10-28T16:38:28",
-   "checked": "2026-11-07T16:35:16",
-   "hash": "204a4f761e50e768c7090d99e9699aea6183b37ee01d0519943de5725f47a05a",
+   "checked": "2026-11-07T22:06:50",
+   "hash": "1b7ca8ce34a5da16afaa12eef3f4f251baf8b0236ce9352569cd2600ac05bc88",
    "modified": "Fri, 06 Nov 2026 09:46:31 GMT",
-   "streak": 35,
+   "streak": 36,
    "term": "2026-27-zima"
   },
   "WCY20IT1S0": {
@@ -3587,10 +3582,10 @@
   },
   "WIG26BX1N1": {
    "changed": "2026-10-26T22:50:26",
-   "checked": "2026-11-07T16:36:33",
+   "checked": "2026-11-07T22:07:48",
    "hash": "6859327e5a6f02ca60297b6297ce50da9681da62587485dd740df97d0a50d6cc",
    "modified": "Mon, 31 Aug 2026 08:20:05 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26BX1S1": {
@@ -3627,10 +3622,10 @@
   },
   "WIG26BX3S1": {
    "changed": "2026-10-26T22:50:44",
-   "checked": "2026-11-07T16:36:05",
+   "checked": "2026-11-07T22:07:14",
    "hash": "10cdfda1aa3ca303911ce83c3d271b2ee1a951e49e8a449ea93a52c393bfdd35",
    "modified": "Thu, 01 Oct 2026 07:36:02 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26BX4S1": {
@@ -3643,10 +3638,10 @@
   },
   "WIG26BX5S1": {
    "changed": "2026-10-26T22:50:53",
-   "checked": "2026-11-07T16:36:21",
+   "checked": "2026-11-07T22:07:36",
    "hash": "0c9f12eef151ba79a1c075c2d104c257b782b0d5a8b65f13037617e3a96b3edd",
    "modified": "Thu, 01 Oct 2026 07:36:12 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26BX6S1": {
@@ -3659,34 +3654,34 @@
   },
   "WIG26CX1S0": {
    "changed": "2026-10-26T22:51:01",
-   "checked": "2026-11-07T16:36:17",
+   "checked": "2026-11-07T22:07:29",
    "hash": "fd82d6810d51c7d10d1628bf8ce9ad4e389b2cb9d9ff3e9c6a346d50f2cbeb2b",
    "modified": "Thu, 01 Oct 2026 07:35:20 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26CX2S0": {
    "changed": "2026-10-26T22:51:04",
-   "checked": "2026-11-07T16:36:27",
+   "checked": "2026-11-07T22:07:44",
    "hash": "e9422da05d1a9cd99c08035a9f78f07a26047484648611338589c212a19a5981",
    "modified": "Thu, 01 Oct 2026 07:35:24 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26CX3S0": {
    "changed": "2026-10-26T22:51:06",
-   "checked": "2026-11-07T16:36:19",
+   "checked": "2026-11-07T22:07:31",
    "hash": "4faff0ffa784f5c88a8a9acf8f2b4d19d78581c495ef6a68a8302a36bd5918e8",
    "modified": "Thu, 01 Oct 2026 07:35:29 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26GW1S0": {
    "changed": "2026-10-26T22:51:09",
-   "checked": "2026-11-07T16:36:09",
+   "checked": "2026-11-07T22:07:18",
    "hash": "4ad8353d89f2748c0831ce83700b957d22c72cb224e75bcd2c6740f5cdd7ec8e",
    "modified": "Wed, 16 Sep 2026 12:21:23 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26GW2S0": {
@@ -3707,50 +3702,50 @@
   },
   "WIG26GW4S0": {
    "changed": "2026-10-26T22:51:21",
-   "checked": "2026-11-07T16:36:31",
+   "checked": "2026-11-07T22:07:46",
    "hash": "4d168721560bfadf36480f6bce34cc071f0b6d23d6041c4da4a64098028d1140",
    "modified": "Wed, 16 Sep 2026 12:21:33 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26GW5S0": {
    "changed": "2026-10-26T22:51:25",
-   "checked": "2026-11-07T16:36:36",
+   "checked": "2026-11-07T22:07:50",
    "hash": "29dcfe26d595bfee0b98490dcd840bded32c2d3414f3e09ca296b59fac9ce3cf",
    "modified": "Wed, 16 Sep 2026 12:21:36 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26IX1S1": {
    "changed": "2026-10-26T22:51:28",
-   "checked": "2026-11-07T16:36:39",
+   "checked": "2026-11-07T22:07:53",
    "hash": "81c0620a3e5068bfd54469c9d5e7bf87810af5671345ecea5d1be642e87081b8",
    "modified": "Thu, 01 Oct 2026 07:38:07 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26IX2S1": {
    "changed": "2026-10-26T22:51:32",
-   "checked": "2026-11-07T16:36:24",
+   "checked": "2026-11-07T22:07:40",
    "hash": "a3c11b37184bdc051d39fea20efb86881348b83c59a80f49f5d6a936dd479eba",
    "modified": "Thu, 01 Oct 2026 07:38:11 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26IX3S1": {
    "changed": "2026-10-26T22:51:36",
-   "checked": "2026-11-07T16:36:15",
+   "checked": "2026-11-07T22:07:26",
    "hash": "25801c2ced657c502392025f64ef8adeee4efe2f06d91126d3469dc88d36fc51",
    "modified": "Thu, 01 Oct 2026 07:38:14 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26KX1S1": {
    "changed": "2026-10-26T22:51:38",
-   "checked": "2026-11-07T16:36:13",
+   "checked": "2026-11-07T22:07:22",
    "hash": "5d49ab1834cd1eaf739d44ddbf77d5daa5f9407d6a804ce0c215f5d1cae0ef0c",
    "modified": "Thu, 01 Oct 2026 07:36:50 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26KX2S1": {
@@ -3763,10 +3758,10 @@
   },
   "WIG26KX3S1": {
    "changed": "2026-10-26T22:51:45",
-   "checked": "2026-11-07T16:36:42",
+   "checked": "2026-11-07T22:07:56",
    "hash": "ca994791f13f80e68fc301a678df61d2391ef2bdae59891b6520b0804e5143be",
    "modified": "Thu, 01 Oct 2026 07:36:57 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WIG26KX4S1": {
@@ -3811,10 +3806,10 @@
   },
   "WIG26TX3S1": {
    "changed": "2026-10-26T22:52:06",
-   "checked": "2026-11-07T16:36:07",
+   "checked": "2026-11-07T22:07:17",
    "hash": "5761f0c523bc3898c055b8efa17046212404588a11057fa0db3b2fd273db3741",
    "modified": "Thu, 01 Oct 2026 07:39:12 GMT",
-   "streak": 42,
+   "streak": 43,
    "term": "2026-27-zima"
   },
   "WLO22FO1S0": {
@@ -7253,7 +7248,7 @@
  },
  "robots": {
   "ioe.wat.edu.pl": {
-   "fetched_iso": "2026-11-06T21:41:27",
+   "fetched_iso": "2026-11-07T22:06:47",
    "text": "User-agent: *\nDisallow: /wp-admin/\nAllow: /wp-admin/admin-ajax.php\n\nSitemap: https://ioe.wat.edu.pl/wp-sitemap.xml\n"
   },
   "planzajec.wcy.wat.edu.pl": {
@@ -7277,7 +7272,7 @@
    "text": "User-agent: *\nDisallow: /wp-admin/\nAllow: /wp-admin/admin-ajax.php\n\nSitemap: https://wtc.wat.edu.pl/wp-sitemap.xml\n"
   },
   "www.wig.wat.edu.pl": {
-   "fetched_iso": "2026-11-06T21:42:04",
+   "fetched_iso": "2026-11-07T22:07:14",
    "text": "# If the Joomla site is installed within a folder such as at\n# e.g. www.example.com/joomla/ the robots.txt file MUST be\n# moved to the site root at e.g. www.example.com/robots.txt\n# AND the joomla folder name MUST be prefixed to the disallowed\n# path, e.g. the Disallow rule for the /administrator/ folder\n# MUST be changed to read Disallow: /joomla/administrator/\n#\n# For more information about the robots.txt standard, see:\n# http://www.robotstxt.org/orig.html\n#\n# For syntax checking, see:\n# http://tool.motoricerca.info/robots-checker.phtml\n\nUser-agent: *\nDisallow: /administrator/\nDisallow: /bin/\nDisallow: /cache/\nDisallow: /cli/\nDisallow: /components/\nDisallow: /includes/\nDisallow: /installation/\nDisallow: /language/\nDisallow: /layouts/\nDisallow: /libraries/\nDisallow: /logs/\nDisallow: /modules/\nDisallow: /plugins/\nDisallow: /tmp/\n\n"
   },
   "www.wim.wat.edu.pl": {
