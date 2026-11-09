@@ -32,6 +32,20 @@ TODAY = dt.date(2026, 10, 15)
 INDEX = ('<?xml version="1.0"?><index><period name="zima"/>'
          '<gro href="WLO26AX1S1.htm"/><gro href="Kurs_-_Cos_10.26.htm"/></index>')
 WLO_CFG = {'driver': 'plansoft', 'label': 'WLO', 'prefix': 'WLO', 'base': 'https://example.test/plan/{season}/'}
+WIM_CFG = {'driver': 'plansoft', 'label': 'WIM', 'prefix': '', 'base': 'https://example.test/rozklady/{season}/'}
+WIM_HTML_INDEX = (
+    '<!DOCTYPE html><html><body><table class="contents">'
+    '<tr class="contentsHeader"><td>Grupy</td><td>Wyk&#322;adowcy</td><td>Zasoby</td></tr><tr>'
+    '<td class="contentsColumn"><div id="container"><ul class="menu">'
+    '<a href="SDRMXCSS24Z_-_Ceg.htm" data-week-plan="SDRMXCSS24Z_-_Ceg">SDRMXCSS24Z - Ceg</a>'
+    '<a href="WME23BE1S1.htm" data-week-plan="WME23BE1S1">WME23BE1S1</a>'
+    '</ul></div></td>'
+    '<td class="contentsColumn"><div><ul class="menu">'
+    '<a href="mgr_inz_Cota_Ryszard.htm" data-week-plan="mgr_inz_Cota_Ryszard">mgr inż. Cota Ryszard</a>'
+    '</ul></div></td>'
+    '<td class="contentsColumn"><div><ul class="menu">'
+    '<a href="108_54.htm" data-week-plan="108_54">108/54</a>'
+    '</ul></div></td></tr></table></body></html>')
 WTC_CFG = {'driver': 'wtc', 'label': 'WTC', 'prefix': 'WTC', 'base': 'https://example.test/plany/'}
 WTC_INDEX = ('<?xml version="1.0"?><index><period>WTC zima 2026/2027</period>'
              '<gro href="WTC26M1.pdf"/><gro href="WTC26M2.pdf"/><gro href="Kurs_-_Cos.pdf"/></index>')
@@ -624,6 +638,18 @@ class WcyReadiness(unittest.TestCase):
         self.assertEqual([i.code for i in d.discover(FakeSession(routes))], ['WCY26KY3S1', 'WME25BX3S1'])
         del routes['https://example.test/wim/zima/index.xml']  # the owner's index unreadable: none is taken
         self.assertEqual([i.code for i in d.discover(FakeSession(routes))], ['WCY26KY3S1'])
+
+    def test_the_owner_index_html_counts_as_the_owner_listing(self):
+        menu = ('<select><option value="/pl/rozklad?grupa_id=WCY26KY3S1">x</option>'
+                '<option value="/pl/rozklad?grupa_id=WME23BE1S1">x</option>'
+                '<option value="/pl/rozklad?grupa_id=WME25BX3S1">x</option></select>')
+        cfg = dict(self.driver().cfg, foreign={'prefix': 'WME',
+                                               'owner_index': 'https://example.test/wim/{season}/index.xml'})
+        routes = {'https://example.test/pl/rozklad': Resp(200, menu.encode()),
+                  'https://example.test/wim/zima/index.xml': Resp(404, b''),
+                  'https://example.test/wim/zima/index.html': Resp(200, WIM_HTML_INDEX.encode())}
+        self.assertEqual([i.code for i in wcy.Driver('wcy', cfg, TODAY).discover(FakeSession(routes))],
+                         ['WCY26KY3S1', 'WME25BX3S1'])
 
     def test_a_room_part_naming_a_person_is_dropped_not_the_whole_plan(self):
         # WTC22CO1S0 was rejected in every pass: a teacher read into the room column
@@ -2237,6 +2263,39 @@ class PlansoftXmlFallbackTest(unittest.TestCase):
 
     def test_garbage_still_lists_nothing(self):
         self.assertEqual(plansoft.Driver('wlo', WLO_CFG, TODAY).items('not xml at all'), [])
+
+
+class PlansoftHtmlIndexTest(unittest.TestCase):
+    """WIM replaced index.xml with the same Plansoft export as index.html (November 2026)."""
+
+    base = WIM_CFG['base'].format(season='zima')
+
+    def test_html_export_lists_only_the_groups_column(self):
+        items = plansoft.Driver('wim', WIM_CFG, TODAY).items(WIM_HTML_INDEX)
+        self.assertEqual([i.code for i in items], ['WME23BE1S1'])
+        self.assertEqual(items[0].url, self.base + 'WME23BE1S1.htm')
+        self.assertEqual(items[0].page, 'WME23BE1S1')
+
+    def test_discover_reads_index_html_when_index_xml_is_gone(self):
+        session = FakeSession({self.base + 'index.xml': Resp(404, b'not found'),
+                               self.base + 'index.html': Resp(200, WIM_HTML_INDEX.encode())})
+        items = plansoft.Driver('wim', WIM_CFG, TODAY).discover(session)
+        self.assertEqual([i.code for i in items], ['WME23BE1S1'])
+        self.assertEqual(session.seen, [self.base + 'index.xml', self.base + 'index.html'])
+
+    def test_index_xml_still_wins_without_touching_the_html(self):
+        index = '<xml><data><gro href="WME23BE1S1.htm"/></data></xml>'
+        session = FakeSession({self.base + 'index.xml': Resp(200, index.encode()),
+                               self.base + 'index.html': Resp(200, WIM_HTML_INDEX.encode())})
+        items = plansoft.Driver('wim', WIM_CFG, TODAY).discover(session)
+        self.assertEqual([i.code for i in items], ['WME23BE1S1'])
+        self.assertEqual(session.seen, [self.base + 'index.xml'])
+
+    def test_a_block_on_index_xml_does_not_probe_the_html(self):
+        session = FakeSession({self.base + 'index.xml': Resp(403, b'Incapsula incident ID')})
+        with self.assertRaises(core.Blocked):
+            plansoft.Driver('wim', WIM_CFG, TODAY).discover(session)
+        self.assertEqual(session.seen, [self.base + 'index.xml'])
 
 
 class ReconcileBounds(unittest.TestCase):

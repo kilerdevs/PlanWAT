@@ -158,6 +158,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **WIM znowu jest crawlowny**: wydział zamienił `index.xml` na `index.html` (listopad 2026), a sterownik Plansoft znał
+  tylko XML, więc przebieg uznawał listę grup za usuniętą, a plany WIM zostawały z października. Sterownik czyta teraz
+  oba eksporty (po 404/410 sięga po drugi) i z HTML bierze wyłącznie pierwszą kolumnę „Grupy”, żeby nie crawlować stron
+  wykładowców i sal. WCY sprawdza tak samo, czy WIM nadal wymienia swoje `WME…B…`, a sonda puli proxy bada stronę
+  `rozklady-zajec` zamiast nieistniejącego już `index.xml`.
 - **WIM: grupy, których plan jest tylko na stronie WCY** (`WME25BX3S1` i 5 innych `WME…B…`): nikt ich nie crawlował, bo
   indeks WIM ich nie wymienia. Teraz bierze je WCY, ale tylko te, których WIM nie ma, więc żadna grupa nie ma dwóch
   kalendarzy.

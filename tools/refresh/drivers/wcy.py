@@ -10,7 +10,7 @@ from urllib.parse import quote, unquote
 
 import core
 import rozklad2ics
-from drivers import Item
+from drivers import Item, plansoft
 
 
 class Driver:
@@ -47,12 +47,12 @@ class Driver:
         if not foreign or not other.get('owner_index'):
             return []
         try:
-            r = session.get(other['owner_index'].format(season=core.season_of(self.today)[0]), timeout=30)
-            text = r.content.decode('cp1250', errors='replace')
-            core.check_listing(r.status_code, text, 'owner index')
+            url = other['owner_index'].format(season=core.season_of(self.today)[0])
+            text, _ = plansoft.fetch_listing(session, url, 'owner index')
         except Exception:  # noqa: BLE001 (a wall, a moved page, a dead line: take none rather than guess)
             return []
-        owned = {stem.upper() for stem in re.findall(r'href="([^"/]+)\.htm"', text)}
+        owned = {(href[:-4] if href.lower().endswith('.htm') else href).upper()
+                 for href in plansoft.group_hrefs(text)}
         if not owned:
             return []
         return [i for i in foreign if i.code.upper() not in owned]
