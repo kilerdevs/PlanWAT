@@ -1,8 +1,8 @@
 {
  "blocks": {
   "wat-edge": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-11-09T01:49:24",
+   "cause": "wall",
    "durations": [
     {
      "at_iso": "2026-10-16T15:35:04",
@@ -84,8 +84,8 @@
    ]
   },
   "wml": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-11-09T01:49:27",
+   "cause": "wall",
    "durations": [
     {
      "at_iso": "2026-10-15T19:54:58",
@@ -105,8 +105,8 @@
    ]
   },
   "wtc": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-11-09T01:49:24",
+   "cause": "wall",
    "durations": []
   }
  },
@@ -114,14 +114,14 @@
   "ioe": {
    "blocked_at": null,
    "last_count": 15,
-   "last_ok": "2026-11-08T22:20:06",
+   "last_ok": "2026-11-09T01:49:17",
    "run": {
     "ahead": false,
-    "at": "2026-11-08T22:20:06",
+    "at": "2026-11-09T01:49:17",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 15,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
@@ -131,14 +131,14 @@
   "wcy": {
    "blocked_at": null,
    "last_count": 180,
-   "last_ok": "2026-11-08T22:28:14",
+   "last_ok": "2026-11-09T01:49:32",
    "run": {
     "ahead": false,
-    "at": "2026-11-08T22:28:14",
+    "at": "2026-11-09T01:49:32",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 77,
+    "checked": 1,
     "degraded": false,
     "not_ready": 46,
     "skipped": 1,
@@ -154,14 +154,14 @@
   "wel": {
    "blocked_at": null,
    "last_count": 160,
-   "last_ok": "2026-11-08T22:27:15",
+   "last_ok": "2026-11-09T01:49:43",
    "run": {
     "ahead": false,
-    "at": "2026-11-08T22:27:15",
+    "at": "2026-11-09T01:49:43",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 85,
+    "checked": 3,
     "degraded": false,
     "not_ready": 0,
     "skipped": 3,
@@ -171,14 +171,14 @@
   "wig": {
    "blocked_at": null,
    "last_count": 33,
-   "last_ok": "2026-11-08T22:21:20",
+   "last_ok": "2026-11-09T01:49:53",
    "run": {
     "ahead": false,
-    "at": "2026-11-08T22:21:20",
+    "at": "2026-11-09T01:49:53",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 26,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
@@ -203,55 +203,88 @@
    }
   },
   "wlo": {
-   "blocked_at": null,
+   "blocked_at": "2026-11-09T01:49:24",
    "last_count": 131,
-   "last_ok": "2026-11-08T22:18:44",
+   "last_ok": "2026-10-29T17:26:38",
    "run": {
     "ahead": false,
-    "at": "2026-11-08T22:18:44",
-    "blocked": false,
-    "cause": null,
-    "changed": 0,
-    "checked": 1,
-    "degraded": false,
-    "not_ready": 0,
-    "skipped": 1,
-    "term": "2026-27-zima"
-   }
-  },
-  "wml": {
-   "blocked_at": null,
-   "last_count": 162,
-   "last_ok": "2026-11-08T22:19:09",
-   "run": {
-    "ahead": false,
-    "at": "2026-11-08T22:19:09",
-    "blocked": false,
-    "cause": null,
-    "changed": 0,
-    "checked": 4,
-    "degraded": false,
-    "not_ready": 0,
-    "skipped": 0,
-    "term": "2026-27-zima"
-   }
-  },
-  "wtc": {
-   "blocked_at": null,
-   "last_count": 23,
-   "last_ok": "2026-11-08T22:18:44",
-   "run": {
-    "ahead": false,
-    "at": "2026-11-08T22:18:44",
-    "blocked": false,
-    "cause": null,
+    "at": "2026-11-09T01:49:24",
+    "blocked": true,
+    "cause": "wall",
     "changed": 0,
     "checked": 0,
     "degraded": false,
     "not_ready": 0,
-    "skipped": 0,
-    "term": "2026-27-zima"
-   }
+    "skipped": 0
+   },
+   "wait": {
+    "chronic": true,
+    "probes": 0,
+    "recovered": false,
+    "waited": 0
+   },
+   "wall": {
+    "by": "oracle",
+    "failed": 1,
+    "since": "2026-10-30T00:01:40"
+   },
+   "walled_at": "2026-11-08T19:25:56"
+  },
+  "wml": {
+   "blocked_at": "2026-11-09T01:49:27",
+   "last_count": 162,
+   "last_ok": "2026-10-24T16:21:34",
+   "run": {
+    "ahead": false,
+    "at": "2026-11-09T01:49:27",
+    "blocked": true,
+    "cause": "wall",
+    "changed": 0,
+    "checked": 0,
+    "degraded": false,
+    "not_ready": 0,
+    "skipped": 0
+   },
+   "wait": {
+    "chronic": true,
+    "probes": 0,
+    "recovered": false,
+    "waited": 0
+   },
+   "wall": {
+    "by": "oracle",
+    "failed": 1,
+    "since": "2026-10-27T13:23:08"
+   },
+   "walled_at": "2026-11-08T19:25:59"
+  },
+  "wtc": {
+   "blocked_at": "2026-11-09T01:49:24",
+   "last_count": 23,
+   "last_ok": "2026-10-24T16:11:24",
+   "run": {
+    "ahead": false,
+    "at": "2026-11-09T01:49:24",
+    "blocked": true,
+    "cause": "wall",
+    "changed": 0,
+    "checked": 0,
+    "degraded": false,
+    "not_ready": 0,
+    "skipped": 0
+   },
+   "wait": {
+    "chronic": true,
+    "probes": 0,
+    "recovered": false,
+    "waited": 0
+   },
+   "wall": {
+    "by": "oracle",
+    "failed": 1,
+    "since": "2026-10-27T13:23:09"
+   },
+   "walled_at": "2026-11-08T19:25:56"
   }
  },
  "found": {
@@ -1867,8 +1900,8 @@
    "term": "2026-27-zima"
   },
   "WCY26_WdA": {
-   "etag": "\"1794176682-0-gzip\"",
-   "modified": "Sun, 08 Nov 2026 22:24:42 GMT"
+   "etag": "\"1794188969-0-gzip\"",
+   "modified": "Mon, 09 Nov 2026 01:49:29 GMT"
   },
   "WCY26_WdP": {
    "changed": "2026-10-27T20:56:05",
@@ -7207,12 +7240,12 @@
  },
  "pacing": {
   "ioe": 1.0,
-  "wat-edge": 1.9683000000000004,
+  "wat-edge": 2.7,
   "wcy": 1.0,
   "wig": 1.0,
   "wim": 1.0,
-  "wml": 2.43,
-  "wtc": 2.43
+  "wml": 3.0,
+  "wtc": 3.0
  },
  "robots": {
   "ioe.wat.edu.pl": {
