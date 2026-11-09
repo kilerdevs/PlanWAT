@@ -4,13 +4,13 @@ name: Refresh timetables
 # pages.yml overlays that branch over the repository's timetables/ on every deploy. See docs/REFRESH.md.
 #
 # Crawls only on the project's self-hosted runners (label "planwat"): the faculty sites' Incapsula wall blocks
-# GitHub's datacenter addresses on the first request, so a hosted runner can only fail. There are two of them
-# (tools/refresh/fleet.json): plebania, fast but often switched off, and an always-on but slow VPS. A hosted job
-# asks GitHub which of them is online and splits the faculties between those, weighted by speed. One that is done
-# early takes work off the other while it still crawls (tools/refresh/steal.py, over git refs that the report job
-# deletes). What one of them leaves blocked or unfinished, another one that is online then takes over (the handoff). A last hosted job adds
-# their outcomes up for pages.yml and the "blocked" issues, and records the pass in the run history (README.md on the
-# data branch, the site's /stan/ page).
+# GitHub's datacenter addresses on the first request, so a hosted runner can only fail. There are three of them
+# (tools/refresh/fleet.json): plebania, fast but often switched off; an always-on but slow VPS; and a free Northflank
+# container. A hosted job asks GitHub which of them is online and splits the faculties between those; all three carry
+# speed 1, so the split is even. One that is done early takes work off the others while they still crawl
+# (tools/refresh/steal.py, over git refs that the report job deletes). What one of them leaves blocked or unfinished,
+# another one that is online then takes over (the handoff). A last hosted job adds their outcomes up for pages.yml and
+# the "blocked" issues, and records the pass in the run history (README.md on the data branch, the site's /stan/ page).
 on:
   # Every two hours, round the clock: a pass over every group takes well under an hour (all policy
   # groups crawl side by side, one request at a time per host) and most pages answer 304, so a quiet
@@ -176,8 +176,8 @@ jobs:
   report:
     needs: [plan, crawl, handoff, takeover]
     # Also after a failed or skipped crawl or handoff: the outcome must be written either way (a pass with no
-    # runner online included).
-    if: always() && needs.plan.result == 'success'
+    # runner online included). A cancelled run has no outcome, so it must not claim a blocked one.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

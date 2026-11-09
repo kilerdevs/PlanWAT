@@ -1,0 +1,20 @@
+# Worker relay for the walled WAT faculties.
+# Deploy from this directory with `npx wrangler@4 deploy` (see README.md).
+name = "planwat-egress"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# Run near the faculties (all in Poland) rather than near the caller: Cloudflare's egress
+# ranges differ by data centre, and some are walled while others are served normally.
+[placement]
+mode = "smart"
+
+[vars]
+# Exact hostnames the Worker may fetch. Keep in step with DEFAULT_HOSTS in
+# tools/refresh/relay.py. WCY is absent on purpose: Incapsula answers Cloudflare's
+# egress with 403, so WCY stays on the rotating proxy pool.
+PLANWAT_RELAY_HOSTS = "wlo.wat.edu.pl,wel.wat.edu.pl,wml.wat.edu.pl,wtc.wat.edu.pl,www.wig.wat.edu.pl,wig.wat.edu.pl"
+
+# The bearer token is a secret, never a [vars] entry:
+#   npx wrangler@4 secret put PLANWAT_RELAY_TOKEN

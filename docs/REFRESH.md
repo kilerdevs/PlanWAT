@@ -124,9 +124,11 @@ głównej były spójne. Strony niebędące kodami grup (kursy, np. `Kurs_-_…`
 wydziału (crawl obejmuje tylko strony `^WMT`) i są wyświetlane w sekcji WML. Grupy WIM zachowują swoje kody `WME` i są
 wyświetlane w sekcji WIM.
 
-Uwagi o WTC: serwis stoi za Incapsulą, a publiczne wyjścia puli dostają od niego blokady, podczas gdy linia domowa odpowiada
-normalnie. Dlatego WTC — podobnie jak pozostałe wydziały poza WCY — jest na liście ruchu bezpośredniego proxy wyjściowego
-(`EGRESS_DIRECT_FACULTY`, zob. docs/EGRESS.md), a przez pulę musi iść wyłącznie WCY. Indeks wydziału jest płaski
+Uwagi o WTC: serwis stoi za Incapsulą, a publiczne wyjścia puli dostają od niego blokady. Linia domowa długo odpowiadała
+normalnie, ale 27.10.2026 ta sama ściana zamknęła też domowy adres `77.222.244.159` dla WTC, WLO, WEL, WML i WIG. Dlatego WTC —
+podobnie jak pozostałe wydziały poza WCY — jest na liście ruchu bezpośredniego proxy wyjściowego (`EGRESS_DIRECT_FACULTY`,
+zob. docs/EGRESS.md); gdy linia jest za ścianą, próbuje relay Cloudflare (`PLANWAT_RELAY_URL`, tamże), ale z zachodnich
+wyjść Workera dostaje 403, więc zostaje z plebanią. Przez pulę musi iść wyłącznie WCY: Worker także dostaje od niego 403. Indeks wydziału jest płaski
 (`https://wtc.wat.edu.pl/Plany/index.xml`) i nazywa semestr, który wymienia; sterownik plikuje PDF-y tylko wtedy, gdy to
 odświeżany semestr, a pobiera je z indeksem jako Referer, po jednym naraz. Konwerter wymaga `pip install pymupdf` na każdej
 maszynie uruchamiającej crawl (codzienna akcja instaluje go do jednorazowego venv w `$RUNNER_TEMP`, bo wbudowany w runner
@@ -139,7 +141,8 @@ roczników, ale same pliki leżą w zwykłych katalogach (`/cpp/phocadownloadpap
 Joomlę: Incapsula odpowiada na strony Joomli wyzwaniem (403) z adresów centrów danych (runner oracle, sprawdzono
 26.10.2026), a listingi i PDF-y podaje obu runnerom; dwa poziomy małych listingów są też tańsze niż 60 stron kategorii.
 Listing ponad kierunkami jest ukryty, więc katalogi kierunków wymienia `dirs` w `sources.json`, a ich podkatalogi trybów
-znajduje przejście. Żeby nowy kierunek nie umknął, plebania robi **spis** (`--census wig`, `census` w `fleet.json`, najwyżej
+znajduje przejście. Gdy linia runnera jest za ścianą, listingi i PDF-y idą przez relay Cloudflare (WIG jest na jego liście
+domyślnej, zob. docs/EGRESS.md). Żeby nowy kierunek nie umknął, plebania robi **spis** (`--census wig`, `census` w `fleet.json`, najwyżej
 raz na tydzień, po własnym crawlu i w jego tempie; przebieg, który trafił na ścianę, zostawia spis następnemu, bo
 27.10.2026 cztery sekundy po spisie ściana Incapsula zamknęła łączu plebanii WLO, WEL, WML i WTC naraz): przechodzi
 drzewo Joomli, które jej łącze widzi, i zapisuje katalogi wszystkich wymienionych tam PDF-ów w
@@ -191,17 +194,31 @@ Projekt ma trzy runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh
 
 | Runner | Etykieta | `speed` | Charakter |
 |---|---|---|---|
-| plebania | `planwat-plebania` | 4 | prywatny serwer: szybki, ale często wyłączony |
+| plebania | `planwat-plebania` | 1 | prywatny serwer: szybki, ale często wyłączony |
 | oracle | `planwat-oracle` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
-| northflank | `planwat-northflank` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): tylko IOE, WIG i WIM (`faculties`), bo pozostałe ściany odrzucają jego adres |
+| northflank | `planwat-northflank` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): IOE, WIG, WIM (`faculties`); WLO, WML i WTC dostają z Cloudflare 403 (relay przechodzi tylko WEL i WIG, a WEL dzieli ścieżkę z WLO), WCY wymaga puli |
+
+Indeksy `speed` są jednakowe dla całej floty (1), więc plan dzieli pracę po równo; szybsza plebania po swoim udziale
+pomaga pozostałym runnerom w trakcie przebiegu (`steal.py`).
+
+**Relay Cloudflare** (`PLANWAT_RELAY_URL`, szczegóły w [docs/EGRESS.md](EGRESS.md)) jest opcjonalny i domyślnie wyłączony:
+gdy linia runnera jest za ścianą, WEL i WIG idą przez Worker zamiast bezpośrednio. WLO, WML i WTC dostają z Cloudflare
+403 (sprawdzone 29.10.2026 z AMS i FRA; z WLO przechodziła tylko strona główna, nie plan), więc zostają z plebanią, gdy
+jej linia jest czysta; WCY zostaje na puli. Cloudflare odpowiada nierówno na WEL i WIG — ta sama strona raz przechodzi, a
+raz dostaje 403 — więc Worker ponawia 403 dwa razy bez zapamiętanych ciasteczek (i usuwa ciasteczka strony blokady), zanim
+crawler uzna odpowiedź za ścianę. Na oracle wystarczy ustawić URL i token relaya oraz dopisać hostname Workera do
+`EGRESS_DIRECT_HOSTS` egressu; Northflank nie ma egressu, więc ustawia tylko URL i token, ale jego `faculties` w
+`fleet.json` obejmują IOE, WIG i WIM — relay nie daje mu WLO, WML ani WTC, a WEL dzieli ścieżkę z WLO. Bez
+`PLANWAT_RELAY_*` nic się nie zmienia: IOE, WIG i WIM działają bezpośrednio.
 
 Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wspólny workflow `refresh-crawl.yml`):
 
 1. **plan** (runner GitHub, bez dostępu do wydziałów): pyta API GitHub, które runnery są `online`, i dzieli między nie
    ścieżki polityk Incapsula (`tools/refresh/fleet.py plan`). Ścieżka nigdy nie jest dzielona (WLO i WEL stoją za jedną
    ścianą i czekają razem). Praca ścieżki to liczba grup, które jej wydziały wymieniły ostatnio, razy wyuczony mnożnik
-   tempa. Ścieżki idą od największej, każda do runnera, który skończy ją najwcześniej (obciążenie / `speed`), więc
-   szybka plebania bierze większość, a VPS resztę, i oba kończą mniej więcej razem. Wyłączony runner nie dostaje nic,
+   tempa. Ścieżki idą od największej, każda do runnera, który skończy ją najwcześniej (obciążenie / `speed`); przy
+   równych indeksach (tak jak teraz) oznacza to równy podział pracy, a nie przewagę jednej maszyny. Wyłączony runner nie
+   dostaje nic,
    więc żadne zadanie nie czeka w kolejce na maszynę, która nie przyjdzie. Gdy nic nie jest włączone, przebieg niczego
    nie crawluje, a następny planuje od nowa. Podział widać w podsumowaniu zadania. Gdy każdy wydział udziału mógłby przejąć
    inny włączony runner, plan każe czekać na zejście ściany tylko 5 minut zamiast 30 (`max-block-wait-minutes`):
@@ -210,8 +227,8 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
    wydziału nie liczy się do jego przejęcia** (`fleet.py walled_runners`): kto w ostatnich 3 przebiegach z tym wydziałem
    (co najmniej 2, licząc tylko zakończone `done` albo `blocked`) za każdym razem kończył na nim zablokowany, ten dostaje
    wydział tylko wtedy, gdy nikt inny go nie może wziąć, i nie skraca innym czekania. Plan czyta to z historii przebiegów
-   (`refresh-runs.json`). Tak oracle, stojący przed ścianami WLO, WML, WTC i WCY, nie skraca już plebanii czekania do 5
-   minut (27.10.2026 plebania odpuściła je po 5 minutach, a przejęcie przez oracle nic nie dało).
+   (`refresh-runs.json`). 27.10.2026 oracle, stojący przed ścianami WLO, WML, WTC i WCY, nie skracał plebanii czekania do 5
+   minut (plebania odpuściła je po 5 minutach, a przejęcie przez oracle nic nie dało).
 2. **crawl** (po jednym zadaniu na runner, macierz): każdy runner crawluje swoje wydziały (`--faculty`) i wypycha wynik na
    `data`. Runnery wypychają równolegle, więc push nie robi rebase: każda próba zaczyna od najnowszego commita gałęzi,
    kładzie na nim kalendarze tego przebiegu i scala `refresh-state.json` (`fleet.py merge`: stemple grup zmienione w tym
@@ -234,7 +251,8 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
    zablokowaną ścieżkę po krótkim czekaniu, bo plan widział drugi runner, a ten zdążył zgasnąć, ścieżka wraca do niego
    na resztę czekania (25 minut), o ile nadal jest włączony. Wtedy każdy wydział i tak dostaje pełne 30 minut. Bez
    drugiego włączonego runnera wydział, który miał już pełne czekanie, czeka na następny przebieg, jak dawniej.
-   Anulowanie całego przebiegu zatrzymuje handoff i przejęcie.
+   Anulowanie całego przebiegu zatrzymuje handoff, przejęcie i report: anulowany przebieg nie ma wyniku, więc nie
+   trafia do historii jako zablokowany.
 4. **takeover** (macierz, tak jak crawl): przejmujący runner crawluje te wydziały, czekając na ścianę pełne 30 minut, bo
    po nim nikt już ich nie przejmie. Zaczyna tam, gdzie poprzedni skończył: grupy, które tamten sprawdził i wypchnął, są
    świeże i zostają pominięte. Przejmowanie jest jednokrotne (jeden etap), więc przebieg nie może krążyć w kółko.
@@ -247,25 +265,29 @@ Każdy przebieg `refresh.yml` ma pięć etapów (udział jednego runnera to wsp�
 Runner może też **preferować** wydziały (`prefers` w `fleet.json`): ścieżkę złożoną z nich dostaje zawsze, gdy jest
 włączony, niezależnie od obciążenia. Gdy jest wyłączony albo to on ją zostawił (handoff), ścieżka jest dzielona jak każda
 inna. Oracle preferuje WIG i IOE: oba runnery przeszły 26.10.2026 po dwa przebiegi WIG (33 z 33 grup, identyczne kalendarze), a
-IOE z oracle przeszedł czysto 9 przebiegów z 9. Plebania preferuje WTC, bo ściana WTC odrzuca adres VPS (zablokowany w 4
-przebiegach z 4, zwykłe HTTPS z maszyny dostaje 403): na oracle WTC kosztował tylko czekanie na ścianę i przekazanie.
-Przy wszystkich włączonych oracle dostaje IOE i WIG, northflank WIM, a plebania WLO z WEL, WCY, WML i WTC; bez
-plebanii northflank bierze WIM, a oracle resztę. Runner może też robić **spis** wydziału
+IOE z oracle przeszedł czysto 9 przebiegów z 9. Plebania preferuje WTC, WLO i WEL: WTC odrzuca adres VPS (zablokowany w 4
+przebiegach z 4, zwykłe HTTPS z maszyny dostaje 403), a 29.10.2026 WLO i WTC odpowiadały 403 także przez relay Cloudflare
+z AMS i FRA; WEL dzieli z WLO jedną ścieżkę polityki (`wat-edge`). Gdy linia plebanii jest czysta, tylko ona przechodzi te
+ściany; relay daje pozostałym runnerom WEL i WIG, ale nie WLO, WML ani WTC.
+Przy wszystkich włączonych plebania dostaje WLO, WEL i WTC (preferencje), a resztę plan dzieli według obciążenia i
+historii ścian; northflank może dostać tylko WIM. W przebiegu 91 (29.10.2026) plebania wzięła też WCY i WML, a oracle
+IOE i WIG. Bez plebanii oracle bierze wszystko poza WIM, northflank zostaje przy WIM, a gdy online jest tylko
+northflank, WLO, WEL, WCY, WML i WTC zostają nieprzydzielone. Runner może też robić **spis** wydziału
 (`census`): plebania robi spis WIG, bo tylko jej łącze widzi strony Joomli wydziału (zob. uwagi o WIG wyżej).
 
 #### Pomoc w trakcie przebiegu
 
 Plan dzieli pracę z góry, według szacunku, który tempo i ściany łatwo psują: oracle kończy WIG i IOE w kilka minut,
-a plebania crawluje jeszcze WML, WCY i ścieżkę WLO→WEL. Dlatego runnery jednej fali rozmawiają ze sobą w trakcie
+a plebania crawluje jeszcze WCY i ścieżkę WLO→WEL. Dlatego runnery jednej fali rozmawiają ze sobą w trakcie
 crawlowania ([`steal.py`](../tools/refresh/steal.py)) i runner z wolną ścieżką odciąża ten, który jeszcze pracuje. Nie
 czeka przy tym na koniec całego swojego udziału: pomaga od pierwszej minuty, gdy jego własnych ścieżek jest mniej niż
-`--lanes` (northflank z samym WIM), albo od chwili, gdy skończy się którakolwiek z nich. `--lanes` ogranicza własne
+`--lanes` (northflank z krótszą listą wydziałów), albo od chwili, gdy skończy się którakolwiek z nich. `--lanes` ogranicza własne
 ścieżki i pomoc razem, a pomoc nigdy nie wchodzi do grupy polityki, którą crawluje jeszcze własna ścieżka: wciąż jedno
 zapytanie naraz na politykę.
 
 1. Najpierw próbuje wydziału, który tamten **crawluje teraz**: sam wylicza jego grupy (to jedno zapytanie o listę, i tak
    potrzebne do adresów stron) i prosi o **część** pozostałych grup. Właściciel oddaje koniec swojej listy, podzielony
-   według `speed` obu runnerów (plebania oddaje oracle piątą część, oracle plebanii cztery piąte). Gdy zostało mniej niż
+   według `speed` obu stron (przy równych indeksach po połowie). Gdy zostało mniej niż
    8 grup albo udział wyszedłby mniejszy niż 4, właściciel kończy sam. Gdy właściciel stoi akurat przed ścianą, oddaje
    **wszystko**, co mu zostało, i przestaje czekać.
 2. Gdy ściana tego wydziału nie wpuszcza pomocnika, ten próbuje kolejno **wydziałów, których tamten jeszcze nie zaczął**
@@ -298,8 +320,8 @@ Dlaczego żadna grupa nie jest crawlowana dwa razy i żadna nie ginie:
   ten mógłby wziąć (wydział z jego listy, bez ściany dla niego, w obsługiwanym semestrze: tamten może trafić na
   ścianę), albo gdy sam trzyma coś niedokończonego, co tamten mógłby wziąć: niedokończoną wziętą pracę, ale też
   **własny wydział zostawiony przed ścianą**. Wtedy pracujący runner przejmuje go jeszcze w tej samej fali, bez
-  osobnego zadania handoffu. W przeciwnym razie kończy od razu, a jego zadanie wypycha wyniki: northflank po WIM nie
-  czeka, aż oracle skończy wydziały, których i tak nie może wziąć. Dwóch czekających na siebie nawzajem nie czeka:
+  osobnego zadania handoffu. W przeciwnym razie kończy od razu, a jego zadanie wypycha wyniki: northflank po swoich
+  wydziałach nie czeka, aż oracle skończy WCY i WTC, których i tak nie może wziąć. Dwóch czekających na siebie nawzajem nie czeka:
   bezczynny runner nie liczy się jako pracujący. Kto czeka na odpowiedź na swoją prośbę, czyta tablicę co 5 s.
 - **Rozliczenie**: każdy runner zgłasza w wyniku, co wziął (`took`) i co oddał (`gave`). Wydział liczy się tak, jak
   zostawili go wszyscy, którzy mieli jego część w ostatniej fali (niedokończony, jeśli którakolwiek część jest
@@ -328,9 +350,9 @@ Konfiguracja (jednorazowo):
    uprawnieniem **Administration: Read-only** (listy runnerów nie da się odczytać `GITHUB_TOKEN`). Zapisz go jako sekret
    Actions `PLANWAT_RUNNERS_TOKEN`. Bez niego (albo gdy API zawiedzie) wszystko bierze runner `always_on`, jak dawniej
    jedyny runner.
-3. Dostrajanie: kolumna „minutes” w podsumowaniu zadania report pokazuje, ile trwał udział każdego runnera. Gdy jeden
-   regularnie kończy dużo później, zmień `speed` w `fleet.json`. Pole `faculties` (lista) ogranicza runner do tych
-   wydziałów, np. gdy któryś wydział nie wpuszcza adresu VPS-a.
+3. Dostrajanie: kolumna „minutes” w podsumowaniu zadania report pokazuje, ile trwał udział każdego runnera. Indeksy
+   `speed` są celowo jednakowe (1), więc plan dzieli pracę po równo; różnicowanie ich przywraca ważenie udziałów według
+   tempa. Pole `faculties` (lista) ogranicza runner do tych wydziałów, np. gdy któryś wydział nie wpuszcza adresu VPS-a.
 
 ### Historia przebiegów
 

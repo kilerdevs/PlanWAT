@@ -16,14 +16,27 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Relay Cloudflare dla wydziałów, których nie wpuszcza żadne wyjście puli** (`tools/refresh/relay.py`,
+  `tools/egress/cloudflare/`): opcjonalny Worker z tokenem i dokładną listą hostów pobiera z adresów Cloudflare strony,
+  które ściana Incapsuli serwuje normalnie, a runnerowi oddaje status, `ETag`/`Last-Modified` i treść. Relay włącza się
+  tylko przez `PLANWAT_RELAY_URL` (plus `PLANWAT_RELAY_TOKEN`; `PLANWAT_RELAY_HOSTS` zawęża listę), a egress przepuszcza
+  jego hostname bezpośrednio przez `EGRESS_DIRECT_HOSTS`. Oryginalny URL wydziału zostaje w `RelayResponse.url`, więc
+  adresy grup, odświeżanie warunkowe i wykrywanie blokad działają bez zmian; raport blokady nie trafia do puli dla hosta
+  relayowanego, bo żadne jej wyjście nie brało w nim udziału. 27.10.2026 Worker przechodził WLO, WEL, WML i WIG, a WTC
+  tylko z polskiej linii testowej; 29.10.2026 z zachodnich wyjść Cloudflare (AMS i FRA) przechodziły już tylko WEL i WIG,
+  a strony planów WLO, WML i WTC dostawały 403 — dlatego zostają one z plebanią. WCY nadal odpowiadał mu `403` — dlatego
+  WCY zostaje na puli (`EGRESS_FAIL_CLOSED`). Domyślnie relay jest wyłączony.
+  Wdrożenie: [tools/egress/cloudflare/README.md](tools/egress/cloudflare/README.md).
 - **Numer zajęć w subskrypcji kalendarza:** tytuł każdego zdarzenia w `plan.ics` i `plan-przypomnienia.ics` mówi, które
   to spotkanie przedmiotu danego rodzaju, np. „Matematyka I (Wykład 3/15)”, tak jak strona pokazuje „Wykład · 3/15”.
   Liczone tak samo jak na stronie (cały semestr, po dacie, zajęcia wpisane dwa razy raz); jednorazowe zajęcia mają sam
   rodzaj. Pobrany ze strony plik `.ics` też ma numery, a strona zdejmuje je przy czytaniu kalendarza.
-- **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze tylko IOE, WIG i WIM,
-  bo ściany pozostałych wydziałów odrzucają jego adres (próba 27.10.2026), więc zwykle crawluje WIM. Plan skraca
+- **Trzeci runner, northflank** (darmowy kontener Northflank, `tools/refresh/fleet.json`): bierze IOE, WIG i WIM.
+  Z włączonym relayem Cloudflare przechodzą mu jeszcze WEL i WIG, ale WLO, WML i WTC odpowiadają z zachodnich wyjść
+  Workera 403 (sprawdzone 29.10.2026 z AMS i FRA), a WEL dzieli ścieżkę polityki z WLO — dlatego `faculties` obejmują
+  tylko IOE, WIG i WIM, a te trzy działają także bez relaya. WCY wymaga puli, której northflank nie ma. Plan skraca
   czekanie na ścianę do 5 minut tylko wtedy, gdy każdy wydział udziału mógłby przejąć inny włączony runner: oracle bez
-  plebanii czeka nadal pełne 30 minut na WLO, WEL, WML i WTC, których northflank nie może wziąć.
+  plebanii czeka nadal pełne 30 minut, bo northflank nie bierze WLO, WEL, WML ani WTC.
 - **Pomoc między runnerami w trakcie przebiegu** (`tools/refresh/steal.py`, `board.py`): runner, który skończył swój
   udział, odciąża ten, który jeszcze crawluje: najpierw bierze część grup wydziału crawlowanego właśnie teraz
   (podzieloną według `speed`), a gdy ściana tego wydziału go nie wpuszcza, kolejno wydziały jeszcze niezaczęte. Właściciel
@@ -126,6 +139,15 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Flota wraca do wydziałów, które naprawdę przechodzą przez relay** (`tools/refresh/fleet.json`, `docs/`): 29.10.2026
+  strony planów WLO, WML i WTC odpowiadały Workerowi `403` z AMS i FRA (z WLO przechodziła tylko strona główna), a WEL
+  i WIG działały. Northflank bierze więc znowu tylko IOE, WIG i WIM, a plebania preferuje WTC, WLO i WEL, żeby jej czysta
+  linia domowa dostawała je pierwsza; relay zostaje dla WEL i WIG. Przy wszystkich runnerach plan daje plebanii WLO, WEL
+  i WTC, oracle IOE, WIG, WCY i WML, a northflankowi WIM; przy samym northflanku WLO, WEL, WCY, WML i WTC zostają
+  nieprzydzielone, zamiast trafiać do ściany.
+- **Jednakowy `speed` całej floty** (`tools/refresh/fleet.json`): plebania, oracle i northflank mają teraz `speed` 1,
+  więc plan dzieli pracę po równo zamiast dawać plebanii cztery razy większy udział. Różnicowanie indeksów nadal
+  działa, ale nie jest już domyślnym ustawieniem; szybsza maszyna po swoim udziale pomaga pozostałym (`steal.py`).
 - **Plan pamięta, kogo która ściana zatrzymuje** (`fleet.py walled_runners`, z `refresh-runs.json`): runner zablokowany
   na wydziale w każdym z ostatnich 3 przebiegów (co najmniej 2) dostaje go tylko wtedy, gdy nikt inny nie może, nie
   skraca innym czekania na ścianę do 5 minut i nie dostaje go w handoffie. 27.10.2026 plebania odpuściła WLO, WEL, WML
@@ -163,6 +185,15 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   oba eksporty (po 404/410 sięga po drugi) i z HTML bierze wyłącznie pierwszą kolumnę „Grupy”, żeby nie crawlować stron
   wykładowców i sal. WCY sprawdza tak samo, czy WIM nadal wymienia swoje `WME…B…`, a sonda puli proxy bada stronę
   `rozklady-zajec` zamiast nieistniejącego już `index.xml`.
+- **Relay Cloudflare nie poddaje się pojedynczemu `403`** (`tools/egress/cloudflare/worker.js`): Cloudflare wychodzi na
+  zewnątrz różnymi adresami i ta sama strona raz przechodzi, a raz dostaje `403`, więc Worker po `403` usuwa zapamiętane
+  ciasteczka hosta i ponawia żądanie dwa razy z czystą sesją; ciasteczka strony blokady nie trafiają do Cache API.
+  Wcześniej jeden pechowy `403` wystarczał, by runner uznał WLO albo WML za zablokowane i zostawił wydział handoffowi
+  (przebieg 88 przy wyłączonej plebanii).
+- **Anulowany przebieg nie zapisuje się jako zablokowany** (`.github/workflows/refresh.yml`): zadanie report ma teraz
+  `!cancelled()`, więc anulowanie całego przebiegu (np. gdy w połowie zgaśnie plebania) nie dopisuje do
+  `refresh-runs.json` wyniku `blocked` ani nie otwiera zgłoszenia. Przebieg, który po prostu nie ma wyniku, nie jest
+  przebiegiem nieudanym.
 - **WIM: grupy, których plan jest tylko na stronie WCY** (`WME25BX3S1` i 5 innych `WME…B…`): nikt ich nie crawlował, bo
   indeks WIM ich nie wymienia. Teraz bierze je WCY, ale tylko te, których WIM nie ma, więc żadna grupa nie ma dwóch
   kalendarzy.
