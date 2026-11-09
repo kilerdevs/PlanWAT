@@ -107,7 +107,7 @@ Wydziały wymienia `tools/refresh/sources.json`. Każdy wskazuje sterownik w `to
 
 | Wydział | Sterownik | Stan |
 |---|---|---|
-| WLO, WEL, WIM | `plansoft` | włączone |
+| WLO, WEL, WIM | `plansoft` | włączone: WLO i WEL publikują `index.xml`; WIM zamienił go na `index.html` (listopad 2026), więc sterownik czyta oba eksporty, a z HTML bierze tylko kolumnę „Grupy” (nie strony wykładowców i sal) |
 | IOE | `plansoft` (przypięta baza: zimowe plany leżą pod nieaktualnym katalogiem `lato/`, siatka jest transponowana, a jej komórki odczytywane jako PRZEDMIOT/rodzaj/sala/alias, konwertowane przez `wlo2ics --faculty ioe`) | włączone |
 | WML | `wml` (strony Plansoft; `index.xml` bieżącego semestru wybierany z odnośników strony głównej, najnowsza rewizja katalogu `<rok>_sem_<pora>[_n]`, bo wydział publikuje ponownie w nowych katalogach i przenosi stronę z planami) | włączone |
 | WCY | `wcy` | włączone: zwykłe HTTP działa (sprawdzono 14.10.2026); wspólne strumienie zajęć z gwiazdką w nazwie (`WCY26*Fiz1a`) są crawlowane jako `WCY26_Fiz1a`, pod kodem, pod jakim strona je publikuje (do 27.10.2026 były pomijane); grupy WIM z menu WCY (`WME…B…`), których własny indeks WIM nie wymienia (`foreign` w `sources.json`), WCY bierze sam, bo tylko tu jest ich plan, a te z indeksu WIM zostają przy WIM (nieczytelny indeks WIM: żadnej nie bierze); strony pokazujące inny semestr (lub pustą siatkę) są liczone jako „jeszcze nieopublikowane” — stare kalendarze zostają do publikacji nowego planu i nie oznaczają przebiegu jako pogorszony; stary kalendarz jest przed porównaniem przycinany do semestru, więc oczyszczenie pliku niosącego jeszcze lekcje poprzedniego lata nie jest czytane jako podejrzany skurcz planu |

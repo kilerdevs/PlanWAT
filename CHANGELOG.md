@@ -180,6 +180,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **WIM znowu jest crawlowny**: wydział zamienił `index.xml` na `index.html` (listopad 2026), a sterownik Plansoft znał
+  tylko XML, więc przebieg uznawał listę grup za usuniętą, a plany WIM zostawały z października. Sterownik czyta teraz
+  oba eksporty (po 404/410 sięga po drugi) i z HTML bierze wyłącznie pierwszą kolumnę „Grupy”, żeby nie crawlować stron
+  wykładowców i sal. WCY sprawdza tak samo, czy WIM nadal wymienia swoje `WME…B…`, a sonda puli proxy bada stronę
+  `rozklady-zajec` zamiast nieistniejącego już `index.xml`.
 - **Relay Cloudflare nie poddaje się pojedynczemu `403`** (`tools/egress/cloudflare/worker.js`): Cloudflare wychodzi na
   zewnątrz różnymi adresami i ta sama strona raz przechodzi, a raz dostaje `403`, więc Worker po `403` usuwa zapamiętane
   ciasteczka hosta i ponawia żądanie dwa razy z czystą sesją; ciasteczka strony blokady nie trafiają do Cache API.

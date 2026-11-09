@@ -145,7 +145,9 @@ def faculty_targets(season=None):
     return {
         'wlo.wat.edu.pl': (f'https://wlo.wat.edu.pl/planyzajec/{season}/index.xml', xml),
         'wel.wat.edu.pl': (f'https://wel.wat.edu.pl/planyzajec/{season}/index.xml', xml),
-        'www.wim.wat.edu.pl': (f'https://www.wim.wat.edu.pl/wp-content/uploads/rozklady/{season}/index.xml', xml),
+        # WIM's plan listing moved from index.xml to index.html (November 2026); the faculty page stays put and
+        # links whichever export the semester has, so it is the stable target for a pool probe.
+        'www.wim.wat.edu.pl': ('https://www.wim.wat.edu.pl/rozklady-zajec/', b'wp-content/uploads/rozklady/'),
         'ioe.wat.edu.pl': ('https://ioe.wat.edu.pl/plany/lato/index.xml', xml),
         'planzajec.wcy.wat.edu.pl': ('https://planzajec.wcy.wat.edu.pl/pl/rozklad', b'grupa_id=wcy'),
         'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', b'index.xml'),
