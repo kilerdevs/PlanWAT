@@ -1,13 +1,14 @@
 # Odświeżanie planów: ostatnie przebiegi
 
 > [!TIP]
-> **Ostatni przebieg: zmiana w 1 planie.** 10 lis 2026 · 13:49 · **plebania** · **oracle** · **northflank** · 6 min · [przebieg #139](https://github.com/kilerdevs/PlanWAT/actions/runs/42818985308)
-> Pobrano nową wersję 1 planu.
+> **Ostatni przebieg: zmiany w 62 planach.** 10 lis 2026 · 21:55 · **plebania** · **oracle** · **northflank** · 20 min · [przebieg #140](https://github.com/kilerdevs/PlanWAT/actions/runs/42899956684)
+> Pobrano nowe wersje 62 planów.
 
 Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
 
 | Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |
 |---|---|---|--:|--:|---|
+| 10 lis · 21:55 | Zmiany w 62 planach | **plebania** (WLO, WEL, WML, WTC, WIM (pomoc dla northflank), WCY (pomoc dla oracle)) · **oracle** (IOE, WCY, WIG, WEL (pomoc dla plebania), WIM (pomoc dla northflank)) · **northflank** (WIM, IOE (pomoc dla oracle), WIG (pomoc dla oracle)) | 570 | 20 min | [#140](https://github.com/kilerdevs/PlanWAT/actions/runs/42899956684) |
 | 10 lis · 13:49 | Zmiana w 1 planie | **plebania** (WLO, WEL, WML, WTC, WCY (pomoc dla oracle)) · **oracle** (IOE, WCY, WIG, WIM (pomoc dla northflank)) · **northflank** (WIM) | 76 | 6 min | [#139](https://github.com/kilerdevs/PlanWAT/actions/runs/42818985308) |
 | 10 lis · 13:26 | Część stron odrzucona | **plebania** (WCY, WEL, WIM, WLO, WML, WTC, IOE (pomoc dla oracle), WIG (pomoc dla oracle)) · **oracle** (IOE, WIG, WEL (pomoc dla plebania), WIM (pomoc dla plebania), WCY (pomoc dla plebania)) · **northflank** (WIM (pomoc dla plebania), WIG (pomoc dla oracle)) | 798 | 25 min | [#138](https://github.com/kilerdevs/PlanWAT/actions/runs/42815694094) |
 | 10 lis · 09:11 | Zablokowany | **oracle** (IOE, WCY, WEL, WIG) · **northflank** (WIM) · ~~plebania~~ | 49 | 5 min | [#137](https://github.com/kilerdevs/PlanWAT/actions/runs/42780716506) |
@@ -17,9 +18,32 @@ Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w cza
 | 9 lis · 10:57 | Zablokowany | **oracle** (WLO, WEL, IOE, WCY, WML, WTC, WIG, WIM (od northflank)) · **northflank** (WIM) · ~~plebania~~ | 297 | 38 min | [#133](https://github.com/kilerdevs/PlanWAT/actions/runs/42597342737) |
 | 9 lis · 02:48 | Zablokowany | **oracle** (WLO, WEL, IOE, WCY, WML, WTC, WIG, WIM (od northflank)) · **northflank** (WIM) · ~~plebania~~ | 4 | 4 min | [#132](https://github.com/kilerdevs/PlanWAT/actions/runs/42547453447) |
 | 8 lis · 23:18 | Niedokończony | **plebania** (WLO, WEL, WML, WTC, WCY (pomoc dla oracle), WIG (pomoc dla oracle)) · **oracle** (IOE, WCY, WIG, WEL (pomoc dla plebania), WIM (od northflank)) · **northflank** (WIM) | 208 | 12 min | [#131](https://github.com/kilerdevs/PlanWAT/actions/runs/42529555555) |
-| 8 lis · 20:24 | Niedokończony | **plebania** (WLO, WEL, WML, WTC) · **oracle** (IOE, WCY, WIG, WEL (pomoc dla plebania), WIM (od northflank)) · **northflank** (WIM) | 320 | 26 min | [#130](https://github.com/kilerdevs/PlanWAT/actions/runs/42514885892) |
 
 ## Szczegóły
+
+<details>
+<summary><b>10 lis · 21:55</b> · Zmiany w 62 planach · plebania · oracle · northflank</summary>
+
+Pobrano nowe wersje 62 planów. Przebieg automatyczny [#140](https://github.com/kilerdevs/PlanWAT/actions/runs/42899956684), od planu do raportu 20 min.
+
+| Serwer | Wydziały | Zmienione | Stan |
+|---|---|--:|---|
+| **plebania** | WLO, WEL, WML, WTC, WIM (pomoc dla northflank), WCY (pomoc dla oracle) | 35 | 19 min |
+| **oracle** | IOE, WCY, WIG, WEL (pomoc dla plebania), WIM (pomoc dla northflank) | 17 | 16 min |
+| **northflank** | WIM, IOE (pomoc dla oracle), WIG (pomoc dla oracle) | 10 | 3 min |
+
+| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
+|---|---|--:|--:|---|
+| WLO | plebania | 131 | 12 | odrzucone strony: 1 |
+| WEL | plebania | 123 | 13 | z pomocą oracle, odrzucone strony: 3 |
+| WML | plebania | 162 | 2 |  |
+| WTC | plebania | 23 | 8 |  |
+| IOE | oracle | 10 | 1 | z pomocą northflank |
+| WCY | oracle | 70 | 0 | z pomocą plebania, odrzucone strony: 1, bez planu na ten semestr: 51 |
+| WIG | oracle | 19 | 0 | z pomocą northflank |
+| WIM | northflank | 32 | 9 | z pomocą oracle, plebania |
+
+</details>
 
 <details>
 <summary><b>10 lis · 13:49</b> · Zmiana w 1 planie · plebania · oracle · northflank</summary>
@@ -228,31 +252,6 @@ Nie wszystko zostało sprawdzone (WIM). Zostają poprzednie plany, resztę doko�
 | IOE | oracle | 15 | 0 |  |
 | WCY | oracle | 77 | 0 | z pomocą plebania, odrzucone strony: 1, bez planu na ten semestr: 46 |
 | WIG | oracle | 26 | 0 | z pomocą plebania |
-| WIM | oracle | 0 | 0 | przejęty od northflank, który go nie skończył, nie udało się pobrać listy grup, lista grup podejrzanie krótka |
-
-</details>
-
-<details>
-<summary><b>8 lis · 20:24</b> · Niedokończony · plebania · oracle · northflank</summary>
-
-Nie wszystko zostało sprawdzone (WIM). Zostają poprzednie plany, resztę dokończy następny przebieg. Przebieg uruchomiony ręcznie [#130](https://github.com/kilerdevs/PlanWAT/actions/runs/42514885892), od planu do raportu 26 min.
-
-| Serwer | Wydziały | Zmienione | Stan |
-|---|---|--:|---|
-| **plebania** | WLO, WEL, WML, WTC | 0 | 23 min |
-| **oracle** | IOE, WCY, WIG, WEL (pomoc dla plebania) | 0 | 2 min |
-| **northflank** | WIM | 0 | 1 min, niedokończony |
-| **oracle** (przejęcie) | WIM (od northflank) | 0 | 1 min, niedokończony |
-
-| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
-|---|---|--:|--:|---|
-| WLO | plebania | 131 | 0 | odrzucone strony: 1 |
-| WEL | plebania | 3 | 0 | z pomocą oracle, odrzucone strony: 3 |
-| WML | plebania | 162 | 0 |  |
-| WTC | plebania | 23 | 0 |  |
-| IOE | oracle | 0 | 0 |  |
-| WCY | oracle | 1 | 0 | odrzucone strony: 1, bez planu na ten semestr: 46 |
-| WIG | oracle | 0 | 0 |  |
 | WIM | oracle | 0 | 0 | przejęty od northflank, który go nie skończył, nie udało się pobrać listy grup, lista grup podejrzanie krótka |
 
 </details>
