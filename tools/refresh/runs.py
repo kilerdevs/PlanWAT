@@ -5,8 +5,9 @@ refresh.yml's report job calls `record` once per pass. It adds the pass to refre
 KEEP runs) and rewrites the branch's README.md from it, so GitHub shows the history at the branch's root; `render
 --summary` repeats it in the run's summary. build.py renders the same file as the site's /stan/ page.
 
-A run says which servers (fleet.json) took part and what each did, which were off, and per faculty what the pass
-checked and changed, read from the faculty's `run` entry in refresh-state.json when that entry is this pass's.
+A run says which servers (fleet.json) took part and what each did (the faculties it led, those it helped with,
+those it could not list), which were off, and per faculty what the pass checked and changed: its leader's `run`
+entry in refresh-state.json when that entry is this pass's, and what the work stack says of it (stack.py summary).
 
 Nothing here touches a faculty site; it is unit-tested offline (tests/test_refresh.py).
 """
@@ -42,9 +43,9 @@ def _flag(outcome, key):
 def runner_entry(name, faculties, outcome, wave=1, took=None):
     """One server's part in the pass, from its shard outcome (None: it never reported).
 
-    A takeover (wave 2) says whose faculties it took (`from`: {faculty: runner}); a share that ended blocked says on
-    which faculties (`blocked_on`); one that took work off a peer during the wave says which and whose (`helped`:
-    {faculty: runner}, steal.py)."""
+    `faculties` are the ones it led (stack.py: it listed them for everyone). One that crawled a part of another
+    runner's faculty says which and whose (`helped`: {faculty: leader}); one that ended blocked says on which faculties
+    (`blocked_on`). Older passes also had takeovers (wave 2), which said whose faculties they took (`from`)."""
     entry = {'name': name, 'faculties': faculties, 'status': 'missing', 'minutes': None, 'changed': 0, 'wave': wave}
     if took:
         entry['from'] = took
@@ -81,11 +82,12 @@ def runner_entry(name, faculties, outcome, wave=1, took=None):
     return entry
 
 
-def faculty_entry(name, runner, state, since, handed=None, helpers=()):
-    """What the pass did on one faculty: its `run` entry in the state, when that is from this pass.
+def faculty_entry(name, runner, state, since, handed=None, helpers=(), seen=None):
+    """What the pass did on one faculty: its `run` entry in the state (its leader's record), when that is from this
+    pass, and what the work stack says of it (`seen`, stack.py summarize): every runner's checks, its verdict.
 
-    `runner` is the last one that had it; `handed` ({'runner', 'why'}) the one that let it go to that one; `helpers`
-    the runners that took a part of it (or all of it) off `runner` during the wave."""
+    `runner` is the leader (or the last runner that had it, in an older pass); `handed` ({'runner', 'why'}) the one
+    that let it go to that one in an older pass's takeover; `helpers` the runners that crawled a part of it."""
     fac = state.get('faculties', {}).get(name) if isinstance(state.get('faculties'), dict) else None
     run = fac.get('run') if isinstance(fac, dict) else None
     at = build.utc_moment(run.get('at')) if isinstance(run, dict) else None
@@ -95,45 +97,72 @@ def faculty_entry(name, runner, state, since, handed=None, helpers=()):
     helpers = [h for h in helpers if h != runner]
     if helpers:
         entry['helpers'] = helpers
-    if at is None or at < since - SLACK:
+    if at is not None and at >= since - SLACK:
+        entry.update(fresh=True, checked=build.count(run.get('checked')), changed=build.count(run.get('changed')),
+                     not_ready=build.count(run.get('not_ready')), skipped=build.count(run.get('skipped')),
+                     blocked=bool(run.get('blocked')), degraded=bool(run.get('degraded')),
+                     cause=run.get('cause') if isinstance(run.get('cause'), str) else None)
+    else:
         entry['fresh'] = False
-        return entry
-    entry.update(fresh=True, checked=build.count(run.get('checked')), changed=build.count(run.get('changed')),
-                 not_ready=build.count(run.get('not_ready')), skipped=build.count(run.get('skipped')),
-                 blocked=bool(run.get('blocked')), degraded=bool(run.get('degraded')),
-                 cause=run.get('cause') if isinstance(run.get('cause'), str) else None)
+    if isinstance(seen, dict):
+        status = seen.get('status')
+        cant = seen.get('cant') if isinstance(seen.get('cant'), dict) else {}
+        if not entry['fresh'] and (status in ('blocked', 'failed') or build.count(seen.get('checked'))):
+            entry.update(fresh=True, checked=0, changed=0, not_ready=0, skipped=0, blocked=False, degraded=False,
+                         cause=None)
+        if entry['fresh']:
+            # the record counts its leader's checks; the stack counts every runner's
+            entry['checked'] = max(entry['checked'], build.count(seen.get('checked')))
+            entry['changed'] = max(entry['changed'], build.count(seen.get('changed')))
+            entry['blocked'] = status == 'blocked'
+            if status == 'blocked':
+                entry['cause'] = 'wall'
+            elif status == 'failed':
+                entry['degraded'] = True
+                entry['cause'] = entry.get('cause') or ('listing' if cant else None)
+            elif entry.get('cause') in ('wall', 'flaky'):
+                entry['cause'] = None  # a wall one runner met, while another got the work done
+        if cant:
+            entry['cant'] = {r: c for r, c in cant.items() if isinstance(r, str) and isinstance(c, str)}
     return entry
 
 
-def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, outcomes, plan_info, state, handoff=()):
-    """The record of one pass (see the module docstring): the plan's shards (`matrix`), then the takeovers (`handoff`)."""
-    got = {fleet.shard_key(o): o for o in outcomes if isinstance(o, dict)}
-    shards = [dict(m, wave=1) for m in matrix] + [dict(m, wave=2) for m in handoff]
-    combined = fleet.combine(shards, outcomes, 0)
-    runners, last, handed = [], {}, {}
-    for m in shards:
+def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, outcomes, plan_info, state,
+              summary=None):
+    """The record of one pass (see the module docstring): the runners the plan started (`matrix`), what each reported
+    (`outcomes`) and what the work stack says of every faculty (`summary`, stack.py summarize; None when unread)."""
+    got = fleet.latest(outcomes)
+    combined = fleet.combine(matrix, outcomes, 0, summary)
+    seen = summary.get('faculties') if isinstance(summary, dict) and isinstance(summary.get('faculties'), dict) else {}
+    runners, leaders, helpers = [], {}, {}
+    for m in matrix:
         names = [f for f in m['faculties'].split(',') if f]
-        took = dict(pair.split(':', 1) for pair in str(m.get('from') or '').split(',') if ':' in pair)
-        outcome = got.get(fleet.shard_key(m))
-        runners.append(runner_entry(m['runner'], names, outcome, m['wave'], took))
-        for f in names:
-            if f in last and m['wave'] > 1:
-                was = got.get(fleet.shard_key(last[f]))
-                left = dict(fleet.left_over(last[f], was))
-                handed[f] = {'runner': last[f]['runner'], 'why': left.get(f, 'unfinished')}
-            last[f] = m
-    helpers = {}
-    for o in outcomes:
-        if isinstance(o, dict) and isinstance(o.get('runner'), str):
-            for f, _ in fleet._pairs(o.get('took')):
-                helpers.setdefault(f, [])
-                if o['runner'] not in helpers[f]:
-                    helpers[f].append(o['runner'])
-    order = [f for m in shards[:len(matrix)] for f in m['faculties'].split(',') if f]
-    faculties = [faculty_entry(f, last[f]['runner'], state, planned, handed.get(f), helpers.get(f, ()))
-                 for f in order]
-    for r, m in zip(runners, shards):
-        degraded_on = [f['id'] for f in faculties if f.get('degraded') and last[f['id']] is m]
+        outcome = got.get(m['runner'])
+        led = fleet._names(outcome.get('led')) if isinstance(outcome, dict) and 'led' in outcome else names
+        entry = runner_entry(m['runner'], led, outcome)
+        cant = dict(fleet._pairs(outcome.get('cant'))) if isinstance(outcome, dict) else {}
+        if cant:
+            entry['cant'] = cant
+            walls = [f for f, c in cant.items() if c == 'wall']
+            entry['blocked_on'] = list(dict.fromkeys(entry.get('blocked_on', []) + walls))
+            if not entry['blocked_on']:
+                entry.pop('blocked_on')
+        runners.append(entry)
+        for f in led:
+            leaders.setdefault(f, m['runner'])
+        for f in entry.get('helped', {}):
+            helpers.setdefault(f, [])
+            if m['runner'] not in helpers[f]:
+                helpers[f].append(m['runner'])
+    order = list(dict.fromkeys(f for m in matrix for f in m['faculties'].split(',') if f))
+    faculties = []
+    for f in order:
+        info = seen.get(f) if isinstance(seen.get(f), dict) else None
+        leader = (info or {}).get('leader') or leaders.get(f) or ''
+        helped = list((info or {}).get('helpers') or {}) or helpers.get(f, [])
+        faculties.append(faculty_entry(f, leader, state, planned, None, helped, info))
+    for r in runners:
+        degraded_on = [f['id'] for f in faculties if f.get('degraded') and f['runner'] == r['name']]
         if degraded_on and r['status'] == 'degraded':
             r['degraded_on'] = degraded_on
     changed = int(combined['changed'])
@@ -291,16 +320,14 @@ def _json_arg(text, kind):
 def cmd_record(args):
     matrix = [m for m in _json_arg(args.matrix, list)
               if isinstance(m, dict) and isinstance(m.get('runner'), str) and isinstance(m.get('faculties'), str)]
-    handoff = [m for m in _json_arg(args.handoff, list)
-               if isinstance(m, dict) and isinstance(m.get('runner'), str) and isinstance(m.get('faculties'), str)]
     plan_info = _json_arg(args.plan, dict)
     outcomes = [fleet.load_json(p, None) for p in sorted(Path(args.dir).glob('shard-*.json'))] \
         if Path(args.dir).is_dir() else []
     planned = dt.datetime.fromtimestamp(float(args.planned or 0), dt.timezone.utc)
     run = build_run(run_id=args.run_id, number=args.run_number, attempt=args.attempt, event=args.event,
                     url=args.url, planned=planned, ended=dt.datetime.now(dt.timezone.utc), matrix=matrix,
-                    outcomes=outcomes, plan_info=plan_info, handoff=handoff,
-                    state=fleet.load_json(args.state, {}))
+                    outcomes=outcomes, plan_info=plan_info, state=fleet.load_json(args.state, {}),
+                    summary=fleet.load_json(args.stack, None) if args.stack else None)
     runs = add_run(load_runs(args.runs), run)
     _write(args.runs, json.dumps({'version': 1, 'runs': runs}, ensure_ascii=False, indent=1) + '\n')
     text = markdown(runs, args.site_url, args.repo_url)
@@ -328,7 +355,8 @@ def parse(argv=None):
     sub = ap.add_subparsers(dest='cmd', required=True)
     p = sub.add_parser('record', help='add this pass to refresh-runs.json and rewrite README.md')
     p.add_argument('--matrix', default='[]', help="the plan's matrix (JSON)")
-    p.add_argument('--handoff', default='[]', help="the handoff's matrix (JSON): the takeovers")
+    p.add_argument('--handoff', default='[]', help=argparse.SUPPRESS)  # older workflows; nothing reads it
+    p.add_argument('--stack', default='', help="the work stack's verdicts (stack.py summary), when it could be read")
     p.add_argument('--plan', default='{}', help="the plan's fleet output (JSON: down, unassigned)")
     p.add_argument('--planned', default='0', help='when the plan was made (Unix seconds)')
     p.add_argument('--dir', required=True, help='where the shard-*.json outcomes are')

@@ -1284,8 +1284,12 @@ def runner_state(r):
     took = minutes_label(r['minutes']) if count(r.get('minutes')) or r.get('minutes') == 0 else ''
     blocked_on = [str(f).upper() for f in r.get('blocked_on', []) if isinstance(f, str)]
     degraded_on = [str(f).upper() for f in r.get('degraded_on', []) if isinstance(f, str)]
+    cant = r.get('cant') if isinstance(r.get('cant'), dict) else {}
+    unlisted = [str(f).upper() for f, c in cant.items() if isinstance(f, str) and c != 'wall']
     if blocked_on:
         extra = f"zablokowany na {', '.join(blocked_on)}"
+    elif unlisted:
+        extra = f"bez listy grup {', '.join(unlisted)}"
     elif r.get('status') == 'degraded':
         extra = f"odrzucone strony{' na ' + ', '.join(degraded_on) if degraded_on else ''}"
     else:
@@ -1294,9 +1298,9 @@ def runner_state(r):
 
 
 def runner_share(r):
-    """A server's faculties in a pass; a takeover says whose they were: 'WTC (od oracle)', or 'WTC (ponownie)' when the
-    server gets back what it let go after a short wait (nobody else was up to take it). What it took off another server
-    during the pass comes last: 'WML (pomoc dla plebania)'."""
+    """A server's faculties in a pass: those it led, then those it helped another server with: 'WML (pomoc dla
+    plebania)'. In an older pass a takeover says whose they were: 'WTC (od oracle)', or 'WTC (ponownie)' when the server
+    got back what it let go after a short wait."""
     return ', '.join(label for _, label in share_parts(r))
 
 
@@ -1340,6 +1344,13 @@ def faculty_notes(f):
     helpers = [h for h in f.get('helpers', []) if isinstance(h, str)] if isinstance(f.get('helpers'), list) else []
     if helpers:
         notes.append(f"z pomocą {', '.join(helpers)}")
+    cant = f.get('cant') if isinstance(f.get('cant'), dict) else {}
+    walled = [r for r, c in cant.items() if isinstance(r, str) and c == 'wall']
+    unlisted = [r for r, c in cant.items() if isinstance(r, str) and c != 'wall']
+    if walled and not f.get('blocked'):
+        notes.append(f"blokada dla {', '.join(walled)}")
+    if unlisted:
+        notes.append(f"bez listy grup na {', '.join(unlisted)}")
     if not f.get('fresh'):
         return notes + ['brak danych z tego przebiegu']
     cause = f.get('cause')

@@ -139,6 +139,21 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Nowy podział pracy między serwerami: wspólny stos pracy** (`tools/refresh/stack.py`, `board.py`). Plan niczego już
+  nie przydziela: każdy włączony runner bierze pracę ze wspólnego stosu przebiegu (jeden dokument na wydział na
+  referencji gita, zmieniany atomowo przez compare-and-swap). Lider wydziału wylicza go i tnie na kawałki po 8 grup,
+  bierze je od przodu, a pomocnicy od tyłu. Serwery mają **preferencje**: wydział, który ktoś preferuje (`prefers`),
+  otwiera i prowadzi tylko on, dopóki jest włączony, a inni pomagają mu kawałkami. Kolejność to preferowane, potem
+  wydziały, których nikt inny nie może wziąć, potem największe; praca wyłącznie danego runnera (WML na plebanii) ma
+  pierwszeństwo na jego ścieżkach. Limity zostają: jedno zapytanie naraz na politykę Incapsula z jednego adresu i listy
+  `faculties`. Odtworzone przebiegi #135 i #136 kończą się na dolnej granicy (24 i 22 min), a northflank od pierwszej
+  minuty pomaga przy IOE i WIG, zamiast stać bezczynnie po WIM.
+- **Odporność na awarie pomocniczych serwerów.** Runner, który nie może wyliczyć wydziału (ściana, błąd, zniknięta
+  strona), zapisuje to, zanim cokolwiek weźmie, więc nic nie utyka. Ściana w połowie kawałka oddaje resztę na stos.
+  Kawałki runnera, który padł, przestał bić sercem (150 s) albo zawiesił ścieżkę (10 min), bierze inny. Kawałek, który
+  dwa razy wywraca konwersję, jest zamykany jako nieudany. Nieosiągalny stos to samodzielny udział zapasowy, a znikający
+  w trakcie oznacza dokończenie wydziałów, które się prowadzi. Na ścianę czeka się tylko wtedy, gdy nikt inny włączony
+  nie może wziąć wydziału. Zasada: każda grupa co najmniej raz, rzadko dwa razy.
 - **Flota wraca do wydziałów, które naprawdę przechodzą przez relay** (`tools/refresh/fleet.json`, `docs/`): 29.10.2026
   strony planów WLO, WML i WTC odpowiadały Workerowi `403` z AMS i FRA (z WLO przechodziła tylko strona główna), a WEL
   i WIG działały. Northflank bierze więc znowu tylko IOE, WIG i WIM, a plebania preferuje WTC, WLO i WEL, żeby jej czysta
@@ -273,6 +288,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Ruch na mapie kampusu:** krzywa `--ease-out` na stronie mapy wskazywała sama na siebie, więc przeglądarka ją
   odrzucała. Przez to nie działały wejście nagłówka, wyszukiwarki i panelu ani płynne zwijanie panelu. Teraz ma tę samą
   wartość co na pozostałych stronach.
+
+### Usunięto
+- Etap **handoff/takeover** (druga fala zadań) i wymiana próśb między runnerami (`steal.py`): to, czego jeden runner nie
+  zrobił, wraca na stos i bierze to inny w tym samym przebiegu. Raport czyta werdykt każdego wydziału ze stosu
+  (`stack.py summary`), a historia przebiegów pokazuje lidera, pomoc i odmowy („blokada dla oracle”, „bez listy grup”).
 
 ## [1.1.1] - 2026-10-22
 

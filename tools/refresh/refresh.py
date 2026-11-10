@@ -39,6 +39,7 @@ import datetime as dt
 import json
 import os
 import random
+import re
 import sys
 import threading
 import time
@@ -53,7 +54,7 @@ import core  # noqa: E402
 import drivers  # noqa: E402
 import fleet  # noqa: E402
 import relay  # noqa: E402
-import steal  # noqa: E402
+import stack  # noqa: E402
 
 # A census (take_census) at most this often: weekly, half a day early so a weekly pass never slips. It only finds new
 # programme directories, which come a few times a year, and its Joomla pages are the heaviest load this crawler puts on
@@ -555,41 +556,62 @@ def load_driver(name, cfg, state, today):
 
 
 def refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic,
-                    progress=None, ahead=False, pool=None, key=None, only=None, listed=None):
+                    progress=None, ahead=False):
     """Returns (changed codes, blocked, complete). `today` is a date inside the semester to refresh; with `ahead`
-    that is the coming semester, tracked under its own state keys so the running one keeps its dates.
+    that is the coming semester, tracked under its own state keys so the running one keeps its dates."""
+    return _refresh_faculty(name, cfg, args, state, today, session, sleep, clock, progress, ahead)
 
-    With a `pool` (steal.py: the runners help each other during a wave) the faculty is the pool's slot `key`: skipped
-    when it was handed to another runner, and each group is taken from the pool, so none handed on is crawled here.
-    `only` keeps to the groups a peer granted, `listed` is a listing this runner already made."""
-    if pool is None:
-        return _refresh_faculty(name, cfg, args, state, today, session, sleep, clock, progress, ahead)
-    key = key or (f'{name}~{core.term_id(today)}' if ahead else name)
-    if not pool.start(key):
-        log(f'[{name}] {"the coming semester was" if ahead else "was"} handed to another runner; skipping it here')
-        return [], False, True
-    fac = state.faculties.setdefault(name, {})
-    before = fac.get('run') if only is not None else None
-    status = 'incomplete'
-    try:
-        done, blocked, complete = _refresh_faculty(name, cfg, args, state, today, session, sleep, clock, progress,
-                                                   ahead, pool, key, only, listed)
-        status = 'blocked' if blocked else 'done' if complete else 'incomplete'
-    finally:
-        pool.finish(key, status)
-    run = fac.get('run')
-    since = getattr(args, 'started', None)
-    if (isinstance(before, dict) and isinstance(run, dict) and since and str(before.get('at') or '') >= since
-            and before.get('term') == run.get('term') and before.get('ahead') == run.get('ahead')):
-        # a part taken on top of this pass's own crawl of the faculty: the record counts both
-        for k in ('checked', 'changed', 'skipped', 'not_ready'):
-            run[k] = int(before.get(k) or 0) + int(run.get(k) or 0)
-        run['degraded'] = bool(before.get('degraded') or run.get('degraded'))
-    return done, blocked, complete
+
+def todo_of(name, cfg, args, state, today, items, ahead=False, only=None):
+    """What of a faculty's listing is to be checked now: (todo items, stalest first; the codes not ready yet and not
+    asked again so soon; the term id). `only` keeps to those codes (a chunk of the work stack)."""
+    tid = core.term_id(today)
+    now = core.now_utc()
+    key = (lambda code: f'{code}@{tid}') if ahead else (lambda code: code)
+    # Twice the cadence while the faculties publish the coming semester; a per-faculty
+    # override wins over the default but never drops below one hour. On top of that,
+    # a group that keeps coming back unchanged stretches its gap (--adaptive-hours),
+    # so a quiet semester costs about half of yesterday's requests.
+    fresh_hours = core.effective_fresh_hours(max(1, cfg.get('fresh_hours', args.fresh_hours)), today)
+    todo = [i for i in items if args.force or not state.fresh(
+        key(i.code), now, core.quiet_interval(state.groups.get(key(i.code), {}),
+                                              fresh_hours, args.adaptive_hours), tid)]
+    # A page that still showed another semester is asked again later and later (up to core.NOT_READY_CAP_HOURS),
+    # except while the faculties publish: it still counts as not ready.
+    real_day = getattr(args, 'today', None) or now.date()
+    waiting = set() if args.force else {i.code for i in todo if core.still_not_ready(
+        state.groups.get(key(i.code), {}), tid, now, fresh_hours, real_day)}
+    todo = [i for i in todo if i.code not in waiting]
+    # Stalest first: a run cut short by --max-minutes, --limit or a block refreshes the groups
+    # unseen the longest. Never-checked ('') sorts before any ISO timestamp; the code breaks ties
+    # so the order is deterministic. The limit slices after the sort, keeping the stalest N.
+    # A check the volunteer coordinator accepted counts as a sighting too.
+    todo.sort(key=lambda i: (max(state.groups.get(key(i.code), {}).get('checked', '') or '',
+                                 accepted_checked(state, i.code, tid)), i.code))
+    if getattr(args, 'registry', None):
+        # A volunteer checks only its own share of this window (tools/volunteer/assign.py), among the volunteers
+        # the coordinator last heard from.
+        todo = [i for i in todo if assign.is_assigned(args.registry, args.login, name, i.code, tid, args.window,
+                                                      getattr(args, 'health', None))]
+    if getattr(args, 'resume_since', None):
+        # A resumed run (a volunteer pass cut off mid-window): what it checked before the cut is not asked again,
+        # even where the faculty's cadence would already call it stale.
+        todo = [i for i in todo if (state.groups.get(key(i.code), {}).get('checked') or '') < args.resume_since]
+    if only is not None:
+        keep = set(only)
+        todo = [i for i in todo if i.code in keep]
+        waiting &= keep  # a chunk: the leader counts the rest of the faculty's not-ready groups
+    if args.limit:
+        todo = todo[:args.limit]
+    return todo, waiting, tid
 
 
 def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic,
-                     progress=None, ahead=False, pool=None, pool_key=None, only=None, listed=None):
+                     progress=None, ahead=False, part=None, only=None, listed=None, settle=True):
+    """refresh_faculty's body. A chunk of the work stack (stack.py) passes `only` (its codes), `listed` (the listing
+    this runner made), `part` (asked before each group: False skips it, the chunk is no longer this runner's) and
+    `settle` (False: a further chunk of a faculty this runner already crawled cleanly this pass, which does not ease
+    the learned pacing again)."""
     driver = load_driver(name, cfg, state, today)
     tid = core.term_id(today)
     out = Path(args.out)
@@ -653,48 +675,11 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
     if not robots_allows(session, items[0].url, state):
         log(f'[{name}] robots.txt disallows the timetable pages; skipping the faculty')
         return [], False, False
-    now = core.now_utc()
+    todo, waiting, tid = todo_of(name, cfg, args, state, today, items, ahead, only)
     key = (lambda code: f'{code}@{tid}') if ahead else (lambda code: code)
-    # Twice the cadence while the faculties publish the coming semester; a per-faculty
-    # override wins over the default but never drops below one hour. On top of that,
-    # a group that keeps coming back unchanged stretches its gap (--adaptive-hours),
-    # so a quiet semester costs about half of yesterday's requests.
-    fresh_hours = core.effective_fresh_hours(max(1, cfg.get('fresh_hours', args.fresh_hours)), today)
-    todo = [i for i in items if args.force or not state.fresh(
-        key(i.code), now, core.quiet_interval(state.groups.get(key(i.code), {}),
-                                              fresh_hours, args.adaptive_hours), tid)]
-    # A page that still showed another semester is asked again later and later (up to core.NOT_READY_CAP_HOURS),
-    # except while the faculties publish: it still counts as not ready.
-    real_day = getattr(args, 'today', None) or now.date()
-    waiting = set() if args.force else {i.code for i in todo if core.still_not_ready(
-        state.groups.get(key(i.code), {}), tid, now, fresh_hours, real_day)}
-    todo = [i for i in todo if i.code not in waiting]
-    # Stalest first: a run cut short by --max-minutes, --limit or a block refreshes the groups
-    # unseen the longest. Never-checked ('') sorts before any ISO timestamp; the code breaks ties
-    # so the order is deterministic. The limit slices after the sort, keeping the stalest N.
-    # A check the volunteer coordinator accepted counts as a sighting too.
-    todo.sort(key=lambda i: (max(state.groups.get(key(i.code), {}).get('checked', '') or '',
-                                 accepted_checked(state, i.code, tid)), i.code))
-    if getattr(args, 'registry', None):
-        # A volunteer checks only its own share of this window (tools/volunteer/assign.py), among the volunteers
-        # the coordinator last heard from.
-        todo = [i for i in todo if assign.is_assigned(args.registry, args.login, name, i.code, tid, args.window,
-                                                      getattr(args, 'health', None))]
-    if getattr(args, 'resume_since', None):
-        # A resumed run (a volunteer pass cut off mid-window): what it checked before the cut is not asked again,
-        # even where the faculty's cadence would already call it stale.
-        todo = [i for i in todo if (state.groups.get(key(i.code), {}).get('checked') or '') < args.resume_since]
-    if only is not None:
-        keep = set(only)
-        todo = [i for i in todo if i.code in keep]
-        waiting &= keep  # a part taken: the owner counts the rest of the faculty's not-ready groups
-    if args.limit:
-        todo = todo[:args.limit]
-    if pool is not None:
-        pool.running(pool_key, [i.code for i in todo])
     log(f'[{name}] {len(items)} groups, {len(items) - len(todo) - len(waiting)} fresh, '
         + (f'{len(waiting)} not ready yet (not asked again so soon), ' if waiting else '')
-        + f'{len(todo)} to check (term {tid})' + (f'; a part of {len(only)} taken over' if only is not None else ''))
+        + f'{len(todo)} to check (term {tid})' + (f'; a chunk of {len(only)}' if only is not None else ''))
     slot = name if not ahead else f'{name}~{tid}'
     if progress is not None:
         progress.send('faculty_start', slot=slot, faculty=name, lane=group, total=len(todo),
@@ -711,8 +696,8 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
         if deadline is not None and clock() > deadline:
             log(f'[{name}] time budget used up after {n - 1} groups')
             return changed, False, False
-        if pool is not None and not pool.take(pool_key, item.code):
-            continue  # handed to another runner meanwhile
+        if part is not None and not part(item.code):
+            continue  # the chunk is no longer this runner's, or time is up
         if n > 1:
             sleep(random.uniform(args.delay[0] * mult, args.delay[1] * mult))
         if n % 25 == 0 and not args.dry_run:
@@ -867,7 +852,8 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
     if checked >= 5 and failed / checked > 0.3:
         degraded = True
         log(f'[{name}] DEGRADED: {failed} of {checked} checked groups skipped; flagging the run')
-    pace(False)
+    if settle:
+        pace(False)
     if not ahead:
         fac['last_ok'] = core.now_utc().isoformat()
         fac['blocked_at'] = None
@@ -926,8 +912,12 @@ def parse(argv=None):
                     help='comma-separated faculties whose driver takes a census of the site after the crawl (at most '
                          f'once in {CENSUS_HOURS} h; fleet.json names the runner that can)')
     ap.add_argument('--board', default='',
-                    help='<planned>-<run id>/w<wave>: the wave\'s work board (steal.py), so the runners of the wave '
-                         'help each other; needs --runner and a checkout of this repository in --out')
+                    help='<planned>-<run id>: the pass\'s work stack (stack.py, on git refs), which the runners of the '
+                         'pass pull their work from; needs --runner and a checkout of this repository in --out')
+    ap.add_argument('--expected', default='',
+                    help='comma-separated runners the plan started for this pass (the others are not waited for)')
+    ap.add_argument('--fallback', default='',
+                    help='comma-separated faculties this runner crawls alone when the work stack cannot be reached')
     ap.add_argument('--runner', default='', help="this runner's name in the fleet (fleet.json)")
     ap.add_argument('--fleet', default=str(fleet.FLEET), help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
@@ -954,14 +944,13 @@ def parse(argv=None):
     return args
 
 
-def refresh_ahead(name, sources, args, state, today, session, coming, tallies, sleep, clock, progress=None,
-                  pool=None):
+def refresh_ahead(name, sources, args, state, today, session, coming, tallies, sleep, clock, progress=None):
     """The coming semester's pass for one faculty; folds its results into `tallies`."""
     # The next semester's plans may already be up. Whatever is not published yet is just not there:
     # that never makes the run incomplete, only a block stops it.
     log(f'[{name}] looking for the coming semester ({core.term_id(coming)})')
     done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, coming, session,
-                                                  sleep=sleep, clock=clock, progress=progress, ahead=True, pool=pool)
+                                                  sleep=sleep, clock=clock, progress=progress, ahead=True)
     tallies['changed'] += done
     tallies['blocked'] |= was_blocked
     if progress is not None:
@@ -972,7 +961,7 @@ def refresh_ahead(name, sources, args, state, today, session, coming, tallies, s
 
 
 def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep, clock=time.monotonic,
-             session=None, wait_budget=None, progress=None, pool=None):
+             session=None, wait_budget=None, progress=None):
     """Refresh the faculties of one policy group, one after another, on a session of their own.
 
     Returns {'changed': [...], 'blocked': bool, 'incomplete': set(names), 'waited': seconds slept}. A blocked faculty no longer stops
@@ -988,7 +977,7 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
         try:
             done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today,
                                                            session, sleep=sleep, clock=clock,
-                                                           progress=progress, pool=pool)
+                                                           progress=progress)
         finally:
             if saved_headers is not None:
                 try:
@@ -1014,7 +1003,7 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
             deferred.append((name, False))
             continue
         if coming and refresh_ahead(name, sources, args, state, today, session, coming,
-                                    tallies, sleep, clock, progress=progress, pool=pool):
+                                    tallies, sleep, clock, progress=progress):
             cause = state.faculties.get(name, {}).get('run', {}).get('cause')
             model.note_blocked(name, cause)
             note_wall(state, name, cause, args.runner)
@@ -1052,12 +1041,8 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
                       for n, main_ok in deferred]
         progress.send('wait_start', id=group, lane=group, faculties=[n for n, _ in deferred],
                       slots=wait_slots, budget=round(wait_budget))
-    # Another runner may take over all that waits here (steal.py): then the wait ends, there is nothing to resume.
-    keys = [f'{n}~{core.term_id(coming)}' if (main_ok and coming) else n for n, main_ok in deferred]
-    stop = (lambda: not pool.has_work(keys)) if pool is not None else None
-    recovered, waited, probes = wait_for_recovery(group, probe, model, wait_budget,
-                                                   args.block_probes, sleep, clock, stop)
-    if not recovered and waited >= CHRONIC_MIN_WAIT and not (stop is not None and stop()):
+    recovered, waited, probes = wait_for_recovery(group, probe, model, wait_budget, args.block_probes, sleep, clock)
+    if not recovered and waited >= CHRONIC_MIN_WAIT:
         for n, _ in deferred:
             wall = state.faculties.get(n, {}).get('wall')
             if isinstance(wall, dict) and isinstance(wall.get('failed'), int):
@@ -1077,11 +1062,11 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
         if main_ok and coming:
             # The main pass already finished: only the coming semester is still missing.
             refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock,
-                          progress=progress, pool=pool)
+                          progress=progress)
         else:
             done, was_blocked, complete = refresh_faculty(name, sources[name], args, state, today,
                                                           resume, sleep=sleep, clock=clock,
-                                                          progress=progress, pool=pool)
+                                                          progress=progress)
             tallies['changed'] += done
             if complete:
                 tallies['incomplete'].discard(name)
@@ -1097,7 +1082,7 @@ def run_lane(names, sources, args, state, model, today, coming, sleep=time.sleep
                 continue
             if coming:
                 refresh_ahead(name, sources, args, state, today, resume, coming, tallies, sleep, clock,
-                              progress=progress, pool=pool)
+                              progress=progress)
     tallies['blocked'] = any(state.faculties.get(n, {}).get('blocked_at') for n, _ in deferred)
     return tallies
 
@@ -1125,106 +1110,238 @@ def write_outcomes(args, started, wanted, sources, state):
     partial_outcomes(args).unlink(missing_ok=True)
 
 
-def open_board(args, wanted, coming, board=None):
-    """The wave's work board, this runner's pool on it and the thread that keeps it current: (pool, coordinator),
-    or (None, None) when the runners of this pass do not talk (no board, a volunteer, a dry run)."""
-    if not args.runner or args.dry_run or args.registry or (board is None and not args.board):
-        return None, None
+class FleetOps(stack.Ops):
+    """What a fleet runner does on the sites for the work stack (stack.py): list a faculty, cut its work, crawl a chunk,
+    wait a wall out. One session per slot, so a faculty's chunks ride the cookies its listing got."""
+
+    def __init__(self, sources, args, state, model, today, coming, sleep, clock, progress):
+        self.sources, self.args, self.state, self.model = sources, args, state, model
+        self.today, self.coming, self.sleep, self.clock, self.progress = today, coming, sleep, clock, progress
+        self.lock = threading.Lock()
+        self.sessions, self.settled, self.listed = {}, set(), set()
+        self.changed = []
+
+    def day(self, slot):
+        """(a date in the slot's semester, whether it is the coming one)."""
+        term = stack.term_of(slot)
+        if not term:
+            return self.today, False
+        if self.coming is not None and term == core.term_id(self.coming):
+            return self.coming, True
+        raise ValueError(f'{slot}: not a semester this pass refreshes')
+
+    def session(self, slot):
+        with self.lock:
+            if slot not in self.sessions:
+                self.sessions[slot] = new_session()
+            return self.sessions[slot]
+
+    def walled(self, name, ahead, cause='wall'):
+        """A wall met while listing: recorded as _refresh_faculty records one, for this runner's line."""
+        state, fac = self.state, self.state.faculties.setdefault(name, {})
+        now = core.now_utc().isoformat()
+        fac['blocked_at'] = fac['walled_at'] = now
+        fac['run'] = {'at': now, 'checked': 0, 'changed': 0, 'skipped': 0, 'not_ready': 0, 'blocked': True,
+                      'ahead': ahead, 'cause': cause, 'degraded': False}
+        group = core.group_of(name)
+        pacing = state.data.setdefault('pacing', {})
+        pacing[group] = min(3.0, float(pacing.get(group, 1.0)) * 1.5)
+        self.model.note_blocked(name, cause)
+        note_wall(state, name, cause, self.args.runner)
+
+    def probe(self, slot):
+        name = stack.faculty_of(slot)
+        day, ahead = self.day(slot)
+        cfg = self.sources[name]
+        host = faculty_host(cfg)
+        driver = load_driver(name, cfg, self.state, day)
+        try:
+            items = discover_with_retry(driver, self.session(slot), self.args.retries, self.args.retry_backoff,
+                                        self.sleep, block_retries=self.args.block_retries,
+                                        on_block=(lambda: post_block_report(host)) if host else None)
+        except core.Blocked as err:
+            log(f'[{name}] BLOCKED while listing groups: {err}')
+            with self.lock:
+                self.sessions.pop(slot, None)
+            self.walled(name, ahead)
+            raise stack.Walled(str(err)) from err
+        except core.Gone as err:
+            if ahead:
+                log(f'[{name}] the coming semester is not published yet ({err})')
+                return []
+            log(f'[{name}] cannot list groups, the listing page is gone: {err}; the faculty moved its timetable?')
+            raise stack.Unlisted(str(err)) from err
+        with self.lock:
+            self.listed.add(slot)
+        return items
+
+    def todo(self, slot, items):
+        name = stack.faculty_of(slot)
+        day, ahead = self.day(slot)
+        cfg = self.sources[name]
+        if not items:
+            if ahead:
+                return [], {'listed': 0, 'note': 'empty'}
+            log(f'[{name}] no groups listed; leaving the faculty untouched')
+            return [], {'listed': 0, 'note': 'nothing listed'}
+        todo, waiting, tid = todo_of(name, cfg, self.args, self.state, day, items, ahead)
+        if not todo:
+            # nothing to check: the faculty's usual pass over a listing it already has, records and all
+            _refresh_faculty(name, cfg, self.args, self.state, day, self.session(slot), self.sleep, self.clock,
+                             self.progress, ahead, listed=items)
+            return [], {'listed': len(items), 'fresh': len(items) - len(waiting), 'not_ready': len(waiting)}
+        # the record the chunks add up to (refresh-state.json's `run`): the not-ready groups are counted once, here
+        self.state.faculties.setdefault(name, {})['run'] = {
+            'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0, 'changed': 0, 'skipped': 0,
+            'not_ready': len(waiting), 'blocked': False, 'ahead': ahead, 'cause': None, 'degraded': False}
+        log(f'[{name}] {len(items)} groups, {len(items) - len(todo) - len(waiting)} fresh, '
+            + (f'{len(waiting)} not ready yet (not asked again so soon), ' if waiting else '')
+            + f'{len(todo)} to check (term {tid})')
+        return [i.code for i in todo], {'listed': len(items), 'fresh': len(items) - len(todo) - len(waiting),
+                                        'not_ready': len(waiting)}
+
+    def crawl(self, slot, codes, items, check, tick):
+        name = stack.faculty_of(slot)
+        day, ahead = self.day(slot)
+        cfg = self.sources[name]
+        fac = self.state.faculties.setdefault(name, {})
+        before = fac.get('run')
+        taken, refused = [], [False]
+
+        def part(code):
+            if refused[0] or not check():
+                refused[0] = True
+                return False
+            taken.append(code)
+            tick()
+            return True
+        with self.lock:
+            settle = slot not in self.settled
+        done, blocked, complete = _refresh_faculty(name, cfg, self.args, self.state, day, self.session(slot),
+                                                   self.sleep, self.clock, self.progress, ahead, part=part,
+                                                   only=codes, listed=items, settle=settle)
+        run = fac.get('run')
+        since = getattr(self.args, 'started', None)
+        if (isinstance(before, dict) and isinstance(run, dict) and since and str(before.get('at') or '') >= since
+                and before.get('term') == run.get('term') and before.get('ahead') == run.get('ahead')):
+            # this pass's record of the faculty counts every chunk this runner crawled of it
+            for k in ('checked', 'changed', 'skipped', 'not_ready'):
+                run[k] = int(before.get(k) or 0) + int(run.get(k) or 0)
+            run['degraded'] = bool(before.get('degraded') or run.get('degraded'))
+        with self.lock:
+            self.changed.extend(done)
+        if blocked:
+            cause = (run or {}).get('cause') or 'wall'
+            self.model.note_blocked(name, cause)
+            note_wall(self.state, name, cause, self.args.runner)
+            with self.lock:
+                self.sessions.pop(slot, None)  # a fresh jar next time: the old one may be the blocked one
+            return {'done': taken[:-1], 'blocked': True, 'changed': done}
+        if refused[0] or not complete:
+            late = self.args.deadline is not None and self.clock() > self.args.deadline
+            if not refused[0] and not late:
+                raise RuntimeError(f'{name}: the crawl stopped short of its chunk')
+            return {'done': list(taken), 'blocked': False, 'changed': done}
+        with self.lock:
+            self.settled.add(slot)
+        return {'done': list(codes), 'blocked': False, 'changed': done}
+
+    def wait(self, slot, stop):
+        name = stack.faculty_of(slot)
+        day, ahead = self.day(slot)
+        args = self.args
+        budget = args.max_block_wait_minutes * 60
+        if args.deadline is not None:
+            budget = min(budget, args.deadline - self.clock())
+        if budget <= 0:
+            return False
+        driver = load_driver(name, self.sources[name], self.state, day)
+        probe_session = new_session()  # probe with a clean jar, like a new visitor
+
+        def probe():
+            try:
+                driver.discover(probe_session)
+                return True
+            except Exception:
+                return False
+        recovered, waited, probes = wait_for_recovery(core.group_of(name), probe, self.model, budget,
+                                                       args.block_probes, self.sleep, self.clock, stop)
+        fac = self.state.faculties.setdefault(name, {})
+        if not recovered and waited >= CHRONIC_MIN_WAIT and not stop():
+            wall = fac.get('wall')
+            if isinstance(wall, dict) and isinstance(wall.get('failed'), int):
+                wall['failed'] += 1
+        fac['wait'] = {'waited': round(waited), 'probes': probes, 'recovered': recovered}
+        if recovered:
+            fac['blocked_at'] = None
+            with self.lock:
+                self.sessions.pop(slot, None)
+        return recovered
+
+
+def fleet_runner(args, wanted, sources, state, model, today, coming, sleep, clock, progress, store=None):
+    """This runner's part of the pass on the work stack (stack.py): (Runner, FleetOps), or None when the runners of
+    this pass do not share one (no store, a volunteer, a dry run)."""
+    if not args.runner or args.dry_run or args.registry or (store is None and not args.board):
+        return None
     try:
         runners = {r['name']: r for r in fleet.load_fleet(args.fleet)}
     except (OSError, ValueError) as err:
-        log(f'board: no fleet ({err}); not helping this pass')
-        return None, None
+        log(f'stack: no fleet ({err}); crawling alone')
+        return None
     me = runners.get(args.runner)
     if me is None:
-        log(f'board: {args.runner} is not in the fleet; not helping this pass')
-        return None, None
-    if board is None:
+        log(f'stack: {args.runner} is not in the fleet; crawling alone')
+        return None
+    if store is None:
         try:
-            board = boards.GitBoard(args.out, args.board, args.runner)
+            store = boards.GitStore(args.out, re.sub(r'/w\d+$', '', args.board))
         except ValueError as err:
-            log(f'board: {err}; not helping this pass')
-            return None, None
-    pool = steal.Pool(args.runner, me['speed'], {n: r['speed'] for n, r in runners.items()},
-                      lambda peer, f: peer in runners and fleet.may_take(runners[peer], [f], {}))
-    for name in wanted:
-        pool.add(name, core.group_of(name), core.term_id(coming) if coming else None)
-    coord = steal.Coordinator(board, pool, log=log)
-    coord.start()
-    return pool, coord
-
-
-def help_peers(pool, coord, sources, args, state, model, today, coming, sleep, clock, progress, own_groups=None,
-               capacity=None):
-    """Take work off the peers still at their shares (steal.help_peers), after this runner's own lanes or alongside
-    them (`own_groups`, `capacity`). Returns the codes it changed."""
-    me = {r['name']: r for r in fleet.load_fleet(args.fleet)}[args.runner]
-    ahead = core.term_id(coming) if coming else None
-    changed, lock = [], threading.Lock()
-
-    def day_of(term):
-        return today if not term else coming if term == ahead else None
-
-    def may(faculty):
-        if not sources.get(faculty, {}).get('enabled') or not fleet.may_take(me, [faculty], {}):
-            return False
-        # a wall this runner met lately (on its own share, or helping before) is not asked again before it is likely
-        # down: the cooldown its own line learned for that policy group
-        fac = state.faculties.get(faculty, {})
-        for stamp in (fac.get('walled_at'), fac.get('blocked_at')):
-            try:
-                age = (core.now_utc() - dt.datetime.fromisoformat(stamp)).total_seconds()
-            except (TypeError, ValueError):
-                continue
-            if age < model.estimate(faculty):
-                return False
-        return True
-
-    def probe(faculty, term):
-        day = day_of(term)
-        if day is None:
-            raise ValueError(f'the coming semester here is {ahead}, not {term}')
-        driver = load_driver(faculty, sources[faculty], state, day)
-        host = faculty_host(sources[faculty])
-        try:
-            return discover_with_retry(driver, new_session(), args.retries, args.retry_backoff, sleep,
-                                       block_retries=args.block_retries,
-                                       on_block=(lambda: post_block_report(host)) if host else None)
-        except core.Blocked as err:
-            state.faculties.setdefault(faculty, {})['walled_at'] = core.now_utc().isoformat()
-            raise steal.Walled(str(err)) from err
-
-    def crawl(key, items):
-        slot = pool.slot(key)
-        day = day_of(slot['term'])
-        if day is None:
-            return 'incomplete'
-        faculty = slot['faculty']
-        done, blocked, complete = refresh_faculty(faculty, sources[faculty], args, state, day, new_session(), sleep,
-                                                  clock, progress, ahead=bool(slot['term']), pool=pool, key=key,
-                                                  only=slot['fixed'], listed=items)
-        if progress is not None:
-            progress.send('faculty_done', slot=key, faculty=faculty, lane=core.group_of(faculty), changed=len(done),
-                          blocked=blocked, complete=complete, ahead=bool(slot['term']), taken_from=slot['origin'])
-        with lock:
-            changed.extend(done)
-        return 'blocked' if blocked else 'done' if complete else 'incomplete'
-
-    def room_of(faculty):
-        if args.deadline is None:
+            log(f'stack: {err}; crawling alone')
             return None
-        mult = state.data.get('pacing', {}).get(core.group_of(faculty), 1.0)
-        per = sum(args.delay) / 2 * min(3.0, max(1.0, float(mult))) + 2
-        return max(0, int((args.deadline - clock() - 120) / per))
+    term = core.term_id(coming) if coming else None
+    slots = []
+    for name in wanted:
+        if name in sources and fleet.may_take(me, [name], {}):  # `wanted` is already the enabled ones, or those named
+            slots.append(name)
+            if term:
+                slots.append(f'{name}~{term}')
+    expected = [n for n in args.expected.split(',') if n in runners] or [args.runner]
+    line = state.data
+    shy = {f for f in wanted if isinstance(state.faculties.get(f, {}).get('cant'), dict)
+           and build_count(state.faculties[f]['cant'].get('passes')) >= stack.SHY_PASSES}
+    me_ = stack.Me(args.runner, slots, {s: core.group_of(stack.faculty_of(s)) for s in slots}, expected,
+                   me['prefers'], {n: (set(r['faculties']) if r['faculties'] is not None else None)
+                                   for n, r in runners.items()},
+                   {n: r['prefers'] for n, r in runners.items()},
+                   {s: fleet.faculty_cost(line, stack.faculty_of(s)) for s in slots},
+                   {f for f in wanted if chronic(state, f, args.runner)}, shy)
+    ops = FleetOps(sources, args, state, model, today, coming, sleep, clock, progress)
+    runner = stack.Runner(store, me_, ops, lanes=args.lanes, deadline=args.deadline, clock=clock, sleep=sleep, log=log)
+    return runner, ops
 
-    deadline = args.deadline if args.deadline is not None else float('inf')
-    steal.help_peers(coord, pool, probe, crawl, deadline, clock=clock, workers=args.lanes, room_of=room_of, may=may,
-                     group_of=core.group_of, terms={''} | ({ahead} if ahead else set()), log=log,
-                     own_groups=own_groups, capacity=capacity)
-    return changed
+
+def build_count(value):
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
-def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monotonic, board=None):
+def note_cant(state, report, ops):
+    """Across passes: how many passes in a row this runner could not list a faculty (fac['cant'], its line's own).
+    After stack.SHY_PASSES it turns there last; one listing that works forgets it."""
+    now = core.now_utc().isoformat()
+    for slot, cause in report['cant'].items():
+        if stack.term_of(slot):
+            continue
+        fac = state.faculties.setdefault(stack.faculty_of(slot), {})
+        prior = fac.get('cant') if isinstance(fac.get('cant'), dict) else {}
+        fac['cant'] = {'since': prior.get('since') or now, 'passes': build_count(prior.get('passes')) + 1,
+                       'cause': cause}
+    for slot in ops.listed:
+        if not stack.term_of(slot) and slot not in report['cant']:
+            state.faculties.get(stack.faculty_of(slot), {}).pop('cant', None)
+
+
+def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monotonic, store=None):
     args = parse(argv)
     today = today or core.now_utc().date()
     started = core.now_utc().isoformat()
@@ -1255,83 +1372,69 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
     args.deadline = clock() + args.max_minutes * 60 if args.max_minutes else None
     model = core.BlockModel(state.data)
     coming = core.upcoming_reference(today)
-    lanes = plan_lanes(wanted)
-    pool, coord = open_board(args, wanted, coming, board)
-    parallel = bool(args.lanes > 1 and len(lanes) > 1 and session is None)
     progress = Progress(run=started, clock=clock)
-    if progress.url:
-        # The GUI seeds one queued slot per faculty from this layout, so an untouched lane still
-        # shows up (and an ETA covers it) long before its first faculty reports in.
-        progress.send('run_start', profile=args.profile, parallel=parallel,
-                      lanes=[{'lane': core.group_of(ns[0]), 'faculties': list(ns)} for ns in lanes])
-
-    def lane(names, wait_budget=None):
-        return run_lane(names, sources, args, state, model, today, coming, sleep, clock,
-                        session=session, wait_budget=wait_budget, progress=progress, pool=pool)
-
-    # With a board the runner helps its peers as soon as a lane of its own is done (steal.py), not only after all
-    # of them: --lanes caps its own lanes and its help crawls together, and no help crawl joins a policy group an
-    # own lane still crawls.
-    eager = coord is not None and session is None and args.lanes > 1
-    helped = []
-    if parallel or eager:
-        # Different policy groups are different walls, so they crawl side by side: the pause between pages
-        # is per host and unchanged, only the wall-clock time of a full pass shrinks. Each lane waits out
-        # its own wall concurrently, so each may spend the whole wait budget.
-        from concurrent.futures import ThreadPoolExecutor
-        running = {core.group_of(ns[0]) for ns in lanes}
-
-        def tracked(names):
-            try:
-                return lane(names)
-            finally:
-                if pool is not None:
-                    with pool.cond:
-                        running.discard(core.group_of(names[0]))
-                        pool.cond.notify_all()
-
-        def own_groups():
-            with pool.cond:
-                return set(running)
-
-        with ThreadPoolExecutor(max_workers=min(args.lanes, len(lanes))) as ex:
-            futures = [ex.submit(tracked, ns) for ns in lanes]
-            try:
-                if eager:
-                    helped = help_peers(pool, coord, sources, args, state, model, today, coming, sleep, clock,
-                                        progress, own_groups=own_groups,
-                                        capacity=lambda: args.lanes - len(own_groups()))
-            except BaseException:
-                coord.stop()
-                raise
-            results = [f.result() for f in futures]
-    else:
-        # One after another the waits add up, so they share the budget: each wait is capped to its fair share
-        # of what is left (but always gets a real chance: at least 15 minutes).
-        results, left = [], args.max_block_wait_minutes * 60
-        for pos, names in enumerate(lanes):
-            res = lane(names, min(left, max(900.0, left / (len(lanes) - pos))) if left > 0 else 0)
-            left -= res['waited']
-            results.append(res)
-    tallies = {'changed': [], 'blocked': False, 'incomplete': set()}
-    for res in results:
-        tallies['changed'] += res['changed']
-        tallies['blocked'] |= res['blocked']
-        tallies['incomplete'] |= res['incomplete']
-    tallies['changed'] += helped
-    if coord is not None:
+    lanes = plan_lanes(wanted)
+    found = fleet_runner(args, wanted, sources, state, model, today, coming, sleep, clock, progress, store)
+    report = ops = None
+    if found is not None:
+        runner, ops = found
         try:
-            if not eager:
-                tallies['changed'] += help_peers(pool, coord, sources, args, state, model, today, coming, sleep,
-                                                 clock, progress)
-        finally:
-            coord.stop()
+            runner.start()
+        except stack.StoreUnavailable as err:
+            # The store is out of reach: the static share the plan made for this case, crawled the old way.
+            wanted = [f for f in args.fallback.split(',') if f in sources]
+            lanes = plan_lanes(wanted)
+            log(f'stack: the work stack cannot be reached ({err}); crawling the fallback share alone: '
+                f'{", ".join(wanted) or "nothing"}')
+        else:
+            if progress.url:
+                progress.send('run_start', profile=args.profile, parallel=True,
+                              lanes=[{'lane': core.group_of(ns[0]), 'faculties': list(ns)} for ns in lanes])
+            report = runner.run()
+            forget = getattr(runner.store, 'forget', None)
+            if forget is not None:
+                forget()  # the copies of the store's docs this checkout fetched: the pass is over
+    tallies = {'changed': [], 'blocked': False, 'incomplete': set()}
+    if report is None:
+        parallel = bool(args.lanes > 1 and len(lanes) > 1 and session is None)
+        if progress.url:
+            # The GUI seeds one queued slot per faculty from this layout, so an untouched lane still
+            # shows up (and an ETA covers it) long before its first faculty reports in.
+            progress.send('run_start', profile=args.profile, parallel=parallel,
+                          lanes=[{'lane': core.group_of(ns[0]), 'faculties': list(ns)} for ns in lanes])
+
+        def lane(names, wait_budget=None):
+            return run_lane(names, sources, args, state, model, today, coming, sleep, clock,
+                            session=session, wait_budget=wait_budget, progress=progress)
+
+        if parallel:
+            # Different policy groups are different walls, so they crawl side by side: the pause between pages
+            # is per host and unchanged, only the wall-clock time of a full pass shrinks. Each lane waits out
+            # its own wall concurrently, so each may spend the whole wait budget.
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(args.lanes, len(lanes))) as ex:
+                results = list(ex.map(lane, lanes))
+        else:
+            # One after another the waits add up, so they share the budget: each wait is capped to its fair share
+            # of what is left (but always gets a real chance: at least 15 minutes).
+            results, left = [], args.max_block_wait_minutes * 60
+            for pos, names in enumerate(lanes):
+                res = lane(names, min(left, max(900.0, left / (len(lanes) - pos))) if left > 0 else 0)
+                left -= res['waited']
+                results.append(res)
+        for res in results:
+            tallies['changed'] += res['changed']
+            tallies['blocked'] |= res['blocked']
+            tallies['incomplete'] |= res['incomplete']
+    else:
+        tallies['changed'] = list(ops.changed)
+        note_cant(state, report, ops)
     # The census comes last: the WAT sites behind Incapsula share one wall per address, and on 2026-10-27 plebania met
     # it on WLO, WEL, WML and WTC four seconds after a census. After the crawl it can cost the census at most, and a
     # pass that met a wall leaves it to a later one rather than lean on that wall.
     census = [f for f in args.census.split(',') if f in sources and sources[f].get('enabled')]
-    walled = sorted(n for n in wanted if n in sources
-                    and state.faculties.get(n, {}).get('run', {}).get('cause') == 'wall'
+    walled = sorted(n for n in sources
+                    if state.faculties.get(n, {}).get('run', {}).get('cause') == 'wall'
                     and str(state.faculties[n]['run'].get('at') or '') >= started)
     if census and not args.dry_run:
         if walled:
@@ -1340,48 +1443,31 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
             log('census left for a later pass: the time budget is used up')
         else:
             take_census(census, sources, state, today, session, sleep, args.delay)
-    # What another runner took whole (or all that was left of) is its to report; what this one took is this one's.
-    gone = pool.gone() if pool is not None else set()
-    taken = pool.taken() if pool is not None else {}
-    own = [n for n in wanted if n not in gone]
-    blocked = tallies['blocked'] if pool is None else False
-    degraded_any = any(state.faculties.get(n, {}).get('run', {}).get('degraded')
-                       for n in dict.fromkeys(own + list(taken)) if n in sources)
-    incomplete = bool((tallies['incomplete'] - gone) | {f for f, (_, u) in taken.items() if u}) or degraded_any
-    if degraded_any:
+    if report is not None:
+        outcome = stack_outcome(report, state, sources, started)
+    else:
+        outcome = solo_outcome(wanted, tallies, state, sources, started)
+    if outcome['degraded']:
         log('DEGRADED: one or more faculties checked out degraded (skips or a shrunken listing); '
             'forcing incomplete so the run gets attention')
     if not args.dry_run:
         state.save()
     if args.faculty_state:
         save_line_state(state, args.faculty_state)
-    # Per faculty, for the fleet's handoff (tools/refresh/fleet.py): which ended this pass blocked, and which it did not
-    # finish (blocked ones included, as are faculties it never reached), so another runner can take exactly those.
-    # The faculties it took from a peer count like its own; those it handed on whole are the peer's to report.
-    ran = {n: state.faculties.get(n, {}).get('run', {}) for n in own if n in sources}
-    this_pass = {n for n, r in ran.items() if str(r.get('at') or '') >= started}
-    blocked_names = [n for n in ran if n in this_pass and ran[n].get('blocked')]
-    unfinished = [n for n in ran if n in tallies['incomplete'] or n not in this_pass or n in blocked_names]
-    blocked_names = list(dict.fromkeys(blocked_names + [f for f, (b, _) in taken.items() if b]))
-    unfinished = list(dict.fromkeys(unfinished + [f for f, (_, u) in taken.items() if u]))
-    if pool is not None:
-        blocked = bool(blocked_names)
-    exit_code = 3 if blocked else 4 if incomplete else 0
+    exit_code = 3 if outcome['blocked'] else 4 if outcome['incomplete'] else 0
     if args.outcomes:
         write_outcomes(args, started, wanted, sources, state)
-    # The faculties whose record (refresh-state.json's line keys) this runner publishes: its own but those handed on,
-    # and those it took whole. A part taken leaves the record to the faculty's owner (fleet.py merge --owned).
-    took = pool.took if pool is not None else []
-    owned = list(dict.fromkeys(own + [f for f, _, rest in took if rest]))
-    export(blocked=blocked, incomplete=incomplete, changed=len(tallies['changed']),
-           degraded=degraded_any, blocked_faculties=','.join(blocked_names), incomplete_faculties=','.join(unfinished),
-           took_faculties=','.join(dict.fromkeys(f'{f}:{p}' for f, p, _ in took)),
-           gave_faculties=','.join(dict.fromkeys(f'{f}:{p}' for f, p in (pool.gave if pool is not None else []))),
-           owned_faculties=','.join(owned), owned_known=True)
-    log(f'changed: {len(tallies["changed"])}; blocked: {blocked}; incomplete: {incomplete}')
+    export(blocked=outcome['blocked'], incomplete=outcome['incomplete'], changed=len(tallies['changed']),
+           degraded=outcome['degraded'], blocked_faculties=','.join(outcome['blocked_faculties']),
+           incomplete_faculties=','.join(outcome['incomplete_faculties']),
+           done_faculties=','.join(outcome['done_faculties']),
+           took_faculties=','.join(outcome['took']), gave_faculties=','.join(outcome['gave']),
+           led_faculties=','.join(outcome['led']), cant_faculties=','.join(outcome['cant']),
+           owned_faculties=','.join(outcome['owned']), owned_known=True)
+    log(f'changed: {len(tallies["changed"])}; blocked: {outcome["blocked"]}; incomplete: {outcome["incomplete"]}')
     if progress.url:
-        progress.send('run_done', exit=exit_code, blocked=blocked, incomplete=incomplete,
-                      degraded=degraded_any, changed=len(tallies['changed']))
+        progress.send('run_done', exit=exit_code, blocked=outcome['blocked'], incomplete=outcome['incomplete'],
+                      degraded=outcome['degraded'], changed=len(tallies['changed']))
     post_run_report({'started': started, 'ended': core.now_utc().isoformat(), 'exit': exit_code,
                      'profile': args.profile, 'dry_run': args.dry_run,
                      'faculties': {n: {**(state.faculties.get(n, {}).get('run', {})),
@@ -1389,6 +1475,51 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
                                           if 'wait' in state.faculties.get(n, {}) else {})}
                                    for n in wanted if n in sources}})
     return exit_code
+
+
+def _fresh_degraded(state, names, started):
+    return any(state.faculties.get(n, {}).get('run', {}).get('degraded')
+               and str(state.faculties[n]['run'].get('at') or '') >= started for n in names)
+
+
+def solo_outcome(wanted, tallies, state, sources, started):
+    """A runner that crawled its faculties alone (no work stack): per faculty, for the fleet's report."""
+    own = [n for n in wanted if n in sources]
+    ran = {n: state.faculties.get(n, {}).get('run', {}) for n in own}
+    this_pass = {n for n, r in ran.items() if str(r.get('at') or '') >= started}
+    blocked = [n for n in own if n in this_pass and ran[n].get('blocked')]
+    unfinished = [n for n in own if n in tallies['incomplete'] or n not in this_pass or n in blocked]
+    degraded = any(ran[n].get('degraded') for n in own)
+    return {'blocked': bool(tallies['blocked']), 'incomplete': bool(tallies['incomplete']) or degraded,
+            'degraded': degraded, 'blocked_faculties': blocked, 'incomplete_faculties': unfinished,
+            'done_faculties': [n for n in own if n not in unfinished], 'took': [], 'gave': [], 'led': own,
+            'cant': [], 'owned': own}
+
+
+def stack_outcome(report, state, sources, started):
+    """A stack runner's outcome, per faculty, from its last reading of the store (stack.slot_status): the report job
+    reads the store itself and only falls back on these when it cannot."""
+    rank = {'blocked': 0, 'unfinished': 1, 'absent': 1, 'failed': 2, 'done': 3, 'empty': 3}
+    worst = {}
+    for slot, status in report['verdicts'].items():
+        f = stack.faculty_of(slot)
+        if f not in worst or rank.get(status, 1) < rank.get(worst[f], 1):
+            worst[f] = status
+    blocked = [f for f, v in worst.items() if v == 'blocked']
+    unfinished = [f for f, v in worst.items() if v in ('blocked', 'unfinished', 'absent', 'failed')]
+    led = list(dict.fromkeys(stack.faculty_of(s) for s in report['led']))
+    owned = [stack.faculty_of(s) for s in report['led'] if not stack.term_of(s)]
+    helped = list(dict.fromkeys(stack.faculty_of(s) for s in report['helped']))
+    degraded = (any(v == 'failed' for v in worst.values())
+                or _fresh_degraded(state, [f for f in dict.fromkeys(owned + helped) if f in sources], started))
+    return {'blocked': bool(blocked), 'incomplete': bool(unfinished) or degraded, 'degraded': degraded,
+            'blocked_faculties': blocked, 'incomplete_faculties': unfinished,
+            'done_faculties': [f for f, v in worst.items() if v in ('done', 'empty')],
+            'took': list(dict.fromkeys(f'{stack.faculty_of(s)}:{leader}' for s, leader in report['helped'].items()
+                                       if leader)),
+            'gave': list(dict.fromkeys(f'{stack.faculty_of(s)}:{h}' for s, hs in report['gave'].items() for h in hs)),
+            'led': led, 'cant': list(dict.fromkeys(f'{stack.faculty_of(s)}:{c}' for s, c in report['cant'].items())),
+            'owned': owned}
 
 
 if __name__ == '__main__':

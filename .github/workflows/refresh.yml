@@ -6,11 +6,11 @@ name: Refresh timetables
 # Crawls only on the project's self-hosted runners (label "planwat"): the faculty sites' Incapsula wall blocks
 # GitHub's datacenter addresses on the first request, so a hosted runner can only fail. There are three of them
 # (tools/refresh/fleet.json): plebania, fast but often switched off; an always-on but slow VPS; and a free Northflank
-# container. A hosted job asks GitHub which of them is online and splits the faculties between those; all three carry
-# speed 1, so the split is even. One that is done early takes work off the others while they still crawl
-# (tools/refresh/steal.py, over git refs that the report job deletes). What one of them leaves blocked or unfinished,
-# another one that is online then takes over (the handoff). A last hosted job adds their outcomes up for pages.yml and
-# the "blocked" issues, and records the pass in the run history (README.md on the data branch, the site's /stan/ page).
+# container. A hosted job asks GitHub which of them is online and starts a crawl on each. Nothing is handed out: the
+# runners pull their work from one shared work stack (tools/refresh/stack.py, over git refs the report job deletes),
+# each leading the faculties it prefers and helping with the rest, so a runner that fails or meets a wall only leaves
+# its part to the others. A last hosted job reads what the stack says of every faculty, adds the pass up for pages.yml
+# and the "blocked" issues, and records it in the run history (README.md on the data branch, the site's /stan/ page).
 on:
   # Every two hours, round the clock: a pass over every group takes well under an hour (all policy
   # groups crawl side by side, one request at a time per host) and most pages answer 304, so a quiet
@@ -44,8 +44,8 @@ jobs:
         with:
           path: src
           persist-credentials: false
-      # The split weighs each faculty by what it listed last time and its learned pacing; the run history says which
-      # runner a faculty's wall kept out lately (fleet.py walled_runners).
+      # The fallback split (crawled alone should the stack be out of reach) weighs each faculty by what it listed last
+      # time and its learned pacing; the run history says which runner a faculty's wall kept out lately.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: data
@@ -96,87 +96,14 @@ jobs:
       label: ${{ matrix.label }}
       faculties: ${{ matrix.faculties }}
       census: ${{ matrix.census || '' }}
-      wave: 1
-      wait: ${{ matrix.wait }}
+      expected: ${{ matrix.expected }}
+      fallback: ${{ matrix.fallback || '' }}
       planned: ${{ needs.plan.outputs.planned }}
 
-  # A wall stands in front of one address, not in front of the faculty: what a runner left blocked (or unfinished:
-  # a crash, a time limit, a share it never started or one GitHub cancelled in its queue) goes to another runner that
-  # GitHub says is online now. The plan had each runner wait a wall out only briefly when such a takeover was
-  # possible. Not after the whole run was cancelled, though: that is someone's way of saying stop.
-  handoff:
-    needs: [plan, crawl]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.shards != '0' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.handoff.outputs.matrix }}
-      shards: ${{ steps.handoff.outputs.shards }}
-      planned: ${{ steps.handoff.outputs.planned }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          path: src
-          persist-credentials: false
-      # The takeover is weighed like the plan: by what each faculty listed last time and its pacing.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: data
-          path: data
-          sparse-checkout: |
-            refresh-state.json
-            refresh-runs.json
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-      - name: Download the shares' outcomes
-        continue-on-error: true
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: refresh-shard-1-*
-          path: shards
-          merge-multiple: true
-      - name: Ask GitHub which runners are online now
-        env:
-          GH_TOKEN: ${{ secrets.PLANWAT_RUNNERS_TOKEN }}
-        run: |
-          if [ -n "$GH_TOKEN" ] && gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runners" \
-              --jq '.runners[] | {name, status, busy, labels: [.labels[].name]}' > runners.jsonl; then
-            jq -s . runners.jsonl > runners.json
-            jq -r '.[] | "\(.name): \(.status) [\(.labels | join(", "))]"' runners.json
-          else
-            echo '::warning::cannot see which runners are online; only an always-on runner may take over'
-          fi
-      - id: handoff
-        env:
-          MATRIX: ${{ needs.plan.outputs.matrix }}
-        run: |
-          args=(handoff --matrix "$MATRIX" --dir shards --state data/refresh-state.json --runs data/refresh-runs.json)
-          if [ -f runners.json ]; then args+=(--runners runners.json); fi
-          python3 src/tools/refresh/fleet.py "${args[@]}"
-
-  takeover:
-    name: takeover (${{ matrix.runner }})
-    needs: handoff
-    if: ${{ !cancelled() && needs.handoff.result == 'success' && needs.handoff.outputs.shards != '0' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.handoff.outputs.matrix) }}
-    permissions:
-      contents: write
-    uses: ./.github/workflows/refresh-crawl.yml
-    with:
-      runner: ${{ matrix.runner }}
-      label: ${{ matrix.label }}
-      faculties: ${{ matrix.faculties }}
-      wave: 2
-      wait: ${{ matrix.wait }}
-      planned: ${{ needs.handoff.outputs.planned }}
-
   report:
-    needs: [plan, crawl, handoff, takeover]
-    # Also after a failed or skipped crawl or handoff: the outcome must be written either way (a pass with no
-    # runner online included). A cancelled run has no outcome, so it must not claim a blocked one.
+    needs: [plan, crawl]
+    # Also after a failed or skipped crawl: the outcome must be written either way (a pass with no runner online
+    # included). A cancelled run has no outcome, so it must not claim a blocked one.
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -199,14 +126,41 @@ jobs:
           pattern: refresh-shard-*
           path: shards
           merge-multiple: true
+      # The run history, and the checkout the work stack is read through. Before the outcome: the stack's verdicts
+      # are what the outcome counts.
+      - name: Check out the run history
+        id: history
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: data
+          path: data
+          sparse-checkout: |
+            refresh-state.json
+            refresh-runs.json
+            README.md
+          sparse-checkout-cone-mode: false
+      # What the work stack says of every faculty: done, blocked (every runner able stood at its wall), unfinished.
+      # Unreadable, the outcome counts what the runners last saw of it.
+      - name: Read the work stack
+        id: stack
+        if: steps.history.outcome == 'success'
+        continue-on-error: true
+        env:
+          MATRIX: ${{ needs.plan.outputs.matrix }}
+          PLANNED: ${{ needs.plan.outputs.planned }}
+        run: |
+          python3 src/tools/refresh/stack.py summary --repo data --planned "$PLANNED" --run-id "$GITHUB_RUN_ID" \
+            --matrix "$MATRIX" --out stack-summary.json
       - id: combine
         env:
           MATRIX: ${{ needs.plan.outputs.matrix }}
-          HANDOFF: ${{ needs.handoff.outputs.matrix }}
           PLANNED: ${{ needs.plan.outputs.planned }}
         run: |
-          python3 src/tools/refresh/fleet.py combine --matrix "$MATRIX" --handoff "${HANDOFF:-[]}" --planned "$PLANNED" \
-            --dir shards --out refresh-outcome.json
+          summary=()
+          if [ -f stack-summary.json ]; then summary=(--summary stack-summary.json); fi
+          python3 src/tools/refresh/fleet.py combine --matrix "$MATRIX" --planned "$PLANNED" \
+            --dir shards --out refresh-outcome.json "${summary[@]}"
       - name: File or close the issues
         if: steps.combine.outputs.current == 'true'
         env:
@@ -245,19 +199,7 @@ jobs:
       # The last passes for people to read: refresh-runs.json and README.md on the data branch (GitHub shows it at
       # the branch's root, this run's summary repeats it) and, through pages.yml, the site's /stan/ page. Each pass
       # is recorded, a stale or empty one too; a glitch here never fails the report.
-      - name: Check out the run history
-        id: history
-        continue-on-error: true
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: data
-          path: data
-          sparse-checkout: |
-            refresh-state.json
-            refresh-runs.json
-            README.md
-          sparse-checkout-cone-mode: false
-      # The runners talked over refs/planwat/pass/<...>-<run id>/ while they crawled (tools/refresh/board.py): gone
+      # The runners shared refs/planwat/pass/<planned>-<run id>/ while they crawled (tools/refresh/board.py): gone
       # with the pass, as are any a pass cut short left behind.
       - name: Clear the pass's work board
         if: steps.history.outcome == 'success'
@@ -270,7 +212,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MATRIX: ${{ needs.plan.outputs.matrix }}
-          HANDOFF: ${{ needs.handoff.outputs.matrix }}
           FLEET: ${{ needs.plan.outputs.fleet }}
           PLANNED: ${{ needs.plan.outputs.planned }}
           EVENT: ${{ github.event_name }}
@@ -287,7 +228,9 @@ jobs:
               git fetch -q --depth 1 origin data
               git reset -q --hard FETCH_HEAD
             fi
-            python3 "$runs" record --matrix "$MATRIX" --handoff "${HANDOFF:-[]}" --plan "$FLEET" --planned "$PLANNED" \
+            stack=()
+            if [ -f "$GITHUB_WORKSPACE/stack-summary.json" ]; then stack=(--stack "$GITHUB_WORKSPACE/stack-summary.json"); fi
+            python3 "$runs" record --matrix "$MATRIX" --plan "$FLEET" --planned "$PLANNED" "${stack[@]}" \
               --dir "$GITHUB_WORKSPACE/shards" --state refresh-state.json --runs refresh-runs.json --readme README.md \
               --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --attempt "$GITHUB_RUN_ATTEMPT" \
               --event "$EVENT" --url "$RUN_URL" --site-url "${site:+${site%/}/stan/}" \

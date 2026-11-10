@@ -6,7 +6,7 @@
       "speed": 1,
       "census": ["wig"],
       "prefers": ["wtc", "wlo", "wel"],
-      "note": "The home server: fast, but often switched off. With every runner at speed 1 it takes an equal share of the plan, then helps whoever is still crawling (steal.py). Takes the WIG census (the Joomla tree Incapsula keeps from the VPS's datacenter address), at most once a week and after its own crawl, so a new programme directory is crawled by whoever has WIG. Prefers WTC, WLO and WEL whenever it is up: WTC and WLO's plan pages answered the Cloudflare Worker with 403 from both AMS and FRA on 2026-10-29, so only this direct line gets them when it is clean; WEL shares WLO's policy lane. The relay covers WEL and WIG (docs/EGRESS.md); WLO, WML and WTC answered it with 403 on 2026-10-29."
+      "note": "The home server: fast, but often switched off. It pulls its work from the pass's work stack (stack.py) like the others, leading the faculties it prefers and helping with the rest. Takes the WIG census (the Joomla tree Incapsula keeps from the VPS's datacenter address), at most once a week and after its own crawl, so a new programme directory is crawled by whoever has WIG. Leads WTC, WLO and WEL whenever it is up (the others leave them to it, and only help from the back): WTC and WLO's plan pages answered the Cloudflare Worker with 403 from both AMS and FRA on 2026-10-29, so only this direct line gets them when it is clean; WEL shares WLO's policy lane. The relay covers WEL and WIG (docs/EGRESS.md); WLO, WML and WTC answered it with 403 on 2026-10-29."
     },
     {
       "name": "oracle",
@@ -14,14 +14,14 @@
       "speed": 1,
       "always_on": true,
       "prefers": ["wig", "ioe"],
-      "note": "The free Oracle VPS (deploy/runner/): slow and weak, but always up. Covers everything while plebania is off. Takes WIG and IOE whenever it is up, so the fast machine's share stays on the faculties only it gets through: WIG tested from both runners on 2026-10-26 (two passes each, 33/33 groups, identical calendars); IOE crawled clean from here in 9 of 9 passes. WLO/WEL, WML and WTC answer this address with their walls when fetched directly; with PLANWAT_RELAY_URL and PLANWAT_RELAY_TOKEN set (docs/EGRESS.md) WEL and WIG ride the Cloudflare Worker relay, while WLO, WML and WTC answer 403 from Cloudflare's egress too (checked 2026-10-29 from AMS and FRA), so they stay with plebania when its line is clean; WCY stays on the pool (EGRESS_FAIL_CLOSED)."
+      "note": "The free Oracle VPS (deploy/runner/): slow and weak, but always up. Covers everything while plebania is off. Leads WIG and IOE, so the fast machine's lanes stay on the faculties only it gets through: WIG tested from both runners on 2026-10-26 (two passes each, 33/33 groups, identical calendars); IOE crawled clean from here in 9 of 9 passes. WLO/WEL, WML and WTC answer this address with their walls when fetched directly; with PLANWAT_RELAY_URL and PLANWAT_RELAY_TOKEN set (docs/EGRESS.md) WEL and WIG ride the Cloudflare Worker relay, while WLO, WML and WTC answer 403 from Cloudflare's egress too (checked 2026-10-29 from AMS and FRA), so they stay with plebania when its line is clean; WCY stays on the pool (EGRESS_FAIL_CLOSED)."
     },
     {
       "name": "northflank",
       "label": "planwat-northflank",
       "speed": 1,
       "faculties": ["ioe", "wig", "wim"],
-      "note": "A free Northflank container (deploy/runner/Dockerfile.runner, no egress box), on a Google Cloud address (34.187.35.3). Tried on 2026-10-27, three groups each: IOE, WIG and WIM get through directly. With PLANWAT_RELAY_URL and PLANWAT_RELAY_TOKEN set (no egress needed) WEL and WIG also ride the Worker relay, but WEL shares WLO's policy lane, and on 2026-10-29 the WLO, WML and WTC plan pages answered the relay with 403 from both AMS and FRA (the WLO home page alone got through). WCY still needs the pool this box does not have. So it takes only IOE, WIG and WIM; without the relay those three still work. Not always_on: a free container may be paused, and it keeps no volume, so a restart needs a new registration token."
+      "note": "A free Northflank container (deploy/runner/Dockerfile.runner, no egress box), on a Google Cloud address (34.187.35.3). Tried on 2026-10-27, three groups each: IOE, WIG and WIM get through directly. With PLANWAT_RELAY_URL and PLANWAT_RELAY_TOKEN set (no egress needed) WEL and WIG also ride the Worker relay, but WEL shares WLO's policy lane, and on 2026-10-29 the WLO, WML and WTC plan pages answered the relay with 403 from both AMS and FRA (the WLO home page alone got through). WCY still needs the pool this box does not have. So it takes only IOE, WIG and WIM, helping oracle with the first two from the back of the stack; without the relay those three still work. Not always_on: a free container may be paused, and it keeps no volume, so a restart needs a new registration token."
     }
   ]
 }
