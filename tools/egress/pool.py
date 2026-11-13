@@ -704,15 +704,18 @@ class ProxyPool:
         return out
 
     def hunt_async(self, hosts, **kwargs):
-        """Start hunt(hosts) in the background, or add the hosts to the one running. The state per host, as
-        hunt_status() shows it, is 'running' until its result is in."""
+        """Start hunt(hosts) in the background, or queue the hosts for the next round while one runs. The state per
+        host, as hunt_status() shows it, is 'queued' while it waits for that round, then 'running' until its result
+        is in (a caller's patience starts at 'running')."""
         hosts = [h for h in dict.fromkeys(hosts) if h in self.round2]
         with self._hunt_lock:
+            busy = self._hunt_thread is not None and self._hunt_thread.is_alive()
             for h in hosts:
-                if self.hunts.get(h, {}).get('state') != 'running':
+                if self.hunts.get(h, {}).get('state') not in ('running', 'queued'):
                     self._hunt_pending[h] = kwargs
-                    self.hunts[h] = {**self.hunts.get(h, {}), 'state': 'running', 'error': None}
-            if self._hunt_thread is None or not self._hunt_thread.is_alive():
+                    self.hunts[h] = {**self.hunts.get(h, {}), 'state': 'queued' if busy else 'running',
+                                     'error': None}
+            if not busy:
                 self._hunt_thread = threading.Thread(target=self._hunt_worker, daemon=True)
                 self._hunt_thread.start()
         return self.hunt_status()
@@ -725,6 +728,8 @@ class ProxyPool:
                     return
                 batch = dict(self._hunt_pending)
                 self._hunt_pending.clear()
+                for h in batch:
+                    self.hunts[h] = {**self.hunts.get(h, {}), 'state': 'running'}
             kwargs = next(iter(batch.values()))
             try:
                 self.hunt(list(batch), **kwargs)

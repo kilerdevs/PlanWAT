@@ -2274,6 +2274,21 @@ class PoolHunt(unittest.TestCase):
             time.sleep(0.02)
         self.assertEqual(p.hunt_status()['wml.wat.edu.pl']['verified'], 1)
 
+    def test_a_host_asked_for_during_a_hunt_waits_queued_then_runs(self):
+        p = self.make(self.alive(3), lambda u, h: False)
+        gate = threading.Event()
+        real = p.probe_host
+        p.probe_host = lambda u, h: (gate.wait(5), real(u, h))[1]
+        p.hunt_async(['wtc.wat.edu.pl'], workers=1)
+        self.assertEqual(p.hunt_async(['wml.wat.edu.pl'])['wml.wat.edu.pl']['state'], 'queued')
+        gate.set()
+        for _ in range(200):
+            if p.hunt_status()['wml.wat.edu.pl']['state'] == 'done':
+                break
+            time.sleep(0.02)
+        self.assertEqual({h: v['state'] for h, v in p.hunt_status().items()},
+                         {'wtc.wat.edu.pl': 'done', 'wml.wat.edu.pl': 'done'})
+
     def test_adopt_checks_every_shared_exit_itself(self):
         p = self.make({}, lambda u, h: u == 'http://8.8.8.8:3128')
         got = p.adopt('wml.wat.edu.pl', ['8.8.8.8:3128', 'http://9.9.9.9:80', '127.0.0.1:80', 'junk', 42])

@@ -88,11 +88,15 @@ class Egress:
         code, _ = self._call('/api/hunt', {'hosts': [host]})
         if code != 202:
             raise Unavailable(f'{self.api}: the hunt was refused ({code or "no answer"})')
-        until = self.clock() + wait
+        # patience counts from when the egress starts on this host: it may first finish another host's hunt
+        begun, until, cap = None, self.clock() + wait, self.clock() + 2 * wait
         while True:
             self.sleep(POLL)
             code, got = self._call('/api/hunt', timeout=15)
             state = ((got.get('hosts') or {}).get(host) or {}) if code == 200 else {}
+            if begun is None and state.get('state') != 'queued':
+                begun = self.clock()
+                until = min(cap, begun + wait)
             if state.get('state') == 'done':
                 found = [e for e in state.get('exits') or [] if isinstance(e, str)]
                 self.log(f"egress: hunted {host}: {len(found)} exits through, {state.get('tried', 0)} tried")
