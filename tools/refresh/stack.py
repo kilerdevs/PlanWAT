@@ -959,7 +959,10 @@ class Runner:
         exits = [e for e in (doc or {}).get('exits') or [] if isinstance(e, str)]
         with self.lock:
             self.me.hunted[slot] = frozenset(exits)
-        self.log(f'[{slot}] no runner up reaches it directly; '
+        leader = (doc or {}).get('leader')
+        why = (f'helping {leader} through pool exits' if leader and leader != me and faculty_of(slot) in self.me.pool_help
+               else 'no runner up reaches it directly')
+        self.log(f'[{slot}] {why}; '
                  + (f'checking the {len(exits)} exits found for it' if exits else 'hunting the pool for exits to it'))
         try:
             found = [e for e in self.ops.hunt(slot, exits) or [] if isinstance(e, str)]

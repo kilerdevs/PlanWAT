@@ -2226,6 +2226,28 @@ class PoolHunt(unittest.TestCase):
         again = p.hunt(['wtc.wat.edu.pl'], workers=1)
         self.assertEqual(again['wtc.wat.edu.pl']['verified'], 0)
 
+    def test_a_fresh_pool_keeps_discovering_until_enough_fast_candidates(self):
+        p = self.make({}, lambda u, h: False)
+        calls = []
+
+        def discover(fetcher, workers, start, cap=None):
+            calls.append(cap)
+            n = len(p.entries)
+            for i in range(n, n + (20 if len(calls) < 3 else 0)):
+                p.entries[f'http://8.8.{i}.2:8080'] = {'status': 'ok', 'latency_ms': 100, 'fails': 0,
+                                                       'last_checked': time.time(), 'hosts': {}}
+            return 'ok', [], []
+        p._discover = discover
+        out = p.hunt(['wtc.wat.edu.pl'], workers=2)
+        self.assertEqual(calls, [pool.HUNT_PROBE, pool.HUNT_PROBE])  # 40 fast ones known: enough
+        self.assertEqual(out['wtc.wat.edu.pl']['tried'], 40)
+        p.hunts.clear()
+        p.entries = {}
+        calls.clear()
+        p._discover = lambda *a, **k: (calls.append(1), ('ok', [], []))[1]
+        p.hunt(['wtc.wat.edu.pl'])
+        self.assertEqual(len(calls), 1)  # the lists had nobody new: no point asking again
+
     def test_known_exits_are_rechecked_first(self):
         p = self.make(self.alive(5), lambda u, h: u == 'http://8.8.2.1:8080')
         p.mark('http://8.8.2.1:8080', 'wml.wat.edu.pl', True, 40)

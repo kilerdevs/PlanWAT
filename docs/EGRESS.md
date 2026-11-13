@@ -161,7 +161,9 @@ pracy ([docs/REFRESH.md](REFRESH.md#wyjścia-przez-pulę)) każe runnerowi z egr
 Egress robi to na żądanie, poza zwykłym odświeżaniem puli, także dla hostów z `EGRESS_DIRECT_FACULTY`:
 
 - `POST /api/hunt {"hosts": [...]}` (202) zaczyna polowanie w tle albo dopisuje hosty do trwającego. Gdy świeżych żywych
-  kandydatów jest mniej niż 40 (albo są starsi niż godzina), najpierw pobiera listy i robi Round 1. Potem każde żywe
+  kandydatów z sensownym pingiem jest mniej niż 40 (albo są starsi niż godzina), najpierw pobiera listy i robi Round 1
+  jeszcze nieznanych kandydatów, do 4 rund po 800 (świeżo uruchomiony egress zna tylko próbkę list; pierwsze polowanie
+  northflanka 13.11.2026 miało przez to tylko 13 kandydatów). Potem każde żywe
   proxy z opóźnieniem Round 1 najwyżej `EGRESS_HUNT_MAX_MS` (domyślnie 2500 ms), od najszybszego, przechodzi Round 2
   dla każdego hosta, który nie ma jeszcze 4 wyjść: ta sama strona listy, znacznik treści i weto stron blokady co zwykle.
   Proxy, które przeszło jeden wydział, jest więc od razu próbowane na pozostałych. Najwyżej 4 sondy naraz (wydziały widzą

@@ -73,6 +73,9 @@ HUNT_WANT = 4  # exits per host that end its search (enough to rotate)
 HUNT_WORKERS = 4  # probes at once, all hosts together: the faculty sites see a trickle, not a scan
 HUNT_BUDGET_S = 300
 HUNT_MIN_ALIVE = 40  # fewer fresh-enough alive candidates than this: fetch the lists and Round-1 them first
+HUNT_PROBE = 800  # candidates Round-1 probed per discovery round of a hunt (a neutral page, not the faculty)
+HUNT_ROUNDS = 4  # discovery rounds at most, each over candidates not probed yet
+HUNT_R1_WORKERS = 48
 HUNT_FRESH_S = 3600  # an alive verdict older than this is not trusted for a hunt
 HUNT_CACHE_S = 30 * 60  # a host hunted this recently only has its known exits re-checked, nobody else probed
 ADOPT_CAP = 8  # shared exits checked per request
@@ -642,14 +645,23 @@ class ProxyPool:
                     found[h].append(c['url'])
         searching = [h for h in hosts if len(found[h]) < want and h not in recent]
         if searching:
-            if len(self._fresh_alive(max_ms)) < HUNT_MIN_ALIVE:
-                if self._refresh_lock.acquire(timeout=REFRESH_DEADLINE_S):
-                    try:
-                        self._discover(fetcher, 32, clock())
-                    except Exception as err:
-                        self.last_error = f'hunt discovery: {err}'
-                    finally:
-                        self._refresh_lock.release()
+            # "every proxy with a sensible ping": a fresh pool (a local egress just started) has Round-1 probed only
+            # a sample of the lists, so keep probing the ones nobody tried yet until enough fast ones are known
+            for _ in range(HUNT_ROUNDS):
+                if len(self._fresh_alive(max_ms)) >= HUNT_MIN_ALIVE or clock() - start > budget_s / 2:
+                    break
+                if not self._refresh_lock.acquire(timeout=REFRESH_DEADLINE_S):
+                    break
+                try:
+                    known = len(self.entries)
+                    self._discover(fetcher, HUNT_R1_WORKERS, clock(), cap=HUNT_PROBE)
+                except Exception as err:
+                    self.last_error = f'hunt discovery: {err}'
+                    break
+                finally:
+                    self._refresh_lock.release()
+                if len(self.entries) == known:
+                    break  # the lists have nobody left to try
             jobs = []
             now = time.time()
             for url in self._fresh_alive(max_ms, now):
@@ -749,9 +761,10 @@ class ProxyPool:
         with ThreadPoolExecutor(max_workers=max(1, min(workers, len(cands)))) as ex:
             return [u for u in ex.map(check, cands) if u]
 
-    def _discover(self, fetcher, workers, start_mono):
-        """Fetch the lists and Round-1 the candidates nobody knows yet: ('ok', fresh, alive urls), ('failed',
-        alive count) when every list failed, ('late', alive count, tried) past the refresh deadline."""
+    def _discover(self, fetcher, workers, start_mono, cap=None):
+        """Fetch the lists and Round-1 the candidates nobody knows yet (at most `cap`, max_probe by default):
+        ('ok', fresh, alive urls), ('failed', alive count) when every list failed, ('late', alive count, tried) past
+        the refresh deadline."""
         import random
         self.prune()
 
@@ -805,7 +818,7 @@ class ProxyPool:
             cov, alive_n = self.coverage()
             return 'failed', alive_n
         random.shuffle(fresh)
-        fresh = fresh[:self.max_probe]
+        fresh = fresh[:self.max_probe if cap is None else cap]
         alive = []
 
         def _r1(candidate):
