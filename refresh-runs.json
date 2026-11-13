@@ -2,6 +2,166 @@
  "version": 1,
  "runs": [
   {
+   "id": 43343452080,
+   "number": 147,
+   "attempt": 1,
+   "event": "schedule",
+   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/43343452080",
+   "planned": "2026-11-13T01:15:02",
+   "ended": "2026-11-13T01:38:59",
+   "result": "blocked",
+   "changed": 10,
+   "checked": 441,
+   "not_ready": 51,
+   "runners": [
+    {
+     "name": "oracle",
+     "faculties": [
+      "wlo",
+      "wel",
+      "ioe",
+      "wcy",
+      "wml",
+      "wtc",
+      "wig"
+     ],
+     "status": "blocked",
+     "minutes": 23,
+     "changed": 10,
+     "wave": 1,
+     "helped": {
+      "wim": "northflank"
+     },
+     "blocked_on": [
+      "wlo",
+      "wml",
+      "wtc"
+     ]
+    },
+    {
+     "name": "northflank",
+     "faculties": [
+      "wim"
+     ],
+     "status": "done",
+     "minutes": 4,
+     "changed": 0,
+     "wave": 1,
+     "helped": {
+      "ioe": "oracle"
+     }
+    }
+   ],
+   "offline": [
+    "plebania"
+   ],
+   "unassigned": [],
+   "faculties": [
+    {
+     "id": "wlo",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 0,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": true,
+     "degraded": false,
+     "cause": "wall"
+    },
+    {
+     "id": "wel",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 160,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 3,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "ioe",
+     "runner": "oracle",
+     "helpers": [
+      "northflank"
+     ],
+     "fresh": true,
+     "checked": 10,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wcy",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 186,
+     "changed": 10,
+     "not_ready": 51,
+     "skipped": 1,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wml",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 0,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": true,
+     "degraded": false,
+     "cause": "wall"
+    },
+    {
+     "id": "wtc",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 0,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": true,
+     "degraded": false,
+     "cause": "wall"
+    },
+    {
+     "id": "wig",
+     "runner": "oracle",
+     "fresh": true,
+     "checked": 33,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wim",
+     "runner": "northflank",
+     "helpers": [
+      "oracle"
+     ],
+     "fresh": true,
+     "checked": 52,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    }
+   ]
+  },
+  {
    "id": 43280095510,
    "number": 146,
    "attempt": 1,
@@ -1536,165 +1696,6 @@
      ],
      "fresh": true,
      "checked": 33,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    }
-   ]
-  },
-  {
-   "id": 42780716506,
-   "number": 137,
-   "attempt": 1,
-   "event": "workflow_dispatch",
-   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/42780716506",
-   "planned": "2026-11-10T08:11:50",
-   "ended": "2026-11-10T08:17:18",
-   "result": "blocked",
-   "changed": 0,
-   "checked": 49,
-   "not_ready": 51,
-   "runners": [
-    {
-     "name": "oracle",
-     "faculties": [
-      "ioe",
-      "wcy",
-      "wel",
-      "wig"
-     ],
-     "status": "blocked",
-     "minutes": 5,
-     "changed": 0,
-     "wave": 1,
-     "cant": {
-      "wtc": "wall",
-      "wml": "wall",
-      "wlo": "wall"
-     },
-     "blocked_on": [
-      "wtc",
-      "wml",
-      "wlo"
-     ]
-    },
-    {
-     "name": "northflank",
-     "faculties": [
-      "wim"
-     ],
-     "status": "done",
-     "minutes": 2,
-     "changed": 0,
-     "wave": 1
-    }
-   ],
-   "offline": [
-    "plebania"
-   ],
-   "unassigned": [],
-   "faculties": [
-    {
-     "id": "wlo",
-     "runner": "",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": true,
-     "degraded": false,
-     "cause": "wall",
-     "cant": {
-      "oracle": "wall"
-     }
-    },
-    {
-     "id": "wel",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 14,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 3,
-     "blocked": false,
-     "degraded": true,
-     "cause": null
-    },
-    {
-     "id": "wim",
-     "runner": "northflank",
-     "fresh": true,
-     "checked": 2,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "ioe",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 5,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "wcy",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 28,
-     "changed": 0,
-     "not_ready": 51,
-     "skipped": 1,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "wml",
-     "runner": "",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": true,
-     "degraded": false,
-     "cause": "wall",
-     "cant": {
-      "oracle": "wall"
-     }
-    },
-    {
-     "id": "wtc",
-     "runner": "",
-     "fresh": true,
-     "checked": 0,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": true,
-     "degraded": false,
-     "cause": "wall",
-     "cant": {
-      "oracle": "wall"
-     }
-    },
-    {
-     "id": "wig",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 0,
      "changed": 0,
      "not_ready": 0,
      "skipped": 0,
