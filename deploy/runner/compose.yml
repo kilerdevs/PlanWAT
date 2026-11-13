@@ -81,6 +81,8 @@ services:
       # for the hunt. A datacenter box opening many proxy connections is fine; a home line should leave it off.
       EGRESS_SCOUT: ${EGRESS_SCOUT:-on}
       EGRESS_SCOUT_R1: ${EGRESS_SCOUT_R1:-24}
+      # faculty-page probes at once; each faculty still sees at most one scout probe per 2 s
+      EGRESS_FACULTY_PROBES: ${EGRESS_FACULTY_PROBES:-8}
     dns:
       - 1.1.1.1
       - 9.9.9.9

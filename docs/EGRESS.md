@@ -193,8 +193,8 @@ o nie poprosi. `EGRESS_NICE` obniża priorytet procesu (mała maszyna oddaje CPU
 
 Gdzie działa:
 
-- **oracle** (`deploy/runner/compose.yml`): `EGRESS_SCOUT=on`, `EGRESS_SCOUT_R1=24` (wątki liczą się do `pids_limit`, dlatego
-  384). Wdrożenie: `docker compose up -d --build egress`.
+- **oracle** (`deploy/runner/compose.yml`): `EGRESS_SCOUT=on`, `EGRESS_SCOUT_R1=24`, `EGRESS_FACULTY_PROBES=8` (wątki liczą
+  się do `pids_limit`, dlatego 384; odstęp 2 s nadal trzyma najwyżej jedną sondę zwiadu na wydział co 2 s). Wdrożenie: `docker compose up -d --build egress`.
 - **northflank**: egress lokalny jest trwały. Crawl uruchamia go na początku zadania z kopii kodu w
   `$RUNNER_TOOL_CACHE/planwat/egress/code/` i z własnym venv w `$RUNNER_TOOL_CACHE/planwat/egress-venv` (budowany raz),
   z `RUNNER_TRACKING_ID=0`, więc sprzątanie procesów po zadaniu go nie zabija, i ze skromnymi ustawieniami (TCP 48, Round 1
