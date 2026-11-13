@@ -16,6 +16,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Tor z polskimi wyjściami w puli egressu** (`tools/egress/pool.py`, `server.py`, `Dockerfile.tor`, `torrc`,
+  `deploy/runner/compose.yml`, `tools/refresh/egress.py`): ściany WLO, WML, WTC i WCY przepuszczają tylko adresy z Polski, a
+  publiczne listy nie mają żywych polskich proxy. Klient Tor z `ExitNodes {pl}` przechodzi wszystkie cztery. Egress trzyma
+  jego porty (`EGRESS_TOR`) jako przypięte wpisy puli, które nigdy nie wypadają i są sprawdzane co cykl; oracle ma kontener
+  `tor`, northflank uruchamia Tor z paczki Tor Expert Bundle (przypięty sha256) obok swojego egressu.
 - **Nowe źródła proxy z opisem sieci** (`tools/egress/pool.py`): ProxyScrape (czy adres jest hostingowy), Geonode (nazwa
   ISP, także lista polskich proxy) i spys.me (kraj). Pierwszeństwo w zwiadzie i polowaniu mają polskie łącza domowe, potem
   polskie adresy, potem łącza domowe gdzie indziej — tych ściany wydziałów nie odbijają jak centrów danych — i mogą mieć
@@ -222,6 +227,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Sonda WLO pytała o nieistniejący `index.xml`** (`tools/egress/server.py`): WLO publikuje listę grup już tylko jako
+  `planzajec/<sezon>/index.html` (`index.xml` daje 404 także z Polski; crawler przechodzi na `index.html` sam), więc
+  żadne wyjście nie mogło przejść sondy. Sonda pyta teraz o `index.html` i szuka `Plansoft`.
 - **Sondy WLO i WML nigdy nie mogły przejść** (`tools/egress/server.py` `faculty_targets`): WLO był sprawdzany pod
   pisownią WEL (`/planyzajec/`, 404), a WML na stronie `/rozklady-zajec/` usuniętej w październiku, więc polowanie i
   zwiad odrzucały każde proxy, także takie, które przechodzi ścianę. Ściany to reguły Imperva na katalogach planów (z VPS-a

@@ -1,0 +1,17 @@
+# The egress's Tor client (docs/EGRESS.md, "Tor"). WLO, WML, WTC and WCY wall every address outside Poland
+# (Imperva rules on their plan directories), so only Polish exits are any use.
+ExitNodes {pl}
+StrictNodes 1
+# One port per circuit: streams on different SocksPorts never share one, so each is a separate pool entry.
+SocksPort 0.0.0.0:9050
+SocksPort 0.0.0.0:9051
+SocksPort 0.0.0.0:9052
+SocksPort 0.0.0.0:9053
+# Only the compose networks (the egress); everything else is refused.
+SocksPolicy accept 10.0.0.0/8
+SocksPolicy accept 172.16.0.0/12
+SocksPolicy accept 192.168.0.0/16
+SocksPolicy reject *
+DataDirectory /var/lib/tor
+AvoidDiskWrites 1
+Log notice stdout

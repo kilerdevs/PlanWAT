@@ -69,7 +69,10 @@ i WCY northflank bierze wyłącznie przez publiczne proxy (`pool` w `fleet.json`
 loopbacku kontenera z kopii w `$RUNNER_TOOL_CACHE` i z własnym venv tam (`tools/refresh/egress.py`, bez zmian w obrazie ani
 zmiennych) między przebiegami, żeby zwiad szukał wyjść
 ([docs/EGRESS.md](../../docs/EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść)); zadanie zatrzymuje go na swój czas (512 MB
-nie mieści zwiadu, crawla i jego `pip install` naraz), a koniec crawla uruchamia go znowu.
+nie mieści zwiadu, crawla i jego `pip install` naraz), a koniec crawla uruchamia go znowu. Obok egressu działa klient Tor
+z polskimi wyjściami (paczka Tor Expert Bundle w tool cache, przypięty sha256), którego porty pula trzyma na stałe: tylko
+polskie adresy przechodzą ściany WLO, WML, WTC i WCY ([docs/EGRESS.md](../../docs/EGRESS.md#tor-polskie-wyjścia-przez-każdą-ścianę)).
+Na oracle to samo robi kontener `tor` z `compose.yml`.
 
 ## Utrzymanie
 

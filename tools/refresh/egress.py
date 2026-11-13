@@ -12,7 +12,10 @@ pool of public proxies for exits that do, and crawl the faculty through them. Th
            scouts between passes (docs/EGRESS.md, "Zwiad"): the end of a crawl starts it from a copy of the code in the
            tool cache, with a venv of its own there, detached from the job (RUNNER_TRACKING_ID keeps the runner's orphan
            cleanup off it); the next job stops it before its pip install (512 MB do not hold both, 13.11.2026), and its
-           hunts use what the scout found (the same pool.json and seen.json in the tool cache).
+           hunts use what the scout found (the same pool.json and seen.json in the tool cache). Beside it runs a Tor
+           client with Polish exits (docs/EGRESS.md, "Tor"; LocalTor), whose ports the egress pins in its pool: the
+           walls of WLO, WML, WTC and WCY let Polish addresses through. Its binary is the Tor Project's expert bundle,
+           checked against a pinned sha256 and kept in the tool cache.
 
 Every call bypasses the job's HTTP proxy (the egress answers 403 for its own address). Unit-tested offline
 (tests/test_refresh.py).
@@ -26,6 +29,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.error
@@ -43,6 +47,16 @@ LOG_CAP = 5 * 1024 * 1024
 # A small shared box (northflank: 0.2 vCPU): the scout looks slowly and gives the crawl beside it the CPU.
 SMALL_SCOUT = {'EGRESS_SCOUT': 'on', 'EGRESS_SCOUT_TCP': '48', 'EGRESS_SCOUT_R1': '6', 'EGRESS_FACULTY_PROBES': '2',
                'EGRESS_SCOUT_BATCH': '600', 'EGRESS_SCOUT_PAUSE': '120', 'EGRESS_NICE': '10'}
+# Tor for the local egress (LocalTor): the Tor Project's expert bundle, pinned. The hash is the one in the release's
+# sha256sums-signed-build.txt, whose signature (and the tarball's own) verified against the Tor Browser Developers
+# signing key EF6E 286D DA85 EA2A 4BA7 DE68 4E2C 6E87 9329 8290 (13.11.2026). A new version: the same checks.
+TOR_VERSION = '16.0.1'  # tor 0.4.9.16
+TOR_URL = (f'https://dist.torproject.org/torbrowser/{TOR_VERSION}/'
+           f'tor-expert-bundle-linux-x86_64-{TOR_VERSION}.tar.gz')
+TOR_SHA256 = '7039cb16060ab22e669852e55774d894b55f25ea8bd0ab7194d3478429a58725'
+TOR_FILES = ('tor/tor', 'tor/libcrypto.so.3', 'tor/libevent-2.1.so.7', 'tor/libssl.so.3', 'data/geoip', 'data/geoip6')
+TOR_PORTS = 4  # SOCKS ports, one circuit each: four pool entries
+TOR_WAIT = 90  # bootstrap (with a cached consensus it takes seconds)
 
 
 class Unavailable(Exception):
@@ -152,8 +166,8 @@ def code_hash(files=CODE, folder=SERVER.parent):
     return h.hexdigest()[:16]
 
 
-def _pid_alive(pid):
-    """A live (not zombie) process running the egress server."""
+def _pid_alive(pid, name=b'server.py'):
+    """A live (not zombie) process running the egress server (or `name`)."""
     try:
         os.kill(pid, 0)
     except (OSError, TypeError, ValueError):
@@ -162,9 +176,149 @@ def _pid_alive(pid):
         stat = Path(f'/proc/{pid}/stat').read_text()
         if stat.rsplit(')', 1)[1].split()[0] == 'Z':
             return False
-        return b'server.py' in Path(f'/proc/{pid}/cmdline').read_bytes()
+        return name in Path(f'/proc/{pid}/cmdline').read_bytes()
     except (OSError, IndexError):
         return True  # no /proc to ask: the signal check is all there is
+
+
+class LocalTor:
+    """The Tor client of a local egress: Polish exits only, TOR_PORTS SOCKS ports on loopback (each its own circuit),
+    its data (the consensus cache) and state in `home`. It runs while an egress does, detached from the job like the
+    scouting daemon, and keeps its ports, so the pool's pinned entries stay the same across restarts."""
+
+    def __init__(self, home, log=print, sleep=time.sleep, clock=time.monotonic, popen=None, fetch=None):
+        self.home = Path(home)
+        self.bundle = self.home.parent / f'tor-{TOR_VERSION}'
+        self.log, self.sleep, self.clock = log, sleep, clock
+        self.popen = popen or subprocess.Popen
+        self.fetch = fetch or self._download
+
+    @property
+    def state_path(self):
+        return self.home / 'tor.json'
+
+    def _read_state(self):
+        try:
+            st = json.loads(self.state_path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return None
+        ok = isinstance(st, dict) and isinstance(st.get('pid'), int) and isinstance(st.get('ports'), list) \
+            and all(isinstance(p, int) for p in st['ports'])
+        return st if ok else None
+
+    @staticmethod
+    def urls(ports):
+        return [f'socks5://127.0.0.1:{p}' for p in ports]
+
+    @staticmethod
+    def _download(url, dest):
+        with urllib.request.urlopen(url, timeout=120) as r, open(dest, 'wb') as f:
+            shutil.copyfileobj(r, f)
+
+    def binary(self):
+        """The bundle's tor, fetched and checked once per runner (None when it cannot be had)."""
+        tor = self.bundle / 'tor' / 'tor'
+        if all((self.bundle / n).exists() for n in TOR_FILES):
+            return tor
+        self.log(f'egress: fetching Tor {TOR_VERSION} (once per runner)')
+        tmp = Path(tempfile.mkdtemp(prefix='planwat-tor-'))
+        try:
+            tgz = tmp / 'tor.tar.gz'
+            self.fetch(TOR_URL, tgz)
+            h = hashlib.sha256()
+            with open(tgz, 'rb') as f:
+                for chunk in iter(lambda: f.read(1 << 20), b''):
+                    h.update(chunk)
+            if h.hexdigest() != TOR_SHA256:
+                self.log('egress: the Tor bundle does not match its pinned sha256; no Tor')
+                return None
+            out = tmp / 'x'
+            with tarfile.open(tgz) as tar:
+                tar.extractall(out, members=[tar.getmember(n) for n in TOR_FILES], filter='data')
+            os.chmod(out / 'tor' / 'tor', 0o755)
+            shutil.rmtree(self.bundle, ignore_errors=True)
+            self.bundle.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(out), str(self.bundle))
+            return tor
+        except (OSError, KeyError, tarfile.TarError, urllib.error.URLError) as err:
+            self.log(f'egress: Tor: {err}')
+            return None
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def _ports(self, old):
+        """The ports it had (still free), else new ones."""
+        def free(p):
+            with socket.socket() as s:
+                try:
+                    s.bind(('127.0.0.1', p))
+                    return True
+                except OSError:
+                    return False
+        if len(old) == TOR_PORTS and all(free(p) for p in old):
+            return list(old)
+        return [_free_port() for _ in range(TOR_PORTS)]
+
+    def ensure(self):
+        """The SOCKS URLs of a running Tor, started (and bootstrapped) if need be; [] when there is none."""
+        st = self._read_state()
+        if st and _pid_alive(st['pid'], b'tor'):
+            return self.urls(st['ports'])
+        tor = self.binary()
+        if tor is None:
+            return []
+        ports = self._ports((st or {}).get('ports') or [])
+        data = self.home / 'tor'
+        data.mkdir(parents=True, exist_ok=True)
+        os.chmod(data, 0o700)
+        log = self.home / 'tor.log'
+        rc = self.home / 'torrc'
+        rc.write_text(''.join(f'SocksPort 127.0.0.1:{p}\n' for p in ports)
+                      + f'DataDirectory {data}\nGeoIPFile {self.bundle}/data/geoip\n'
+                        f'GeoIPv6File {self.bundle}/data/geoip6\n'
+                        'ExitNodes {pl}\nStrictNodes 1\nAvoidDiskWrites 1\n'
+                        f'Log notice file {log}\n', encoding='utf-8')
+        try:
+            log.unlink()
+        except OSError:
+            pass
+        env = {k: v for k, v in os.environ.items() if not k.lower().endswith('_proxy')}
+        env.update(LD_LIBRARY_PATH=str(tor.parent), RUNNER_TRACKING_ID='0')
+        try:
+            proc = self.popen([str(tor), '-f', str(rc)], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, cwd=str(self.home), start_new_session=True)
+        except OSError as err:
+            self.log(f'egress: Tor: {err}')
+            return []
+        self.home.mkdir(parents=True, exist_ok=True)
+        self.state_path.write_text(json.dumps({'pid': proc.pid, 'ports': ports}), encoding='utf-8')
+        until = self.clock() + TOR_WAIT
+        while self.clock() < until and proc.poll() is None:
+            try:
+                if 'Bootstrapped 100%' in log.read_text(encoding='utf-8', errors='replace'):
+                    self.log(f'egress: Tor up (pid {proc.pid}, Polish exits, {len(ports)} circuits)')
+                    return self.urls(ports)
+            except OSError:
+                pass
+            self.sleep(1)
+        if proc.poll() is not None:
+            self.log('egress: Tor did not start')
+            return []
+        self.log(f'egress: Tor still bootstrapping after {TOR_WAIT} s; the pool retries its ports every cycle')
+        return self.urls(ports)
+
+    def stop(self):
+        """Stopped, and gone (its data directory is locked while it runs)."""
+        st = self._read_state()
+        if not st or not _pid_alive(st['pid'], b'tor'):
+            return
+        try:
+            os.kill(st['pid'], signal.SIGTERM)
+        except OSError:
+            return
+        until = self.clock() + 10
+        while self.clock() < until and _pid_alive(st['pid'], b'tor'):
+            self.sleep(0.5)
 
 
 class LocalEgress(Egress):
@@ -172,7 +326,7 @@ class LocalEgress(Egress):
     otherwise started the first time a hunt is needed and stopped with the crawl."""
 
     def __init__(self, data=None, python=None, log=print, sleep=time.sleep, clock=time.monotonic, popen=None,
-                 opener=None, persistent=False, home=None, run=None, scout=None):
+                 opener=None, persistent=False, home=None, run=None, scout=None, tor=None):
         self.ports = {'gui': _free_port(), 'proxy': _free_port(), 'hunt': _free_port()}
         super().__init__(f"http://127.0.0.1:{self.ports['gui']}", f"http://127.0.0.1:{self.ports['hunt']}",
                          secrets.token_hex(24), log, sleep, clock, opener)
@@ -186,6 +340,13 @@ class LocalEgress(Egress):
         self.scout = dict(SMALL_SCOUT if scout is None else scout)
         self.proc = None
         self.pid = None
+        # the Tor client beside it (LocalTor); False: none
+        self.tor = LocalTor(self.home, log, sleep, clock) if tor is None else tor
+        self.tor_urls = []
+
+    def _tor(self):
+        self.tor_urls = self.tor.ensure() if self.tor else []
+        return self.tor_urls
 
     # -- persistent: one daemon per runner, reused while its code is this checkout's
     @property
@@ -276,7 +437,8 @@ class LocalEgress(Egress):
                    EGRESS_HUNT_PORT=str(self.ports['hunt']), EGRESS_POOL='on', EGRESS_HUNT='on',
                    # no regular pool work: every faculty goes "direct" on the (unused) main port, only the scout and
                    # hunts probe
-                   EGRESS_DIRECT_FACULTY=','.join(faculty_hosts()), EGRESS_FAIL_CLOSED='')
+                   EGRESS_DIRECT_FACULTY=','.join(faculty_hosts()), EGRESS_FAIL_CLOSED='',
+                   EGRESS_TOR=','.join(self.tor_urls))
         return env
 
     def _wait_up(self, alive):
@@ -301,7 +463,8 @@ class LocalEgress(Egress):
     def resume(self):
         """Have the scouting daemon run this checkout's code: left alone when it already does, else (re)started."""
         st = self._read_state()
-        if st and st.get('hash') == code_hash() and _pid_alive(st['pid']):
+        tor = self._tor()
+        if st and st.get('hash') == code_hash() and st.get('tor', []) == tor and _pid_alive(st['pid']):
             self.pid = st['pid']
             self.log(f"egress: scouting between passes (pid {st['pid']}, already on this code)")
             return True
@@ -338,7 +501,7 @@ class LocalEgress(Egress):
                     proc.terminate()
                 return False
             self._write_state({'pid': proc.pid, 'ports': self.ports, 'token': self.token, 'hash': digest,
-                               'started': time.time()})
+                               'tor': self.tor_urls, 'started': time.time()})
             self.log(f'egress: scouting between passes (pid {proc.pid})')
             return True
         except OSError as err:
@@ -350,6 +513,7 @@ class LocalEgress(Egress):
         if self.proc is not None:
             return self.proc.poll() is None
         self.data.mkdir(parents=True, exist_ok=True)
+        self._tor()
         self.log(f"egress: starting a local one (hunt port {self.ports['hunt']})")
         self.proc = self.popen([self.python, str(SERVER)], env=self._env(), stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL, cwd=str(SERVER.parent))
@@ -374,6 +538,8 @@ class LocalEgress(Egress):
                 self.proc.kill()
         if self.persistent:
             self.resume()
+        elif self.tor and self.proc is not None:
+            self.tor.stop()
 
     def stop(self, quiet=False):
         """Stop the scouting daemon (the action before a job's pip install, ensure(), or by hand: egress.py stop)."""
@@ -382,6 +548,8 @@ class LocalEgress(Egress):
             self._stop_pid(st['pid'])
             self.log(f"egress: stopped the scouting egress (pid {st['pid']}) for the crawl" if quiet
                      else f"egress: stopped the local one (pid {st['pid']})")
+        if self.tor:
+            self.tor.stop()
         try:
             self.state_path.unlink()
         except OSError:
@@ -427,7 +595,8 @@ def main(argv=None):
         return 1
     local._use(st)
     code, got = local._call('/api/status', timeout=10)
-    print(json.dumps({'pid': st['pid'], 'hash': st.get('hash'), 'code': code, 'scout': got.get('scout'),
+    print(json.dumps({'pid': st['pid'], 'hash': st.get('hash'), 'tor': st.get('tor'), 'code': code,
+                      'scout': got.get('scout'),
                       'exits': (got.get('pool') or {}).get('exits'),
                       'pool': {k: (got.get('pool') or {}).get(k) for k in ('total', 'alive', 'dead', 'unseen')}},
                      indent=1))

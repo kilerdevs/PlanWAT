@@ -166,7 +166,9 @@ def faculty_targets(season=None, today=None):
     season = season or env('EGRESS_SEASON', '') or current
     xml = b'<?xml'
     return {
-        'wlo.wat.edu.pl': (f'https://wlo.wat.edu.pl/planzajec/{season}/index.xml', xml),
+        # WLO's export moved from index.xml (404 since November 2026, from Poland too) to index.html, which the
+        # crawler falls back to (drivers/plansoft.py fetch_listing)
+        'wlo.wat.edu.pl': (f'https://wlo.wat.edu.pl/planzajec/{season}/index.html', b'Plansoft'),
         'wel.wat.edu.pl': (f'https://wel.wat.edu.pl/planyzajec/{season}/index.xml', xml),
         # WIM's plan listing moved from index.xml to index.html (November 2026); the faculty page stays put and
         # links whichever export the semester has, so it is the stable target for a pool probe.
@@ -1597,7 +1599,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
       var list = ex[h] || [], n = (hosts[h] || {}).verified;
       var cells = list.map(function (r) {
         return '<span class="pill sm rot" title="' + esc(r.url + ' \u00b7 ' + (r.n_ok || 0) + ' udanych, ' + (r.n_fail || 0) + ' nieudanych') + '">'
-          + esc(r.url.replace(/^[a-z0-9]+:[/][/]/, '')) + (r.cc ? ' ' + esc(r.cc) : '') + (r.res ? ' \u00b7 dom' : '') + ' \u00b7 ' + fmtMs(r.ms) + ' \u00b7 ' + esc(ago(r.checked)) + '</span>';
+          + esc(r.url.replace(/^[a-z0-9]+:[/][/]/, '')) + (r.cc ? ' ' + esc(r.cc) : '') + (r.res ? ' \u00b7 dom' : '') + (r.source === 'tor' ? ' \u00b7 tor' : '') + ' \u00b7 ' + fmtMs(r.ms) + ' \u00b7 ' + esc(ago(r.checked)) + '</span>';
       }).join(' ');
       rows += '<tr><td class="ell" title="' + esc(h) + '">' + esc(h) + '</td><td class="num">' + fmtNum(n == null ? list.length : n)
         + '</td><td class="ell">' + (cells || '<span class="dim">brak \u2013 \u017cadne proxy nie przesz\u0142o</span>') + '</td></tr>';
@@ -1950,7 +1952,7 @@ class GuiHandler(BaseHTTPRequestHandler):
         marked = {}
         if hasattr(pool, 'exits'):
             for h in pool.round2:
-                marked[h] = [{k: r.get(k) for k in ('url', 'ms', 'checked', 'n_ok', 'n_fail', 'cc', 'res')}
+                marked[h] = [{k: r.get(k) for k in ('url', 'ms', 'checked', 'n_ok', 'n_fail', 'cc', 'res', 'source')}
                              for r in pool.exits(h, 5)]
         return {'mode': mode, 'proxy_port': self.server.proxy_port,
                 'hunt_port': getattr(self.server, 'hunt_port', None), 'hunts': hunts,
@@ -2242,7 +2244,9 @@ def main():
                   f'fail-closed wins: it stays on the pool and never goes direct', flush=True)
     pool = ProxyPool(data / 'pool.json', targets, active_hosts=active,
                      max_probe=env_int('EGRESS_MAX_PROBE', 240), hunt=HUNT_ON,
-                     faculty_probes=env_int('EGRESS_FACULTY_PROBES', FACULTY_PROBES))
+                     faculty_probes=env_int('EGRESS_FACULTY_PROBES', FACULTY_PROBES),
+                     # the operator's own Tor client with Polish exits (docs/EGRESS.md "Tor"): pinned in the pool
+                     pinned=[] if POOL_OFF else env('EGRESS_TOR', '').replace(',', ' ').split())
     runs = RunLog(data / 'runs.json')
     proxy_port = env_int('EGRESS_PROXY_PORT', 8888)
     gui_port = env_int('EGRESS_GUI_PORT', 8080)
@@ -2268,6 +2272,7 @@ def main():
     print(f'egress proxy on :{proxy_port}, GUI on :{gui_port}'
           + (f', hunt port :{hunt_port}' if hunt_server is not None else '')
           + (', scout on' if SCOUT_ON else '')
+          + (f', {len(pool.pinned)} Tor port(s)' if pool.pinned else '')
           + f' (pool={len(pool.entries)} known, {len(active)} pooled host(s))', flush=True)
     try:
         proxy_server.serve_forever()

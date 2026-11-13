@@ -1,0 +1,10 @@
+# Tor client for the egress pool (docs/EGRESS.md, "Tor"): Polish exits only, four SOCKS ports with their own circuits.
+# The egress pins them (EGRESS_TOR) as pool entries; nothing else reaches them (compose network `outside`, SocksPolicy).
+FROM alpine:3.20
+
+RUN apk add --no-cache tor && mkdir -p /var/lib/tor && chown tor /var/lib/tor && chmod 700 /var/lib/tor
+COPY torrc /etc/tor/torrc
+
+USER tor
+VOLUME /var/lib/tor
+CMD ["tor", "-f", "/etc/tor/torrc"]

@@ -13,6 +13,10 @@ A candidate goes through three gates, cheapest first:
                  our target (an Incapsula-fronted host drops datacenter IPs at the network level, so aliveness alone
                  says nothing). The verdict is kept per host: these are the exits marked for that faculty.
 
+Pinned proxies (EGRESS_TOR: the operator's own Tor client with Polish exits, docs/EGRESS.md "Tor") sit in the pool
+beside them as ordinary candidates that never leave it: never evicted or dead-mapped, Round-1 re-checked every
+cycle, and retried on a faculty after VERIFY_TTL_S (their circuits change exits).
+
 `pick(host)` hands out proxies verified for that host, healthy-first by latency. Hosts with no verified proxy get
 None and the server falls back to direct egress (operator's fail-open choice) instead of failing closed.
 
@@ -209,6 +213,25 @@ def parse_proxy_url(raw):
     return f'{scheme}://{host}:{port}'
 
 
+def parse_pinned(raw):
+    """('socks5://tor:9050') from one EGRESS_TOR item: socks5 or http, any host (a compose service, loopback),
+    unlike list entries, because the operator configured it. None for anything else."""
+    from urllib.parse import urlsplit
+    text = (raw or '').strip()
+    if not text or len(text) > 256 or '://' not in text:
+        return None
+    try:
+        parts = urlsplit(text)
+        port = parts.port
+    except ValueError:
+        return None
+    scheme = {'socks5h': 'socks5'}.get(parts.scheme.lower(), parts.scheme.lower())
+    if scheme not in ('socks5', 'http') or not parts.hostname or not port or parts.username or parts.password:
+        return None
+    host = f'[{parts.hostname}]' if ':' in parts.hostname else parts.hostname
+    return f'{scheme}://{host}:{port}'
+
+
 def normalize_list(text, kind, scheme='http', meta=None, res=None):
     """Candidate proxy URLs from one downloaded list (proxifly, proxyscrape or geonode JSON, spys or plain text).
 
@@ -319,7 +342,8 @@ class ProxyPool:
     """Thread-safe pool: refresh (fetch lists + Round 1/2 probes), per-host pick, mark, persist."""
 
     def __init__(self, path, round2, max_probe=150, probe_timeout=8, max_age=4 * 3600,
-                 min_alive=25, min_verified=5, active_hosts=None, hunt=False, faculty_probes=FACULTY_PROBES):
+                 min_alive=25, min_verified=5, active_hosts=None, hunt=False, faculty_probes=FACULTY_PROBES,
+                 pinned=(), pinned_cc='PL'):
         # round2: {hostname: (url, marker_bytes)} — the per-faculty verification targets.
         # active_hosts: the subset that actually rides the pool (all by default). Hosts in
         # EGRESS_DIRECT_FACULTY are filtered out by the server, so a volunteer deployment
@@ -366,8 +390,24 @@ class ProxyPool:
         self._lists_cache = None  # (monotonic fetched, {url: (source, cc)})
         self.unseen_left = None  # candidates on the lists nobody has looked at yet (after the last discovery)
         self.scout = {}  # the scout's last cycle, for the GUI
+        # the operator's own proxies (EGRESS_TOR): always in the pool, whatever their verdicts (parse_pinned)
+        self.pinned = [u for u in dict.fromkeys(parse_pinned(r) for r in pinned or ()) if u]
+        self.pinned_cc = pinned_cc
         self.load()
         self._load_dead()
+        self._pin()
+
+    def _pin(self):
+        """Put the pinned proxies in the pool (new ones wait for their first Round 1); a proxy pinned before but not
+        any more becomes an ordinary entry, and leaves like one."""
+        with self.lock:
+            for u, e in self.entries.items():
+                if e.get('pinned') and u not in self.pinned:
+                    e.pop('pinned', None)
+            for u in self.pinned:
+                self.dead.pop(u, None)
+                e = self.entries.setdefault(u, {'fails': 0, 'hosts': {}, 'status': 'ok', 'last_checked': 0})
+                e.update(pinned=True, source='tor', cc=self.pinned_cc)
 
     def retarget(self, round2):
         """New probe pages (a new semester): the verdicts of a faculty whose page changed are dropped."""
@@ -479,7 +519,7 @@ class ProxyPool:
         it verified (its own probes decide that one)."""
         with self.lock:
             e = self.entries.get(url)
-            if e is not None and any(hv.get('ok') for hv in e.get('hosts', {}).values()):
+            if e is not None and (e.get('pinned') or any(hv.get('ok') for hv in e.get('hosts', {}).values())):
                 return False
             self.entries.pop(url, None)
             self.dead[url] = time.time()
@@ -761,7 +801,7 @@ class ProxyPool:
         with self.lock:
             drop = [u for u, e in self.entries.items()
                     if e.get('status') == 'fail' and now - e.get('last_checked', 0) > PRUNE_AFTER
-                    and not any(hv.get('ok') for hv in e.get('hosts', {}).values())]
+                    and not e.get('pinned') and not any(hv.get('ok') for hv in e.get('hosts', {}).values())]
             for u in drop:
                 del self.entries[u]
         if drop:
@@ -918,7 +958,7 @@ class ProxyPool:
 
             def worth(kv):
                 e = kv[1]
-                verified = any(hv.get('ok') for hv in e.get('hosts', {}).values())
+                verified = bool(e.get('pinned')) or any(hv.get('ok') for hv in e.get('hosts', {}).values())
                 alive = e.get('status') == 'ok'
                 checked = e.get('last_checked', 0)
                 fresh = alive and now - checked <= ALIVE_TTL_S
@@ -1063,13 +1103,14 @@ class ProxyPool:
         return 'ok', fresh, alive
 
     def _recheck(self, n, workers):
-        """Re-Round-1 up to `n` alive entries whose verdict is older than ALIVE_TTL_S, oldest first: (checked, lost).
-        A lost one leaves the pool unless a faculty has it verified."""
+        """Re-Round-1 up to `n` alive entries whose verdict is older than ALIVE_TTL_S, oldest first, and every pinned
+        one: (checked, lost). A lost one leaves the pool unless a faculty has it verified (or it is pinned)."""
         now = time.time()
         with self.lock:
             stale = [u for _, u in sorted((e.get('last_checked', 0), u) for u, e in self.entries.items()
-                                          if e.get('status') == 'ok'
+                                          if e.get('status') == 'ok' and not e.get('pinned')
                                           and now - e.get('last_checked', 0) > ALIVE_TTL_S)[:max(0, n)]]
+            stale = [u for u in self.pinned if u in self.entries] + stale
 
         def one(url):
             ms = self.probe_alive(url)
@@ -1114,8 +1155,9 @@ class ProxyPool:
                 for h in hosts:
                     hv = marks.get(h)
                     # a proxy the faculty refused rests HOST_RETRY_S; one that got through before only VERIFY_TTL_S
-                    # (free proxies flap: one timeout must not cost a good exit half a day)
-                    rest = VERIFY_TTL_S if hv and hv.get('n_ok') else HOST_RETRY_S
+                    # (free proxies flap: one timeout must not cost a good exit half a day); a pinned one, whose
+                    # circuits change exits, only VERIFY_TTL_S either way
+                    rest = VERIFY_TTL_S if hv and (hv.get('n_ok') or self.entries[u].get('pinned')) else HOST_RETRY_S
                     if hv is not None and (hv.get('ok') or now - hv.get('checked', 0) < rest):
                         continue
                     if bar[h] is not None and lat >= bar[h]:

@@ -224,6 +224,35 @@ Panel pokazuje kartę „Wyjścia na wydziały”: stan ostatniego cyklu zwiadu 
 ile nowych wyjść) i dla każdego wydziału liczbę oznaczonych wyjść oraz pięć najszybszych (kraj, czas strony, kiedy sprawdzone).
 `GET /api/exits[?host=...]` (z tokenem) zwraca pełną listę wyjść per wydział.
 
+## Tor: polskie wyjścia przez każdą ścianę
+
+Ściany WLO, WML, WTC i WCY (reguły Imperva na katalogach planów) przepuszczają adresy z Polski, a odbijają resztę świata,
+niezależnie od ciasteczek i odcisku przeglądarki (13.11.2026: z oracle, Frankfurt, każda kombinacja dostaje 403). Publiczne
+listy proxy prawie nie mają żywych polskich adresów (w puli oracle: zero), za to klient Tor z `ExitNodes {pl}` i
+`StrictNodes 1` dostał 200 na wszystkich czterech ścianach na każdym obwodzie, a te same wyjścia spoza Polski — 403.
+
+Egress dostaje porty SOCKS klienta Tor w `EGRESS_TOR` (lista `socks5://host:port`, po przecinku) i trzyma je w puli jako
+**przypięte** wpisy (`source: tor`, kraj PL): nigdy nie wypadają (ani przy robieniu miejsca, ani do mapy martwych), Round 1
+przechodzą w każdym cyklu zwiadu (są tanie, a obwody zmieniają wyjście), a wydział, który je odbił, próbuje ich znowu po 20
+minutach, nie po 12 h. Poza tym to zwykłe wyjścia: zwiad i polowanie sprawdzają je na stronach wydziałów, port polowania
+je wydaje, panel oznacza je „· tor”. Każdy port SOCKS ma własny obwód (Tor nie łączy strumieni z różnych portów), więc
+cztery porty to cztery wyjścia. Innym runnerom ich nie podajemy: adres `tor:9050` czy `127.0.0.1` nic dla nich nie znaczy
+(`parse_proxy_url` przyjmuje tylko publiczne IP).
+
+- **oracle** (`deploy/runner/compose.yml`): kontener `tor` (`tools/egress/Dockerfile.tor`, Alpine + `tor`, konfiguracja
+  `tools/egress/torrc`) w sieci `outside`, porty 9050–9053 tylko dla sieci compose (`SocksPolicy`), bez portów na hoście;
+  runner (sieć `inner`) go nie widzi. Wdrożenie: `docker compose up -d --build tor egress`. Pusty `EGRESS_TOR` wyłącza.
+- **northflank**: `tools/refresh/egress.py` (`LocalTor`) uruchamia Tor obok lokalnego egressu, z paczki Tor Expert Bundle
+  pobranej raz do `$RUNNER_TOOL_CACHE/planwat/tor-<wersja>/` i sprawdzonej przypiętym sha256 (`TOR_SHA256`; podpis paczki
+  i listy sum sprawdzony kluczem Tor Browser Developers `EF6E 286D DA85 EA2A 4BA7 DE68 4E2C 6E87 9329 8290`). Rozpakowuje
+  tylko `tor`, jego biblioteki i bazy GeoIP (bez nich `{pl}` nic nie znaczy). Tor żyje razem z egressem: startuje z nim
+  (czeka do „Bootstrapped 100%”, z zapisanym konsensusem trwa to sekundy), kończy się z nim, a porty zachowuje w
+  `tor.json`, więc przypięte wpisy puli są te same po restarcie. Nowa wersja paczki: te same sprawdzenia, nowe
+  `TOR_VERSION` i `TOR_SHA256`.
+- **plebania**: bez Tora (przechodzi wydziały sama).
+
+Tor jest wolniejszy (Round 1 ok. 1 s, strona wydziału 1–3,5 s), więc szybsze publiczne wyjścia, gdy są, idą pierwsze.
+
 ## Polowanie na wyjścia
 
 Gdy żaden włączony runner nie przechodzi ściany wydziału z własnego adresu (bez plebanii: WLO, WEL, WML i WTC), stos

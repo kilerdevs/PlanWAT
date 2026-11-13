@@ -2341,7 +2341,7 @@ class ProbeTargets(unittest.TestCase):
     def test_probe_targets_are_the_pages_the_crawler_lists(self):
         import datetime
         import json
-        from drivers import wml
+        from drivers import plansoft, wml
         src = json.loads((ROOT / 'tools' / 'refresh' / 'sources.json').read_text(encoding='utf-8'))
         with unittest.mock.patch.dict(os.environ, {'EGRESS_SEASON': ''}):
             for day in (datetime.date(2026, 11, 13), datetime.date(2027, 1, 20), datetime.date(2027, 4, 1)):
@@ -2349,7 +2349,9 @@ class ProbeTargets(unittest.TestCase):
                 season, year = core.season_of(day)
                 for f, host in (('wlo', 'wlo.wat.edu.pl'), ('wel', 'wel.wat.edu.pl'), ('wtc', 'wtc.wat.edu.pl'),
                                 ('ioe', 'ioe.wat.edu.pl')):
-                    self.assertEqual(t[host], src[f]['base'].format(season=season) + 'index.xml', (day, f))
+                    # either export the crawler reads (WLO's index.xml is gone, its index.html is the listing)
+                    self.assertIn(t[host], plansoft.listing_candidates(src[f]['base'].format(season=season)
+                                                                       + 'index.xml'), (day, f))
                 self.assertEqual(t['planzajec.wcy.wat.edu.pl'], src['wcy']['index'])
                 m = wml.DIR_RE.search(t['wml.wat.edu.pl'])
                 self.assertEqual((int(m.group(1)), m.group(2)), (year, season), day)
@@ -2405,6 +2407,57 @@ class PoolScout(unittest.TestCase):
     def entry(ms, age=0, **hosts):
         return {'status': 'ok', 'latency_ms': ms, 'fails': 0, 'last_checked': time.time() - age,
                 'hosts': {h.replace('_', '.') + '.wat.edu.pl': v for h, v in hosts.items()}}
+
+    def test_tor_ports_are_pinned_in_the_pool(self):
+        self.assertEqual(pool.parse_pinned('socks5h://tor:9050'), 'socks5://tor:9050')
+        self.assertEqual(pool.parse_pinned(' socks5://127.0.0.1:9051 '), 'socks5://127.0.0.1:9051')
+        for bad in ('tor:9050', 'socks4://tor:9050', 'socks5://u:p@tor:9050', 'socks5://tor', ''):
+            self.assertIsNone(pool.parse_pinned(bad), bad)
+        self.assertIsNone(pool.parse_proxy_url('socks5://tor:9050'))  # never from a list, nor shared by a runner
+        tor = ['socks5://tor:9050', 'socks5://tor:9051']
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_ALL, active_hosts=[], pinned=tor + ['junk'])
+        self.assertEqual(p.pinned, tor)
+        self.assertEqual({p.entries[u]['source'] for u in tor}, {'tor'})
+        self.assertEqual({p.entries[u]['cc'] for u in tor}, {'PL'})
+        p.host_gap = 0
+        p.probe_alive = lambda u: None  # Tor still bootstrapping: Round 1 fails...
+        p.probe_host = lambda u, h: None
+        p._tcp_screen = lambda urls, **k: {}
+        p.scout_once(fetcher=lambda url: '', batch=0)
+        self.assertEqual(sorted(p.entries), tor)  # ...and they stay, not into the dead map
+        self.assertEqual(p.dead, {})
+        p.entries['http://8.8.8.8:80'] = {'status': 'fail', 'last_checked': 0, 'fails': 0, 'hosts': {}}
+        with unittest.mock.patch.object(pool, 'MAX_ENTRIES', 1):
+            p._make_room(0)
+        self.assertEqual(sorted(p.entries), tor)  # evicted last of all
+        p.save()
+        again = pool.ProxyPool(p.path, R2_ALL, active_hosts=[], pinned=tor[:1])
+        self.assertTrue(again.entries[tor[0]]['pinned'])
+        self.assertNotIn('pinned', again.entries[tor[1]])  # not configured any more: an ordinary entry
+
+    def test_tor_ports_are_rechecked_every_cycle_and_retried_on_a_faculty_soon(self):
+        tor = 'socks5://tor:9050'
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_ALL, active_hosts=[], pinned=[tor])
+        p.host_gap = 0
+        alive = []
+        p.probe_alive = lambda u: alive.append(u) or 1500
+        through = {'wml.wat.edu.pl'}
+        probes = []
+        p.probe_host = lambda u, h: probes.append(h) or (900 if h in through else None)
+        p._tcp_screen = lambda urls, **k: {}
+        p.scout_once(fetcher=lambda url: '', batch=0)
+        self.assertEqual(alive, [tor])
+        self.assertEqual(sorted(probes), sorted(R2_ALL))  # 1500 ms is fine for a Polish exit
+        self.assertEqual([r['url'] for r in p.exits('wml.wat.edu.pl')], [tor])
+        p.scout_once(fetcher=lambda url: '', batch=0)
+        self.assertEqual(alive, [tor, tor])  # fresh, but re-checked anyway: it is cheap and its circuit changes
+        probes.clear()
+        for hv in p.entries[tor]['hosts'].values():
+            hv['checked'] -= pool.VERIFY_TTL_S + 1
+        through.add('wlo.wat.edu.pl')
+        p.scout_once(fetcher=lambda url: '', batch=0)
+        self.assertIn('wlo.wat.edu.pl', probes)  # a refusal rests VERIFY_TTL_S, not HOST_RETRY_S
+        self.assertEqual([r['url'] for r in p.exits('wlo.wat.edu.pl')], [tor])
 
     def test_a_failed_faculty_probe_does_not_make_a_proxy_look_alive(self):
         p = self.make({'http://8.8.8.8:80': self.entry(100, age=5 * 3600)})
@@ -2727,7 +2780,7 @@ class EgressClient(unittest.TestCase):
         self.assertFalse(old.available())
 
     def test_a_local_egress_starts_on_loopback_and_stops_with_the_crawl(self):
-        local = self.client.LocalEgress(data=tempfile.mkdtemp(), log=lambda m: None)
+        local = self.client.LocalEgress(data=tempfile.mkdtemp(), log=lambda m: None, tor=False)
         try:
             self.assertTrue(local.available())
             self.assertTrue(local.proxy_url().startswith('http://127.0.0.1:'))
@@ -2751,7 +2804,7 @@ class EgressClient(unittest.TestCase):
 
         def local():
             e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=home, popen=popen,
-                                        scout={'EGRESS_SCOUT': 'off'})
+                                        scout={'EGRESS_SCOUT': 'off'}, tor=False)
             e._venv = lambda: _sys.executable  # the test's python has what the egress needs
             return e
 
@@ -2784,7 +2837,8 @@ class EgressClient(unittest.TestCase):
         launched = []
 
         def local():
-            e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=home, scout={'EGRESS_SCOUT': 'off'})
+            e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=home, scout={'EGRESS_SCOUT': 'off'},
+                                        tor=False)
             e._venv = lambda: _sys.executable
             real = e._launch
             e._launch = lambda: (launched.append(1), real())[1]
@@ -2807,7 +2861,7 @@ class EgressClient(unittest.TestCase):
     def test_without_a_venv_there_is_no_scouting_but_hunts_still_work(self):
         from types import SimpleNamespace
         e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=tempfile.mkdtemp(),
-                                    run=lambda *a, **k: SimpleNamespace(returncode=1, stderr=b'no network'))
+                                    run=lambda *a, **k: SimpleNamespace(returncode=1, stderr=b'no network'), tor=False)
         e.ensure()
         try:
             self.assertTrue(e.available())  # the temporary one, as before
@@ -2815,4 +2869,81 @@ class EgressClient(unittest.TestCase):
             e.close()
         self.assertIsNotNone(e.proc.poll())
         self.assertFalse((Path(e.home) / 'daemon.json').exists())  # no venv, no daemon
+
+    # -- Tor beside a local egress (LocalTor)
+    def fake_bundle(self, binary):
+        """A tarball shaped like the expert bundle (plus a file that must not be unpacked), and its sha256."""
+        import hashlib
+        import io
+        import tarfile
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode='w:gz') as tar:
+            for name in self.client.TOR_FILES + ('tor/pluggable_transports/lyrebird',):
+                data = binary if name == 'tor/tor' else b'x'
+                info = tarfile.TarInfo(name)
+                info.size, info.mode = len(data), 0o755
+                tar.addfile(info, io.BytesIO(data))
+        return buf.getvalue(), hashlib.sha256(buf.getvalue()).hexdigest()
+
+    # stands in for tor: reads its torrc, says it bootstrapped in the log it names, and waits
+    FAKE_TOR = (b'#!/bin/sh\nlog=$(sed -n "s/^Log notice file //p" "$2")\n'
+                b'echo "[notice] Bootstrapped 100% (done): Done" > "$log"\n'
+                b'trap "exit 0" TERM\nwhile :; do sleep 0.2; done\n')
+
+    def tor(self, home, fetched):
+        tgz, digest = self.fake_bundle(self.FAKE_TOR)
+
+        def fetch(url, dest):
+            fetched.append(url)
+            Path(dest).write_bytes(tgz)
+        patch = unittest.mock.patch.object(self.client, 'TOR_SHA256', digest)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return self.client.LocalTor(home, log=lambda m: None, sleep=lambda s: time.sleep(0.05), fetch=fetch)
+
+    def test_tor_is_fetched_once_checked_and_started_with_polish_exits(self):
+        home = Path(tempfile.mkdtemp()) / 'egress'
+        fetched = []
+        tor = self.tor(home, fetched)
+        self.addCleanup(tor.stop)
+        urls = tor.ensure()
+        self.assertEqual(len(urls), self.client.TOR_PORTS)
+        self.assertTrue(all(u.startswith('socks5://127.0.0.1:') for u in urls))
+        rc = (home / 'torrc').read_text()
+        self.assertIn('ExitNodes {pl}', rc)
+        self.assertIn('StrictNodes 1', rc)
+        self.assertIn(f"GeoIPFile {home.parent / ('tor-' + self.client.TOR_VERSION)}/data/geoip", rc)
+        self.assertEqual(rc.count('SocksPort 127.0.0.1:'), self.client.TOR_PORTS)
+        self.assertFalse((tor.bundle / 'tor' / 'pluggable_transports').exists())  # only what it needs
+        pid = tor._read_state()['pid']
+        self.assertEqual(tor.ensure(), urls)  # running: reused
+        self.assertEqual(tor._read_state()['pid'], pid)
+        tor.stop()
+        self.assertFalse(self.client._pid_alive(pid, b'tor'))
+        self.assertEqual(tor.ensure(), urls)  # again, on the same ports (the pool's pinned entries stay)
+        self.assertEqual(len(fetched), 1)  # the bundle is kept
+
+    def test_a_tor_bundle_that_does_not_match_its_hash_is_not_run(self):
+        home = Path(tempfile.mkdtemp()) / 'egress'
+        tor = self.tor(home, [])
+        with unittest.mock.patch.object(self.client, 'TOR_SHA256', '0' * 64):
+            self.assertEqual(tor.ensure(), [])
+        self.assertFalse(tor.bundle.exists())
+
+    def test_the_local_egress_pins_its_tor_ports(self):
+        from types import SimpleNamespace
+        urls = ['socks5://127.0.0.1:9050', 'socks5://127.0.0.1:9051']
+        stopped = []
+        fake = SimpleNamespace(ensure=lambda: urls, stop=lambda: stopped.append(1))
+        e = self.client.LocalEgress(data=tempfile.mkdtemp(), log=lambda m: None, tor=fake)
+        try:
+            self.assertTrue(e.available())
+            self.assertEqual(e._env()['EGRESS_TOR'], ','.join(urls))
+            code, got = e._call('/api/status')
+            self.assertEqual(code, 200)
+            pinned = sorted(p['url'] for p in got['proxies'] if p['source'] == 'tor')
+            self.assertEqual(pinned, urls)  # in its pool, waiting for their first Round 1
+        finally:
+            e.close()
+        self.assertEqual(stopped, [1])  # a temporary egress takes its Tor with it
 
