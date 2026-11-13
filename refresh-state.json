@@ -17,8 +17,8 @@
    ]
   },
   "wcy": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-11-13T10:00:10",
+   "cause": "flaky",
    "durations": [
     {
      "at_iso": "2026-10-16T15:42:47",
@@ -114,14 +114,14 @@
   "ioe": {
    "blocked_at": null,
    "last_count": 15,
-   "last_ok": "2026-11-13T17:53:48",
+   "last_ok": "2026-11-13T18:13:10",
    "run": {
     "ahead": false,
-    "at": "2026-11-13T17:53:48",
+    "at": "2026-11-13T18:13:10",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 8,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
@@ -131,19 +131,25 @@
   "wcy": {
    "blocked_at": null,
    "last_count": 186,
-   "last_ok": "2026-11-13T18:04:15",
+   "last_ok": "2026-11-13T18:13:22",
    "run": {
     "ahead": false,
-    "at": "2026-11-13T18:04:15",
+    "at": "2026-11-13T18:13:22",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 96,
+    "checked": 1,
     "degraded": false,
     "not_ready": 51,
     "skipped": 1,
     "term": "2026-27-zima"
-   }
+   },
+   "wait": {
+    "probes": 5,
+    "recovered": false,
+    "waited": 1230
+   },
+   "walled_at": "2026-10-28T16:47:43"
   },
   "wel": {
    "blocked_at": null,
@@ -165,14 +171,14 @@
   "wig": {
    "blocked_at": null,
    "last_count": 33,
-   "last_ok": "2026-11-13T17:55:05",
+   "last_ok": "2026-11-13T18:13:46",
    "run": {
     "ahead": false,
-    "at": "2026-11-13T17:55:05",
+    "at": "2026-11-13T18:13:46",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 16,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
@@ -7203,7 +7209,7 @@
  "pacing": {
   "ioe": 1.0,
   "wat-edge": 1.7714700000000003,
-  "wcy": 1.35,
+  "wcy": 1.215,
   "wig": 1.0,
   "wim": 1.0,
   "wml": 2.43,
