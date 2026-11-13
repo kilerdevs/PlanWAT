@@ -1,0 +1,75 @@
+name: Refresh catch-up
+run-name: Wait for ${{ inputs.runner }}
+
+# Waits for one of the project's own runners (tools/refresh/fleet.json) that a refresh pass found switched off, and
+# starts a catch-up pass for it the moment it is back. See docs/REFRESH.md, "Nadrabianie po powrocie serwera".
+#
+# refresh.yml's report job dispatches this for every runner GitHub reported offline, unless one is already waiting.
+# The first job asks for that very machine, so GitHub keeps it in the queue (for up to 24 hours) until the machine
+# connects, and runs it at once when it does: no polling, and a queued job bills nothing. It runs nothing there and
+# gets no token. The second, on a GitHub-hosted runner, works out what the passes it missed left undone for it
+# (fleet.py owed) and, if anything, starts a refresh pass of just that (refresh.yml, input `catchup`).
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: The runner's name in tools/refresh/fleet.json.
+        type: string
+        required: true
+      label:
+        description: Its runner label.
+        type: string
+        required: true
+
+permissions: {}
+
+# One waiter per runner. A newer one replaces it (refresh.yml re-arms a waiter before GitHub's 24-hour queue limit
+# would fail it).
+concurrency:
+  group: refresh-wake-${{ inputs.runner }}
+  cancel-in-progress: true
+
+jobs:
+  up:
+    name: wait for ${{ inputs.runner }}
+    runs-on: [self-hosted, planwat, '${{ inputs.label }}']
+    timeout-minutes: 2
+    # Nothing on the machine itself: no checkout, no token.
+    permissions: {}
+    steps:
+      - run: echo "$RUNNER_NAME is online"
+
+  catchup:
+    needs: up
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Starting refresh.yml. Only this hosted job has it, never the self-hosted runners.
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: data
+          path: data
+          sparse-checkout: |
+            refresh-runs.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - id: owed
+        env:
+          RUNNER: ${{ inputs.runner }}
+        run: python3 src/tools/refresh/fleet.py owed --runner "$RUNNER" --runs data/refresh-runs.json
+      - name: Start the catch-up pass
+        if: steps.owed.outputs.owed != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNNER: ${{ inputs.runner }}
+          OWED: ${{ steps.owed.outputs.owed }}
+        run: |
+          gh workflow run refresh.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f catchup="$RUNNER"
+          echo "Catch-up for **$RUNNER**: $OWED" >> "$GITHUB_STEP_SUMMARY"

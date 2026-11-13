@@ -2727,6 +2727,122 @@ class FleetPlan(unittest.TestCase):
             self.assertEqual(fleet.main(['plan', '--state', str(tmp / 'state.json'), '--faculty', 'nope']), 2)
 
 
+class FleetCatchup(unittest.TestCase):
+    """fleet.py owed and plan --catchup: a runner back online catches up on what the passes it missed left for it."""
+    WANTED = ['wlo', 'wel', 'ioe', 'wcy', 'wml', 'wtc', 'wig', 'wim']
+
+    @staticmethod
+    def fac(name, blocked=False, fresh=True):
+        return {'id': name, 'runner': 'oracle', 'fresh': fresh, 'blocked': blocked}
+
+    def without_plebania(self, **over):
+        # the shape of pass #136: plebania off, oracle walled on WLO, WML and WTC, the rest done
+        run = {'offline': ['plebania'], 'unassigned': [],
+               'runners': [{'name': 'oracle', 'status': 'blocked', 'faculties': self.WANTED[:-1],
+                            'blocked_on': ['wlo', 'wml', 'wtc']},
+                           {'name': 'northflank', 'status': 'done', 'faculties': ['wim']}],
+               'faculties': [self.fac(f, blocked=f in ('wlo', 'wml', 'wtc')) for f in self.WANTED]}
+        run.update(over)
+        return run
+
+    def with_plebania(self):
+        return {'offline': [], 'unassigned': [],
+                'runners': [{'name': n, 'status': 'done'} for n in ('plebania', 'oracle', 'northflank')],
+                'faculties': [self.fac(f) for f in self.WANTED]}
+
+    def owed(self, runner, runs, wanted=None):
+        return fleet.owed(fleet.load_fleet(), runner, runs, wanted or self.WANTED)
+
+    def test_plebania_owes_what_the_walls_kept_from_the_others(self):
+        self.assertEqual(self.owed('plebania', [self.without_plebania(), self.without_plebania(),
+                                                self.with_plebania()]), ['wlo', 'wml', 'wtc'])
+
+    def test_nothing_is_owed_once_it_took_part_again(self):
+        self.assertEqual(self.owed('plebania', [self.with_plebania(), self.without_plebania()]), [])
+        self.assertEqual(self.owed('plebania', []), [])
+
+    def test_a_faculty_left_out_of_newer_passes_counts_by_the_pass_that_covered_it(self):
+        newer = self.without_plebania(faculties=[self.fac('wim')])
+        self.assertEqual(self.owed('plebania', [newer, self.without_plebania()]), ['wlo', 'wml', 'wtc'])
+        self.assertEqual(self.owed('plebania', [newer, self.with_plebania()]), [])
+
+    def test_unassigned_unfinished_or_never_started_counts_as_undone(self):
+        run = self.without_plebania(unassigned=['wml'], faculties=[self.fac('wel', fresh=False), self.fac('wlo')])
+        self.assertEqual(self.owed('plebania', [run], ['wlo', 'wel', 'wml']), ['wel', 'wml'])
+        # a faculty no pass on record covered is owed by whoever missed the newest one
+        self.assertEqual(self.owed('plebania', [run], ['wcy']), ['wcy'])
+        # plebania was planned, but its share never started (it went off right after the plan)
+        run = self.with_plebania()
+        run['runners'][0]['status'] = 'missing'
+        run['faculties'][0]['blocked'] = True
+        self.assertEqual(self.owed('plebania', [run]), ['wlo'])
+
+    def test_a_runner_owes_only_what_it_may_take(self):
+        run = self.without_plebania(offline=['northflank'],
+                                    runners=[{'name': 'oracle', 'status': 'blocked'}, {'name': 'plebania', 'status': 'done'}],
+                                    faculties=[self.fac(f, blocked=f in ('wim', 'wml')) for f in self.WANTED])
+        self.assertEqual(self.owed('northflank', [run]), ['wim'])
+
+    def test_an_unknown_runner_is_an_error(self):
+        with self.assertRaises(ValueError):
+            self.owed('nobody', [])
+
+    def plan(self, runs, online, catchup='plebania'):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'runs.json').write_text(json.dumps({'version': 1, 'runs': runs}))
+            (tmp / 'runners.json').write_text(json.dumps(
+                [{'name': n, 'status': 'online', 'labels': ['planwat', f'planwat-{n}']} for n in online or []]))
+            out = tmp / 'out'
+            argv = ['plan', '--state', str(tmp / 'none.json'), '--runs', str(tmp / 'runs.json'),
+                    '--catchup', catchup]
+            if online is not None:
+                argv += ['--runners', str(tmp / 'runners.json')]
+            with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out), 'GITHUB_STEP_SUMMARY': ''}):
+                code = fleet.main(argv)
+            values = dict(line.split('=', 1) for line in out.read_text().splitlines()) if out.exists() else {}
+            return code, values
+
+    def test_catchup_plans_only_what_is_owed_and_keeps_walled_helpers_out(self):
+        history = [self.without_plebania()] * 3  # oracle walled on wlo, wml, wtc three times running
+        code, values = self.plan(history, ['plebania', 'oracle', 'northflank'])
+        self.assertEqual(code, 0)
+        self.assertEqual([(m['runner'], m['faculties']) for m in json.loads(values['matrix'])],
+                         [('plebania', 'wlo,wml,wtc')])
+        self.assertEqual(json.loads(values['asleep']), [])
+
+    def test_an_unwalled_helper_joins_the_catchup(self):
+        code, values = self.plan([self.without_plebania()], ['plebania', 'oracle'])
+        self.assertEqual([(m['runner'], m['faculties'], m['expected']) for m in json.loads(values['matrix'])],
+                         [('plebania', 'wlo,wml,wtc', 'plebania,oracle'), ('oracle', 'wlo,wml,wtc', 'plebania,oracle')])
+        self.assertEqual(json.loads(values['asleep']), [{'runner': 'northflank', 'label': 'planwat-northflank'}])
+
+    def test_a_catchup_for_a_runner_off_again_or_owing_nothing_crawls_nothing(self):
+        code, values = self.plan([self.without_plebania()], ['oracle'])
+        self.assertEqual((code, values['shards'], values['matrix']), (0, '0', '[]'))
+        self.assertIn({'runner': 'plebania', 'label': 'planwat-plebania'}, json.loads(values['asleep']))
+        code, values = self.plan([self.with_plebania()], ['plebania', 'oracle'])
+        self.assertEqual((code, values['shards']), (0, '0'))
+        self.assertEqual(self.plan([], ['oracle'], catchup='nobody')[0], 2)
+
+    def test_nothing_is_asleep_when_github_was_not_asked(self):
+        code, values = self.plan([self.with_plebania()], None, catchup='')
+        self.assertEqual(json.loads(values['asleep']), [])
+
+    def test_owed_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'runs.json').write_text(json.dumps({'version': 1, 'runs': [self.without_plebania()]}))
+            out = tmp / 'out'
+            with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out)}):
+                self.assertEqual(fleet.main(['owed', '--runner', 'plebania', '--runs', str(tmp / 'runs.json')]), 0)
+                self.assertEqual(out.read_text(), 'owed=wlo,wml,wtc\n')
+                out.unlink()
+                self.assertEqual(fleet.main(['owed', '--runner', 'oracle', '--runs', str(tmp / 'runs.json')]), 0)
+                self.assertEqual(out.read_text(), 'owed=\n')
+                self.assertEqual(fleet.main(['owed', '--runner', 'nobody', '--runs', str(tmp / 'runs.json')]), 2)
+
+
 class FleetMerge(unittest.TestCase):
     """tools/refresh/fleet.py merge: two runners push one branch without losing each other's state."""
 
@@ -2945,6 +3061,17 @@ class RunHistory(unittest.TestCase):
                               if outcomes is None else outcomes,
                               plan_info=plan_info or {'down': []}, state=self.state() if state is None else state,
                               summary=summary)
+
+    def test_a_catchup_pass_says_whom_it_was_for(self):
+        run = runs.build_run(run_id=8, number=513, attempt=1, event='workflow_dispatch', url='https://x/8',
+                             planned=self.PLANNED, ended=self.PLANNED + dt.timedelta(minutes=20), matrix=self.MATRIX,
+                             outcomes=[self.shard('plebania'), self.shard('oracle')], plan_info={'down': []},
+                             state=self.state(), catchup='plebania')
+        self.assertEqual(run['catchup'], 'plebania')
+        self.assertNotIn('catchup', self.record())
+        self.assertIn('Przebieg nadrabiający za serwer plebania', runs.markdown([run]))
+        self.assertEqual(runs.build.run_event(run), 'nadrabiający za serwer plebania')
+        self.assertEqual(runs.build.run_event(self.record()), 'automatyczny')
 
     def test_a_pass_names_each_server_its_faculties_and_its_time(self):
         run = self.record(plan_info={'down': ['spare']})

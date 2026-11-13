@@ -311,6 +311,33 @@ Na `data` trafia stan łącza tego runnera, który ostatnio crawlował dany wydz
 stał tamten (`fleet.py seed`: epizod ściany, czekanie, otwarta blokada), a epizod ściany nosi nazwę runnera (`by`) i
 liczy się tylko dla niego: plebania nie pomija już WML przez ścianę oracle.
 
+#### Nadrabianie po powrocie serwera
+
+Serwer wyłączony w chwili planu nie dostaje udziału, a przebiegi bez niego zostawiają to, czego nikt inny nie mógł wziąć
+(bez plebanii zwykle WLO, WML i WTC, przed których ścianami stoi oracle). Dlatego zadanie plan, gdy GitHub zgłasza runner
+jako wyłączony, kolejkuje na niego **czekające zadanie** ([`refresh-wake.yml`](../.github/workflows/refresh-wake.yml),
+przebieg `Wait for <runner>`): GitHub trzyma zadanie dla etykiety runnera w kolejce do 24 h i uruchamia je w chwili, gdy
+maszyna połączy się z GitHubem. Nic nie odpytuje i nic nie trzeba instalować na maszynie; zadanie w kolejce nie zużywa
+minut. Gdy runner wróci:
+
+1. zadanie na samym runnerze tylko wypisuje, że jest włączony (bez checkoutu i bez tokenu, `permissions: {}`);
+2. zadanie na runnerze GitHub liczy, co runner jest winien (`fleet.py owed`): wydziały, które może wziąć, a których
+   najnowszy przebieg, który je obejmował, odbył się bez niego i ich nie dokończył (nikt nie mógł ich wziąć, zostały
+   niedokończone albo zatrzymała je ściana). Wydział, który inni zrobili w tym czasie, nie jest winien. Z historii (10
+   przebiegów) wynika więc jedna suma, a nie osobny przebieg za każdy opuszczony;
+3. jeśli coś zostało, uruchamia `refresh.yml` z `catchup=<runner>`: zwykły przebieg (plan, stos, raport) tylko z tych
+   wydziałów. Pozostali włączeni pomagają, ale nie tam, gdzie ich własna ściana zatrzymywała ich ostatnio
+   (`walled_runners`). Historia przebiegów nazywa go „nadrabiający za serwer plebania”.
+
+Na jeden runner czeka najwyżej jedno takie zadanie: plan pomija kolejkowanie, gdy nieukończony `Wait for <runner>` ma
+mniej niż 20 h, a grupa współbieżności `refresh-wake-<runner>` (`cancel-in-progress`) anuluje starsze. Starsze niż 20 h
+zastępuje nowe, zanim GitHub odrzuci je po 24 h, więc przy dłuższym wyłączeniu widać około jednego anulowanego
+przebiegu `Wait for` na dobę. Przebieg nadrabiający, w którym runner zdążył się znowu wyłączyć albo nie ma już nic do
+zrobienia, nic nie crawluje i nie trafia do historii, a plan kolejkuje kolejne czekanie. Bez sekretu
+`PLANWAT_RUNNERS_TOKEN` plan nie wie, kto jest wyłączony, i niczego nie kolejkuje. Gdy runner wraca w chwili, gdy rusza
+zwykły przebieg z nim w składzie, oba udziały idą po kolei (grupa współbieżności `refresh-<runner>`), a grupy sprawdzone
+w ostatniej godzinie są pomijane.
+
 Konfiguracja (jednorazowo):
 
 1. Etykiety: Settings → Actions → Runners → runner → Labels. Plebanii dodaj `planwat-plebania`, VPS-owi `planwat-oracle`
@@ -370,7 +397,9 @@ runnera musi pozostać czysty, a opublikowana strona bezpieczna:
 - Token zadania na runnerze ma tylko `contents:write` (push gałęzi `data`); zgłoszenia o blokadzie otwiera zadanie report
   na runnerze GitHub (`issues:write`). Celowo nie ma
   `actions:write`: odświeżone kalendarze podbiera codzienna przebudowa `pages.yml`, więc skradziony token nie może uruchamiać ani
-  zatwierdzać innych workflowów.
+  zatwierdzać innych workflowów. `actions:write` mają tylko zadania na runnerach GitHub, które kolejkują i uruchamiają
+  nadrabianie (plan w `refresh.yml`, catchup w `refresh-wake.yml`); zadanie czekające na własnym runnerze nie dostaje
+  żadnego tokenu (`permissions: {}`).
 - Sekret `PLANWAT_RUNNERS_TOKEN` (zadanie plan, na runnerze GitHub) pozwala tylko czytać ustawienia administracyjne tego
   repozytorium, w tym listę runnerów: wyciek pokazuje konfigurację, ale niczego nie zmieni. Nie trafia na własne runnery.
 - `master` jest chroniony (podpisane commity, wymagane CI), a `pages.yml` buduje produkcję wyłącznie z `master`, nakładając

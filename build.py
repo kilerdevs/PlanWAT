@@ -1174,6 +1174,15 @@ STATUS_DESCRIPTION = ('Ostatnie przebiegi pobierania planów ze stron wydziałó
                       'i co się zmieniło.')
 RUN_RESULTS = ('ok', 'changed', 'degraded', 'incomplete', 'blocked', 'idle')
 RUN_EVENTS = {'schedule': 'automatyczny', 'workflow_dispatch': 'uruchomiony ręcznie'}
+
+
+def run_event(run):
+    """How a pass was started: 'automatyczny', 'uruchomiony ręcznie', or, for the catch-up a server started once it
+    was back online (refresh-wake.yml), 'nadrabiający za serwer X'."""
+    who = run.get('catchup')
+    if isinstance(who, str) and who:
+        return f'nadrabiający za serwer {who}'
+    return RUN_EVENTS.get(run.get('event'), '')
 RUN_CAUSES = {'wall': 'blokada Incapsula', 'listing': 'nie udało się pobrać listy grup'}
 MONTHS_SHORT = ('sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru')
 
@@ -1419,7 +1428,7 @@ def _status_section(title, body):
 def _status_link(run, e):
     number = count(run.get('number')) or run['id']
     url = run.get('url') if isinstance(run.get('url'), str) and run['url'].startswith('https://') else ''
-    bits = [RUN_EVENTS.get(run.get('event'), ''),
+    bits = [run_event(run),
             f'trwał {minutes_label(run_minutes(run))}' if run_minutes(run) is not None else '']
     if count(run.get('attempt')) > 1:
         bits.append(f"próba {run['attempt']}")

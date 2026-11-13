@@ -7,8 +7,11 @@ The fleet is a fast home server that is often switched off, a slow always-on VPS
            anything: nothing is handed out, every runner pulls its work from the pass's shared work stack
            (stack.py), its preferred faculties first (`prefers`), within what it may take (`faculties`). Each also gets
            a static share (`fallback`, the old even split: plan()), crawled alone only when the stack cannot be
-           reached. A runner that is off gets nothing, so no job ever waits in the queue for a machine that is not
-           coming.
+           reached. A runner that is off gets no crawl, so no share waits in the queue for a machine that is not
+           coming; the report queues a tiny catch-up job for it instead (refresh-wake.yml), which starts the moment
+           the machine is back.
+  owed     what such a runner owes once it is back: the faculties it may take that the passes it missed left undone.
+           `plan --catchup` plans a pass of just those.
   seed     gives a runner that has never crawled its own line state, copied from the data branch.
   merge    folds one runner's refresh-state.json into the data branch's newer one: the runners crawl side by side and
            push to the same branch, so neither may overwrite what the other learned. A faculty's record is its
@@ -206,17 +209,19 @@ def plan(fleet, wanted, state, online, avoid=None, walled=None):
             'up': [r['name'] for r in up], 'down': [r['name'] for r in fleet if r not in up]}
 
 
-def matrix_of(fleet, wanted, state, online, walled=None):
+def matrix_of(fleet, wanted, state, online, walled=None, avoid=None):
     """The pass's crawl jobs: one per runner up that may take any faculty wanted, each with what it may take (in the
-    order asked), its census, who else crawls (`expected`) and its fallback share (plan()). Plus the plan itself."""
-    result = plan(fleet, wanted, state, online, walled=walled)
+    order asked), its census, who else crawls (`expected`) and its fallback share (plan()). Plus the plan itself.
+    `avoid` ({faculty: {runner}}) keeps a runner off a faculty altogether (a catch-up's walled helpers)."""
+    avoid = avoid or {}
+    result = plan(fleet, wanted, state, online, avoid=avoid, walled=walled)
     census = census_of(fleet, wanted)
     fallback = {s['runner']: s['faculties'] for s in result['shards']}
     by = {r['name']: r for r in fleet}
     jobs = []
     for name in result['up']:
         r = by[name]
-        mine = [f for f in wanted if may_take(r, [f], {})]
+        mine = [f for f in wanted if may_take(r, [f], avoid)]
         if mine:
             jobs.append({'runner': name, 'label': r['label'], 'faculties': ','.join(mine),
                          'census': census.get(name, ''), 'fallback': fallback.get(name, '')})
@@ -226,6 +231,42 @@ def matrix_of(fleet, wanted, state, online, walled=None):
     taken = {f for j in jobs for f in j['faculties'].split(',')}
     result['unassigned'] = [f for f in wanted if f not in taken]
     return jobs, result
+
+
+def missed(runner, run):
+    """Whether `runner` had no part in `run` (a refresh-runs.json pass): it was off, or its share never ran."""
+    if runner in (run.get('offline') or []):
+        return True
+    entry = next((x for x in run.get('runners') or [] if isinstance(x, dict) and x.get('name') == runner), None)
+    return entry is None or entry.get('status') in ('missing', 'skipped')
+
+
+def owed(fleet, runner, runs, wanted):
+    """The faculties of `wanted` that `runner` (a name in the fleet) owes after being away: those it may take whose
+    newest pass ran without it and left them undone (nobody could take them, the pass never got to them, or a wall
+    stopped whoever tried). A faculty the others got done meanwhile is not owed. With no pass on record that covered a
+    faculty, it is owed when the runner missed the newest pass. `runs` is refresh-runs.json's list, newest first."""
+    by = {r['name']: r for r in fleet}
+    if runner not in by:
+        raise ValueError(f'unknown runner: {runner!r}')
+    runs = [r for r in runs if isinstance(r, dict)] if isinstance(runs, list) else []
+    out = []
+    for f in wanted:
+        if not may_take(by[runner], [f], {}):
+            continue
+        for run in runs:
+            entry = next((x for x in run.get('faculties') or [] if isinstance(x, dict) and x.get('id') == f), None)
+            unassigned = f in (run.get('unassigned') or [])
+            if entry is None and not unassigned:
+                continue
+            undone = unassigned or entry is None or not entry.get('fresh') or bool(entry.get('blocked'))
+            if undone and missed(runner, run):
+                out.append(f)
+            break
+        else:
+            if runs and missed(runner, runs[0]):
+                out.append(f)
+    return out
 
 
 def census_of(fleet, wanted):
@@ -280,10 +321,28 @@ def cmd_plan(args):
     wanted = named or [f for f, c in sources.items() if c.get('enabled')]
     runners = load_json(args.runners, None, list) if args.runners else None
     fleet = load_fleet(args.fleet)
-    walled = walled_runners(load_json(args.runs, {}).get('runs')) if args.runs else {}
+    history = load_json(args.runs, {}).get('runs') if args.runs else []
+    walled = walled_runners(history)
     for f, names in sorted(walled.items()):
         log(f"{f}: its wall kept {', '.join(sorted(names))} out lately; not in their fallback share")
-    jobs, result = matrix_of(fleet, wanted, load_json(args.state, {}), online_labels(runners), walled)
+    online = online_labels(runners)
+    avoid = {}
+    if args.catchup:
+        # A catch-up pass: what the runner that came back owes (owed), helped by the others but not where their
+        # own wall would only stop them.
+        by = {r['name']: r for r in fleet}
+        if args.catchup not in by:
+            log(f'unknown runner: {args.catchup}')
+            return 2
+        wanted = owed(fleet, args.catchup, history, wanted)
+        log(f"catch-up for {args.catchup}: it owes {', '.join(wanted) or 'nothing'}")
+        if online is not None and by[args.catchup]['label'] not in online:
+            log(f'::notice::{args.catchup} is offline again; nothing to catch up now')
+            wanted = []
+        avoid = {f: names - {args.catchup} for f, names in walled.items()}
+    jobs, result = matrix_of(fleet, wanted, load_json(args.state, {}), online, walled, avoid)
+    if args.catchup and not any(j['runner'] == args.catchup for j in jobs):
+        jobs = []  # the others alone have done what they could already
     prefers = {r['name']: ','.join(f for f in r['prefers'] if f in wanted) for r in fleet}
     for j in jobs:
         j['prefers'] = prefers.get(j['runner'], '')
@@ -299,9 +358,26 @@ def cmd_plan(args):
     planned = int(dt.datetime.now(dt.timezone.utc).timestamp())
     # runs.py records which servers were off and what nobody could take
     info = {'down': result['down'], 'unassigned': result['unassigned']}
+    # the servers GitHub says are off, for the report to queue a catch-up waiting for each (refresh-wake.yml); none
+    # when it could not be asked
+    by = {r['name']: r for r in fleet}
+    asleep = [{'runner': n, 'label': by[n]['label']} for n in result['down']] if result['known'] else []
     github_output(matrix=json.dumps(matrix, separators=(',', ':')), shards=len(matrix), planned=planned,
-                  fleet=json.dumps(info, separators=(',', ':')))
-    step_summary(plan_summary(jobs, result))
+                  fleet=json.dumps(info, separators=(',', ':')), asleep=json.dumps(asleep, separators=(',', ':')))
+    head = (f"Catch-up for **{args.catchup}**, back online: it owes {', '.join(wanted) or 'nothing'}.\n\n"
+            if args.catchup else '')
+    step_summary(head + plan_summary(jobs, result))
+    return 0
+
+
+def cmd_owed(args):
+    fleet = load_fleet(args.fleet)
+    if args.runner not in {r['name'] for r in fleet}:
+        log(f'unknown runner: {args.runner}')
+        return 2
+    due = owed(fleet, args.runner, load_json(args.runs, {}).get('runs'), enabled_faculties(args.sources))
+    log(f"{args.runner} owes {', '.join(due) or 'nothing'}")
+    github_output(owed=','.join(due))
     return 0
 
 
@@ -559,6 +635,12 @@ def parse(argv=None):
     p.add_argument('--runners', help="GitHub's runner list (JSON array); missing = unknown")
     p.add_argument('--runs', help="the data branch's refresh-runs.json: who met which wall lately (walled_runners)")
     p.add_argument('--faculty', default='', help='comma-separated faculties (default: every enabled one)')
+    p.add_argument('--catchup', default='', help='a runner back online: plan only what it owes (owed)')
+    p.add_argument('--fleet', default=str(FLEET))
+    p.add_argument('--sources', default=str(SOURCES))
+    p = sub.add_parser('owed', help='what a runner back online owes from the passes it missed')
+    p.add_argument('--runner', required=True, help="its name in fleet.json")
+    p.add_argument('--runs', required=True, help="the data branch's refresh-runs.json")
     p.add_argument('--fleet', default=str(FLEET))
     p.add_argument('--sources', default=str(SOURCES))
     p = sub.add_parser('seed', help="write a runner's first line state from the data branch's")
@@ -585,7 +667,7 @@ def parse(argv=None):
 
 def main(argv=None):
     args = parse(argv)
-    return {'plan': cmd_plan, 'seed': cmd_seed, 'merge': cmd_merge, 'combine': cmd_combine}[args.cmd](args)
+    return {'plan': cmd_plan, 'owed': cmd_owed, 'seed': cmd_seed, 'merge': cmd_merge, 'combine': cmd_combine}[args.cmd](args)
 
 
 if __name__ == '__main__':

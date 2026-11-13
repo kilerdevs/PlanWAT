@@ -16,6 +16,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Nadrabianie po powrocie serwera** (`.github/workflows/refresh-wake.yml`, `fleet.py owed`, `plan --catchup`): gdy
+  przebieg zastaje runner wyłączony, kolejkuje na niego czekające zadanie, które GitHub uruchamia w chwili, gdy maszyna
+  połączy się z GitHubem. Wtedy rusza przebieg tylko z tego, co opuszczone przebiegi zostawiły dla niego (dla plebanii
+  zwykle WLO, WML i WTC), z pomocą pozostałych tam, gdzie nie stoi ich ściana. Na runner czeka najwyżej jedno zadanie
+  (odnawiane po 20 h, przed limitem kolejki GitHuba), a własny runner nie dostaje przy tym żadnego tokenu. Historia
+  przebiegów nazywa taki przebieg „nadrabiający za serwer …”.
 - **Relay Cloudflare dla wydziałów, których nie wpuszcza żadne wyjście puli** (`tools/refresh/relay.py`,
   `tools/egress/cloudflare/`): opcjonalny Worker z tokenem i dokładną listą hostów pobiera z adresów Cloudflare strony,
   które ściana Incapsuli serwuje normalnie, a runnerowi oddaje status, `ETag`/`Last-Modified` i treść. Relay włącza się

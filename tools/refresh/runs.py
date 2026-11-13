@@ -128,9 +128,10 @@ def faculty_entry(name, runner, state, since, handed=None, helpers=(), seen=None
 
 
 def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, outcomes, plan_info, state,
-              summary=None):
+              summary=None, catchup=''):
     """The record of one pass (see the module docstring): the runners the plan started (`matrix`), what each reported
-    (`outcomes`) and what the work stack says of every faculty (`summary`, stack.py summarize; None when unread)."""
+    (`outcomes`) and what the work stack says of every faculty (`summary`, stack.py summarize; None when unread).
+    `catchup` names the runner a catch-up pass was for (refresh-wake.yml), back online after missing passes."""
     got = fleet.latest(outcomes)
     combined = fleet.combine(matrix, outcomes, 0, summary)
     seen = summary.get('faculties') if isinstance(summary, dict) and isinstance(summary.get('faculties'), dict) else {}
@@ -177,8 +178,9 @@ def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, ou
     else:
         result = 'changed' if changed else 'ok'
     fresh = [f for f in faculties if f['fresh']]
+    extra = {'catchup': catchup} if catchup else {}
     return {
-        'id': run_id, 'number': number, 'attempt': attempt, 'event': event, 'url': url,
+        'id': run_id, 'number': number, 'attempt': attempt, 'event': event, **extra, 'url': url,
         'planned': _iso(planned), 'ended': _iso(ended), 'result': result, 'changed': changed,
         'checked': sum(f['checked'] for f in fresh), 'not_ready': sum(f['not_ready'] for f in fresh),
         'runners': runners,
@@ -274,7 +276,7 @@ def markdown(runs, site_url='', repo_url=''):
         lines += ['<details>',
                   f"<summary><b>{when(run['planned'])}</b> · {result_label(run)} · "
                   f"{' · '.join(build.run_servers(run)) or 'bez serwera'}</summary>", '',
-                  f"{build.run_explanation(run)} Przebieg {build.RUN_EVENTS.get(run.get('event'), run.get('event') or '')} "
+                  f"{build.run_explanation(run)} Przebieg {build.run_event(run) or run.get('event') or ''} "
                   f"[#{run.get('number') or run['id']}]({run.get('url', '')})"
                   + (f", próba {run['attempt']}" if build.count(run.get('attempt')) > 1 else '')
                   + f", od planu do raportu {duration(run)}.", '',
@@ -327,7 +329,7 @@ def cmd_record(args):
     run = build_run(run_id=args.run_id, number=args.run_number, attempt=args.attempt, event=args.event,
                     url=args.url, planned=planned, ended=dt.datetime.now(dt.timezone.utc), matrix=matrix,
                     outcomes=outcomes, plan_info=plan_info, state=fleet.load_json(args.state, {}),
-                    summary=fleet.load_json(args.stack, None) if args.stack else None)
+                    summary=fleet.load_json(args.stack, None) if args.stack else None, catchup=args.catchup)
     runs = add_run(load_runs(args.runs), run)
     _write(args.runs, json.dumps({'version': 1, 'runs': runs}, ensure_ascii=False, indent=1) + '\n')
     text = markdown(runs, args.site_url, args.repo_url)
@@ -368,6 +370,7 @@ def parse(argv=None):
     p.add_argument('--run-number', type=int, default=0)
     p.add_argument('--attempt', type=int, default=1)
     p.add_argument('--event', default='')
+    p.add_argument('--catchup', default='', help='the runner a catch-up pass was for (refresh-wake.yml)')
     p.add_argument('--url', default='')
     p.add_argument('--site-url', default='', help="the site's history page, linked from README.md")
     p.add_argument('--repo-url', default=REPO_URL)

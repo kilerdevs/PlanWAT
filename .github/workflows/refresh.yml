@@ -11,6 +11,8 @@ name: Refresh timetables
 # each leading the faculties it prefers and helping with the rest, so a runner that fails or meets a wall only leaves
 # its part to the others. A last hosted job reads what the stack says of every faculty, adds the pass up for pages.yml
 # and the "blocked" issues, and records it in the run history (README.md on the data branch, the site's /stan/ page).
+# For each runner that was off it also queues a catch-up waiting for that machine (refresh-wake.yml): once it is back,
+# a pass of just what the passes it missed left undone for it starts at once (input `catchup`).
 on:
   # Every two hours, round the clock: a pass over every group takes well under an hour (all policy
   # groups crawl side by side, one request at a time per host) and most pages answer 304, so a quiet
@@ -24,6 +26,10 @@ on:
         description: 'Comma-separated faculties, e.g. wel (empty: all enabled)'
         type: string
         default: ''
+      catchup:
+        description: 'A runner back online (refresh-wake.yml): crawl only what the passes it missed left for it'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -34,6 +40,11 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      # Queuing the catch-up for a runner that is off (refresh-wake.yml). A hosted job: the self-hosted runners
+      # never get it.
+      actions: write
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shards: ${{ steps.plan.outputs.shards }}
@@ -75,10 +86,37 @@ jobs:
       - id: plan
         env:
           FACULTY: ${{ inputs.faculty }}
+          CATCHUP: ${{ inputs.catchup }}
         run: |
-          args=(plan --state data/refresh-state.json --runs data/refresh-runs.json --faculty "$FACULTY")
+          args=(plan --state data/refresh-state.json --runs data/refresh-runs.json --faculty "$FACULTY" --catchup "$CATCHUP")
           if [ -f runners.json ]; then args+=(--runners runners.json); fi
           python3 src/tools/refresh/fleet.py "${args[@]}"
+      # A runner that is off gets a catch-up waiting for it (refresh-wake.yml), queued right away so that one back
+      # during this pass is caught too: a job GitHub keeps queued for that machine until it connects (24 hours at
+      # most). One per runner: a waiter younger than 20 hours is left alone, an older one replaced (its concurrency
+      # group cancels it) before GitHub fails it.
+      - name: Wait for the servers that are off
+        if: steps.plan.outputs.asleep != '' && steps.plan.outputs.asleep != '[]'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ASLEEP: ${{ steps.plan.outputs.asleep }}
+        run: |
+          waiting=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow refresh-wake.yml --limit 50 \
+              --json status,createdAt,displayTitle \
+              --jq '[.[] | select(.status != "completed" and (.createdAt | fromdateiso8601) > (now - 72000)) | .displayTitle]' \
+            || echo '[]')
+          jq -c '.[]' <<< "$ASLEEP" | while read -r one; do
+            runner=$(jq -r .runner <<< "$one")
+            label=$(jq -r .label <<< "$one")
+            if jq -e --arg t "Wait for $runner" 'index($t) != null' <<< "$waiting" > /dev/null; then
+              echo "$runner: a catch-up is already waiting for it"
+            else
+              gh workflow run refresh-wake.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
+                -f runner="$runner" -f label="$label"
+              echo "$runner: queued a catch-up waiting for it"
+            fi
+          done
 
   crawl:
     name: crawl (${{ matrix.runner }})
@@ -103,8 +141,9 @@ jobs:
   report:
     needs: [plan, crawl]
     # Also after a failed or skipped crawl: the outcome must be written either way (a pass with no runner online
-    # included). A cancelled run has no outcome, so it must not claim a blocked one.
-    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    # included). A cancelled run has no outcome, so it must not claim a blocked one. A catch-up that found nothing to
+    # do (its runner went off again, or the others got it all done meanwhile) is no pass worth recording.
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (!inputs.catchup || needs.plan.outputs.shards != '0') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -215,6 +254,7 @@ jobs:
           FLEET: ${{ needs.plan.outputs.fleet }}
           PLANNED: ${{ needs.plan.outputs.planned }}
           EVENT: ${{ github.event_name }}
+          CATCHUP: ${{ inputs.catchup }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           git config user.name 'planwat-refresh'
@@ -233,7 +273,7 @@ jobs:
             python3 "$runs" record --matrix "$MATRIX" --plan "$FLEET" --planned "$PLANNED" "${stack[@]}" \
               --dir "$GITHUB_WORKSPACE/shards" --state refresh-state.json --runs refresh-runs.json --readme README.md \
               --run-id "$GITHUB_RUN_ID" --run-number "$GITHUB_RUN_NUMBER" --attempt "$GITHUB_RUN_ATTEMPT" \
-              --event "$EVENT" --url "$RUN_URL" --site-url "${site:+${site%/}/stan/}" \
+              --event "$EVENT" --catchup "$CATCHUP" --url "$RUN_URL" --site-url "${site:+${site%/}/stan/}" \
               --outcome "$GITHUB_WORKSPACE/refresh-outcome.json"
             git add refresh-runs.json README.md
             if git diff --cached --quiet || { git commit -q -m "Run history: pass #$GITHUB_RUN_NUMBER" && git push -q origin HEAD:data; }; then
