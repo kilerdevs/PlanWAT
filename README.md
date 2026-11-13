@@ -1,13 +1,14 @@
 # Odświeżanie planów: ostatnie przebiegi
 
-> [!CAUTION]
-> **Ostatni przebieg: zablokowany.** 13 lis 2026 · 19:31 · **oracle** · **northflank** · ~~plebania~~ · 11 min · [przebieg #151](https://github.com/kilerdevs/PlanWAT/actions/runs/43483477086)
-> Strona wydziału WLO, WML, WTC zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu.
+> [!WARNING]
+> **Ostatni przebieg: niedokończony.** 13 lis 2026 · 21:36 · **oracle** · **northflank** · ~~plebania~~ · 28 min · [przebieg #153](https://github.com/kilerdevs/PlanWAT/actions/runs/43503109799)
+> Nie wszystko zostało sprawdzone (WLO, WCY, WML). Zostają poprzednie plany, resztę dokończy następny przebieg.
 
 Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
 
 | Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |
 |---|---|---|--:|--:|---|
+| 13 lis · 21:36 | Niedokończony | **oracle** (IOE, WEL, WIG, WIM, WTC przez proxy) · **northflank** (WLO, WEL, WIM, IOE, WCY, WML, WTC, WIG) · ~~plebania~~ | 43 | 28 min | [#153](https://github.com/kilerdevs/PlanWAT/actions/runs/43503109799) |
 | 13 lis · 19:31 | Zablokowany | **oracle** (IOE, WCY, WEL, WIG) · **northflank** (WIM) · ~~plebania~~ | 4 | 11 min | [#151](https://github.com/kilerdevs/PlanWAT/actions/runs/43483477086) |
 | 13 lis · 18:55 | Bez zmian | **plebania** (WLO, WEL, WML, WTC) · **oracle** (IOE, WCY, WIG) · **northflank** (WIM) | 5 | 19 min | [#150](https://github.com/kilerdevs/PlanWAT/actions/runs/43477538480) |
 | 13 lis · 18:52 | Część stron odrzucona | **plebania** (WCY, WEL, WIM, WLO, WML, WTC, WIG (pomoc dla oracle)) · **oracle** (IOE, WIG, WEL (pomoc dla plebania), WIM (pomoc dla plebania), WCY (pomoc dla plebania)) · **northflank** (WIM (pomoc dla plebania), IOE (pomoc dla oracle), WIG (pomoc dla oracle)) | 798 | 20 min | [#149](https://github.com/kilerdevs/PlanWAT/actions/runs/43476965918) |
@@ -17,9 +18,32 @@ Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w cza
 | 12 lis · 10:58 | Zablokowany | **oracle** (WLO, WEL, IOE, WCY, WML, WTC, WIG, WIM (pomoc dla northflank)) · **northflank** (WIM, WIG (pomoc dla oracle)) · ~~plebania~~ | 442 | 25 min | [#145](https://github.com/kilerdevs/PlanWAT/actions/runs/43196162350) |
 | 12 lis · 01:53 | Zablokowany | **oracle** (WLO, WEL, IOE, WCY, WML, WTC, WIG, WIM (pomoc dla northflank)) · **northflank** (WIM, WIG (pomoc dla oracle)) · ~~plebania~~ | 387 | 25 min | [#144](https://github.com/kilerdevs/PlanWAT/actions/runs/43130531590) |
 | 11 lis · 18:57 | Zmiany w 2 planach | **plebania** (WLO, WEL, WML, WTC, WIM (pomoc dla northflank), WCY (pomoc dla oracle)) · **oracle** (IOE, WCY, WIG, WIM (pomoc dla northflank), WEL (pomoc dla plebania)) · **northflank** (WIM, IOE (pomoc dla oracle), WIG (pomoc dla oracle)) | 626 | 24 min | [#143](https://github.com/kilerdevs/PlanWAT/actions/runs/43073051284) |
-| 11 lis · 10:38 | Zablokowany | **oracle** (WLO, WEL, IOE, WCY, WML, WTC, WIG, WIM (pomoc dla northflank)) · **northflank** (WIM, WIG (pomoc dla oracle)) · ~~plebania~~ | 388 | 25 min | [#142](https://github.com/kilerdevs/PlanWAT/actions/runs/42996902132) |
 
 ## Szczegóły
+
+<details>
+<summary><b>13 lis · 21:36</b> · Niedokończony · oracle · northflank</summary>
+
+Nie wszystko zostało sprawdzone (WLO, WCY, WML). Zostają poprzednie plany, resztę dokończy następny przebieg. Przebieg uruchomiony ręcznie [#153](https://github.com/kilerdevs/PlanWAT/actions/runs/43503109799), od planu do raportu 28 min.
+
+| Serwer | Wydziały | Zmienione | Stan |
+|---|---|--:|---|
+| **oracle** | IOE, WEL, WIG, WIM, WTC przez proxy | 0 | 27 min, zablokowany na WML, WLO, WCY |
+| **northflank** | WLO, WEL, WIM, IOE, WCY, WML, WTC, WIG | 0 | brak raportu |
+| plebania | | | wyłączony |
+
+| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
+|---|---|--:|--:|---|
+| WLO | northflank | – | – | blokada dla oracle, brak danych z tego przebiegu |
+| WEL | oracle | 27 | 0 | odrzucone strony: 3 z 27 |
+| WIM | oracle | 4 | 0 |  |
+| IOE | oracle | 0 | 0 |  |
+| WCY | northflank | – | – | blokada dla oracle, brak danych z tego przebiegu |
+| WML | northflank | – | – | blokada dla oracle, brak danych z tego przebiegu |
+| WTC | oracle | 12 | 0 | przez proxy (pula) na oracle |
+| WIG | oracle | 0 | 0 |  |
+
+</details>
 
 <details>
 <summary><b>13 lis · 19:31</b> · Zablokowany · oracle · northflank</summary>
@@ -234,29 +258,5 @@ Pobrano nowe wersje 2 planów. Przebieg automatyczny [#143](https://github.com/k
 | WCY | oracle | 94 | 0 | z pomocą plebania, odrzucone strony: 1, bez planu na ten semestr: 51 |
 | WIG | oracle | 25 | 0 | z pomocą northflank |
 | WIM | northflank | 34 | 0 | z pomocą oracle, plebania |
-
-</details>
-
-<details>
-<summary><b>11 lis · 10:38</b> · Zablokowany · oracle · northflank</summary>
-
-Strona wydziału WLO, WML, WTC zablokowała pobieranie. Zostają poprzednie plany, następny przebieg spróbuje znowu. Przebieg automatyczny [#142](https://github.com/kilerdevs/PlanWAT/actions/runs/42996902132), od planu do raportu 25 min.
-
-| Serwer | Wydziały | Zmienione | Stan |
-|---|---|--:|---|
-| **oracle** | WLO, WEL, IOE, WCY, WML, WTC, WIG, WIM (pomoc dla northflank) | 1 | 24 min, zablokowany na WLO, WML, WTC |
-| **northflank** | WIM, WIG (pomoc dla oracle) | 0 | 4 min |
-| plebania | | | wyłączony |
-
-| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
-|---|---|--:|--:|---|
-| WLO | oracle | 0 | 0 | blokada Incapsula |
-| WEL | oracle | 160 | 0 | odrzucone strony: 3 |
-| IOE | oracle | 15 | 0 |  |
-| WCY | oracle | 135 | 1 | odrzucone strony: 1, bez planu na ten semestr: 51 |
-| WML | oracle | 0 | 0 | blokada Incapsula |
-| WTC | oracle | 0 | 0 | blokada Incapsula |
-| WIG | oracle | 27 | 0 | z pomocą northflank |
-| WIM | northflank | 51 | 0 | z pomocą oracle |
 
 </details>
