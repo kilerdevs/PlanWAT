@@ -1,7 +1,7 @@
 name: Refresh share
 
-# One runner's share of a refresh pass: refresh.yml calls this once per shard of its plan (wave 1) and again for the
-# handoff, the faculties a runner left blocked or unfinished, taken over by another one (wave 2). See docs/REFRESH.md.
+# One runner's part of a refresh pass: refresh.yml calls this once per runner that is up. The runner pulls its work
+# from the pass's shared work stack (tools/refresh/stack.py), along with the others. See docs/REFRESH.md.
 on:
   workflow_call:
     inputs:
@@ -14,21 +14,21 @@ on:
         type: string
         required: true
       faculties:
-        description: Comma-separated faculties of this share.
+        description: Comma-separated faculties this runner may take (fleet.json).
         type: string
         required: true
       census:
         description: Comma-separated faculties whose site census this runner takes after its crawl (fleet.json), at most weekly.
         type: string
         default: ''
-      wave:
-        description: 1 for the plan's share, 2 for a takeover.
-        type: number
-        default: 1
-      wait:
-        description: Minutes to wait out a wall before letting a faculty go.
-        type: number
-        default: 30
+      expected:
+        description: Comma-separated runners the plan started for this pass (who leads what it prefers).
+        type: string
+        default: ''
+      fallback:
+        description: Comma-separated faculties this runner crawls alone should the work stack be out of reach.
+        type: string
+        default: ''
       planned:
         description: When the share was planned (Unix seconds).
         type: string
@@ -39,7 +39,7 @@ permissions:
 
 jobs:
   crawl:
-    name: ${{ inputs.runner }}${{ inputs.wave > 1 && ' (takeover)' || '' }}
+    name: ${{ inputs.runner }}
     runs-on: [self-hosted, planwat, '${{ inputs.label }}']
     # One crawl per runner at a time, and never cancel one halfway: a half-finished crawl is resumed, not
     # restarted. Per runner, not per workflow: a job stuck waiting for a machine that went off right after the
@@ -82,18 +82,18 @@ jobs:
           profile: selfhosted
           faculty: ${{ inputs.faculties }}
           census: ${{ inputs.census }}
-          # The wave's runners take work off each other while they crawl (tools/refresh/steal.py).
+          # The pass's runners pull their work from one shared stack (tools/refresh/stack.py).
           runner: ${{ inputs.runner }}
-          board: ${{ inputs.planned }}-${{ github.run_id }}/w${{ inputs.wave }}
+          board: ${{ inputs.planned }}-${{ github.run_id }}
+          expected: ${{ inputs.expected }}
+          fallback: ${{ inputs.fallback }}
           max-minutes: '90'
-          max-block-wait-minutes: ${{ inputs.wait }}
-      # The handoff and the report read these. A shard that never wrote one (a crash before this, a runner lost
-      # mid-crawl) counts as missing: its faculties are handed off or, after the handoff, leave the pass incomplete.
+      # The report reads these when the work stack cannot be read. A runner that never wrote one (a crash before this,
+      # a runner lost mid-crawl) counts as missing; what it held went back on the stack for the others.
       - name: Write this share's outcome
         if: always()
         env:
           SHARD: ${{ inputs.runner }}
-          WAVE: ${{ inputs.wave }}
           FACULTIES: ${{ inputs.faculties }}
           SKIPPED: ${{ steps.current.outputs.ok != 'true' }}
           STARTED: ${{ steps.current.outputs.started }}
@@ -104,28 +104,33 @@ jobs:
           DEGRADED: ${{ steps.refresh.outputs.degraded || 'false' }}
           BLOCKED_FACULTIES: ${{ steps.refresh.outputs.blocked-faculties }}
           INCOMPLETE_FACULTIES: ${{ steps.refresh.outputs.incomplete-faculties }}
+          DONE_FACULTIES: ${{ steps.refresh.outputs.done-faculties }}
           TOOK: ${{ steps.refresh.outputs.took-faculties }}
           GAVE: ${{ steps.refresh.outputs.gave-faculties }}
+          LED: ${{ steps.refresh.outputs.led-faculties }}
+          CANT: ${{ steps.refresh.outputs.cant-faculties }}
+          POOL: ${{ steps.refresh.outputs.pool-faculties }}
           OUTCOME: ${{ steps.refresh.outcome }}
         run: |
           # A refresh step that failed outright leaves its outputs empty: nothing it did can be trusted as done.
           FAILED=false
           if [ "$SKIPPED" != 'true' ] && [ "$OUTCOME" != 'success' ]; then INCOMPLETE=true; FAILED=true; fi
           mkdir -p shard
-          jq -n --arg runner "$SHARD" --arg wave "$WAVE" --arg faculties "$FACULTIES" --arg skipped "$SKIPPED" \
+          jq -n --arg runner "$SHARD" --arg wave 1 --arg faculties "$FACULTIES" --arg skipped "$SKIPPED" \
             --arg pushed "$PUSHED" --arg changed "$CHANGED" --arg blocked "$BLOCKED" --arg incomplete "$INCOMPLETE" \
             --arg degraded "$DEGRADED" --arg failed "$FAILED" --arg blocked_faculties "$BLOCKED_FACULTIES" \
-            --arg incomplete_faculties "$INCOMPLETE_FACULTIES" --arg took "$TOOK" --arg gave "$GAVE" \
+            --arg incomplete_faculties "$INCOMPLETE_FACULTIES" --arg done_faculties "$DONE_FACULTIES" \
+            --arg took "$TOOK" --arg gave "$GAVE" --arg led "$LED" --arg cant "$CANT" --arg pool "$POOL" \
             --arg started "$STARTED" --arg ended "$(date +%s)" \
-            '$ARGS.named' > "shard/shard-$WAVE-$SHARD.json"
-          cat "shard/shard-$WAVE-$SHARD.json"
+            '$ARGS.named' > "shard/shard-$SHARD.json"
+          cat "shard/shard-$SHARD.json"
       - name: Upload this share's outcome
         if: always()
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: refresh-shard-${{ inputs.wave }}-${{ inputs.runner }}
-          path: shard/shard-${{ inputs.wave }}-${{ inputs.runner }}.json
+          name: refresh-shard-${{ inputs.runner }}
+          path: shard/shard-${{ inputs.runner }}.json
           retention-days: 2
-          # "Re-run failed jobs" crawls the share again: its outcome replaces the first attempt's
+          # "Re-run failed jobs" crawls again: its outcome replaces the first attempt's
           overwrite: true

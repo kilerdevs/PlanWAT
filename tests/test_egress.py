@@ -138,10 +138,12 @@ class PoolPick(unittest.TestCase):
         self.assertEqual(self.pool.entries['http://a:1']['status'], 'ok')  # still alive globally
 
     def test_ewma_latency(self):
+        # a faculty's verdict keeps its own latency; the entry's is Round 1's
         self.pool.mark('http://a:1', 'example.test', True, 100)
-        self.assertEqual(self.pool.entries['http://a:1']['latency_ms'], 100)
+        self.assertEqual(self.pool.entries['http://a:1']['hosts']['example.test']['ms'], 100)
         self.pool.mark('http://a:1', 'example.test', True, 200)
-        self.assertEqual(self.pool.entries['http://a:1']['latency_ms'], int(0.7 * 100 + 0.3 * 200))
+        self.assertEqual(self.pool.entries['http://a:1']['hosts']['example.test']['ms'], int(0.7 * 100 + 0.3 * 200))
+        self.assertNotIn('latency_ms', self.pool.entries['http://a:1'])
         self.pool.mark_alive('http://b:2', True, 100)
         self.pool.mark_alive('http://b:2', True, 200)
         self.assertEqual(self.pool.entries['http://b:2']['latency_ms'], int(0.7 * 100 + 0.3 * 200))
@@ -164,7 +166,8 @@ class PoolPick(unittest.TestCase):
         }
         for _ in range(5):
             p.mark('http://a:1', 'other.test', False)
-        self.assertEqual(p.entries['http://a:1']['fails'], 5)
+        self.assertEqual(p.entries['http://a:1']['fails'], 0)  # a probe's miss is that host's verdict only
+        self.assertEqual(p.entries['http://a:1']['hosts']['other.test']['n_fail'], 5)
         self.assertEqual(p.pick('example.test'), 'http://a:1')  # its own verdict ranks it
         self.assertEqual(p.pick('other.test'), 'http://b:2')  # ...while the host it missed rests it
 
@@ -300,6 +303,7 @@ class PoolPick(unittest.TestCase):
             return '8.8.8.8:8080\n9.9.9.9:1080\n'
         self.pool.probe_alive = lambda url: 50 if url == 'http://8.8.8.8:8080' else None
         self.pool.probe_host = lambda url, host: 60 if url == 'http://8.8.8.8:8080' else None
+        self.pool._tcp_screen = lambda urls, **k: {u: 5 for u in urls}  # no sockets offline
         alive, tried, verified = self.pool.refresh(fetcher=fetcher, workers=2)
         self.assertEqual((alive, tried), (1, 2))
         self.assertEqual(verified, 1)
@@ -374,17 +378,19 @@ class PoolPick(unittest.TestCase):
         self.pool.retry_after = 0
         self.assertTrue(self.pool.needs_refresh())   # ...then try again, not in max_age hours
 
-    def test_probe_alive_requires_the_expected_image_and_no_block_page(self):
+    def test_probe_alive_requires_an_empty_204(self):
         from types import SimpleNamespace
-        good = b'\x89PNG\r\n\x1a\n' + b'x' * 2000
-        for body, expected in (
-            (good, 50),
-            (good + b'incapsula incident id', None),
-            (b'<html>' + b'x' * 2000, None),  # 200 + big body, but not the OSM tile
+        targets = []
+        for code, body, expected in (
+            (204, b'', 50),
+            (200, b'', None),                       # not the endpoint's answer
+            (200, b'<html>' + b'x' * 2000, None),   # a captive or error page
+            (204, b'<html>' + b'x' * 2000, None),   # a 204 with a page in it is not the real one either
         ):
-            self.pool.fetch_via = (
-                lambda url, target, timeout, body=body: (SimpleNamespace(status_code=200, content=body), 50))
-            self.assertEqual(self.pool.probe_alive('http://8.8.8.8:8080'), expected, body[:20])
+            self.pool.fetch_via = (lambda url, target, timeout, code=code, body=body:
+                                   (targets.append(target), (SimpleNamespace(status_code=code, content=body), 50))[1])
+            self.assertEqual(self.pool.probe_alive('http://8.8.8.8:8080'), expected, (code, body[:20]))
+        self.assertEqual(set(targets), {pool.ROUND1_URL})
 
     def test_probe_host_rejects_a_block_page_even_with_a_200(self):
         from types import SimpleNamespace
@@ -2161,3 +2167,783 @@ class StatusHonesty(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+R2_HUNT = {'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', b'index.xml'),
+           'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', b'<?xml'),
+           'wlo.wat.edu.pl': ('https://wlo.wat.edu.pl/planyzajec/zima/index.xml', b'<?xml')}
+
+
+class PoolHunt(unittest.TestCase):
+    """pool.hunt / adopt: exits for a faculty nobody's own line gets through (docs/EGRESS.md)."""
+
+    def make(self, alive, works, hunt=True):
+        """A pool of `alive` {url: latency}, where works(url, host) says who gets through."""
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_HUNT, active_hosts=[], hunt=hunt)
+        now = time.time()
+        p.entries = {u: {'status': 'ok', 'latency_ms': ms, 'fails': 0, 'last_checked': now, 'hosts': {}}
+                     for u, ms in alive.items()}
+        self.probes = []
+        lock = threading.Lock()
+
+        def probe_host(url, host):
+            with lock:
+                self.probes.append((url, host))
+            return 50 if works(url, host) else None
+        p.probe_host = probe_host
+        p._discover = lambda *a, **k: ('ok', [], [])  # no list fetching offline
+        return p
+
+    def alive(self, n, slow=()):
+        return {f'http://8.8.{i}.1:8080': (9000 if i in slow else 100 + i) for i in range(n)}
+
+    def test_every_candidate_with_a_sensible_ping_is_tried_until_one_gets_through(self):
+        p = self.make(self.alive(50, slow={3}), lambda u, h: u == 'http://8.8.40.1:8080' and h == 'wml.wat.edu.pl')
+        out = p.hunt(['wml.wat.edu.pl'], want=1, workers=1)
+        self.assertEqual(out['wml.wat.edu.pl']['exits'], ['http://8.8.40.1:8080'])
+        tried = [u for u, _ in self.probes]
+        self.assertNotIn('http://8.8.3.1:8080', tried)  # 9 s ping: not sensible
+        self.assertEqual(tried[:3], ['http://8.8.0.1:8080', 'http://8.8.1.1:8080', 'http://8.8.2.1:8080'])
+        self.assertEqual(tried[-1], 'http://8.8.40.1:8080')  # stopped once it had what it wanted
+        self.assertEqual(p.verified('wml.wat.edu.pl')[0]['url'], 'http://8.8.40.1:8080')
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.40.1:8080'])
+
+    def test_a_proxy_that_passes_one_wall_is_tried_on_the_others(self):
+        good = 'http://8.8.7.1:8080'
+        p = self.make(self.alive(10), lambda u, h: u == good and h in ('wml.wat.edu.pl', 'wlo.wat.edu.pl'))
+        out = p.hunt(['wml.wat.edu.pl', 'wtc.wat.edu.pl', 'wlo.wat.edu.pl'], want=1, workers=1)
+        self.assertEqual({h: r['exits'] for h, r in out.items()},
+                         {'wml.wat.edu.pl': [good], 'wtc.wat.edu.pl': [], 'wlo.wat.edu.pl': [good]})
+        self.assertIn((good, 'wtc.wat.edu.pl'), self.probes)
+        self.assertEqual(out['wtc.wat.edu.pl']['tried'], 10)  # every candidate, nothing found
+
+    def test_budget_and_the_cache_spare_the_faculty(self):
+        clock = FakeClock()
+        p = self.make(self.alive(30), lambda u, h: False)
+
+        def slow(url, host):
+            clock.t += 20
+            return None
+        p.probe_host = slow
+        out = p.hunt(['wtc.wat.edu.pl'], workers=1, budget_s=100, clock=clock)
+        self.assertLessEqual(out['wtc.wat.edu.pl']['tried'], 6)
+        # asked again within half an hour: nobody new is probed
+        p.probe_host = lambda u, h: self.fail('probed again')
+        again = p.hunt(['wtc.wat.edu.pl'], workers=1)
+        self.assertEqual(again['wtc.wat.edu.pl']['verified'], 0)
+
+    def test_a_fresh_pool_keeps_discovering_until_enough_fast_candidates(self):
+        p = self.make({}, lambda u, h: False)
+        calls = []
+
+        def discover(fetcher, workers, start, cap=None):
+            calls.append(cap)
+            n = len(p.entries)
+            for i in range(n, n + (20 if len(calls) < 3 else 0)):
+                p.entries[f'http://8.8.{i}.2:8080'] = {'status': 'ok', 'latency_ms': 100, 'fails': 0,
+                                                       'last_checked': time.time(), 'hosts': {}}
+            return 'ok', [], []
+        p._discover = discover
+        out = p.hunt(['wtc.wat.edu.pl'], workers=2)
+        self.assertEqual(calls, [pool.HUNT_PROBE, pool.HUNT_PROBE])  # 40 fast ones known: enough
+        self.assertEqual(out['wtc.wat.edu.pl']['tried'], 40)
+        p.hunts.clear()
+        p.entries = {}
+        calls.clear()
+        p._discover = lambda *a, **k: (calls.append(1), ('ok', [], []))[1]
+        p.hunt(['wtc.wat.edu.pl'])
+        self.assertEqual(len(calls), 1)  # the lists had nobody new: no point asking again
+
+    def test_an_exit_just_verified_is_handed_out_without_a_probe(self):
+        p = self.make(self.alive(5), lambda u, h: False)
+        p.mark('http://8.8.2.1:8080', 'wml.wat.edu.pl', True, 40)  # the scout's find, a minute ago
+        self.probes.clear()
+        out = p.hunt(['wml.wat.edu.pl'], want=1)
+        self.assertEqual(self.probes, [])
+        self.assertEqual(out['wml.wat.edu.pl']['exits'], ['http://8.8.2.1:8080'])
+
+    def test_a_scouted_pool_that_every_wall_refused_still_discovers(self):
+        p = self.make(self.alive(50), lambda u, h: False)
+        for u in list(p.entries):
+            p.mark(u, 'wtc.wat.edu.pl', False)  # the scout tried them all there a minute ago
+        calls = []
+        p._discover = lambda *a, **k: (calls.append(1), ('ok', [], []))[1]
+        p.hunt(['wtc.wat.edu.pl'])
+        self.assertEqual(len(calls), 1)  # 50 alive, none untried: look for new ones
+
+    def test_known_exits_are_rechecked_first(self):
+        p = self.make(self.alive(5), lambda u, h: u == 'http://8.8.2.1:8080')
+        p.mark('http://8.8.2.1:8080', 'wml.wat.edu.pl', True, 40)
+        p.entries['http://8.8.2.1:8080']['hosts']['wml.wat.edu.pl']['checked'] -= pool.HUNT_TRUST_S + 60
+        self.probes.clear()
+        out = p.hunt(['wml.wat.edu.pl'], want=1)
+        self.assertEqual(self.probes, [('http://8.8.2.1:8080', 'wml.wat.edu.pl')])
+        self.assertEqual(out['wml.wat.edu.pl']['exits'], ['http://8.8.2.1:8080'])
+
+    def test_hunt_async_reports_running_then_done(self):
+        p = self.make(self.alive(3), lambda u, h: True)
+        gate = threading.Event()
+        real = p.probe_host
+
+        def held(url, host):
+            gate.wait(5)
+            return real(url, host)
+        p.probe_host = held
+        state = p.hunt_async(['wml.wat.edu.pl'], want=1, workers=1)
+        self.assertEqual(state['wml.wat.edu.pl']['state'], 'running')
+        gate.set()
+        for _ in range(100):
+            if p.hunt_status()['wml.wat.edu.pl']['state'] == 'done':
+                break
+            time.sleep(0.02)
+        self.assertEqual(p.hunt_status()['wml.wat.edu.pl']['verified'], 1)
+
+    def test_a_host_asked_for_during_a_hunt_waits_queued_then_runs(self):
+        p = self.make(self.alive(3), lambda u, h: False)
+        gate = threading.Event()
+        real = p.probe_host
+        p.probe_host = lambda u, h: (gate.wait(5), real(u, h))[1]
+        p.hunt_async(['wtc.wat.edu.pl'], workers=1)
+        self.assertEqual(p.hunt_async(['wml.wat.edu.pl'])['wml.wat.edu.pl']['state'], 'queued')
+        gate.set()
+        for _ in range(200):
+            if p.hunt_status()['wml.wat.edu.pl']['state'] == 'done':
+                break
+            time.sleep(0.02)
+        self.assertEqual({h: v['state'] for h, v in p.hunt_status().items()},
+                         {'wtc.wat.edu.pl': 'done', 'wml.wat.edu.pl': 'done'})
+
+    def test_adopt_checks_every_shared_exit_itself(self):
+        p = self.make({}, lambda u, h: u == 'http://8.8.8.8:3128')
+        got = p.adopt('wml.wat.edu.pl', ['8.8.8.8:3128', 'http://9.9.9.9:80', '127.0.0.1:80', 'junk', 42])
+        self.assertEqual(got, ['http://8.8.8.8:3128'])
+        self.assertEqual(sorted(u for u, _ in self.probes), ['http://8.8.8.8:3128', 'http://9.9.9.9:80'])
+        self.assertEqual(p.adopt('example.org', ['8.8.8.8:3128']), [])
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.8.8:3128'])
+
+    def test_verified_only_picks_need_the_hunt(self):
+        p = self.make({'http://8.8.8.8:3128': 100}, lambda u, h: True, hunt=False)
+        p.mark('http://8.8.8.8:3128', 'wml.wat.edu.pl', True, 40)
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), [])  # no pooled host, no hunt
+        p.hunt_on = True
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.8.8:3128'])
+        p.entries['http://9.9.9.9:80'] = {'status': 'ok', 'latency_ms': 10, 'fails': 0, 'hosts': {}}
+        # merely alive is not offered on the hunt port
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.8.8:3128'])
+
+
+R2_ALL = dict(R2_HUNT, **{'ioe.wat.edu.pl': ('https://ioe.wat.edu.pl/plany/lato/index.xml', b'<?xml')})
+
+
+class ProbeTargets(unittest.TestCase):
+    """The egress probes the page the crawler lists: the walls cover the plan directories only (13.11.2026)."""
+
+    def test_probe_targets_are_the_pages_the_crawler_lists(self):
+        import datetime
+        import json
+        from drivers import plansoft, wml
+        src = json.loads((ROOT / 'tools' / 'refresh' / 'sources.json').read_text(encoding='utf-8'))
+        with unittest.mock.patch.dict(os.environ, {'EGRESS_SEASON': ''}):
+            for day in (datetime.date(2026, 11, 13), datetime.date(2027, 1, 20), datetime.date(2027, 4, 1)):
+                t = {h: url for h, (url, _) in server.faculty_targets(today=day).items()}
+                season, year = core.season_of(day)
+                for f, host in (('wlo', 'wlo.wat.edu.pl'), ('wel', 'wel.wat.edu.pl'), ('wtc', 'wtc.wat.edu.pl'),
+                                ('ioe', 'ioe.wat.edu.pl')):
+                    # either export the crawler reads (WLO's index.xml is gone, its index.html is the listing)
+                    self.assertIn(t[host], plansoft.listing_candidates(src[f]['base'].format(season=season)
+                                                                       + 'index.xml'), (day, f))
+                self.assertEqual(t['planzajec.wcy.wat.edu.pl'], src['wcy']['index'])
+                m = wml.DIR_RE.search(t['wml.wat.edu.pl'])
+                self.assertEqual((int(m.group(1)), m.group(2)), (year, season), day)
+                self.assertTrue(t['wml.wat.edu.pl'].startswith(src['wml']['landing']))
+
+    def test_verdicts_on_a_page_no_longer_probed_are_dropped(self):
+        import json
+        path = Path(tempfile.mkdtemp()) / 'pool.json'
+        old = {'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', b'index.xml'),
+               'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', b'<?xml')}
+        p = pool.ProxyPool(path, old)
+        p.mark('http://8.8.8.8:80', 'wml.wat.edu.pl', False)
+        p.mark('http://8.8.8.8:80', 'wtc.wat.edu.pl', True, 50)
+        p.save()
+        new = dict(old, **{'wml.wat.edu.pl': ('https://wml.wat.edu.pl/wp-content/uploads/rozklady_zajec/'
+                                              '2026_sem_zima/index.xml', b'<?xml')})
+        again = pool.ProxyPool(path, new)
+        self.assertEqual(set(again.entries['http://8.8.8.8:80']['hosts']), {'wtc.wat.edu.pl'})
+        # a file from before the pages were recorded: the old WLO and WML pages were wrong, the rest stand
+        legacy = json.loads(path.read_text(encoding='utf-8'))
+        legacy.pop('targets')
+        for h in ('wml.wat.edu.pl', 'wtc.wat.edu.pl'):
+            legacy['entries']['http://8.8.8.8:80']['hosts'][h] = {'ok': False, 'checked': time.time()}
+        path.write_text(json.dumps(legacy), encoding='utf-8')
+        self.assertEqual(set(pool.ProxyPool(path, new).entries['http://8.8.8.8:80']['hosts']), {'wtc.wat.edu.pl'})
+        again.mark('http://8.8.8.8:80', 'wml.wat.edu.pl', True, 50)
+        moved = again.retarget(dict(new, **{'wml.wat.edu.pl': ('https://wml.wat.edu.pl/x/index.xml', b'<?xml')}))
+        self.assertEqual(moved, {'wml.wat.edu.pl'})
+        self.assertEqual(set(again.entries['http://8.8.8.8:80']['hosts']), {'wtc.wat.edu.pl'})
+
+
+class PoolScout(unittest.TestCase):
+    """The scout and the candidate pipeline (pool.scout_once, docs/EGRESS.md "Zwiad")."""
+
+    def make(self, entries=None, works=lambda u, h: False, listed='', alive=lambda u: 100):
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_ALL, active_hosts=[], hunt=True)
+        p.host_gap = 0
+        p.entries = entries or {}
+        self.probes = []
+        lock = threading.Lock()
+
+        def probe_host(url, host):
+            with lock:
+                self.probes.append((url, host))
+            return 50 if works(url, host) else None
+        p.probe_host = probe_host
+        p.probe_alive = alive
+        p._tcp_screen = lambda urls, **k: {u: 5 for u in urls}
+        self.fetcher = lambda url: listed if 'monosans' in url and 'http.txt' in url else ''
+        return p
+
+    @staticmethod
+    def entry(ms, age=0, **hosts):
+        return {'status': 'ok', 'latency_ms': ms, 'fails': 0, 'last_checked': time.time() - age,
+                'hosts': {h.replace('_', '.') + '.wat.edu.pl': v for h, v in hosts.items()}}
+
+    def test_tor_ports_are_pinned_in_the_pool(self):
+        self.assertEqual(pool.parse_pinned('socks5h://tor:9050'), 'socks5://tor:9050')
+        self.assertEqual(pool.parse_pinned(' socks5://127.0.0.1:9051 '), 'socks5://127.0.0.1:9051')
+        for bad in ('tor:9050', 'socks4://tor:9050', 'socks5://u:p@tor:9050', 'socks5://tor', ''):
+            self.assertIsNone(pool.parse_pinned(bad), bad)
+        self.assertIsNone(pool.parse_proxy_url('socks5://tor:9050'))  # never from a list, nor shared by a runner
+        tor = ['socks5://tor:9050', 'socks5://tor:9051']
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_ALL, active_hosts=[], pinned=tor + ['junk'])
+        self.assertEqual(p.pinned, tor)
+        self.assertEqual({p.entries[u]['source'] for u in tor}, {'tor'})
+        self.assertEqual({p.entries[u]['cc'] for u in tor}, {'PL'})
+        p.host_gap = 0
+        p.probe_alive = lambda u: None  # Tor still bootstrapping: Round 1 fails...
+        p.probe_host = lambda u, h: None
+        p._tcp_screen = lambda urls, **k: {}
+        p.scout_once(fetcher=lambda url: '', batch=0)
+        self.assertEqual(sorted(p.entries), tor)  # ...and they stay, not into the dead map
+        self.assertEqual(p.dead, {})
+        p.entries['http://8.8.8.8:80'] = {'status': 'fail', 'last_checked': 0, 'fails': 0, 'hosts': {}}
+        with unittest.mock.patch.object(pool, 'MAX_ENTRIES', 1):
+            p._make_room(0)
+        self.assertEqual(sorted(p.entries), tor)  # evicted last of all
+        p.save()
+        again = pool.ProxyPool(p.path, R2_ALL, active_hosts=[], pinned=tor[:1])
+        self.assertTrue(again.entries[tor[0]]['pinned'])
+        self.assertNotIn('pinned', again.entries[tor[1]])  # not configured any more: an ordinary entry
+
+    def test_tor_ports_are_rechecked_every_cycle_and_retried_on_a_faculty_soon(self):
+        tor = 'socks5://tor:9050'
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_ALL, active_hosts=[], pinned=[tor])
+        p.host_gap = 0
+        alive = []
+        p.probe_alive = lambda u: alive.append(u) or 1500
+        through = {'wml.wat.edu.pl'}
+        probes = []
+        p.probe_host = lambda u, h: probes.append(h) or (900 if h in through else None)
+        p._tcp_screen = lambda urls, **k: {}
+        p.scout_once(fetcher=lambda url: '', batch=0)
+        self.assertEqual(alive, [tor])
+        self.assertEqual(sorted(probes), sorted(R2_ALL))  # 1500 ms is fine for a Polish exit
+        self.assertEqual([r['url'] for r in p.exits('wml.wat.edu.pl')], [tor])
+        p.scout_once(fetcher=lambda url: '', batch=0)
+        self.assertEqual(alive, [tor, tor])  # fresh, but re-checked anyway: it is cheap and its circuit changes
+        probes.clear()
+        for hv in p.entries[tor]['hosts'].values():
+            hv['checked'] -= pool.VERIFY_TTL_S + 1
+        through.add('wlo.wat.edu.pl')
+        p.scout_once(fetcher=lambda url: '', batch=0)
+        self.assertIn('wlo.wat.edu.pl', probes)  # a refusal rests VERIFY_TTL_S, not HOST_RETRY_S
+        self.assertEqual([r['url'] for r in p.exits('wlo.wat.edu.pl')], [tor])
+
+    def test_a_failed_faculty_probe_does_not_make_a_proxy_look_alive(self):
+        p = self.make({'http://8.8.8.8:80': self.entry(100, age=5 * 3600)})
+        before = p.entries['http://8.8.8.8:80']['last_checked']
+        p.mark('http://8.8.8.8:80', 'wtc.wat.edu.pl', False)
+        self.assertEqual(p.entries['http://8.8.8.8:80']['last_checked'], before)
+        p.mark('http://8.8.8.8:80', 'wml.wat.edu.pl', True, 300)  # getting through proves it alive
+        self.assertGreater(p.entries['http://8.8.8.8:80']['last_checked'], before)
+
+    def test_a_full_pool_still_lets_newcomers_in_and_keeps_its_exits(self):
+        with unittest.mock.patch.object(pool, 'MAX_ENTRIES', 4):
+            p = self.make({'http://1.1.1.1:80': self.entry(100, wml={'ok': True, 'ms': 300}),
+                           'http://1.1.1.2:80': self.entry(100, age=3 * 3600),  # stale verdict: goes first
+                           'http://1.1.1.3:80': self.entry(2000),
+                           'http://1.1.1.4:80': self.entry(50)},
+                          listed='8.8.8.8:80\n9.9.9.9:80\n')
+            got = p._discover(self.fetcher, 2, time.monotonic(), cap=10)
+        self.assertEqual(sorted(got[2]), ['http://8.8.8.8:80', 'http://9.9.9.9:80'])
+        self.assertEqual(sorted(p.entries), ['http://1.1.1.1:80', 'http://1.1.1.4:80',
+                                             'http://8.8.8.8:80', 'http://9.9.9.9:80'])
+
+    def test_candidates_come_from_the_whole_list_and_the_dead_wait(self):
+        listed = '\n'.join(f'8.8.{i // 250}.{i % 250 + 1}:80' for i in range(500))
+        p = self.make(listed=listed, alive=lambda u: None)
+        p._discover(self.fetcher, 4, time.monotonic(), cap=500)
+        self.assertEqual((len(p.entries), len(p.dead)), (0, 500))  # every one tried, none past the head cut
+        self.assertEqual(p._unseen(p._lists(self.fetcher), 10), [])  # dead ones are not looked at again...
+        p.dead = {u: t - pool.DEAD_RETRY_S - 1 for u, t in p.dead.items()}
+        self.assertEqual(len(p._unseen(p._lists(self.fetcher), 10)), 10)  # ...until DEAD_RETRY_S has passed
+        p.save_dead()
+        self.assertEqual(len(pool.ProxyPool(p.path, R2_ALL).dead), 0)  # expired ones are not kept on disk
+
+    def test_polish_candidates_come_first(self):
+        import json
+        doc = json.dumps([{'proxy': 'http://8.8.8.8:80', 'geolocation': {'country': 'DE'}},
+                          {'proxy': 'socks5://9.9.9.9:1080', 'geolocation': {'country': 'pl'}}])
+        meta = {}
+        self.assertEqual(pool.normalize_list(doc, 'proxifly', '', meta),
+                         ['http://8.8.8.8:80', 'socks5://9.9.9.9:1080'])
+        self.assertEqual(meta, {'http://8.8.8.8:80': 'DE', 'socks5://9.9.9.9:1080': 'PL'})
+        p = self.make()
+        lists = {f'http://8.8.8.{i}:80': ('x', None, None) for i in range(1, 30)}
+        lists['http://9.9.9.9:80'] = ('proxifly-pl', 'PL', None)
+        lists['http://7.7.7.7:80'] = ('geonode-pl', 'PL', True)        # a Polish home line: first of all
+        lists['http://6.6.6.6:80'] = ('proxyscrape', 'NL', True)       # a home line elsewhere: before the rest
+        self.assertEqual(p._unseen(lists, 3), ['http://7.7.7.7:80', 'http://9.9.9.9:80', 'http://6.6.6.6:80'])
+
+    def test_lists_that_yield_more_live_proxies_are_drawn_from_more(self):
+        p = self.make()
+        p.sources = {'good': [1000, 150], 'bad': [10000, 100]}  # 15% alive vs 1%
+        lists = {f'http://8.8.{i // 250}.{i % 250 + 1}:80': ('good' if i < 500 else 'bad', None, None)
+                 for i in range(5500)}
+        picked = p._unseen(lists, 500)
+        good = sum(1 for u in picked if lists[u][0] == 'good')
+        self.assertGreater(good, 150)  # an even draw would give about 45
+        p.save_dead()
+        self.assertEqual(pool.ProxyPool(p.path, R2_ALL).sources, p.sources)
+
+    def test_lists_that_say_where_a_proxy_lives(self):
+        import json
+        scrape = json.dumps({'proxies': [
+            {'proxy': 'socks5://145.220.227.132:1080', 'ip_data': {'countryCode': 'NL', 'hosting': False}},
+            {'proxy': 'http://51.38.129.42:3169', 'ip_data': {'countryCode': 'PL', 'hosting': True}},
+            {'proxy': 'junk'}]})
+        meta, res = {}, {}
+        self.assertEqual(pool.normalize_list(scrape, 'proxyscrape', '', meta, res),
+                         ['socks5://145.220.227.132:1080', 'http://51.38.129.42:3169'])
+        self.assertEqual((meta, res), ({'socks5://145.220.227.132:1080': 'NL', 'http://51.38.129.42:3169': 'PL'},
+                                       {'socks5://145.220.227.132:1080': True, 'http://51.38.129.42:3169': False}))
+        geo = json.dumps({'data': [
+            {'ip': '83.14.246.42', 'port': '1080', 'protocols': ['socks5'], 'country': 'PL',
+             'isp': 'Orange Polska Spolka Akcyjna'},
+            {'ip': '57.128.231.218', 'port': '1203', 'protocols': ['https', 'socks4'], 'country': 'PL', 'isp': 'OVH SAS'}]})
+        meta, res = {}, {}
+        self.assertEqual(pool.normalize_list(geo, 'geonode', '', meta, res),
+                         ['socks5://83.14.246.42:1080', 'http://57.128.231.218:1203', 'socks4://57.128.231.218:1203'])
+        self.assertEqual(res, {'socks5://83.14.246.42:1080': True, 'http://57.128.231.218:1203': False,
+                               'socks4://57.128.231.218:1203': False})
+        spys = 'Proxy list (#400)\nIP address:Port CountryCode-Anonymity\n\n185.32.4.210:8070 PL-N-S +\n1.0.0.1:x DE-H\n'
+        meta = {}
+        self.assertEqual(pool.normalize_list(spys, 'spys', 'http', meta), ['http://185.32.4.210:8070'])
+        self.assertEqual(meta, {'http://185.32.4.210:8070': 'PL'})
+        self.assertEqual([pool.priority(*a) for a in (('PL', True), ('PL', None), ('NL', True), ('NL', False))],
+                         [0, 1, 2, 3])
+
+    def test_a_home_line_may_be_slower_and_still_be_tried(self):
+        p = self.make({'http://1.1.1.1:80': dict(self.entry(4000), res=True),
+                       'http://1.1.1.2:80': self.entry(4000)})
+        jobs, _ = p._faculty_jobs(['wtc.wat.edu.pl'], 12, pool.HUNT_MAX_MS, 10)
+        self.assertEqual(jobs, [('http://1.1.1.1:80', 'wtc.wat.edu.pl')])
+
+    def test_tcp_screen_keeps_only_ports_that_answer(self):
+        import socket as _s
+        srv = _s.socket()
+        srv.bind(('127.0.0.1', 0))
+        srv.listen(8)
+        closed = _s.socket()
+        closed.bind(('127.0.0.1', 0))
+        dead_port = closed.getsockname()[1]
+        closed.close()
+        try:
+            p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_ALL)
+            up = f'http://127.0.0.1:{srv.getsockname()[1]}'
+            got = p._tcp_screen([up, f'http://127.0.0.1:{dead_port}'], timeout=2, concurrency=1)
+            self.assertEqual(list(got), [up])
+        finally:
+            srv.close()
+
+    def test_scout_tests_every_new_proxy_on_every_faculty(self):
+        good = 'http://8.8.8.8:80'
+        p = self.make(works=lambda u, h: u == good and h == 'wml.wat.edu.pl',
+                      listed='8.8.8.8:80\n9.9.9.9:80\n', alive=lambda u: 100 if u == good else 5000)
+        st = p.scout_once(fetcher=self.fetcher, tcp_workers=4, r1_workers=2)
+        self.assertEqual(sorted(self.probes), sorted((good, h) for h in R2_ALL))  # 5 s ping: not tested
+        self.assertEqual((st['alive_new'], st['tests'], st['passed']), (2, 4, 1))
+        self.assertEqual([r['url'] for r in p.exits('wml.wat.edu.pl')], [good])
+        self.assertEqual(st['exits']['wml.wat.edu.pl'], 1)
+        # next cycle: a faculty that refused it is not asked again soon
+        self.probes.clear()
+        p.scout_once(fetcher=self.fetcher)
+        self.assertEqual(self.probes, [])
+
+    def test_a_faculty_with_enough_exits_only_tries_faster_proxies(self):
+        ents = {f'http://1.1.1.{i}:80': self.entry(100 + i, ioe={'ok': True, 'ms': 300, 'checked': time.time()})
+                for i in range(1, 4)}
+        ents['http://8.8.8.8:80'] = self.entry(50)    # faster than the kept ones
+        ents['http://9.9.9.9:80'] = self.entry(900)   # slower
+        p = self.make(ents)
+        jobs, _ = p._faculty_jobs(['ioe.wat.edu.pl'], 3, pool.HUNT_MAX_MS, 100)
+        self.assertEqual(jobs, [('http://8.8.8.8:80', 'ioe.wat.edu.pl')])
+        jobs, _ = p._faculty_jobs(['ioe.wat.edu.pl'], 12, pool.HUNT_MAX_MS, 100)  # short of keep: everyone
+        self.assertEqual({u for u, _ in jobs}, {'http://8.8.8.8:80', 'http://9.9.9.9:80'})
+
+    def test_an_exit_that_failed_once_is_tried_again_soon_a_stranger_is_not(self):
+        then = time.time() - pool.VERIFY_TTL_S - 60
+        p = self.make({'http://1.1.1.1:80': self.entry(100, wtc={'ok': False, 'n_ok': 7, 'n_fail': 1, 'checked': then}),
+                       'http://1.1.1.2:80': self.entry(100, wtc={'ok': False, 'n_fail': 1, 'checked': then})})
+        jobs, _ = p._faculty_jobs(['wtc.wat.edu.pl'], 12, pool.HUNT_MAX_MS, 10)
+        self.assertEqual(jobs, [('http://1.1.1.1:80', 'wtc.wat.edu.pl')])  # free proxies flap: a good one comes back
+
+    def test_aged_exits_are_reverified_and_dropped_when_they_fail(self):
+        old = time.time() - pool.VERIFY_TTL_S - 60
+        p = self.make({'http://1.1.1.1:80': self.entry(100, wtc={'ok': True, 'ms': 300, 'checked': old}),
+                       'http://1.1.1.2:80': self.entry(100, wtc={'ok': True, 'ms': 200, 'checked': time.time()})},
+                      works=lambda u, h: False)
+        st = p.scout_once(fetcher=self.fetcher, hosts=['wtc.wat.edu.pl'])
+        self.assertEqual((st['reverified'], st['kept']), (1, 0))
+        self.assertEqual([r['url'] for r in p.exits('wtc.wat.edu.pl')], ['http://1.1.1.2:80'])
+
+    def test_stale_alive_entries_are_rechecked_and_the_dead_leave(self):
+        p = self.make({'http://1.1.1.1:80': self.entry(100, age=2 * 3600),
+                       'http://1.1.1.2:80': self.entry(100, age=2 * 3600, wtc={'ok': True, 'ms': 1}),
+                       'http://1.1.1.3:80': self.entry(100)}, alive=lambda u: None)
+        self.assertEqual(p._recheck(10, 2), (2, 1))
+        self.assertNotIn('http://1.1.1.1:80', p.entries)
+        self.assertIn('http://1.1.1.1:80', p.dead)
+        self.assertEqual(p.entries['http://1.1.1.2:80']['status'], 'fail')  # a faculty's exit: its own probe decides
+
+    def test_faculty_probes_never_exceed_the_gate(self):
+        p = self.make({f'http://1.1.1.{i}:80': self.entry(100) for i in range(1, 9)})
+        p.faculty_probes = 2
+        p._faculty_gate = threading.BoundedSemaphore(2)
+        inside, peak, lock = [0], [0], threading.Lock()
+
+        def slow(url, host):
+            with lock:
+                inside[0] += 1
+                peak[0] = max(peak[0], inside[0])
+            time.sleep(0.01)
+            with lock:
+                inside[0] -= 1
+        p.probe_host = slow
+        p._run_faculty([(u, h) for u in p.entries for h in R2_ALL], workers=8)
+        self.assertEqual(peak[0], 2)
+
+    def test_the_scout_steps_aside_while_a_hunt_runs(self):
+        p = self.make({'http://1.1.1.1:80': self.entry(100)})
+        p._hunting = 1
+        t = threading.Thread(target=p._run_faculty, args=([('http://1.1.1.1:80', 'wtc.wat.edu.pl')], 1))
+        t.start()
+        time.sleep(0.3)
+        self.assertEqual(self.probes, [])
+        p._hunting = 0
+        t.join(5)
+        self.assertEqual(self.probes, [('http://1.1.1.1:80', 'wtc.wat.edu.pl')])
+
+    def test_a_quiet_scout_sleeps_until_the_lists_may_change(self):
+        p = self.make()
+        p._lists_cache = (time.monotonic(), {'http://8.8.8.8:80': ('x', None, None)})
+        p.scout = {'unseen': 0, 'tests_left': 0}
+        self.assertEqual(p.scout_wait(60), pool.VERIFY_TTL_S / 2)
+        p.scout = {'unseen': 5, 'tests_left': 0}
+        self.assertEqual(p.scout_wait(60), 60)
+
+
+class HuntPort(unittest.TestCase):
+    """server.py's hunt port: verified exits only, faculty HTTPS only, never direct."""
+
+    def handler(self, p):
+        from types import SimpleNamespace
+        h = server.ProxyHandler.__new__(server.ProxyHandler)
+        h.server = SimpleNamespace(pool=p, pool_only=True, remember_tunnel=lambda host, via: None)
+        return h
+
+    def test_routes_only_faculty_https_through_verified_exits(self):
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_HUNT, active_hosts=[], hunt=True)
+        h = self.handler(p)
+        for host, port in (('github.com', 443), ('wml.wat.edu.pl', 80), ('localhost', 443)):
+            with self.assertRaises(OSError):
+                h._open(host, port)
+        with self.assertRaisesRegex(OSError, 'proxy_empty'):
+            h._open('wml.wat.edu.pl', 443)  # no exit: refused, never this box's own line
+        p.mark('http://8.8.8.8:3128', 'wml.wat.edu.pl', True, 40)
+        with unittest.mock.patch.object(server, 'chain_connect', lambda *a, **k: 'sock'):
+            self.assertEqual(h._open('WML.wat.edu.pl.', 443)[:2], ('sock', 'http://8.8.8.8:3128'))
+
+    def test_plain_http_is_refused(self):
+        h = self.handler(None)
+        sent = []
+        h._deny = lambda code=403: sent.append(code)
+        h._forward_plain()
+        self.assertEqual(sent, [403])
+
+    def test_hunt_api_needs_the_token_and_known_hosts(self):
+        import json
+        import urllib.error
+        import urllib.request
+        from types import SimpleNamespace
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_HUNT, active_hosts=[], hunt=True)
+        p.probe_host = lambda u, h: 30 if u == 'http://8.8.8.8:3128' else None
+        p._discover = lambda *a, **k: ('ok', [], [])
+        gui = server.GuiServer(('127.0.0.1', 0), server.GuiHandler)
+        gui.pool, gui.runs, gui.proxy_port = p, server.RunLog(Path(tempfile.mkdtemp()) / 'runs.json'), 8888
+        gui.proxy_server = SimpleNamespace(fallbacks={}, blocks=0, fallbacks_lock=threading.Lock(),
+                                           demote_recent=lambda host: None)
+        gui.hunt_server, gui.hunt_port = None, 8889
+        threading.Thread(target=gui.serve_forever, daemon=True).start()
+        base = f'http://127.0.0.1:{gui.server_address[1]}'
+
+        def call(path, body=None, token='sekret'):
+            data = json.dumps(body).encode() if body is not None else None
+            req = urllib.request.Request(base + path, data=data, method='POST' if data else 'GET',
+                                         headers={'X-Token': token, 'Content-Type': 'application/json'})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    return r.status, json.loads(r.read())
+            except urllib.error.HTTPError as err:
+                return err.code, json.loads(err.read())
+        try:
+            with unittest.mock.patch.dict(os.environ, {'EGRESS_API_TOKEN': 'sekret'}):
+                self.assertEqual(call('/api/hunt', {'hosts': ['wml.wat.edu.pl']}, token='nope')[0], 401)
+                self.assertEqual(call('/api/hunt', {'hosts': ['example.org']})[0], 400)
+                self.assertEqual(call('/api/exits', {'host': 'wml.wat.edu.pl', 'exits': 'x'})[0], 400)
+                code, got = call('/api/exits', {'host': 'wml.wat.edu.pl', 'exits': ['8.8.8.8:3128', '9.9.9.9:80']})
+                self.assertEqual((code, got['verified']), (200, ['http://8.8.8.8:3128']))
+                code, got = call('/api/hunt', {'hosts': ['wtc.wat.edu.pl']})
+                self.assertEqual((code, got['port']), (202, 8889))
+                for _ in range(100):
+                    code, got = call('/api/hunt')
+                    if got['hosts'].get('wtc.wat.edu.pl', {}).get('state') == 'done':
+                        break
+                    time.sleep(0.02)
+                self.assertEqual(got['hosts']['wtc.wat.edu.pl']['state'], 'done')
+                with unittest.mock.patch.object(server, 'HUNT_ON', False):
+                    self.assertEqual(call('/api/hunt', {'hosts': ['wtc.wat.edu.pl']})[0], 409)
+                # the exits marked per faculty, and on the status the panel reads
+                self.assertEqual(call('/api/exits?host=wml.wat.edu.pl', token='nope')[0], 401)
+                self.assertEqual(call('/api/exits?host=example.org')[0], 400)
+                code, got = call('/api/exits?host=wml.wat.edu.pl')
+                self.assertEqual((code, [r['url'] for r in got['wml.wat.edu.pl']]), (200, ['http://8.8.8.8:3128']))
+                code, got = call('/api/exits')
+                self.assertEqual(set(got), set(R2_HUNT))
+                code, st = call('/api/status')
+                self.assertEqual(st['exits']['wml.wat.edu.pl'][0]['url'], 'http://8.8.8.8:3128')
+                self.assertEqual(st['hosts']['wml.wat.edu.pl']['verified'], 1)
+        finally:
+            gui.shutdown()
+
+
+class EgressClient(unittest.TestCase):
+    """tools/refresh/egress.py: the crawler asks its egress to check shared exits, then to hunt."""
+
+    def setUp(self):
+        import egress as client
+        self.client = client
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_HUNT, active_hosts=[], hunt=True)
+        p.probe_host = lambda u, h: 30 if (u, h) in self.works else None
+        p._discover = lambda *a, **k: ('ok', [], [])
+        p.entries = {'http://8.8.4.4:3128': {'status': 'ok', 'latency_ms': 90, 'fails': 0,
+                                             'last_checked': time.time(), 'hosts': {}}}
+        self.works = set()
+        from types import SimpleNamespace
+        gui = server.GuiServer(('127.0.0.1', 0), server.GuiHandler)
+        gui.pool, gui.runs, gui.proxy_port = p, server.RunLog(Path(tempfile.mkdtemp()) / 'runs.json'), 8888
+        gui.proxy_server = SimpleNamespace(fallbacks={}, blocks=0, fallbacks_lock=threading.Lock(),
+                                           demote_recent=lambda host: None)
+        gui.hunt_server, gui.hunt_port = None, 8889
+        threading.Thread(target=gui.serve_forever, daemon=True).start()
+        self.addCleanup(gui.shutdown)
+        self.api = f'http://127.0.0.1:{gui.server_address[1]}'
+        env = unittest.mock.patch.dict(os.environ, {'EGRESS_API_TOKEN': 'sekret'})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def egress(self, token='sekret'):
+        return self.client.Egress(self.api, 'http://127.0.0.1:8889', token, log=lambda m: None,
+                                  sleep=lambda s: time.sleep(0.01))
+
+    def test_shared_exits_first_then_a_hunt(self):
+        self.works = {('http://8.8.8.8:3128', 'wml.wat.edu.pl'), ('http://8.8.4.4:3128', 'wtc.wat.edu.pl')}
+        e = self.egress()
+        self.assertEqual(e.hunt('wml.wat.edu.pl', ['8.8.8.8:3128']), ['http://8.8.8.8:3128'])
+        self.assertEqual(e.hunt('wtc.wat.edu.pl', ['8.8.8.8:3128']), ['http://8.8.4.4:3128'])
+        self.assertEqual(e.hunt('wlo.wat.edu.pl'), [])
+
+    def test_an_egress_without_the_hunt_or_the_token_cannot_hunt(self):
+        with self.assertRaises(self.client.Unavailable):
+            self.egress(token='wrong').hunt('wml.wat.edu.pl')
+        old = self.client.Egress('http://127.0.0.1:9', 'http://127.0.0.1:9', '', log=lambda m: None)
+        self.assertFalse(old.available())
+
+    def test_a_local_egress_starts_on_loopback_and_stops_with_the_crawl(self):
+        local = self.client.LocalEgress(data=tempfile.mkdtemp(), log=lambda m: None, tor=False)
+        try:
+            self.assertTrue(local.available())
+            self.assertTrue(local.proxy_url().startswith('http://127.0.0.1:'))
+            code, got = local._call('/api/status')
+            self.assertEqual(code, 200)
+            self.assertIsNotNone(got.get('hunt_port'))
+            # no regular pool work there: every faculty host is off the pool until a hunt asks for one
+            self.assertTrue(all(v['mode'].startswith('DIRECT') for v in got['hosts'].values()))
+        finally:
+            local.close()
+        self.assertIsNotNone(local.proc.poll())
+
+    def test_a_runner_local_egress_scouts_between_crawls_and_steps_aside_for_them(self):
+        import sys as _sys
+        home = Path(tempfile.mkdtemp())
+        seen = []
+
+        def popen(cmd, **kw):
+            seen.append(kw)
+            return __import__('subprocess').Popen(cmd, **kw)
+
+        def local():
+            e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=home, popen=popen,
+                                        scout={'EGRESS_SCOUT': 'off'}, tor=False)
+            e._venv = lambda: _sys.executable  # the test's python has what the egress needs
+            return e
+
+        crawl = local()
+        self.addCleanup(crawl.stop)
+        self.assertTrue(crawl.ensure())  # nothing running yet: nothing to stop
+        crawl.close()  # the crawl ends: scouting starts, detached from the job
+        daemon = crawl.pid
+        self.assertTrue(self.client._pid_alive(daemon))
+        self.assertEqual(seen[-1]['env']['RUNNER_TRACKING_ID'], '0')  # the runner's orphan cleanup leaves it
+        self.assertTrue(seen[-1]['start_new_session'])
+        self.assertEqual(seen[-1]['env']['EGRESS_DATA'], str(home))  # the data a crawl's hunt uses too
+        self.assertEqual(oct((home / 'daemon.json').stat().st_mode & 0o777), '0o600')
+        nxt = local()
+        nxt.ensure()  # the next crawl: the daemon gives the memory back
+        self.assertFalse(self.client._pid_alive(daemon))
+        self.assertTrue(nxt.available())  # a hunt: a temporary egress on the same data
+        self.assertEqual(seen[-1]['env']['EGRESS_DATA'], str(home))
+        temp = nxt.proc
+        nxt.close()
+        self.assertIsNotNone(temp.poll())  # the temporary one went with the crawl...
+        self.assertTrue(self.client._pid_alive(nxt.pid))  # ...and scouting resumed
+        nxt.stop()
+        self.assertFalse(self.client._pid_alive(nxt.pid))
+
+    def test_start_updates_the_scout_only_when_its_code_changed_and_only_where_it_belongs(self):
+        import json
+        import sys as _sys
+        home = Path(tempfile.mkdtemp())
+        launched = []
+
+        def local():
+            e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=home, scout={'EGRESS_SCOUT': 'off'},
+                                        tor=False)
+            e._venv = lambda: _sys.executable
+            real = e._launch
+            e._launch = lambda: (launched.append(1), real())[1]
+            return e
+
+        first = local()
+        self.addCleanup(first.stop)
+        self.assertTrue(first.resume())
+        self.assertTrue(local().resume())  # running this code already: left alone
+        self.assertEqual(len(launched), 1)
+        with unittest.mock.patch.object(self.client, 'code_hash', lambda: 'newer'):
+            self.assertTrue(local().resume())  # new code: restarted
+        self.assertEqual(len(launched), 2)
+        self.assertFalse(self.client._pid_alive(first.pid))
+        fleet = home / 'fleet.json'
+        fleet.write_text(json.dumps({'runners': [{'name': 'oracle', 'egress': 'remote'}]}))
+        with unittest.mock.patch.object(self.client, 'LocalEgress', lambda **k: self.fail('started on oracle')):
+            self.assertEqual(self.client.main(['start', '--runner', 'oracle', '--fleet', str(fleet)]), 0)
+
+    def test_without_a_venv_there_is_no_scouting_but_hunts_still_work(self):
+        from types import SimpleNamespace
+        e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=tempfile.mkdtemp(),
+                                    run=lambda *a, **k: SimpleNamespace(returncode=1, stderr=b'no network'), tor=False)
+        e.ensure()
+        try:
+            self.assertTrue(e.available())  # the temporary one, as before
+        finally:
+            e.close()
+        self.assertIsNotNone(e.proc.poll())
+        self.assertFalse((Path(e.home) / 'daemon.json').exists())  # no venv, no daemon
+
+    # -- Tor beside a local egress (LocalTor)
+    def fake_bundle(self, binary):
+        """A tarball shaped like the expert bundle (plus a file that must not be unpacked), and its sha256."""
+        import hashlib
+        import io
+        import tarfile
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode='w:gz') as tar:
+            for name in self.client.TOR_FILES + ('tor/pluggable_transports/lyrebird',):
+                data = binary if name == 'tor/tor' else b'x'
+                info = tarfile.TarInfo(name)
+                info.size, info.mode = len(data), 0o755
+                tar.addfile(info, io.BytesIO(data))
+        return buf.getvalue(), hashlib.sha256(buf.getvalue()).hexdigest()
+
+    # stands in for tor: reads its torrc, says it bootstrapped in the log it names, and waits
+    FAKE_TOR = (b'#!/bin/sh\nlog=$(sed -n "s/^Log notice file //p" "$2")\n'
+                b'echo "[notice] Bootstrapped 100% (done): Done" > "$log"\n'
+                b'trap "exit 0" TERM\nwhile :; do sleep 0.2; done\n')
+
+    def tor(self, home, fetched):
+        tgz, digest = self.fake_bundle(self.FAKE_TOR)
+
+        def fetch(url, dest):
+            fetched.append(url)
+            Path(dest).write_bytes(tgz)
+        patch = unittest.mock.patch.object(self.client, 'TOR_SHA256', digest)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return self.client.LocalTor(home, log=lambda m: None, sleep=lambda s: time.sleep(0.05), fetch=fetch)
+
+    def test_tor_is_fetched_once_checked_and_started_with_polish_exits(self):
+        home = Path(tempfile.mkdtemp()) / 'egress'
+        fetched = []
+        tor = self.tor(home, fetched)
+        self.addCleanup(tor.stop)
+        urls = tor.ensure()
+        self.assertEqual(len(urls), self.client.TOR_PORTS)
+        self.assertTrue(all(u.startswith('socks5://127.0.0.1:') for u in urls))
+        rc = (home / 'torrc').read_text()
+        self.assertIn('ExitNodes {pl}', rc)
+        self.assertIn('StrictNodes 1', rc)
+        self.assertIn(f"GeoIPFile {home.parent / ('tor-' + self.client.TOR_VERSION)}/data/geoip", rc)
+        self.assertEqual(rc.count('SocksPort 127.0.0.1:'), self.client.TOR_PORTS)
+        self.assertFalse((tor.bundle / 'tor' / 'pluggable_transports').exists())  # only what it needs
+        pid = tor._read_state()['pid']
+        self.assertEqual(tor.ensure(), urls)  # running: reused
+        self.assertEqual(tor._read_state()['pid'], pid)
+        tor.stop()
+        self.assertFalse(self.client._pid_alive(pid, b'tor'))
+        self.assertEqual(tor.ensure(), urls)  # again, on the same ports (the pool's pinned entries stay)
+        self.assertEqual(len(fetched), 1)  # the bundle is kept
+
+    def test_a_tor_bundle_that_does_not_match_its_hash_is_not_run(self):
+        home = Path(tempfile.mkdtemp()) / 'egress'
+        tor = self.tor(home, [])
+        with unittest.mock.patch.object(self.client, 'TOR_SHA256', '0' * 64):
+            self.assertEqual(tor.ensure(), [])
+        self.assertFalse(tor.bundle.exists())
+
+    def test_the_local_egress_pins_its_tor_ports(self):
+        from types import SimpleNamespace
+        urls = ['socks5://127.0.0.1:9050', 'socks5://127.0.0.1:9051']
+        stopped = []
+        fake = SimpleNamespace(ensure=lambda: urls, stop=lambda: stopped.append(1))
+        e = self.client.LocalEgress(data=tempfile.mkdtemp(), log=lambda m: None, tor=fake)
+        try:
+            self.assertTrue(e.available())
+            self.assertEqual(e._env()['EGRESS_TOR'], ','.join(urls))
+            code, got = e._call('/api/status')
+            self.assertEqual(code, 200)
+            pinned = sorted(p['url'] for p in got['proxies'] if p['source'] == 'tor')
+            self.assertEqual(pinned, urls)  # in its pool, waiting for their first Round 1
+        finally:
+            e.close()
+        self.assertEqual(stopped, [1])  # a temporary egress takes its Tor with it
+

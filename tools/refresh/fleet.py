@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
-"""Spread one refresh pass over the project's own runners (tools/refresh/fleet.json, docs/REFRESH.md).
+"""Start one refresh pass on the project's own runners (tools/refresh/fleet.json, docs/REFRESH.md).
 
 The fleet is a fast home server that is often switched off, a slow always-on VPS and a free container. Each pass:
 
-  plan     (a GitHub-hosted job) asks GitHub which runners are online and splits the policy-group lanes between
-           them, weighted by each runner's speed (all equal today, so the work is split evenly), so they finish at
-           about the same time. A runner that is off gets nothing, so no job ever waits in the queue for a machine
-           that is not coming.
+  plan     (a GitHub-hosted job) asks GitHub which runners are online and starts a crawl on each one that may take
+           anything: nothing is handed out, every runner pulls its work from the pass's shared work stack
+           (stack.py), its preferred faculties first (`prefers`), within what it may take (`faculties`). Each also gets
+           a static share (`fallback`, the old even split: plan()), crawled alone only when the stack cannot be
+           reached. A runner that is off gets no crawl, so no share waits in the queue for a machine that is not
+           coming; the report queues a tiny catch-up job for it instead (refresh-wake.yml), which starts the moment
+           the machine is back.
+  owed     what such a runner owes once it is back: the faculties it may take that the passes it missed left undone.
+           `plan --catchup` plans a pass of just those.
   seed     gives a runner that has never crawled its own line state, copied from the data branch.
-  merge    folds one runner's refresh-state.json into the data branch's newer one: the runners crawl disjoint
-           faculties side by side and push to the same branch, so neither may overwrite what the other learned.
-  help     (steal.py, during the crawl) a runner done with its own share takes work off one still at its: a part of
-           the faculty it is crawling, or one it has not started. Each shard reports what it took and gave (`took`,
-           `gave`), so the faculty counts as the runners that last held it left it, and a grant nobody confirmed as
-           unfinished.
-  handoff  (a GitHub-hosted job, after the crawl) gives what a runner left blocked or unfinished to another runner
-           that is online now: a wall stands in front of one address, so the other machine often gets through. The
-           plan has a runner wait a wall out only briefly when such a takeover is possible; when the other runner is
-           gone by then, the runner that was blocked gets the rest of the wait.
-  combine  (a GitHub-hosted job) adds the runners' outcomes up into the one refresh-outcome.json pages.yml reads,
-           each faculty as the last runner that had it left it.
+  merge    folds one runner's refresh-state.json into the data branch's newer one: the runners crawl side by side and
+           push to the same branch, so neither may overwrite what the other learned. A faculty's record is its
+           leader's (the runner that listed it for the stack).
+  combine  (a GitHub-hosted job) adds the pass up into the one refresh-outcome.json pages.yml reads: per faculty what
+           the stack says of it (stack.py summary), or, when the stack cannot be read, what the runners last saw.
 
 Nothing here touches a faculty site; it is unit-tested offline (tests/test_refresh.py).
 """
@@ -43,13 +41,9 @@ DEFAULT_SIZE = 100
 # A pass whose last shard ended this long after the plan (it sat in the queue) no longer files or closes issues:
 # newer passes have spoken since.
 REPORT_HOURS = 3
-# How long a runner waits out a wall before it lets the faculty go (refresh.py --max-block-wait-minutes): the full wait
-# when nobody could take over, a short one when another runner is up, which then takes the faculty in the handoff wave.
-BLOCK_WAIT = 30
-HANDOFF_WAIT = 5
 # A runner that ended blocked on a faculty in each of its last WALLED_PASSES passes over it (at least WALLED_MIN of
-# them) stands at that faculty's wall: it is not counted on to take the faculty, so the plan neither gives it the
-# faculty while a runner it lets through is up, nor cuts that runner's wait short for a takeover by it.
+# them) stands at that faculty's wall: the fallback split does not give it the faculty while a runner it lets through
+# is up.
 WALLED_PASSES = 3
 WALLED_MIN = 2
 # Every runner of the fleet carries this label besides its own (refresh-crawl.yml's runs-on).
@@ -70,8 +64,14 @@ def load_json(path, default, kind=dict):
     return value if isinstance(value, kind) else default
 
 
+EGRESS_KINDS = ('remote', 'local')
+
+
 def load_fleet(path=FLEET):
-    """The runners from fleet.json, checked: [{name, label, speed, always_on, faculties, prefers, census}]."""
+    """The runners from fleet.json, checked: [{name, label, speed, always_on, faculties, prefers, census, egress, pool,
+    pool_help}]. `egress` says whether the runner can hunt the pool for exits through a wall (stack.py): 'remote' (the
+    egress box beside it), 'local' (one it starts itself) or None; `pool` the faculties it may take only through such
+    exits, `pool_help` those of them it helps with through the pool even while another runner leads them."""
     raw = json.loads(Path(path).read_text(encoding='utf-8'))
     runners = raw.get('runners') if isinstance(raw, dict) else None
     if not isinstance(runners, list):
@@ -89,14 +89,22 @@ def load_fleet(path=FLEET):
         if isinstance(speed, bool) or not isinstance(speed, (int, float)) or not speed > 0:
             raise ValueError(f'{name}: speed must be a positive number')
         only, prefers, census = r.get('faculties'), r.get('prefers', []), r.get('census', [])
+        pool, pool_help, egress = r.get('pool', []), r.get('pool_help', []), r.get('egress')
         if only is not None and not (isinstance(only, list) and all(isinstance(f, str) for f in only)):
             raise ValueError(f'{name}: faculties must be a list of faculty ids')
-        for key, value in (('prefers', prefers), ('census', census)):
+        if egress is not None and egress not in EGRESS_KINDS:
+            raise ValueError(f'{name}: egress must be one of {", ".join(EGRESS_KINDS)}')
+        for key, value in (('prefers', prefers), ('census', census), ('pool', pool), ('pool_help', pool_help)):
             if not (isinstance(value, list) and all(isinstance(f, str) for f in value)):
                 raise ValueError(f'{name}: {key} must be a list of faculty ids')
+        if pool and egress is None:
+            raise ValueError(f'{name}: a pool needs an egress to hunt with')
+        if not set(pool_help) <= set(pool):
+            raise ValueError(f'{name}: pool_help must be among its pool')
         seen.add(name)
         fleet.append({'name': name, 'label': label, 'speed': float(speed), 'always_on': bool(r.get('always_on')),
-                      'faculties': only, 'prefers': prefers, 'census': census})
+                      'faculties': only, 'prefers': prefers, 'census': census, 'egress': egress, 'pool': pool,
+                      'pool_help': pool_help})
     if not fleet:
         raise ValueError('the fleet has no runners')
     return fleet
@@ -146,6 +154,13 @@ def may_take(runner, lane, avoid):
                for f in lane)
 
 
+def reach(runner):
+    """The faculties a runner may take at all, its own address or pool exits (`pool`): a set, None for any."""
+    if runner['faculties'] is None:
+        return None
+    return set(runner['faculties']) | set(runner.get('pool') or ())
+
+
 def walled_runners(runs):
     """{faculty: {runner}} out of the run history (refresh-runs.json's `runs`, newest first): the runners whose last
     WALLED_PASSES passes over a faculty all ended blocked on it, counting a pass by the runner's last wave there (a wall
@@ -158,8 +173,8 @@ def walled_runners(runs):
             if not isinstance(x, dict) or x.get('status') not in ('done', 'blocked'):
                 continue
             wave = x.get('wave') if isinstance(x.get('wave'), int) else 1
-            blocked = set(x.get('blocked_on') or [])
-            for f in x.get('faculties') or []:
+            blocked = set(x.get('blocked_on') or []) | {f for f, c in (x.get('cant') or {}).items() if c == 'wall'}
+            for f in list(x.get('faculties') or []) + [f for f in (x.get('cant') or {}) if f not in (x.get('faculties') or [])]:
                 key = (x.get('name'), f)
                 if key not in last or last[key][0] <= wave:
                     last[key] = (wave, f in blocked)
@@ -175,22 +190,15 @@ def walled_runners(runs):
 
 
 def plan(fleet, wanted, state, online, avoid=None, walled=None):
-    """Split the lanes of `wanted` over the runners that are up.
+    """Split the lanes of `wanted` over the runners that are up: the static share each crawls alone should the work
+    stack (stack.py) be out of reach, and the runners that are up at all.
 
     `online` is the set of labels GitHub reports online, or None when it could not be asked: then the always-on
-    runners take everything (the job waits for them like a single-runner pass would). Lanes go out largest first,
-    each to the runner that would finish it earliest (load / speed), so a fast runner takes a lot and a slow one the
-    rest. A lane a runner up `prefers` (every faculty of it) goes to that runner whatever the load: a faculty tried
-    from both machines that crawls as well from either stays off the fast one's share. A lane no runner up may take
-    is left for the next pass. `avoid` maps a faculty to the runners that must not take it (the handoff wave: the
-    runner that was blocked on it), so a preferred runner that left a lane behind does not get it back.
-    `walled` (walled_runners) maps a faculty to the runners its wall kept out lately: a lane goes to one of them only
-    when no other runner up may take it.
-
-    Each shard says how long its runner should wait out a wall (`wait`, minutes): briefly when another runner up could
-    take any of its faculties over, else the full wait. The wait is the whole share's, so one faculty nobody else may
-    take (a runner limited by `faculties`) keeps the full wait for all of it: letting that one go early would only cost
-    a takeover by the same runner for the rest of the wait.
+    runners take everything. Lanes go out largest first, each to the runner that would finish it earliest
+    (load / speed). A lane a runner up `prefers` (every faculty of it) goes to that runner whatever the load. A lane no
+    runner up may take is left for the next pass. `avoid` maps a faculty to runners that must not take it; `walled`
+    (walled_runners) to the runners its wall kept out lately: a lane goes to one of them only when no other runner up
+    may take it.
     """
     avoid, walled = avoid or {}, walled or {}
 
@@ -216,29 +224,91 @@ def plan(fleet, wanted, state, online, avoid=None, walled=None):
         shards[best['name']] += lane
     order = {f: i for i, f in enumerate(wanted)}
     out = [{'runner': r['name'], 'label': r['label'], 'faculties': ','.join(sorted(shards[r['name']], key=order.get)),
-            'cost': round(load[r['name']]), 'eta': round(load[r['name']] / r['speed']),
-            'wait': HANDOFF_WAIT if all(any(may_take(o, [f], {}) and clear(o, [f]) for o in up if o is not r)
-                                        for f in shards[r['name']]) else BLOCK_WAIT}
+            'cost': round(load[r['name']]), 'eta': round(load[r['name']] / r['speed'])}
            for r in up if shards[r['name']]]
     return {'shards': out, 'unassigned': sorted(unassigned, key=order.get), 'known': online is not None,
             'up': [r['name'] for r in up], 'down': [r['name'] for r in fleet if r not in up]}
 
 
+def matrix_of(fleet, wanted, state, online, walled=None, avoid=None):
+    """The pass's crawl jobs: one per runner up that may take any faculty wanted, each with what it may take (in the
+    order asked), its census, who else crawls (`expected`) and its fallback share (plan()). Plus the plan itself.
+    `avoid` ({faculty: {runner}}) keeps a runner off a faculty altogether (a catch-up's walled helpers)."""
+    avoid = avoid or {}
+    result = plan(fleet, wanted, state, online, avoid=avoid, walled=walled)
+    census = census_of(fleet, wanted)
+    fallback = {s['runner']: s['faculties'] for s in result['shards']}
+    by = {r['name']: r for r in fleet}
+    jobs = []
+    for name in result['up']:
+        r = by[name]
+        pooled = [f for f in wanted if f in (r.get('pool') or ()) and not may_take(r, [f], avoid)
+                  and name not in avoid.get(f, ())]
+        mine = [f for f in wanted if may_take(r, [f], avoid) or f in pooled]
+        if mine:
+            jobs.append({'runner': name, 'label': r['label'], 'faculties': ','.join(mine),
+                         'census': census.get(name, ''), 'fallback': fallback.get(name, ''),
+                         'pool': ','.join(pooled), 'egress': r.get('egress') or ''})
+    expected = ','.join(j['runner'] for j in jobs)
+    for j in jobs:
+        j['expected'] = expected
+    taken = {f for j in jobs for f in j['faculties'].split(',')}
+    result['unassigned'] = [f for f in wanted if f not in taken]
+    return jobs, result
+
+
+def missed(runner, run):
+    """Whether `runner` had no part in `run` (a refresh-runs.json pass): it was off, or its share never ran."""
+    if runner in (run.get('offline') or []):
+        return True
+    entry = next((x for x in run.get('runners') or [] if isinstance(x, dict) and x.get('name') == runner), None)
+    return entry is None or entry.get('status') in ('missing', 'skipped')
+
+
+def owed(fleet, runner, runs, wanted):
+    """The faculties of `wanted` that `runner` (a name in the fleet) owes after being away: those it may take whose
+    newest pass ran without it and left them undone (nobody could take them, the pass never got to them, or a wall
+    stopped whoever tried). A faculty the others got done meanwhile is not owed. With no pass on record that covered a
+    faculty, it is owed when the runner missed the newest pass. `runs` is refresh-runs.json's list, newest first."""
+    by = {r['name']: r for r in fleet}
+    if runner not in by:
+        raise ValueError(f'unknown runner: {runner!r}')
+    runs = [r for r in runs if isinstance(r, dict)] if isinstance(runs, list) else []
+    out = []
+    for f in wanted:
+        if not may_take(by[runner], [f], {}):
+            continue
+        for run in runs:
+            entry = next((x for x in run.get('faculties') or [] if isinstance(x, dict) and x.get('id') == f), None)
+            unassigned = f in (run.get('unassigned') or [])
+            if entry is None and not unassigned:
+                continue
+            undone = unassigned or entry is None or not entry.get('fresh') or bool(entry.get('blocked'))
+            if undone and missed(runner, run):
+                out.append(f)
+            break
+        else:
+            if runs and missed(runner, runs[0]):
+                out.append(f)
+    return out
+
+
 def census_of(fleet, wanted):
     """{runner: 'wig,...'}: the censuses each runner takes this pass (its fleet.json `census` among the faculties
-    wanted), whoever crawls those faculties. refresh.py runs each at most once a week, after the crawl; a takeover
-    takes none."""
+    wanted), whoever crawls those faculties. refresh.py runs each at most once a week, after the crawl."""
     return {r['name']: ','.join(f for f in wanted if f in r.get('census', ())) for r in fleet}
 
 
-def plan_summary(result):
+def plan_summary(jobs, result):
     lines = ['### Refresh plan', '']
     if not result['known']:
         lines += ['GitHub was not asked which runners are online (no `PLANWAT_RUNNERS_TOKEN`, or the API failed): '
                   'the always-on runners take everything.', '']
-    lines += ['| runner | faculties | work | relative time |', '|---|---|---|---|']
-    for s in result['shards']:
-        lines.append(f"| {s['runner']} | {s['faculties']} | {s['cost']} | {s['eta']} |")
+    lines += ['Every runner pulls its work from the shared work stack, its preferred faculties first. The fallback is '
+              'what it crawls alone should the stack be out of reach.', '',
+              '| runner | may take | prefers | fallback |', '|---|---|---|---|']
+    for j in jobs:
+        lines.append(f"| {j['runner']} | {j['faculties']} | {j.get('prefers', '')} | {j['fallback'] or '–'} |")
     for name in result['down']:
         lines.append(f'| {name} | offline, nothing |  |  |')
     if result['unassigned']:
@@ -275,27 +345,64 @@ def cmd_plan(args):
     wanted = named or [f for f, c in sources.items() if c.get('enabled')]
     runners = load_json(args.runners, None, list) if args.runners else None
     fleet = load_fleet(args.fleet)
-    walled = walled_runners(load_json(args.runs, {}).get('runs')) if args.runs else {}
+    history = load_json(args.runs, {}).get('runs') if args.runs else []
+    walled = walled_runners(history)
     for f, names in sorted(walled.items()):
-        log(f"{f}: its wall kept {', '.join(sorted(names))} out lately; not counted on to take it")
-    result = plan(fleet, wanted, load_json(args.state, {}), online_labels(runners), walled=walled)
-    census = census_of(fleet, wanted)
-    for s in result['shards']:
-        log(f"{s['runner']}: {s['faculties']} (work {s['cost']}, relative time {s['eta']})")
+        log(f"{f}: its wall kept {', '.join(sorted(names))} out lately; not in their fallback share")
+    online = online_labels(runners)
+    avoid = {}
+    if args.catchup:
+        # A catch-up pass: what the runner that came back owes (owed), helped by the others but not where their
+        # own wall would only stop them.
+        by = {r['name']: r for r in fleet}
+        if args.catchup not in by:
+            log(f'unknown runner: {args.catchup}')
+            return 2
+        wanted = owed(fleet, args.catchup, history, wanted)
+        log(f"catch-up for {args.catchup}: it owes {', '.join(wanted) or 'nothing'}")
+        if online is not None and by[args.catchup]['label'] not in online:
+            log(f'::notice::{args.catchup} is offline again; nothing to catch up now')
+            wanted = []
+        avoid = {f: names - {args.catchup} for f, names in walled.items()}
+    jobs, result = matrix_of(fleet, wanted, load_json(args.state, {}), online, walled, avoid)
+    if args.catchup and not any(j['runner'] == args.catchup for j in jobs):
+        jobs = []  # the others alone have done what they could already
+    prefers = {r['name']: ','.join(f for f in r['prefers'] if f in wanted) for r in fleet}
+    for j in jobs:
+        j['prefers'] = prefers.get(j['runner'], '')
+        log(f"{j['runner']}: may take {j['faculties']}"
+            + (f"; leads {j['prefers']}" if j['prefers'] else '') + f"; fallback {j['fallback'] or 'nothing'}")
     for name in result['down']:
         log(f'{name}: offline, nothing')
     if result['unassigned']:
         log(f"::warning::no runner up may take {', '.join(result['unassigned'])}; left for the next pass")
-    if not result['shards']:
+    if not jobs:
         log('::warning::no runner of the fleet is online; this pass crawls nothing')
-    matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties'], 'wave': 1, 'wait': s['wait'],
-               'census': census.get(s['runner'], '')} for s in result['shards']]
+    matrix = [{k: j[k] for k in ('runner', 'label', 'faculties', 'census', 'expected', 'fallback', 'pool', 'egress')}
+              for j in jobs]
     planned = int(dt.datetime.now(dt.timezone.utc).timestamp())
     # runs.py records which servers were off and what nobody could take
     info = {'down': result['down'], 'unassigned': result['unassigned']}
+    # the servers GitHub says are off, for the report to queue a catch-up waiting for each (refresh-wake.yml); none
+    # when it could not be asked
+    by = {r['name']: r for r in fleet}
+    asleep = [{'runner': n, 'label': by[n]['label']} for n in result['down']] if result['known'] else []
     github_output(matrix=json.dumps(matrix, separators=(',', ':')), shards=len(matrix), planned=planned,
-                  fleet=json.dumps(info, separators=(',', ':')))
-    step_summary(plan_summary(result))
+                  fleet=json.dumps(info, separators=(',', ':')), asleep=json.dumps(asleep, separators=(',', ':')))
+    head = (f"Catch-up for **{args.catchup}**, back online: it owes {', '.join(wanted) or 'nothing'}.\n\n"
+            if args.catchup else '')
+    step_summary(head + plan_summary(jobs, result))
+    return 0
+
+
+def cmd_owed(args):
+    fleet = load_fleet(args.fleet)
+    if args.runner not in {r['name'] for r in fleet}:
+        log(f'unknown runner: {args.runner}')
+        return 2
+    due = owed(fleet, args.runner, load_json(args.runs, {}).get('runs'), enabled_faculties(args.sources))
+    log(f"{args.runner} owes {', '.join(due) or 'nothing'}")
+    github_output(owed=','.join(due))
     return 0
 
 
@@ -390,7 +497,7 @@ def _names(value):
 
 
 def _pairs(value):
-    """[(faculty, runner)] out of 'wel:oracle,wml:plebania' (an outcome's `took` or `gave`)."""
+    """[(faculty, runner)] out of 'wel:oracle,wml:plebania' (an outcome's `took`, `gave` or `cant`)."""
     out = []
     for item in _names(value):
         f, _, r = item.partition(':')
@@ -399,33 +506,8 @@ def _pairs(value):
     return out
 
 
-def held(shard, outcome):
-    """The faculties a shard ended its wave holding: its own and those it took from a peer (steal.py). One it handed
-    on whole stays listed; its outcome then counts it neither blocked nor unfinished."""
-    names = _names(shard.get('faculties'))
-    if isinstance(outcome, dict):
-        names += [f for f, _ in _pairs(outcome.get('took'))]
-    return list(dict.fromkeys(names))
-
-
-def unconfirmed(shards, got):
-    """What a runner gave a peer that the peer's outcome does not say it took: [(faculty, peer, wave)]. The peer
-    crashed, never read the grant or never reported, so the faculty is not done, whatever the giver says."""
-    out = []
-    for s in shards:
-        o = got.get(shard_key(s))
-        if not isinstance(o, dict):
-            continue
-        wave = shard_key(s)[1]
-        for f, to in _pairs(o.get('gave')):
-            r = got.get((to, wave))
-            if not (isinstance(r, dict) and not _flag(r, 'skipped') and (f, s['runner']) in _pairs(r.get('took'))):
-                out.append((f, to, wave))
-    return out
-
-
 def shard_key(shard):
-    """A shard's identity in a pass: its runner and its wave (1 the plan, 2 the handoff)."""
+    """A job's identity in a pass: its runner and its wave (always 1 now; older outcomes may say 2)."""
     try:
         wave = int(shard.get('wave') or 1)
     except (TypeError, ValueError):
@@ -433,117 +515,69 @@ def shard_key(shard):
     return shard.get('runner'), wave
 
 
-def left_over(shard, outcome):
-    """The faculties of a shard that another runner should take, and why: [(faculty, 'blocked' | 'unfinished')].
-
-    A shard that never reported, was skipped (stale plan) or crashed leaves all of them; one that reported leaves those
-    it ended blocked on and those it did not finish (a time limit, a page it could not read). A report without the
-    per-faculty lists (an older crawl) leaves everything when it was blocked or incomplete at all. What the shard took
-    from a peer during the wave counts like its own."""
-    names = held(shard, outcome)
-    if not isinstance(outcome, dict) or _flag(outcome, 'skipped') or _flag(outcome, 'failed'):
-        return [(f, 'unfinished') for f in names]
-    if 'blocked_faculties' in outcome or 'incomplete_faculties' in outcome:
-        blocked = set(_names(outcome.get('blocked_faculties')))
-        unfinished = set(_names(outcome.get('incomplete_faculties'))) | blocked
-    elif _flag(outcome, 'blocked') or _flag(outcome, 'incomplete'):
-        blocked = set(names) if _flag(outcome, 'blocked') else set()
-        unfinished = set(names)
-    else:
-        return []
-    return [(f, 'blocked' if f in blocked else 'unfinished') for f in names if f in unfinished]
+def latest(outcomes):
+    """{runner: its outcome} (a later wave, an older pass's takeover, wins over an earlier one)."""
+    got = {}
+    for o in outcomes:
+        if isinstance(o, dict) and isinstance(o.get('runner'), str):
+            if o['runner'] not in got or shard_key(o)[1] >= shard_key(got[o['runner']])[1]:
+                got[o['runner']] = o
+    return got
 
 
-def _wait(shard):
-    """The minutes a plan's shard was told to wait a wall out (the full wait when it does not say)."""
-    try:
-        wait = float(shard.get('wait'))
-    except (TypeError, ValueError):
-        return BLOCK_WAIT
-    return wait if 0 <= wait <= BLOCK_WAIT else BLOCK_WAIT
+RANK = {'blocked': 0, 'unfinished': 1, 'absent': 1, 'failed': 2, 'done': 3, 'empty': 3}
 
 
-def handoff(fleet, shards, outcomes, state, online, walled=None):
-    """The handoff wave: what the plan's runners left blocked or unfinished, for another runner that is up now.
-
-    `online` is asked afresh (a runner may have come up or gone since the plan). A faculty does not go back to the
-    runner that left it: a wall is per address, and a runner that crashed or never started may do so again. Lanes stay
-    whole, as in the plan, and go out by the same weighting; what no other runner up may take waits for the next pass.
-
-    One exception keeps the plan's promise of a full wait: a lane its runner let go blocked after only the short wait,
-    because the plan saw another runner up that has gone since, goes back to that runner (when it is still up) for the
-    rest of the wait. The takeover's `from` then names the runner itself.
-
-    Nor does a faculty go to a runner its wall kept out lately (`walled`, walled_runners): a takeover there would only
-    cost a job, so the runner that left it gets the rest of its wait instead, or the next pass the faculty.
-    """
-    walled = walled or {}
-    got = {shard_key(o): o for o in outcomes if isinstance(o, dict)}
-    avoid, origin, wanted, waited = {}, {}, [], {}
-    left = [(f, why, s['runner'], _wait(s)) for s in shards for f, why in left_over(s, got.get(shard_key(s)))]
-    # a grant the peer never confirmed: that peer may have crashed, so it is avoided like one that left it
-    left += [(f, 'unfinished', to, BLOCK_WAIT) for f, to, _ in unconfirmed(shards, got)]
-    for f, why, runner, wait in left:
-        # two runners may leave one faculty (a part each, steal.py): both are avoided, a wall is what is reported
-        avoid.setdefault(f, set()).add(runner)
-        avoid[f] |= walled.get(f, set())
-        if f not in origin or (why == 'blocked' and origin[f]['why'] != 'blocked'):
-            origin[f] = {'runner': runner, 'why': why}
-            waited[f] = wait
-        if f not in wanted:
-            wanted.append(f)
-    if not wanted:
-        return {'shards': [], 'unassigned': [], 'left': {}, 'known': online is not None}
-    # a lane's faculties hand off together, in the order the plan had them
-    result = plan(fleet, wanted, state, online, avoid)
-    for shard in result['shards']:
-        shard['wait'] = BLOCK_WAIT  # nobody after this wave: wait the wall out
-    by_name = {r['name']: r for r in fleet}
-    taking = {s['runner']: s for s in result['shards']}
-    order = {f: i for i, f in enumerate(wanted)}
-    for lane in lanes_of(result['unassigned']):
-        runner = by_name.get(origin[lane[0]]['runner'])
-        short = [f for f in lane if origin[f]['why'] == 'blocked' and waited[f] < BLOCK_WAIT]
-        if not short or runner is None or runner['name'] not in result['up'] or not may_take(runner, lane, {}):
+def faculty_views(matrix, outcomes):
+    """{faculty: status} when the store cannot be read: what the runners last saw of it. Done when any runner saw it
+    done; else blocked when any saw it blocked; else unfinished. An outcome without the per-faculty lists (an older
+    crawl) counts its own faculties by its flags."""
+    got = latest(outcomes)
+    out = {}
+    for m in matrix:
+        for f in _names(m.get('faculties')):
+            out.setdefault(f, 'absent')
+    for m in matrix:
+        o = got.get(m.get('runner'))
+        if not isinstance(o, dict) or _flag(o, 'skipped'):
             continue
-        rest = max(1, round(BLOCK_WAIT - max(waited[f] for f in short)))
-        shard = taking.get(runner['name'])
-        if shard is None:
-            shard = taking[runner['name']] = {'runner': runner['name'], 'label': runner['label'], 'faculties': '',
-                                              'cost': 0, 'eta': 0, 'wait': rest}
-            result['shards'].append(shard)
+        if 'done_faculties' in o or 'blocked_faculties' in o or 'incomplete_faculties' in o:
+            done, blocked = set(_names(o.get('done_faculties'))), set(_names(o.get('blocked_faculties')))
+            unfinished = set(_names(o.get('incomplete_faculties')))
+            if 'done_faculties' not in o:  # an older crawl: its own share, done unless it says otherwise
+                done = {f for f in _names(m.get('faculties')) if f not in unfinished and f not in blocked}
         else:
-            shard['wait'] = max(shard['wait'], rest)
-        shard['faculties'] = ','.join(sorted(_names(shard['faculties']) + lane, key=order.get))
-        result['unassigned'] = [f for f in result['unassigned'] if f not in lane]
-    for shard in result['shards']:
-        shard['wave'] = 2
-        shard['from'] = ','.join(f"{f}:{origin[f]['runner']}" for f in _names(shard['faculties']))
-    result['left'] = origin
-    return result
+            names = set(_names(m.get('faculties')))
+            blocked = names if _flag(o, 'blocked') else set()
+            unfinished = names if _flag(o, 'incomplete') else set()
+            done = names - blocked - unfinished
+        if _flag(o, 'failed'):
+            done = set()
+        for f in out:
+            if f in done:
+                out[f] = 'done'
+            elif out[f] != 'done' and f in blocked:
+                out[f] = 'blocked'
+            elif out[f] not in ('done', 'blocked') and f in unfinished:
+                out[f] = 'unfinished'
+    return out
 
 
-def combine(shards, outcomes, age_hours):
-    """One outcome for the pass out of its shards' outcomes (refresh-outcome.json, read by pages.yml's gate).
+def read_outcomes(folder):
+    return [load_json(p, None) for p in sorted(Path(folder).glob('shard-*.json'))] if Path(folder).is_dir() else []
 
-    `shards` lists the plan's shards and then the handoff's (wave 2). A faculty counts as the last wave that had it left
-    it: blocked on oracle and then crawled cleanly by plebania is not blocked. Within that wave every runner that held
-    a part of it counts (steal.py), and a grant nobody confirmed leaves it unfinished. `pushed` is "true" when any shard
-    pushed and "false" only when every shard reported it did not; a shard that never reported leaves it empty, which the
-    gate reads as "rebuild". A faculty whose last shard never reported makes the pass incomplete, so it neither files
-    nor closes issues on what it did not see.
+
+def combine(matrix, outcomes, age_hours, summary=None):
+    """One outcome for the pass (refresh-outcome.json, read by pages.yml's gate).
+
+    Per faculty the store's verdict (`summary`, stack.py summarize) when there is one, else what the runners last saw
+    (faculty_views). `pushed` is "true" when any runner pushed and "false" only when every one reported it did not; one
+    that never reported leaves it empty, which the gate reads as "rebuild". A faculty left blocked makes the pass
+    blocked; one unfinished or failed, or a runner that never reported, makes it incomplete.
     """
-    got = {shard_key(o): o for o in outcomes if isinstance(o, dict)}
-    last = {}  # faculty -> (its last wave, the shards that held it then)
-    for s in sorted(shards, key=lambda s: shard_key(s)[1]):
-        wave = shard_key(s)[1]
-        for f in held(s, got.get(shard_key(s))):
-            if f not in last or last[f][0] < wave:
-                last[f] = (wave, [s])
-            elif s not in last[f][1]:
-                last[f][1].append(s)
-    seen = [got[shard_key(s)] for s in shards if shard_key(s) in got and not _flag(got[shard_key(s)], 'skipped')]
-    missing = [s['runner'] for s in shards if shard_key(s) not in got or _flag(got[shard_key(s)], 'skipped')]
+    got = latest(outcomes)
+    seen = [got[m['runner']] for m in matrix if m['runner'] in got and not _flag(got[m['runner']], 'skipped')]
+    missing = [m['runner'] for m in matrix if m['runner'] not in got or _flag(got[m['runner']], 'skipped')]
     if any(_flag(o, 'pushed') for o in seen):
         pushed = 'true'
     elif not missing:
@@ -556,20 +590,21 @@ def combine(shards, outcomes, age_hours):
             changed += int(o.get('changed') or 0)
         except (TypeError, ValueError):
             pass
-    blocked, unfinished = [], []
-    lost = {f for f, _, wave in unconfirmed(shards, got) if f in last and last[f][0] == wave}
-    for f, (_, held_by) in last.items():
-        whys = {why for s in held_by for g, why in left_over(s, got.get(shard_key(s))) if g == f}
-        if 'blocked' in whys:
-            blocked.append(f)
-        elif whys or f in lost:
-            unfinished.append(f)
-    finals = [got[k] for k in {shard_key(s) for _, held_by in last.values() for s in held_by} if k in got]
+    if isinstance(summary, dict) and isinstance(summary.get('faculties'), dict):
+        wanted = list(dict.fromkeys(f for m in matrix for f in _names(m.get('faculties'))))
+        status = {f: (summary['faculties'].get(f) or {}).get('status', 'absent') for f in wanted}
+    else:
+        status = faculty_views(matrix, outcomes)
+    blocked = [f for f, v in status.items() if v == 'blocked']
+    unfinished = [f for f, v in status.items() if v in ('unfinished', 'absent', 'failed')]
+    degraded = any(_flag(o, 'degraded') for o in seen) or any(v == 'failed' for v in status.values())
     return {'pushed': pushed, 'changed': str(changed),
             'blocked': str(bool(blocked)).lower(),
-            'incomplete': str(bool(blocked or unfinished) or not shards).lower(),
-            'degraded': str(any(_flag(o, 'degraded') for o in finals)).lower(),
-            'missing': missing, 'blocked_faculties': blocked, 'current': age_hours < REPORT_HOURS}
+            # with the store's verdicts a runner that never reported matters only through what it left undone
+            'incomplete': str(bool(blocked or unfinished or (missing and not isinstance(summary, dict)))
+                              or not matrix).lower(),
+            'degraded': str(degraded).lower(),
+            'missing': missing, 'blocked_faculties': blocked, 'status': status, 'current': age_hours < REPORT_HOURS}
 
 
 def _matrix(text):
@@ -580,51 +615,20 @@ def _matrix(text):
     return [m for m in value if isinstance(m, dict) and isinstance(m.get('runner'), str)] if isinstance(value, list) else []
 
 
-def read_outcomes(folder):
-    return [load_json(p, None) for p in sorted(Path(folder).glob('shard-*.json'))] if Path(folder).is_dir() else []
-
-
-def handoff_summary(result):
-    lines = ['### Handoff', '']
-    if not result['shards'] and not result['unassigned']:
-        return '\n'.join(lines + ['Every faculty of the plan was finished where it was planned: nothing to hand off.']) + '\n'
-    lines += ['| runner | takes over | from | waits a wall out |', '|---|---|---|---|']
-    for s in result['shards']:
-        lines.append(f"| {s['runner']} | {s['faculties']} | {s['from'].replace(',', ', ')} | {s['wait']:g} min |")
-    if result['unassigned']:
-        lines += ['', f"No other runner up may take: {', '.join(result['unassigned'])} (left for the next pass)."]
-    return '\n'.join(lines) + '\n'
-
-
-def cmd_handoff(args):
-    runners = load_json(args.runners, None, list) if args.runners else None
-    walled = walled_runners(load_json(args.runs, {}).get('runs')) if args.runs else {}
-    result = handoff(load_fleet(args.fleet), _matrix(args.matrix), read_outcomes(args.dir), load_json(args.state, {}),
-                     online_labels(runners), walled)
-    for f, o in result['left'].items():
-        log(f"{f}: left {o['why']} by {o['runner']}")
-    for s in result['shards']:
-        log(f"{s['runner']} takes over {s['faculties']} (waits a wall out up to {s['wait']:g} min)")
-    if result['unassigned']:
-        log(f"::warning::no other runner up may take {', '.join(result['unassigned'])}; left for the next pass")
-    matrix = [{'runner': s['runner'], 'label': s['label'], 'faculties': s['faculties'], 'wave': 2, 'wait': s['wait'],
-               'from': s['from']} for s in result['shards']]
-    github_output(matrix=json.dumps(matrix, separators=(',', ':')), shards=len(matrix),
-                  planned=int(dt.datetime.now(dt.timezone.utc).timestamp()))
-    step_summary(handoff_summary(result))
-    return 0
-
-
 def cmd_combine(args):
-    shards = _matrix(args.matrix) + [dict(m, wave=2) for m in _matrix(args.handoff)]
+    matrix = _matrix(args.matrix)
     outcomes = read_outcomes(args.dir)
+    summary = load_json(args.summary, None) if args.summary else None
     age = (dt.datetime.now(dt.timezone.utc).timestamp() - float(args.planned or 0)) / 3600
-    result = combine(shards, outcomes, age)
+    result = combine(matrix, outcomes, age, summary)
     Path(args.out).write_text(json.dumps({k: result[k] for k in ('pushed', 'changed', 'blocked')}) + '\n',
                               encoding='utf-8')
     github_output(blocked=result['blocked'], incomplete=result['incomplete'], degraded=result['degraded'],
                   current=str(result['current']).lower())
-    lines = ['### Refresh outcome', '', '| runner | wave | faculties | pushed | changed | blocked on | minutes |',
+    lines = ['### Refresh outcome', '',
+             'Per faculty from ' + ('the work stack' if summary else "the runners' own reports (the stack could not be read)")
+             + ': ' + ', '.join(f'{f.upper()} {v}' for f, v in result['status'].items()), '',
+             '| runner | faculties led | helped | could not list | pushed | changed | minutes |',
              '|---|---|---|---|---|---|---|']
     for o in outcomes:
         if not isinstance(o, dict):
@@ -634,18 +638,17 @@ def cmd_combine(args):
         except (KeyError, TypeError, ValueError):
             minutes = ''
         state = 'skipped (stale plan)' if _flag(o, 'skipped') else o.get('pushed', '')
-        lines.append(f"| {o.get('runner', '?')} | {shard_key(o)[1]} | {o.get('faculties', '')} | {state} | "
-                     f"{o.get('changed', '')} | {o.get('blocked_faculties', '') or ('yes' if _flag(o, 'blocked') else '')} | "
-                     f"{minutes} |")
+        lines.append(f"| {o.get('runner', '?')} | {o.get('led', '') or o.get('faculties', '')} | "
+                     f"{o.get('took', '')} | {o.get('cant', '')} | {state} | {o.get('changed', '')} | {minutes} |")
     if result['missing']:
         lines += ['', f"No outcome from: {', '.join(result['missing'])}."]
         log(f"::warning::no outcome from {', '.join(result['missing'])}")
     if result['blocked_faculties']:
-        lines += ['', f"Still blocked after the handoff: {', '.join(result['blocked_faculties'])}."]
+        lines += ['', f"Blocked: {', '.join(result['blocked_faculties'])}."]
     if not result['current']:
         lines += ['', f'The plan is over {REPORT_HOURS} h old: issues are left to newer passes.']
     step_summary('\n'.join(lines) + '\n')
-    log(json.dumps(result))
+    log(json.dumps({k: v for k, v in result.items() if k != 'status'}))
     return 0
 
 
@@ -657,6 +660,12 @@ def parse(argv=None):
     p.add_argument('--runners', help="GitHub's runner list (JSON array); missing = unknown")
     p.add_argument('--runs', help="the data branch's refresh-runs.json: who met which wall lately (walled_runners)")
     p.add_argument('--faculty', default='', help='comma-separated faculties (default: every enabled one)')
+    p.add_argument('--catchup', default='', help='a runner back online: plan only what it owes (owed)')
+    p.add_argument('--fleet', default=str(FLEET))
+    p.add_argument('--sources', default=str(SOURCES))
+    p = sub.add_parser('owed', help='what a runner back online owes from the passes it missed')
+    p.add_argument('--runner', required=True, help="its name in fleet.json")
+    p.add_argument('--runs', required=True, help="the data branch's refresh-runs.json")
     p.add_argument('--fleet', default=str(FLEET))
     p.add_argument('--sources', default=str(SOURCES))
     p = sub.add_parser('seed', help="write a runner's first line state from the data branch's")
@@ -671,16 +680,10 @@ def parse(argv=None):
                    help="exactly the faculties whose records this runner publishes (refresh.py's owned_faculties); "
                         'overrides --faculty, may be empty')
     p.add_argument('--sources', default=str(SOURCES))
-    p = sub.add_parser('handoff', help='give what one runner left blocked or unfinished to another one that is up')
-    p.add_argument('--matrix', default='[]', help="the plan's matrix (JSON)")
-    p.add_argument('--dir', required=True, help="where the plan's shard-*.json outcomes are")
-    p.add_argument('--state', default='data/refresh-state.json', help="the data branch's refresh-state.json")
-    p.add_argument('--runners', help="GitHub's runner list now (JSON array); missing = unknown")
-    p.add_argument('--runs', help="the data branch's refresh-runs.json: who met which wall lately (walled_runners)")
-    p.add_argument('--fleet', default=str(FLEET))
     p = sub.add_parser('combine', help="add the shards' outcomes up for pages.yml")
     p.add_argument('--matrix', default='[]', help="the plan's matrix (JSON)")
-    p.add_argument('--handoff', default='[]', help="the handoff's matrix (JSON)")
+    p.add_argument('--handoff', default='[]', help=argparse.SUPPRESS)  # older workflows; nothing reads it
+    p.add_argument('--summary', default='', help="the work stack's verdicts (stack.py summary); missing = the runners'")
     p.add_argument('--planned', default='0', help='when the plan was made (Unix seconds)')
     p.add_argument('--dir', required=True, help='where the shard-*.json outcomes are')
     p.add_argument('--out', required=True)
@@ -689,8 +692,7 @@ def parse(argv=None):
 
 def main(argv=None):
     args = parse(argv)
-    return {'plan': cmd_plan, 'seed': cmd_seed, 'merge': cmd_merge, 'handoff': cmd_handoff,
-            'combine': cmd_combine}[args.cmd](args)
+    return {'plan': cmd_plan, 'owed': cmd_owed, 'seed': cmd_seed, 'merge': cmd_merge, 'combine': cmd_combine}[args.cmd](args)
 
 
 if __name__ == '__main__':

@@ -54,7 +54,8 @@ services:
     cap_drop: [ALL]
     security_opt: ['no-new-privileges:true']
     mem_limit: 256m
-    pids_limit: 256
+    # threads count here: up to 96 proxied connections plus the scout's probes (EGRESS_SCOUT_R1 below)
+    pids_limit: 384
     ulimits:
       nofile: 4096
     tmpfs:
@@ -75,6 +76,15 @@ services:
       # The Cloudflare Worker relay is infrastructure, not a faculty target: allow its host
       # through directly so the crawler can reach it (set to the deployed workers.dev hostname).
       EGRESS_DIRECT_HOSTS: ${EGRESS_DIRECT_HOSTS:-}
+      # The scout (docs/EGRESS.md, "Zwiad"): always looking for new and faster public exits and testing each on
+      # every faculty page, so when the home runner is off, the walled faculties (WLO, WML, WTC) already have exits
+      # for the hunt. A datacenter box opening many proxy connections is fine; a home line should leave it off.
+      EGRESS_SCOUT: ${EGRESS_SCOUT:-on}
+      EGRESS_SCOUT_R1: ${EGRESS_SCOUT_R1:-24}
+      # faculty-page probes at once; each faculty still sees at most one scout probe per 2 s
+      EGRESS_FACULTY_PROBES: ${EGRESS_FACULTY_PROBES:-8}
+      # The Tor client below (docs/EGRESS.md, "Tor"): its Polish exits get through every faculty's wall. Empty = none.
+      EGRESS_TOR: ${EGRESS_TOR-socks5://tor:9050,socks5://tor:9051,socks5://tor:9052,socks5://tor:9053}
     dns:
       - 1.1.1.1
       - 9.9.9.9
@@ -91,6 +101,30 @@ services:
       start_period: 60s
     networks: [inner, outside]
 
+  tor:
+    build:
+      context: ../../tools/egress
+      dockerfile: Dockerfile.tor
+    image: planwat/tor:1
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 128m
+    pids_limit: 64
+    tmpfs:
+      - /tmp:size=8m,mode=1777,noexec,nosuid,nodev
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    volumes:
+      - tor-data:/var/lib/tor
+    # the egress reaches it as tor:9050..9053 on `outside`; the runner (only on `inner`) cannot
+    networks: [outside]
+
 networks:
   inner:
     internal: true
@@ -99,3 +133,4 @@ networks:
 volumes:
   runner:
   egress-data:
+  tor-data:

@@ -64,8 +64,15 @@ raz: `northflank exec service --cmd '/usr/local/bin/planwat-runner state' --shel
 stara wartość przestaje działać: wpisz świeży `RUNNER_TOKEN`, a po starcie zapisz nowy `RUNNER_STATE`. Adres Google Cloud przechodzi
 tylko przez ściany IOE, WIG i WIM (próba 27.10.2026); relay Cloudflare daje mu jeszcze WEL i WIG, ale WLO, WML i WTC
 odpowiadają z zachodnich wyjść Workera 403 (sprawdzone 29.10.2026 z AMS i FRA), a WEL dzieli ścieżkę polityki z WLO.
-Dlatego `faculties` w `fleet.json` obejmują tylko IOE, WIG i WIM: te trzy działają także bez relaya, a WCY nadal wymaga
-puli, której Northflank nie ma.
+Dlatego `faculties` w `fleet.json` obejmują tylko IOE, WIG i WIM: te trzy działają także bez relaya. WLO, WEL, WML, WTC
+i WCY northflank bierze wyłącznie przez publiczne proxy (`pool` w `fleet.json`): crawl uruchamia kod egressu na
+loopbacku kontenera z kopii w `$RUNNER_TOOL_CACHE` i z własnym venv tam (`tools/refresh/egress.py`, bez zmian w obrazie ani
+zmiennych) między przebiegami, żeby zwiad szukał wyjść
+([docs/EGRESS.md](../../docs/EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść)); zadanie zatrzymuje go na swój czas (512 MB
+nie mieści zwiadu, crawla i jego `pip install` naraz), a koniec crawla uruchamia go znowu. Obok egressu działa klient Tor
+z polskimi wyjściami (paczka Tor Expert Bundle w tool cache, przypięty sha256), którego porty pula trzyma na stałe: tylko
+polskie adresy przechodzą ściany WLO, WML, WTC i WCY ([docs/EGRESS.md](../../docs/EGRESS.md#tor-polskie-wyjścia-przez-każdą-ścianę)).
+Na oracle to samo robi kontener `tor` z `compose.yml`.
 
 ## Utrzymanie
 

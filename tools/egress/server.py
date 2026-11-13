@@ -50,7 +50,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from statistics import median
 
-from pool import ProxyPool
+from pool import FACULTY_PROBES, HUNT_MAX_MS, SCOUT_KEEP, SCOUT_PAUSE_S, ProxyPool
 
 HERE = Path(__file__).resolve().parent
 
@@ -90,6 +90,12 @@ CHAIN_SUFFIXES = ('wat.edu.pl',)
 # refreshed, probed or picked from. A mode, not a hand-copied host list that silently starts pool work
 # the day a faculty is added to faculty_targets() but not to the list.
 POOL_OFF = env('EGRESS_POOL', 'on').strip().lower() in ('0', 'off', 'false', 'no')
+# The hunt (pool.hunt, docs/EGRESS.md "Polowanie na wyjścia"): on a crawler's request, the pool searches for exits
+# that get through a faculty's wall, and a second port rides only those. Never in the volunteer mode.
+HUNT_ON = not POOL_OFF and env('EGRESS_HUNT', 'on').strip().lower() not in ('0', 'off', 'false', 'no')
+# The scout (pool.scout_once, docs/EGRESS.md "Zwiad"): always looking for new and faster exits and testing each on
+# every faculty page. Off unless asked for: a home line opening thousands of proxy connections looks like a scan.
+SCOUT_ON = not POOL_OFF and env('EGRESS_SCOUT', 'off').strip().lower() in ('1', 'on', 'true', 'yes')
 
 CONNECT_TIMEOUT = 10
 TUNNEL_IDLE = 120
@@ -133,24 +139,45 @@ def falls_back_direct(host):
             and env('PLANWAT_EGRESS_DIRECT_FALLBACK', '1') in ('1', 'true', 'yes'))
 
 
-def faculty_targets(season=None):
-    """Round-2 verification targets: each chain host's own index page + content marker.
+def season_of(today):
+    """(season, first year) of the semester running on `today`, as tools/refresh/core.py counts it: Sep-Feb winter,
+    Mar-Aug summer."""
+    if today.month >= 9:
+        return 'zima', today.year
+    if today.month <= 2:
+        return 'zima', today.year - 1
+    return 'lato', today.year - 1
 
-    XML indexes must contain <?xml; the HTML ones (WCY Drupal, WML landing, WIG file listing) need a
-    positive marker too — a WAF block page is also a 200 with a large body. The
-    proxy pool additionally rejects known block-page markers on every probe.
+
+def faculty_targets(season=None, today=None):
+    """Round-2 verification targets: per faculty host, a page *behind its wall* + a content marker.
+
+    Each faculty's Imperva rule walls its plan directory only (13.11.2026, from the VPS: /planzajec/, /Plany/,
+    /wp-content/uploads/rozklady_zajec/ and /pl/rozklad answer 403, the home pages and sitemaps 200), so a probe
+    proves an exit only when it asks for the very page the crawler lists (tools/refresh/sources.json; a test keeps
+    the two in step): a WLO probe on /planyzajec/ (WEL's spelling) or a WML one on the /rozklady-zajec/ page the
+    faculty removed in October could never pass, whatever the exit. XML indexes must contain <?xml; the HTML ones
+    need a positive marker too — a WAF block page is also a 200 with a large body, and the pool rejects known
+    block-page markers on every probe.
     """
-    season = season or env('EGRESS_SEASON', 'zima')
+    import datetime
+    today = today or datetime.date.today()
+    current, year = season_of(today)
+    season = season or env('EGRESS_SEASON', '') or current
     xml = b'<?xml'
     return {
-        'wlo.wat.edu.pl': (f'https://wlo.wat.edu.pl/planyzajec/{season}/index.xml', xml),
+        # WLO's export moved from index.xml (404 since November 2026, from Poland too) to index.html, which the
+        # crawler falls back to (drivers/plansoft.py fetch_listing)
+        'wlo.wat.edu.pl': (f'https://wlo.wat.edu.pl/planzajec/{season}/index.html', b'Plansoft'),
         'wel.wat.edu.pl': (f'https://wel.wat.edu.pl/planyzajec/{season}/index.xml', xml),
         # WIM's plan listing moved from index.xml to index.html (November 2026); the faculty page stays put and
         # links whichever export the semester has, so it is the stable target for a pool probe.
         'www.wim.wat.edu.pl': ('https://www.wim.wat.edu.pl/rozklady-zajec/', b'wp-content/uploads/rozklady/'),
         'ioe.wat.edu.pl': ('https://ioe.wat.edu.pl/plany/lato/index.xml', xml),
         'planzajec.wcy.wat.edu.pl': ('https://planzajec.wcy.wat.edu.pl/pl/rozklad', b'grupa_id=wcy'),
-        'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', b'index.xml'),
+        # the homepage menu links one revisioned directory per semester; the first revision is never renamed
+        'wml.wat.edu.pl': (f'https://wml.wat.edu.pl/wp-content/uploads/rozklady_zajec/{year}_sem_{season}/index.xml',
+                           xml),
         'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', xml),
         'www.wig.wat.edu.pl': ('https://www.wig.wat.edu.pl/cpp/phocadownloadpap/budownictwo/', b'Index of /cpp/'),
     }
@@ -864,6 +891,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         "verified" just because it accepted CONNECT.
         """
         import time as _time
+        if getattr(self.server, 'pool_only', False):
+            return self._open_pooled(host, port)
         policy = route(host)
         if policy == 'deny' or port not in (80, 443):
             raise OSError('deny')
@@ -903,6 +932,40 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 print(f'remember tunnel failed: {merr}', flush=True)
             return sock, proxy, ms
         return self._fallback(host, port)
+
+    def _open_pooled(self, host, port):
+        """The hunt port: a faculty host over HTTPS, through an exit verified for it, or nothing.
+
+        Never direct (the crawler came here because this box's own line is walled) and never an exit merely
+        alive (it would most likely meet the same wall); only port 443, so the faculty's TLS runs end to end and
+        a public proxy cannot alter a page."""
+        h = canonical_host(host)
+        if not h or port != 443 or not any(h == s or h.endswith('.' + s) for s in CHAIN_SUFFIXES):
+            raise OSError('deny')
+        try:
+            candidates = [c for c in self.server.pool.pick_many(h, 3, verified_only=True) if c][:3]
+        except Exception as err:
+            print(f'pick failed: {err}', flush=True)
+            candidates = []
+        for proxy in candidates:
+            start = time.monotonic()
+            try:
+                sock = chain_connect(proxy, h, port, timeout=6)
+            except BadTarget:
+                raise OSError('deny')
+            except Exception as err:
+                print(f'chain via {proxy} failed: {err}', flush=True)
+                try:
+                    self.server.pool.mark(proxy, h, False, live=True)
+                except Exception as merr:
+                    print(f'mark fail failed: {merr}', flush=True)
+                continue
+            try:
+                self.server.remember_tunnel(h, proxy)
+            except Exception as merr:
+                print(f'remember tunnel failed: {merr}', flush=True)
+            return sock, proxy, int((time.monotonic() - start) * 1000)
+        raise OSError('proxy_empty')
 
     def _fallback(self, host, port):
         if fail_closed(host):
@@ -970,6 +1033,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             TUNNEL_SLOTS.release()
 
     def _forward_plain(self):
+        if getattr(self.server, 'pool_only', False):
+            return self._deny(403)  # plain HTTP through a public proxy could be altered on the way
         if not TUNNEL_SLOTS.acquire(blocking=False):
             return self._deny(503)
         self.server.requests += 1
@@ -1084,9 +1149,10 @@ class ProxyServer(BoundedThreadingHTTPServer):
     request_queue_size = 32
     connection_limit = MAX_CONNECTIONS
 
-    def __init__(self, addr, pool):
+    def __init__(self, addr, pool, pool_only=False):
         super().__init__(addr, ProxyHandler)
         self.pool = pool
+        self.pool_only = pool_only  # the hunt port: verified exits only, never direct (ProxyHandler._open_pooled)
         self.blocks = 0
         self.started = time.time()
         self.requests = 0   # proxy requests handled (CONNECT + absolute-URI) since start
@@ -1314,6 +1380,12 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
   </div>
 
   <section class="card">
+    <div class="card-head"><h2>Wyjścia na wydziały</h2><span class="dim small" id="scout-meta"></span></div>
+    <div class="tiles" id="scout-tiles"></div>
+    <table class="data fixed exits"><colgroup><col style="width:180px"><col style="width:64px"><col></colgroup><thead><tr><th>wydział</th><th class="num" title="proxy, które przeszły test strony wydziału">wyjść</th><th>najszybsze (kraj · czas strony · sprawdzone)</th></tr></thead><tbody id="exit-rows"></tbody></table>
+  </section>
+
+  <section class="card">
     <div class="card-head"><h2>Przebiegi odświeżania</h2><span class="dim small">ostatnie 10 &middot; kliknij wiersz</span></div>
     <table class="data runs"><thead><tr><th>odebrano</th><th>start &ndash; koniec</th><th>exit</th><th>wydziały</th></tr></thead><tbody id="runs-rows"></tbody></table>
   </section>
@@ -1496,7 +1568,8 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     var rows = '';
     (st.proxies || []).slice(0, 100).forEach(function (p) {
       var cls = p.status === 'ok' ? 'rot' : (p.status === 'fail' ? 'empty' : 'dim');
-      var tip = [p.url, p.source ? 'źr\u00f3d\u0142o: ' + p.source : '',
+      var tip = [p.url, p.cc ? 'kraj: ' + p.cc : '', p.res === true ? 'łącze domowe/ISP' : (p.res === false ? 'hosting' : ''), p.faculties ? 'przechodzi na ' + p.faculties + ' wydz.' : '',
+                 p.source ? 'źr\u00f3d\u0142o: ' + p.source : '',
                  p.last_checked ? 'sprawdzony ' + ago(p.last_checked) : '',
                  p.fails ? p.fails + ' nieudanych pr\u00f3b' : ''].filter(Boolean).join(' \u00b7 ');
       rows += '<tr title="' + esc(tip) + '"><td class="ell">' + esc(p.url) + '</td>'
@@ -1507,6 +1580,31 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     });
     $('proxy-rows').innerHTML = rows || '<tr><td colspan="5" class="dim">pula jest pusta</td></tr>';
     fade($('pool-scroll'));
+  }
+
+  function renderExits(st) {
+    var sc = st.scout, ex = st.exits || {}, hosts = st.hosts || {};
+    if (sc && sc.cycle) {
+      $('scout-tiles').innerHTML = tile(fmtNum(sc.cycle), 'cykl') + tile(fmtNum(sc.listed), 'na listach')
+        + tile(fmtNum(sc.unseen), 'nieprzej\u00adrzanych') + tile(fmtNum(sc.passed), 'nowych wyj\u015b\u0107');
+      $('scout-meta').textContent = 'zwiad: ostatni cykl ' + ago(sc.at) + ' (' + fmtDur(sc.took_s) + ') \u00b7 '
+        + fmtNum(sc.screened) + ' sprawdzonych, ' + fmtNum(sc.alive_new) + ' \u017cywych, '
+        + fmtNum(sc.tests) + ' test\u00f3w stron' + (sc.tests_left ? ' (czeka ' + fmtNum(sc.tests_left) + ')' : '');
+    } else {
+      $('scout-tiles').innerHTML = '';
+      $('scout-meta').textContent = st.scout === null ? 'zwiad wy\u0142\u0105czony (EGRESS_SCOUT)' : 'zwiad: pierwszy cykl w toku\u2026';
+    }
+    var rows = '';
+    Object.keys(ex).forEach(function (h) {
+      var list = ex[h] || [], n = (hosts[h] || {}).verified;
+      var cells = list.map(function (r) {
+        return '<span class="pill sm rot" title="' + esc(r.url + ' \u00b7 ' + (r.n_ok || 0) + ' udanych, ' + (r.n_fail || 0) + ' nieudanych') + '">'
+          + esc(r.url.replace(/^[a-z0-9]+:[/][/]/, '')) + (r.cc ? ' ' + esc(r.cc) : '') + (r.res ? ' \u00b7 dom' : '') + (r.source === 'tor' ? ' \u00b7 tor' : '') + ' \u00b7 ' + fmtMs(r.ms) + ' \u00b7 ' + esc(ago(r.checked)) + '</span>';
+      }).join(' ');
+      rows += '<tr><td class="ell" title="' + esc(h) + '">' + esc(h) + '</td><td class="num">' + fmtNum(n == null ? list.length : n)
+        + '</td><td class="ell">' + (cells || '<span class="dim">brak \u2013 \u017cadne proxy nie przesz\u0142o</span>') + '</td></tr>';
+    });
+    $('exit-rows').innerHTML = rows || '<tr><td colspan="3" class="dim">brak danych</td></tr>';
   }
 
   function renderEgress(st) {
@@ -1600,6 +1698,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     renderCrawl(st.progress || {}, st);
     renderHosts(st);
     renderPool(st);
+    renderExits(st);
     renderEgress(st);
     renderRuns(st);
   }
@@ -1829,8 +1928,10 @@ class GuiHandler(BaseHTTPRequestHandler):
         else:
             fallbacks = dict(getattr(self.server.proxy_server, 'fallbacks', {}))
         host_modes = {}
+        hunts = pool.hunt_status() if hasattr(pool, 'hunt_status') else {}
+        exits = stats.get('exits') or {}
         for h in self.server.pool.round2:
-            n = stats.get('verified', {}).get(h, 0)
+            n = stats.get('verified', {}).get(h, exits.get(h, 0))
             if route(h) == 'direct':
                 host_mode = 'DIRECT (lista)' if host_is_direct(h) else 'DIRECT (bez puli)'
             elif n:
@@ -1838,11 +1939,24 @@ class GuiHandler(BaseHTTPRequestHandler):
             else:
                 # No exit: either this box's own line carries it, or every request gets a 403.
                 host_mode = 'DIRECT' if falls_back_direct(h) else 'FAIL-CLOSED'
-            host_modes[h] = {'mode': host_mode, 'verified': n, 'fallbacks': fallbacks.get(h, 0)}
+            hunt = hunts.get(h) or {}
+            if hunt.get('state') == 'running':
+                host_mode += ' · POLOWANIE'
+            elif hunt.get('state') == 'done' and route(h) == 'direct':
+                host_mode += f" · PULA {hunt.get('verified', 0)}/{hunt.get('tried', 0)}"
+            # exits marked for this faculty, whether or not it rides the pool by default (the hunt port's stock)
+            host_modes[h] = {'mode': host_mode, 'verified': exits.get(h, n), 'fallbacks': fallbacks.get(h, 0)}
         open_runs = (runs.open_snapshot() if hasattr(runs, 'open_snapshot')
                      else list(getattr(runs, 'open_runs', [])))
         ps = self.server.proxy_server
+        marked = {}
+        if hasattr(pool, 'exits'):
+            for h in pool.round2:
+                marked[h] = [{k: r.get(k) for k in ('url', 'ms', 'checked', 'n_ok', 'n_fail', 'cc', 'res', 'source')}
+                             for r in pool.exits(h, 5)]
         return {'mode': mode, 'proxy_port': self.server.proxy_port,
+                'hunt_port': getattr(self.server, 'hunt_port', None), 'hunts': hunts,
+                'scout': dict(getattr(pool, 'scout', {}) or {}) if SCOUT_ON else None, 'exits': marked,
                 'started': getattr(ps, 'started', None),
                 'requests': getattr(ps, 'requests', 0),
                 'active': getattr(ps, 'active', 0),
@@ -1853,7 +1967,10 @@ class GuiHandler(BaseHTTPRequestHandler):
                 'open_runs': open_runs,
                 'progress': _live(self.server).snapshot(),
                 'proxies': [{'url': p['url'], 'status': p.get('status', 'new'),
-                             'latency_ms': p.get('latency_ms'), 'source': p.get('source', ''),
+                             'latency_ms': p.get('latency_ms'), 'source': p.get('source', ''), 'cc': p.get('cc'),
+                             'res': p.get('res'),
+                             'faculties': sum(1 for hv in (p.get('hosts') or {}).values()
+                                              if isinstance(hv, dict) and hv.get('ok')),
                              'fails': p.get('fails', 0), 'last_checked': p.get('last_checked')}
                             for p in proxies[:200]],
                 'runs': runs.runs[::-1][:10]}
@@ -1871,6 +1988,22 @@ class GuiHandler(BaseHTTPRequestHandler):
             if not authed:
                 return self._send('{"error":"unauthorized"}', code=401)
             return self._send(json.dumps(_live(self.server).snapshot(), ensure_ascii=False))
+        if self.path == '/api/hunt':
+            if not authed:
+                return self._send('{"error":"unauthorized"}', code=401)
+            if not HUNT_ON:
+                return self._send('{"error":"hunt-disabled"}', code=409)
+            return self._send(json.dumps({'port': getattr(self.server, 'hunt_port', None),
+                                          'hosts': self.server.pool.hunt_status()}))
+        if self.path == '/api/exits' or self.path.startswith('/api/exits?'):
+            if not authed:
+                return self._send('{"error":"unauthorized"}', code=401)
+            pool = self.server.pool
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            wanted = [canonical_host(h) for h in query.get('host', [])] or list(pool.round2)
+            if not all(h in pool.round2 for h in wanted):
+                return self._send('{"error":"unknown host"}', code=400)
+            return self._send(json.dumps({h: pool.exits(h) for h in wanted}))
         if self.path in ('/', '/index.html'):
             if not authed:
                 return self._login_page()
@@ -1886,7 +2019,7 @@ class GuiHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == '/login':
             return self._login()  # the body is the credential, so it is read before any check
-        if self.path not in ('/api/run', '/api/progress', '/api/block', '/api/refresh'):
+        if self.path not in ('/api/run', '/api/progress', '/api/block', '/api/refresh', '/api/hunt', '/api/exits'):
             self.close_connection = True  # a body may be waiting unread
             return self._send('{"error":"not found"}', code=404)
         # Authenticate before reading a single body byte: an unauthenticated client
@@ -1927,11 +2060,39 @@ class GuiHandler(BaseHTTPRequestHandler):
             host = canonical_host(str(report.get('host') or '')) if isinstance(report, dict) else ''
             if not host:
                 return self._send('{"error":"bad json"}', code=400)
-            demoted = self.server.proxy_server.demote_recent(host)
+            # a block met through the hunt port blames the exit that carried it there
+            hunt_server = getattr(self.server, 'hunt_server', None)
+            demoted = hunt_server.demote_recent(host) if hunt_server is not None else None
+            demoted = demoted or self.server.proxy_server.demote_recent(host)
             return self._send(json.dumps({'demoted': demoted}))
+        if self.path in ('/api/hunt', '/api/exits'):
+            if not HUNT_ON:
+                return self._send('{"error":"hunt-disabled"}', code=409)
+            try:
+                ask = json.loads(body.decode('utf-8'))
+            except ValueError:
+                return self._send('{"error":"bad json"}', code=400)
+            pool = self.server.pool
+            if not isinstance(ask, dict):
+                return self._send('{"error":"bad json"}', code=400)
+            if self.path == '/api/exits':
+                host = canonical_host(str(ask.get('host') or ''))
+                exits = ask.get('exits')
+                if host not in pool.round2 or not isinstance(exits, list):
+                    return self._send('{"error":"bad json"}', code=400)
+                return self._send(json.dumps({'host': host, 'verified': pool.adopt(host, exits)}))
+            hosts = ask.get('hosts')
+            if not isinstance(hosts, list) or not hosts or len(hosts) > len(pool.round2):
+                return self._send('{"error":"bad json"}', code=400)
+            hosts = [canonical_host(str(h)) for h in hosts]
+            if not all(h in pool.round2 for h in hosts):
+                return self._send('{"error":"unknown host"}', code=400)
+            state = pool.hunt_async(hosts, max_ms=env_int('EGRESS_HUNT_MAX_MS', HUNT_MAX_MS, 100))
+            return self._send(json.dumps({'port': getattr(self.server, 'hunt_port', None), 'hosts': state}),
+                              code=202)
         # /api/refresh
         pool = self.server.pool
-        if not getattr(pool, 'enabled', True):
+        if not getattr(pool, 'enabled', True) and not SCOUT_ON:
             # Every host goes direct: no maintainer runs, so a 202 would promise work nobody does.
             return self._send('{"error":"pool-disabled"}', code=409)
         lock = getattr(pool, '_refresh_lock', None)
@@ -2036,7 +2197,41 @@ def maintain(pool, interval=600):
             time.sleep(wait)
 
 
+def scout_config():
+    """The scout's sizing from the environment (a small box sets small numbers, docs/EGRESS.md)."""
+    return {'tcp_workers': env_int('EGRESS_SCOUT_TCP', 128), 'r1_workers': env_int('EGRESS_SCOUT_R1', 32),
+            'keep': env_int('EGRESS_SCOUT_KEEP', SCOUT_KEEP), 'batch': env_int('EGRESS_SCOUT_BATCH', 1500, 10),
+            'max_ms': env_int('EGRESS_HUNT_MAX_MS', HUNT_MAX_MS, 100)}
+
+
+def scout(pool, config, pause=SCOUT_PAUSE_S):
+    """Always looking (pool.scout_once), a cycle at a time; a manual refresh (heal_event) wakes it early."""
+    while True:
+        try:
+            moved = pool.retarget(faculty_targets())  # a new semester moves some probe pages
+            if moved:
+                print(f"scout: new probe pages for {', '.join(sorted(moved))}", flush=True)
+            st = pool.scout_once(**config)
+            print(f"scout: cycle {st['cycle']} in {st['took_s']} s: {st['screened']} screened, "
+                  f"{st['alive_new']} alive, {st['tests']} faculty tests ({st['passed']} passed), "
+                  f"{st['kept']}/{st['reverified']} kept; exits {st['exits']}; {st['unseen']} unseen", flush=True)
+        except Exception as err:
+            print(f'scout failed: {err}', flush=True)
+        try:
+            pool.heal_event.wait(timeout=pool.scout_wait(pause))
+            pool.heal_event.clear()
+            pool.force_refresh = False
+        except Exception:
+            time.sleep(pause)
+
+
 def main():
+    nice = env_int('EGRESS_NICE', 0, 0)
+    if nice:
+        try:
+            os.nice(min(nice, 19))  # a small shared box: the crawl beside it keeps the CPU
+        except OSError:
+            pass
     data = Path(env('EGRESS_DATA', '/data'))
     targets = faculty_targets()
     # The GUI still lists every faculty host, but only hosts that actually ride the pool
@@ -2048,22 +2243,37 @@ def main():
             print(f'WARNING: {h} is on EGRESS_DIRECT_FACULTY and EGRESS_FAIL_CLOSED; '
                   f'fail-closed wins: it stays on the pool and never goes direct', flush=True)
     pool = ProxyPool(data / 'pool.json', targets, active_hosts=active,
-                     max_probe=env_int('EGRESS_MAX_PROBE', 240))
+                     max_probe=env_int('EGRESS_MAX_PROBE', 240), hunt=HUNT_ON,
+                     faculty_probes=env_int('EGRESS_FACULTY_PROBES', FACULTY_PROBES),
+                     # the operator's own Tor client with Polish exits (docs/EGRESS.md "Tor"): pinned in the pool
+                     pinned=[] if POOL_OFF else env('EGRESS_TOR', '').replace(',', ' ').split())
     runs = RunLog(data / 'runs.json')
     proxy_port = env_int('EGRESS_PROXY_PORT', 8888)
     gui_port = env_int('EGRESS_GUI_PORT', 8080)
-    proxy_server = ProxyServer(('0.0.0.0', proxy_port), pool)
-    gui = GuiServer(('0.0.0.0', gui_port), GuiHandler)
+    hunt_port = env_int('EGRESS_HUNT_PORT', 8889)
+    bind = env('EGRESS_BIND', '0.0.0.0').strip() or '0.0.0.0'
+    proxy_server = ProxyServer((bind, proxy_port), pool)
+    gui = GuiServer((bind, gui_port), GuiHandler)
+    hunt_server = ProxyServer((bind, hunt_port), pool, pool_only=True) if HUNT_ON else None
+    gui.hunt_server, gui.hunt_port = hunt_server, hunt_port if HUNT_ON else None
     if not api_token():
         print(f'WARNING: EGRESS_API_TOKEN is empty: the GUI API on :{gui_port} is open to anyone '
               f'who reaches it; fine only while its host port is bound to localhost', flush=True)
     gui.pool, gui.runs, gui.proxy_server, gui.proxy_port = pool, runs, proxy_server, proxy_port
     gui.live = LiveRun()
-    if pool.enabled:
+    if SCOUT_ON:
+        threading.Thread(target=scout, args=(pool, scout_config(), env_int('EGRESS_SCOUT_PAUSE', SCOUT_PAUSE_S)),
+                         daemon=True).start()
+    elif pool.enabled:
         threading.Thread(target=maintain, args=(pool,), daemon=True).start()
     threading.Thread(target=gui.serve_forever, daemon=True).start()
-    print(f'egress proxy on :{proxy_port}, GUI on :{gui_port} (pool={len(pool.entries)} known, '
-          f'{len(active)} pooled host(s))', flush=True)
+    if hunt_server is not None:
+        threading.Thread(target=hunt_server.serve_forever, daemon=True).start()
+    print(f'egress proxy on :{proxy_port}, GUI on :{gui_port}'
+          + (f', hunt port :{hunt_port}' if hunt_server is not None else '')
+          + (', scout on' if SCOUT_ON else '')
+          + (f', {len(pool.pinned)} Tor port(s)' if pool.pinned else '')
+          + f' (pool={len(pool.entries)} known, {len(active)} pooled host(s))', flush=True)
     try:
         proxy_server.serve_forever()
     except KeyboardInterrupt:

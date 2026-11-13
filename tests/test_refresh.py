@@ -1974,7 +1974,7 @@ class MainTest(unittest.TestCase):
         self.sessions = []
         orig_new_session = refresh.new_session
 
-        def fresh():
+        def fresh(proxy=None):
             session = FakeSession({})
             session.headers = {}
             self.sessions.append(session)
@@ -2055,7 +2055,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual([name for name, _ in self.wait_calls], ['wat-edge', 'wim', 'ioe'])
         self.assertEqual([round(budget, 6) for _, budget in self.wait_calls], [1800.0, 1800.0, 1800.0])
 
-    def test_the_faculties_left_blocked_are_exported_for_the_handoff(self):
+    def test_the_faculties_left_blocked_are_exported_for_the_report(self):
         StubDriver.fails = {'wim': {'main': 99}}
         session = FakeSession({})
         session.headers = {}
@@ -2380,7 +2380,7 @@ class LiveProgressTest(unittest.TestCase):
         refresh.drivers.load = lambda name, faculty, cfg, today: StubDriver(faculty, cfg, today)
         self.addCleanup(setattr, refresh.drivers, 'load', orig_load)
         orig_new_session = refresh.new_session
-        refresh.new_session = lambda: self._session()
+        refresh.new_session = lambda proxy=None: self._session()
         self.addCleanup(setattr, refresh, 'new_session', orig_new_session)
         orig_status = os.environ.get('PLANWAT_EGRESS_STATUS')
         os.environ['PLANWAT_EGRESS_STATUS'] = ''
@@ -2629,7 +2629,7 @@ class FleetPlan(unittest.TestCase):
         shares = {s['runner']: s['faculties'].split(',') for s in result['shards']}
         self.assertIn('wig', shares['oracle'])
         self.assertEqual(sorted(sum(shares.values(), [])), sorted(wanted))
-        # down, or the runner that left it behind (handoff): the lane is balanced as any other
+        # down, or a runner to avoid: the lane is balanced as any other
         result = fleet.plan(keen, wanted, self.STATE, {'planwat-plebania'})
         self.assertIn('wig', result['shards'][0]['faculties'].split(','))
         result = fleet.plan(keen, ['wig'], self.STATE, {'planwat-plebania', 'planwat-oracle'}, {'wig': {'oracle'}})
@@ -2721,10 +2721,127 @@ class FleetPlan(unittest.TestCase):
             self.assertEqual(code, 0)
             values = dict(line.split('=', 1) for line in out.read_text().splitlines())
             self.assertEqual(json.loads(values['matrix']),
-                             [{'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wcy,wim', 'wave': 1,
-                               'wait': fleet.BLOCK_WAIT, 'census': ''}])  # nobody else up to take over: wait walls out
+                             [{'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wcy,wim', 'census': '',
+                               'expected': 'oracle', 'fallback': 'wcy,wim', 'pool': '', 'egress': 'remote'}])
             self.assertEqual(values['shards'], '1')
             self.assertEqual(fleet.main(['plan', '--state', str(tmp / 'state.json'), '--faculty', 'nope']), 2)
+
+
+class FleetCatchup(unittest.TestCase):
+    """fleet.py owed and plan --catchup: a runner back online catches up on what the passes it missed left for it."""
+    WANTED = ['wlo', 'wel', 'ioe', 'wcy', 'wml', 'wtc', 'wig', 'wim']
+
+    @staticmethod
+    def fac(name, blocked=False, fresh=True):
+        return {'id': name, 'runner': 'oracle', 'fresh': fresh, 'blocked': blocked}
+
+    def without_plebania(self, **over):
+        # the shape of pass #136: plebania off, oracle walled on WLO, WML and WTC, the rest done
+        run = {'offline': ['plebania'], 'unassigned': [],
+               'runners': [{'name': 'oracle', 'status': 'blocked', 'faculties': self.WANTED[:-1],
+                            'blocked_on': ['wlo', 'wml', 'wtc']},
+                           {'name': 'northflank', 'status': 'done', 'faculties': ['wim']}],
+               'faculties': [self.fac(f, blocked=f in ('wlo', 'wml', 'wtc')) for f in self.WANTED]}
+        run.update(over)
+        return run
+
+    def with_plebania(self):
+        return {'offline': [], 'unassigned': [],
+                'runners': [{'name': n, 'status': 'done'} for n in ('plebania', 'oracle', 'northflank')],
+                'faculties': [self.fac(f) for f in self.WANTED]}
+
+    def owed(self, runner, runs, wanted=None):
+        return fleet.owed(fleet.load_fleet(), runner, runs, wanted or self.WANTED)
+
+    def test_plebania_owes_what_the_walls_kept_from_the_others(self):
+        self.assertEqual(self.owed('plebania', [self.without_plebania(), self.without_plebania(),
+                                                self.with_plebania()]), ['wlo', 'wml', 'wtc'])
+
+    def test_nothing_is_owed_once_it_took_part_again(self):
+        self.assertEqual(self.owed('plebania', [self.with_plebania(), self.without_plebania()]), [])
+        self.assertEqual(self.owed('plebania', []), [])
+
+    def test_a_faculty_left_out_of_newer_passes_counts_by_the_pass_that_covered_it(self):
+        newer = self.without_plebania(faculties=[self.fac('wim')])
+        self.assertEqual(self.owed('plebania', [newer, self.without_plebania()]), ['wlo', 'wml', 'wtc'])
+        self.assertEqual(self.owed('plebania', [newer, self.with_plebania()]), [])
+
+    def test_unassigned_unfinished_or_never_started_counts_as_undone(self):
+        run = self.without_plebania(unassigned=['wml'], faculties=[self.fac('wel', fresh=False), self.fac('wlo')])
+        self.assertEqual(self.owed('plebania', [run], ['wlo', 'wel', 'wml']), ['wel', 'wml'])
+        # a faculty no pass on record covered is owed by whoever missed the newest one
+        self.assertEqual(self.owed('plebania', [run], ['wcy']), ['wcy'])
+        # plebania was planned, but its share never started (it went off right after the plan)
+        run = self.with_plebania()
+        run['runners'][0]['status'] = 'missing'
+        run['faculties'][0]['blocked'] = True
+        self.assertEqual(self.owed('plebania', [run]), ['wlo'])
+
+    def test_a_runner_owes_only_what_it_may_take(self):
+        run = self.without_plebania(offline=['northflank'],
+                                    runners=[{'name': 'oracle', 'status': 'blocked'}, {'name': 'plebania', 'status': 'done'}],
+                                    faculties=[self.fac(f, blocked=f in ('wim', 'wml')) for f in self.WANTED])
+        self.assertEqual(self.owed('northflank', [run]), ['wim'])
+
+    def test_an_unknown_runner_is_an_error(self):
+        with self.assertRaises(ValueError):
+            self.owed('nobody', [])
+
+    def plan(self, runs, online, catchup='plebania'):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'runs.json').write_text(json.dumps({'version': 1, 'runs': runs}))
+            (tmp / 'runners.json').write_text(json.dumps(
+                [{'name': n, 'status': 'online', 'labels': ['planwat', f'planwat-{n}']} for n in online or []]))
+            out = tmp / 'out'
+            argv = ['plan', '--state', str(tmp / 'none.json'), '--runs', str(tmp / 'runs.json'),
+                    '--catchup', catchup]
+            if online is not None:
+                argv += ['--runners', str(tmp / 'runners.json')]
+            with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out), 'GITHUB_STEP_SUMMARY': ''}):
+                code = fleet.main(argv)
+            values = dict(line.split('=', 1) for line in out.read_text().splitlines()) if out.exists() else {}
+            return code, values
+
+    def test_catchup_plans_only_what_is_owed_and_keeps_walled_helpers_out(self):
+        history = [self.without_plebania()] * 3  # oracle walled on wlo, wml, wtc three times running
+        code, values = self.plan(history, ['plebania', 'oracle', 'northflank'])
+        self.assertEqual(code, 0)
+        # oracle stays out (its wall); northflank helps through pool exits, should its hunt find any
+        self.assertEqual([(m['runner'], m['faculties'], m['pool']) for m in json.loads(values['matrix'])],
+                         [('plebania', 'wlo,wml,wtc', ''), ('northflank', 'wlo,wml,wtc', 'wlo,wml,wtc')])
+        self.assertEqual(json.loads(values['asleep']), [])
+
+    def test_an_unwalled_helper_joins_the_catchup(self):
+        code, values = self.plan([self.without_plebania()], ['plebania', 'oracle'])
+        self.assertEqual([(m['runner'], m['faculties'], m['expected']) for m in json.loads(values['matrix'])],
+                         [('plebania', 'wlo,wml,wtc', 'plebania,oracle'), ('oracle', 'wlo,wml,wtc', 'plebania,oracle')])
+        self.assertEqual(json.loads(values['asleep']), [{'runner': 'northflank', 'label': 'planwat-northflank'}])
+
+    def test_a_catchup_for_a_runner_off_again_or_owing_nothing_crawls_nothing(self):
+        code, values = self.plan([self.without_plebania()], ['oracle'])
+        self.assertEqual((code, values['shards'], values['matrix']), (0, '0', '[]'))
+        self.assertIn({'runner': 'plebania', 'label': 'planwat-plebania'}, json.loads(values['asleep']))
+        code, values = self.plan([self.with_plebania()], ['plebania', 'oracle'])
+        self.assertEqual((code, values['shards']), (0, '0'))
+        self.assertEqual(self.plan([], ['oracle'], catchup='nobody')[0], 2)
+
+    def test_nothing_is_asleep_when_github_was_not_asked(self):
+        code, values = self.plan([self.with_plebania()], None, catchup='')
+        self.assertEqual(json.loads(values['asleep']), [])
+
+    def test_owed_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'runs.json').write_text(json.dumps({'version': 1, 'runs': [self.without_plebania()]}))
+            out = tmp / 'out'
+            with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out)}):
+                self.assertEqual(fleet.main(['owed', '--runner', 'plebania', '--runs', str(tmp / 'runs.json')]), 0)
+                self.assertEqual(out.read_text(), 'owed=wlo,wml,wtc\n')
+                out.unlink()
+                self.assertEqual(fleet.main(['owed', '--runner', 'oracle', '--runs', str(tmp / 'runs.json')]), 0)
+                self.assertEqual(out.read_text(), 'owed=\n')
+                self.assertEqual(fleet.main(['owed', '--runner', 'nobody', '--runs', str(tmp / 'runs.json')]), 2)
 
 
 class FleetMerge(unittest.TestCase):
@@ -2801,7 +2918,7 @@ class FleetMerge(unittest.TestCase):
 
 
 class FleetWalls(unittest.TestCase):
-    """The plan and the handoff do not count on a runner a faculty's wall kept out lately."""
+    """The fallback split does not count on a runner a faculty's wall kept out lately."""
 
     def entry(self, name, wave, faculties, status, blocked=()):
         return {'name': name, 'wave': wave, 'faculties': faculties, 'status': status, 'blocked_on': list(blocked)}
@@ -2823,39 +2940,37 @@ class FleetWalls(unittest.TestCase):
         self.assertEqual(fleet.walled_runners(self.history()[:2]), {})  # one blocked pass is no wall yet
         self.assertEqual(fleet.walled_runners(None), {})
 
-    def test_the_plan_keeps_the_full_wait_where_only_a_walled_runner_could_take_over(self):
+    def test_the_fallback_split_keeps_a_lane_off_a_walled_runner(self):
         fl = [{'name': 'plebania', 'label': 'p', 'speed': 4.0, 'always_on': False, 'faculties': None, 'prefers': []},
               {'name': 'oracle', 'label': 'o', 'speed': 1.0, 'always_on': True, 'faculties': None, 'prefers': []}]
         state = {'faculties': {'wlo': {'last_count': 100}, 'wel': {'last_count': 100}}}
-        plain = fleet.plan(fl, ['wlo', 'wel'], state, {'p', 'o'})
-        self.assertEqual([s['wait'] for s in plain['shards']], [fleet.HANDOFF_WAIT])
         walled = fleet.plan(fl, ['wlo', 'wel'], state, {'p', 'o'}, walled={'wlo': {'oracle'}})
-        self.assertEqual([(s['runner'], s['wait']) for s in walled['shards']], [('plebania', fleet.BLOCK_WAIT)])
+        self.assertEqual([s['runner'] for s in walled['shards']], ['plebania'])
         # a lane only the walled runner may take still goes to it
         alone = fleet.plan(fl, ['wlo', 'wel'], state, {'o'}, walled={'wlo': {'oracle'}})
         self.assertEqual([s['runner'] for s in alone['shards']], ['oracle'])
 
-    def test_the_handoff_gives_no_faculty_to_a_runner_its_wall_kept_out(self):
-        fl = [{'name': 'plebania', 'label': 'p', 'speed': 4.0, 'always_on': False, 'faculties': None, 'prefers': []},
-              {'name': 'oracle', 'label': 'o', 'speed': 1.0, 'always_on': True, 'faculties': None, 'prefers': []}]
-        shards = [{'runner': 'plebania', 'faculties': 'wml', 'wave': 1, 'wait': fleet.BLOCK_WAIT}]
-        outcomes = [{'runner': 'plebania', 'wave': '1', 'blocked': 'true', 'blocked_faculties': 'wml',
-                     'incomplete_faculties': 'wml'}]
-        given = fleet.handoff(fl, shards, outcomes, {}, {'p', 'o'})
-        self.assertEqual([s['runner'] for s in given['shards']], ['oracle'])
-        kept = fleet.handoff(fl, shards, outcomes, {}, {'p', 'o'}, walled={'wml': {'oracle'}})
-        self.assertEqual((kept['shards'], kept['unassigned']), ([], ['wml']))
+    def test_a_wall_a_runner_could_not_list_through_counts_too(self):
+        cant = [{'runners': [{'name': 'oracle', 'faculties': ['ioe'], 'status': 'blocked', 'cant': {'wlo': 'wall'}}]}
+                for _ in range(3)]
+        self.assertEqual(fleet.walled_runners(cant), {'wlo': {'oracle'}})
+        errors = [{'runners': [{'name': 'oracle', 'faculties': [], 'status': 'done', 'cant': {'wim': 'error'}}]}] * 3
+        self.assertEqual(fleet.walled_runners(errors), {})
 
 
 class FleetCombine(unittest.TestCase):
-    """tools/refresh/fleet.py combine: one refresh-outcome.json for pages.yml out of every share's."""
+    """tools/refresh/fleet.py combine: one refresh-outcome.json for pages.yml out of the stack and the runners'."""
 
-    PLAN = [{'runner': 'plebania', 'faculties': 'wlo,wel,wcy', 'wave': 1}, {'runner': 'oracle', 'faculties': 'wim,wtc', 'wave': 1}]
+    PLAN = [{'runner': 'plebania', 'faculties': 'wlo,wel,wcy,wim,wtc'}, {'runner': 'oracle', 'faculties': 'wim,wtc'}]
 
-    def shard(self, runner, wave=1, **kw):
-        return {'runner': runner, 'wave': str(wave), 'skipped': 'false', 'pushed': 'false', 'changed': '0',
+    def shard(self, runner, **kw):
+        return {'runner': runner, 'wave': '1', 'skipped': 'false', 'pushed': 'false', 'changed': '0',
                 'blocked': 'false', 'incomplete': 'false', 'degraded': 'false', 'failed': 'false',
                 'blocked_faculties': '', 'incomplete_faculties': '', **kw}
+
+    def summary(self, **status):
+        facs = ['wlo', 'wel', 'wcy', 'wim', 'wtc']
+        return {'faculties': {f: {'status': status.get(f, 'done')} for f in facs}}
 
     def test_any_push_rebuilds(self):
         out = fleet.combine(self.PLAN, [self.shard('plebania', pushed='true', changed='3'), self.shard('oracle', changed='1')], 0)
@@ -2865,39 +2980,34 @@ class FleetCombine(unittest.TestCase):
         out = fleet.combine(self.PLAN, [self.shard('plebania'), self.shard('oracle')], 0)
         self.assertEqual(out['pushed'], 'false')
 
-    def test_a_missing_or_skipped_share_rebuilds_and_is_incomplete(self):
-        for outcomes in ([self.shard('oracle')], [self.shard('oracle'), self.shard('plebania', skipped='true')]):
-            out = fleet.combine(self.PLAN, outcomes, 0)
-            self.assertEqual((out['pushed'], out['incomplete'], out['missing']), ('', 'true', ['plebania']))
-
-    def test_one_blocked_share_blocks_the_pass(self):
-        out = fleet.combine(self.PLAN, [self.shard('plebania'), self.shard('oracle', blocked='true', incomplete='true',
-                                                                            blocked_faculties='wtc', incomplete_faculties='wtc')], 0)
+    def test_the_store_decides_each_faculty(self):
+        both = [self.shard('plebania'), self.shard('oracle')]
+        out = fleet.combine(self.PLAN, both, 0, self.summary(wtc='blocked'))
         self.assertEqual((out['blocked'], out['incomplete'], out['blocked_faculties']), ('true', 'true', ['wtc']))
+        out = fleet.combine(self.PLAN, both, 0, self.summary(wim='unfinished'))
+        self.assertEqual((out['blocked'], out['incomplete']), ('false', 'true'))
+        out = fleet.combine(self.PLAN, both, 0, self.summary(wim='failed'))
+        self.assertEqual((out['incomplete'], out['degraded']), ('true', 'true'))
+        self.assertEqual(fleet.combine(self.PLAN, both, 0, self.summary())['incomplete'], 'false')
 
-    def test_a_faculty_taken_over_cleanly_is_neither_blocked_nor_incomplete(self):
-        took = [{'runner': 'plebania', 'faculties': 'wtc', 'wave': 2, 'from': 'wtc:oracle'}]
-        blocked = self.shard('oracle', blocked='true', incomplete='true', blocked_faculties='wtc', incomplete_faculties='wtc')
-        out = fleet.combine(self.PLAN + took, [self.shard('plebania'), blocked, self.shard('plebania', 2, pushed='true')], 0)
-        self.assertEqual((out['blocked'], out['incomplete'], out['pushed']), ('false', 'false', 'true'))
-        again = self.shard('plebania', 2, blocked='true', blocked_faculties='wtc', incomplete_faculties='wtc')
-        out = fleet.combine(self.PLAN + took, [self.shard('plebania'), blocked, again], 0)
-        self.assertEqual(out['blocked_faculties'], ['wtc'])  # blocked on both: still blocked
+    def test_a_silent_runner_matters_only_through_what_it_left(self):
+        out = fleet.combine(self.PLAN, [self.shard('plebania')], 0, self.summary())
+        self.assertEqual((out['pushed'], out['incomplete'], out['missing']), ('', 'false', ['oracle']))
+        out = fleet.combine(self.PLAN, [self.shard('plebania')], 0)  # no store: nobody can say it was done
+        self.assertEqual(out['incomplete'], 'true')
 
-    def test_a_lost_share_taken_over_completes_the_pass_but_still_rebuilds(self):
-        took = [{'runner': 'plebania', 'faculties': 'wim,wtc', 'wave': 2}]
-        out = fleet.combine(self.PLAN + took, [self.shard('plebania'), self.shard('plebania', 2)], 0)
-        self.assertEqual((out['incomplete'], out['pushed'], out['missing']), ('false', '', ['oracle']))
-
-    def test_a_takeover_that_never_reported_leaves_the_pass_incomplete(self):
-        took = [{'runner': 'plebania', 'faculties': 'wtc', 'wave': 2}]
-        blocked = self.shard('oracle', blocked='true', blocked_faculties='wtc', incomplete_faculties='wtc')
-        out = fleet.combine(self.PLAN + took, [self.shard('plebania'), blocked], 0)
-        self.assertEqual((out['incomplete'], out['blocked']), ('true', 'false'))
+    def test_without_the_store_a_faculty_is_done_when_any_runner_saw_it_done(self):
+        walled = self.shard('oracle', blocked='true', blocked_faculties='wtc', incomplete_faculties='wtc',
+                            done_faculties='wim')
+        done = self.shard('plebania', done_faculties='wlo,wel,wcy,wim,wtc')
+        self.assertEqual(fleet.combine(self.PLAN, [done, walled], 0)['blocked'], 'false')
+        unsure = self.shard('plebania', done_faculties='wlo,wel,wcy,wim', incomplete_faculties='wtc')
+        out = fleet.combine(self.PLAN, [unsure, walled], 0)
+        self.assertEqual((out['blocked'], out['blocked_faculties']), ('true', ['wtc']))
 
     def test_an_older_report_without_faculty_lists_counts_as_its_flags(self):
         old = {'runner': 'oracle', 'pushed': 'true', 'changed': '0', 'blocked': 'true', 'incomplete': 'true'}
-        out = fleet.combine(self.PLAN, [self.shard('plebania'), old], 0)
+        out = fleet.combine(self.PLAN, [self.shard('plebania', incomplete_faculties='wim,wtc'), old], 0)
         self.assertEqual(sorted(out['blocked_faculties']), ['wim', 'wtc'])
 
     def test_a_pass_with_no_runner_is_incomplete(self):
@@ -2911,140 +3021,17 @@ class FleetCombine(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             (tmp / 'shards').mkdir()
-            (tmp / 'shards' / 'shard-1-oracle.json').write_text(json.dumps(self.shard('oracle', pushed='true')))
+            (tmp / 'shards' / 'shard-oracle.json').write_text(json.dumps(self.shard('oracle', pushed='true')))
+            (tmp / 'summary.json').write_text(json.dumps({'faculties': {'wim': {'status': 'blocked'}}}))
             out = tmp / 'gh'
             with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out), 'GITHUB_STEP_SUMMARY': ''}):
-                fleet.main(['combine', '--matrix', '[{"runner": "oracle", "faculties": "wim"}]', '--handoff', '[]',
+                fleet.main(['combine', '--matrix', '[{"runner": "oracle", "faculties": "wim"}]',
                             '--planned', str(int(dt.datetime.now(dt.timezone.utc).timestamp())),
-                            '--dir', str(tmp / 'shards'), '--out', str(tmp / 'refresh-outcome.json')])
+                            '--dir', str(tmp / 'shards'), '--out', str(tmp / 'refresh-outcome.json'),
+                            '--summary', str(tmp / 'summary.json')])
             self.assertEqual(json.loads((tmp / 'refresh-outcome.json').read_text()),
-                             {'pushed': 'true', 'changed': '0', 'blocked': 'false'})
+                             {'pushed': 'true', 'changed': '0', 'blocked': 'true'})
             self.assertIn('current=true', out.read_text())
-
-
-class FleetHandoff(unittest.TestCase):
-    """tools/refresh/fleet.py handoff: what one runner left blocked or unfinished goes to another one that is up."""
-
-    FLEET = FleetPlan.FLEET
-    BOTH = {'planwat', 'planwat-plebania', 'planwat-oracle'}
-    PLAN = [{'runner': 'plebania', 'label': 'planwat-plebania', 'faculties': 'wlo,wel,wcy,wml', 'wave': 1},
-            {'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wim,ioe,wtc', 'wave': 1}]
-
-    def shard(self, runner, **kw):
-        return FleetCombine.shard(self, runner, **kw)
-
-    def takeover(self, outcomes, online=None, fleet_=None):
-        result = fleet.handoff(fleet_ or self.FLEET, self.PLAN, outcomes, FleetPlan.STATE,
-                               self.BOTH if online is None else online)
-        return {s['runner']: (s['faculties'], s['from']) for s in result['shards']}, result
-
-    def test_a_blocked_faculty_goes_to_the_other_runner(self):
-        took, result = self.takeover([self.shard('plebania'),
-                                      self.shard('oracle', blocked='true', blocked_faculties='wtc', incomplete_faculties='wtc')])
-        self.assertEqual(took, {'plebania': ('wtc', 'wtc:oracle')})
-        self.assertEqual(result['shards'][0]['wait'], fleet.BLOCK_WAIT)  # nobody after it: wait the wall out
-        self.assertEqual(result['left'], {'wtc': {'runner': 'oracle', 'why': 'blocked'}})
-
-    def test_a_lane_moves_whole_and_never_back_to_the_runner_that_left_it(self):
-        took, _ = self.takeover([self.shard('plebania', blocked='true', blocked_faculties='wlo,wel',
-                                            incomplete_faculties='wlo,wel'), self.shard('oracle')])
-        self.assertEqual(took, {'oracle': ('wlo,wel', 'wlo:plebania,wel:plebania')})
-
-    def test_nobody_else_online_leaves_it_for_the_next_pass(self):
-        took, result = self.takeover([self.shard('plebania'), self.shard('oracle', blocked='true', blocked_faculties='wtc',
-                                                                         incomplete_faculties='wtc')],
-                                     online={'planwat', 'planwat-oracle'})
-        self.assertEqual((took, result['unassigned']), ({}, ['wtc']))
-
-    def test_unknown_runners_leave_it_to_an_always_on_one(self):
-        took, _ = self.takeover([self.shard('plebania', blocked='true', blocked_faculties='wcy', incomplete_faculties='wcy'),
-                                 self.shard('oracle')], online=set())
-        self.assertEqual(took, {})  # nothing online at all
-        result = fleet.handoff(self.FLEET, self.PLAN, [self.shard('plebania', blocked='true', blocked_faculties='wcy',
-                                                                  incomplete_faculties='wcy'), self.shard('oracle')],
-                               FleetPlan.STATE, None)
-        self.assertEqual([(s['runner'], s['faculties']) for s in result['shards']], [('oracle', 'wcy')])
-
-    def test_a_share_that_never_ran_is_taken_over_whole(self):
-        for outcomes in ([self.shard('plebania')], [self.shard('plebania'), self.shard('oracle', skipped='true')],
-                         [self.shard('plebania'), self.shard('oracle', failed='true', incomplete='true')]):
-            took, _ = self.takeover(outcomes)
-            self.assertEqual(took, {'plebania': ('wim,ioe,wtc', 'wim:oracle,ioe:oracle,wtc:oracle')}, outcomes)
-
-    def test_an_unfinished_faculty_is_taken_over_too(self):
-        took, result = self.takeover([self.shard('plebania'), self.shard('oracle', incomplete='true',
-                                                                         incomplete_faculties='ioe')])
-        self.assertEqual(took, {'plebania': ('ioe', 'ioe:oracle')})
-        self.assertEqual(result['left']['ioe']['why'], 'unfinished')
-
-    def test_a_clean_pass_hands_nothing_off(self):
-        took, result = self.takeover([self.shard('plebania'), self.shard('oracle')])
-        self.assertEqual((took, result['unassigned']), ({}, []))
-
-    def test_an_allowlist_is_respected(self):
-        only = [dict(self.FLEET[0], faculties=['wlo', 'wel', 'wcy', 'wml']), self.FLEET[1]]
-        took, result = self.takeover([self.shard('plebania'), self.shard('oracle', blocked='true', blocked_faculties='wtc',
-                                                                         incomplete_faculties='wtc')], fleet_=only)
-        self.assertEqual((took, result['unassigned']), ({}, ['wtc']))
-
-    def short(self, wait=fleet.HANDOFF_WAIT):
-        return [dict(m, wait=wait) for m in self.PLAN]
-
-    def test_the_other_runner_gone_gives_a_short_wait_back_for_the_rest_of_it(self):
-        blocked = [self.shard('plebania'), self.shard('oracle', blocked='true', blocked_faculties='wtc',
-                                                      incomplete_faculties='wtc')]
-        result = fleet.handoff(self.FLEET, self.short(), blocked, FleetPlan.STATE, {'planwat', 'planwat-oracle'})
-        self.assertEqual([(s['runner'], s['faculties'], s['from'], s['wait'], s['wave']) for s in result['shards']],
-                         [('oracle', 'wtc', 'wtc:oracle', fleet.BLOCK_WAIT - fleet.HANDOFF_WAIT, 2)])
-        self.assertEqual(result['unassigned'], [])
-        # it already had the full wait, or the runner itself is gone too: the next pass, as before
-        for plan_, online in ((self.short(fleet.BLOCK_WAIT), {'planwat', 'planwat-oracle'}), (self.short(), set())):
-            result = fleet.handoff(self.FLEET, plan_, blocked, FleetPlan.STATE, online)
-            self.assertEqual((result['shards'], result['unassigned']), ([], ['wtc']))
-
-    def test_only_a_wall_is_given_back_never_an_unfinished_share(self):
-        result = fleet.handoff(self.FLEET, self.short(), [self.shard('plebania'), self.shard('oracle', incomplete='true',
-                                                                                               incomplete_faculties='ioe')],
-                               FleetPlan.STATE, {'planwat', 'planwat-oracle'})
-        self.assertEqual((result['shards'], result['unassigned']), ([], ['ioe']))
-
-    def test_a_given_back_lane_joins_the_runners_takeover(self):
-        # plebania went off mid-pass (no outcome): its share goes to oracle, which also gets its own wall back
-        result = fleet.handoff(self.FLEET, self.short(), [self.shard('oracle', blocked='true', blocked_faculties='wtc',
-                                                                     incomplete_faculties='wtc')],
-                               FleetPlan.STATE, {'planwat', 'planwat-oracle'})
-        [shard] = result['shards']
-        self.assertEqual(shard['runner'], 'oracle')
-        self.assertEqual(set(shard['faculties'].split(',')), {'wlo', 'wel', 'wcy', 'wml', 'wtc'})
-        self.assertIn('wtc:oracle', shard['from'].split(','))
-        self.assertEqual(shard['wait'], fleet.BLOCK_WAIT)
-        self.assertEqual(result['unassigned'], [])
-
-    def test_the_plan_waits_briefly_only_where_a_takeover_is_possible(self):
-        both = fleet.plan(self.FLEET, FleetPlan.WANTED, FleetPlan.STATE, self.BOTH)
-        self.assertEqual({s['wait'] for s in both['shards']}, {fleet.HANDOFF_WAIT})
-        alone = fleet.plan(self.FLEET, FleetPlan.WANTED, FleetPlan.STATE, {'planwat', 'planwat-oracle'})
-        self.assertEqual({s['wait'] for s in alone['shards']}, {fleet.BLOCK_WAIT})
-
-    def test_cli_writes_the_takeover_matrix(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            (tmp / 'shards').mkdir()
-            (tmp / 'shards' / 'shard-1-plebania.json').write_text(json.dumps(self.shard('plebania')))
-            (tmp / 'shards' / 'shard-1-oracle.json').write_text(json.dumps(
-                self.shard('oracle', blocked='true', blocked_faculties='wtc', incomplete_faculties='wtc')))
-            (tmp / 'runners.json').write_text(json.dumps(
-                [{'name': 'a', 'status': 'online', 'labels': ['planwat', 'planwat-plebania']},
-                 {'name': 'b', 'status': 'online', 'labels': ['planwat', 'planwat-oracle']}]))
-            out = tmp / 'gh'
-            with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out), 'GITHUB_STEP_SUMMARY': ''}):
-                self.assertEqual(fleet.main(['handoff', '--matrix', json.dumps(self.PLAN), '--dir', str(tmp / 'shards'),
-                                             '--state', str(tmp / 'none.json'), '--runners', str(tmp / 'runners.json')]), 0)
-            values = dict(line.split('=', 1) for line in out.read_text().splitlines())
-            self.assertEqual(json.loads(values['matrix']),
-                             [{'runner': 'plebania', 'label': 'planwat-plebania', 'faculties': 'wtc', 'wave': 2,
-                               'wait': fleet.BLOCK_WAIT, 'from': 'wtc:oracle'}])
-            self.assertEqual(values['shards'], '1')
 
 
 class RunHistory(unittest.TestCase):
@@ -3067,14 +3054,39 @@ class RunHistory(unittest.TestCase):
             'wel': {'run': run(blocked=True, cause='wall', checked=0)},
             'ioe': {'run': run(at='2026-10-25T09:00:00')}}}
 
-    def record(self, matrix=None, outcomes=None, plan_info=None, state=None, run_id=7, planned=None, handoff=()):
+    def record(self, matrix=None, outcomes=None, plan_info=None, state=None, run_id=7, planned=None, summary=None):
         return runs.build_run(run_id=run_id, number=512, attempt=1, event='schedule', url='https://x/7',
                               planned=planned or self.PLANNED, ended=self.PLANNED + dt.timedelta(minutes=41),
                               matrix=self.MATRIX if matrix is None else matrix,
                               outcomes=[self.shard('plebania', changed='2'), self.shard('oracle', 12)]
                               if outcomes is None else outcomes,
                               plan_info=plan_info or {'down': []}, state=self.state() if state is None else state,
-                              handoff=handoff)
+                              summary=summary)
+
+    def test_a_faculty_crawled_through_proxy_exits_says_so(self):
+        summary = {'faculties': {'wcy': {'status': 'done', 'leader': 'plebania', 'helpers': {'oracle': 8},
+                                         'checked': 100, 'changed': 2, 'cant': {}, 'via_pool': ['oracle']}}}
+        run = self.record(outcomes=[self.shard('plebania', changed='2'), self.shard('oracle', 12, pool='ioe',
+                                                                                     took='wcy:plebania')],
+                          summary=summary)
+        oracle = next(r for r in run['runners'] if r['name'] == 'oracle')
+        self.assertEqual(oracle['via_pool'], ['ioe'])
+        self.assertEqual(runs.build.runner_share(dict(oracle, helped={'wcy': 'plebania'}, via_pool=['ioe', 'wcy'])),
+                         'IOE przez proxy, WCY (pomoc dla plebania przez proxy)')
+        wcy = next(f for f in run['faculties'] if f['id'] == 'wcy')
+        self.assertEqual(wcy['via_pool'], ['oracle'])
+        self.assertIn('przez proxy (pula) na oracle', runs.build.faculty_notes(wcy))
+
+    def test_a_catchup_pass_says_whom_it_was_for(self):
+        run = runs.build_run(run_id=8, number=513, attempt=1, event='workflow_dispatch', url='https://x/8',
+                             planned=self.PLANNED, ended=self.PLANNED + dt.timedelta(minutes=20), matrix=self.MATRIX,
+                             outcomes=[self.shard('plebania'), self.shard('oracle')], plan_info={'down': []},
+                             state=self.state(), catchup='plebania')
+        self.assertEqual(run['catchup'], 'plebania')
+        self.assertNotIn('catchup', self.record())
+        self.assertIn('Przebieg nadrabiający za serwer plebania', runs.markdown([run]))
+        self.assertEqual(runs.build.run_event(run), 'nadrabiający za serwer plebania')
+        self.assertEqual(runs.build.run_event(self.record()), 'automatyczny')
 
     def test_a_pass_names_each_server_its_faculties_and_its_time(self):
         run = self.record(plan_info={'down': ['spare']})
@@ -3100,44 +3112,55 @@ class RunHistory(unittest.TestCase):
         self.assertEqual(result(outcomes=[self.shard('plebania', degraded='true'), self.shard('oracle')]), 'degraded')
         self.assertEqual(result(matrix=[], outcomes=[], plan_info={'down': ['plebania', 'oracle']}), 'idle')
 
-    def test_a_takeover_is_recorded_with_whose_faculty_it_took(self):
-        blocked = self.shard('oracle', 12, blocked='true', incomplete='true', blocked_faculties='ioe',
-                             incomplete_faculties='ioe')
-        took = dict(self.shard('plebania', 9, changed='1'), wave='2')
-        state = self.state()
-        state['faculties']['ioe']['run']['at'] = '2026-10-25T12:40:00'  # plebania's, after the takeover
-        run = self.record(outcomes=[self.shard('plebania'), blocked, took], state=state,
-                          handoff=[{'runner': 'plebania', 'faculties': 'ioe', 'from': 'ioe:oracle'}])
-        self.assertEqual([(r['name'], r['wave'], r['status']) for r in run['runners']],
-                         [('plebania', 1, 'done'), ('oracle', 1, 'blocked'), ('plebania', 2, 'done')])
-        self.assertEqual(run['runners'][1]['blocked_on'], ['ioe'])
-        self.assertEqual(run['runners'][2]['from'], {'ioe': 'oracle'})
-        ioe = {f['id']: f for f in run['faculties']}['ioe']
-        self.assertEqual((ioe['runner'], ioe['from']), ('plebania', {'runner': 'oracle', 'why': 'blocked'}))
-        self.assertEqual(run['result'], 'changed')  # taken over cleanly: the pass is not blocked
-        text = runs.markdown([run])
-        self.assertIn('**plebania** (WCY, WEL, IOE (od oracle)) · **oracle** (IOE)', text)
-        self.assertIn('| **oracle** | IOE | 0 | 12 min, zablokowany na IOE |', text)
-        self.assertIn('| **plebania** (przejęcie) | IOE (od oracle) | 1 | 9 min |', text)
-        self.assertIn('| IOE | plebania | 10 | 0 | przejęty po blokadzie na oracle |', text)
-        stale = self.record(outcomes=[self.shard('plebania'), blocked],
-                            handoff=[{'runner': 'plebania', 'faculties': 'ioe', 'from': 'ioe:oracle'}])
-        self.assertIn('przejęty po blokadzie na oracle, brak danych z tego przebiegu', runs.markdown([stale]))
-        self.assertEqual(stale['result'], 'incomplete')  # the takeover never reported
+    def test_the_stack_says_who_led_who_helped_and_who_could_not_list(self):
+        plebania = self.shard('plebania', changed='2', led='wcy,wel', took='ioe:oracle', gave='wel:oracle')
+        oracle = self.shard('oracle', 12, led='ioe', took='wel:plebania', cant='wtc:wall,wim:error',
+                            blocked='true', blocked_faculties='wtc')
+        summary = {'faculties': {
+            'wcy': {'status': 'done', 'leader': 'plebania', 'helpers': {}, 'checked': 100, 'changed': 2, 'cant': {}},
+            'wel': {'status': 'done', 'leader': 'plebania', 'helpers': {'oracle': 40}, 'checked': 90, 'changed': 1,
+                    'cant': {}},
+            'ioe': {'status': 'done', 'leader': 'oracle', 'helpers': {'plebania': 5}, 'checked': 15, 'changed': 0,
+                    'cant': {}}}}
+        run = self.record(outcomes=[plebania, oracle], summary=summary)
+        by = {r['name']: r for r in run['runners']}
+        self.assertEqual((by['plebania']['faculties'], by['plebania']['helped']), (['wcy', 'wel'], {'ioe': 'oracle'}))
+        self.assertEqual((by['oracle']['cant'], by['oracle']['blocked_on']), ({'wtc': 'wall', 'wim': 'error'}, ['wtc']))
+        facs = {f['id']: f for f in run['faculties']}
+        # the wall plebania's record shows was one runner's: the stack got WEL done, with oracle's help
+        self.assertEqual((facs['wel']['runner'], facs['wel']['helpers'], facs['wel']['checked']),
+                         ('plebania', ['oracle'], 90))
+        self.assertEqual((facs['wel']['blocked'], facs['wel']['cause']), (False, None))
+        self.assertTrue(facs['ioe']['fresh'])  # its leader's record is old, the stack says what this pass did
+        self.assertEqual((facs['ioe']['runner'], facs['ioe']['checked']), ('oracle', 15))
+        self.assertEqual(run['result'], 'changed')
+        import build
+        self.assertEqual(build.runner_share(by['oracle']), 'IOE, WEL (pomoc dla plebania)')
+        self.assertEqual(build.runner_state(by['oracle']), '12 min, zablokowany na WTC')
+        self.assertIn('z pomocą oracle', build.faculty_notes(facs['wel']))
 
-    def test_a_wall_given_back_to_its_own_server_reads_as_a_second_try(self):
-        blocked = self.shard('oracle', 12, blocked='true', incomplete='true', blocked_faculties='ioe',
-                             incomplete_faculties='ioe')
-        again = dict(self.shard('oracle', 20), wave='2')
+    def test_a_faculty_the_stack_left_blocked_says_so(self):
+        summary = {'faculties': {'wel': {'status': 'blocked', 'leader': None, 'helpers': {}, 'checked': 0,
+                                         'cant': {'plebania': 'wall'}}}}
         state = self.state()
-        state['faculties']['ioe']['run']['at'] = '2026-10-25T12:40:00'
-        run = self.record(outcomes=[self.shard('plebania'), blocked, again], state=state,
-                          handoff=[{'runner': 'oracle', 'faculties': 'ioe', 'from': 'ioe:oracle'}])
-        text = runs.markdown([run])
-        self.assertIn('**oracle** (IOE (ponownie))', text)
-        self.assertIn('| **oracle** (ponowna próba) | IOE (ponownie) | 0 | 20 min |', text)
-        self.assertIn('| IOE | oracle | 10 | 0 | druga próba po blokadzie |', text)
-        self.assertEqual(run['result'], 'ok')
+        del state['faculties']['wel']
+        run = self.record(state=state, summary=summary)
+        wel = {f['id']: f for f in run['faculties']}['wel']
+        self.assertEqual((wel['fresh'], wel['blocked'], wel['cause'], wel['cant']), (True, True, 'wall', {'plebania': 'wall'}))
+        self.assertEqual(run['result'], 'blocked')
+
+    def test_an_older_pass_with_a_takeover_still_renders(self):
+        old = {'id': 5, 'number': 500, 'result': 'ok', 'planned': '2026-10-25T10:00:00', 'ended': '2026-10-25T10:40:00',
+               'changed': 0, 'checked': 10, 'not_ready': 0, 'offline': [],
+               'runners': [{'name': 'oracle', 'faculties': ['ioe'], 'status': 'blocked', 'minutes': 12, 'changed': 0,
+                            'wave': 1, 'blocked_on': ['ioe']},
+                           {'name': 'plebania', 'faculties': ['ioe'], 'status': 'done', 'minutes': 9, 'changed': 0,
+                            'wave': 2, 'from': {'ioe': 'oracle'}}],
+               'faculties': [{'id': 'ioe', 'runner': 'plebania', 'from': {'runner': 'oracle', 'why': 'blocked'},
+                              'fresh': True, 'checked': 10, 'changed': 0}]}
+        text = runs.markdown([old])
+        self.assertIn('| **plebania** (przejęcie) | IOE (od oracle) | 0 | 9 min |', text)
+        self.assertIn('przejęty po blokadzie na oracle', text)
 
     def test_a_server_that_only_rejected_pages_is_not_called_unfinished(self):
         # refresh.py raises "incomplete" for a degraded faculty; with every faculty finished that is all it was
@@ -3240,558 +3263,15 @@ class RunHistory(unittest.TestCase):
 
 
 
-# --- work stealing during a wave (tools/refresh/board.py, steal.py) ----------------------------------------------
+# --- the work stack (tools/refresh/board.py, stack.py) ----------------------------------------------------------
 
 import random  # noqa: E402
 import subprocess  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
-from collections import Counter  # noqa: E402
 
 import board  # noqa: E402
-import steal  # noqa: E402
-
-
-def quick_board(test):
-    """Board timings in milliseconds for the length of a test."""
-    for name, value in (('POLL_REPLY', 0.005), ('POLL_BUSY', 0.01), ('POLL_IDLE', 0.05), ('HEARTBEAT', 0.05),
-                        ('STALE', 1.0)):
-        orig = getattr(steal, name)
-        setattr(steal, name, value)
-        test.addCleanup(setattr, steal, name, orig)
-
-
-class Sim:
-    """A runner of a wave, without the sites: its Pool and Coordinator on a shared MemoryBoard, lanes that "fetch"
-    a faculty's codes one by one (refresh_faculty's calls to the pool), and help_peers when its own work is done, or
-    alongside its lanes (`eager`, as refresh.main runs it: never on an own lane's group, `workers` crawls in all)."""
-
-    def __init__(self, name, store, lock, own, codes, fetched, speed=1.0, speeds=None, walls=(), probe_walls=(),
-                 delay=0.002, wall_wait=0.0, may=None, eager=False, workers=2, groups=None):
-        self.name, self.codes, self.fetched = name, codes, fetched
-        self.may, self.ended = may, None
-        self.walls, self.probe_walls = set(walls), set(probe_walls)
-        self.delay, self.wall_wait, self.own = delay, wall_wait, own
-        self.eager, self.workers, self.groups = eager, workers, groups or {}
-        self.stamps, self.lane_ended = [], {}  # (faculty, code, when) of each fetch here; faculty -> its lane's end
-        self.pool = steal.Pool(name, speed, speeds or {}, lambda peer, f: True)
-        for f in own:
-            self.pool.add(f, self.groups.get(f, f))
-        self.board = board.MemoryBoard(store, name, lock)
-        self.coord = steal.Coordinator(self.board, self.pool, log=lambda m: None)
-        self.log = []
-
-    def crawl_slot(self, key, fixed=None):
-        if not self.pool.start(key):
-            return 'given'
-        f = steal.faculty_of(key)
-        todo = list(fixed) if fixed is not None else list(self.codes[f])
-        self.pool.running(key, todo)
-        status = 'done'
-        try:
-            for c in todo:
-                if not self.pool.take(key, c):
-                    continue
-                if (f, c) in self.walls:
-                    status = 'blocked'
-                    break
-                self.fetched.append((self.name, c))
-                self.stamps.append((f, c, time.monotonic()))
-                time.sleep(random.uniform(0, self.delay))
-        finally:
-            self.pool.finish(key, status)
-        return status
-
-    def lane(self, f):
-        if self.crawl_slot(f) == 'blocked' and self.wall_wait:
-            # run_lane: sleep out the wall unless another runner took everything that waits, then resume
-            end = time.monotonic() + self.wall_wait
-            while time.monotonic() < end and self.pool.has_work([f]):
-                time.sleep(0.005)
-            if self.pool.has_work([f]):
-                self.walls = {w for w in self.walls if w[0] != f}
-                self.crawl_slot(f)
-
-    def run(self):
-        self.coord.start()
-        running = {self.groups.get(f, f) for f in self.own}
-
-        def lane(f):
-            try:
-                self.lane(f)
-            finally:
-                self.lane_ended[f] = time.monotonic()
-                with self.pool.cond:
-                    running.discard(self.groups.get(f, f))
-                    self.pool.cond.notify_all()
-
-        def own_groups():
-            with self.pool.cond:
-                return set(running)
-        lanes = [threading.Thread(target=lane, args=(f,)) for f in self.own]
-        for th in lanes:
-            th.start()
-        if not self.eager:
-            for th in lanes:
-                th.join()
-
-        def probe(faculty, term):
-            if faculty in self.probe_walls:
-                raise steal.Walled('wall')
-            return None
-
-        def crawl(key, items):
-            return self.crawl_slot(key, self.pool.slot(key)['fixed'])
-        alongside = ({'own_groups': own_groups, 'capacity': lambda: self.workers - len(own_groups())}
-                     if self.eager else {})
-        steal.help_peers(self.coord, self.pool, probe, crawl, time.monotonic() + 3600, workers=self.workers,
-                         log=self.log.append, may=self.may, group_of=lambda f: self.groups.get(f, f), **alongside)
-        for th in lanes:
-            th.join()
-        self.ended = time.monotonic()
-        self.coord.stop()
-
-
-def run_sims(*sims):
-    threads = [threading.Thread(target=s.run) for s in sims]
-    for th in threads:
-        th.start()
-    for th in threads:
-        th.join(60)
-        if th.is_alive():
-            raise AssertionError('a simulated runner hung')
-
-
-class StealProtocol(unittest.TestCase):
-    """Two runners of one wave over a shared board: no group crawled twice, none lost, nobody waiting on the dead."""
-
-    def setUp(self):
-        quick_board(self)
-        self.store, self.lock, self.fetched = {}, threading.Lock(), []
-
-    def codes(self, prefix, n):
-        return [f'{prefix}{i:03d}' for i in range(n)]
-
-    def test_randomized_interleavings_crawl_every_group_exactly_once(self):
-        for seed in range(12):
-            with self.subTest(seed=seed):
-                random.seed(seed)
-                self.store.clear()
-                self.fetched = []
-                codes = {'wml': self.codes('WML', random.randint(20, 80)), 'wcy': self.codes('WCY', random.randint(5, 40)),
-                         'ioe': self.codes('IOE', 3), 'wig': self.codes('WIG', random.randint(1, 10))}
-                speeds = {'plebania': random.choice([1, 4]), 'oracle': 1}
-                a = Sim('plebania', self.store, self.lock, ['wml', 'wcy'], codes, self.fetched, speeds['plebania'],
-                        speeds, delay=0.004)
-                b = Sim('oracle', self.store, self.lock, ['ioe', 'wig'], codes, self.fetched, 1, speeds, delay=0.002)
-                run_sims(a, b)
-                seen = Counter(c for _, c in self.fetched)
-                every = [c for cs in codes.values() for c in cs]
-                self.assertEqual(sorted(seen), sorted(every))
-                self.assertEqual(max(seen.values()), 1, [c for c, n in seen.items() if n > 1])
-
-    def test_the_helper_takes_a_part_of_the_running_faculty(self):
-        codes = {'wml': self.codes('WML', 80), 'ioe': self.codes('IOE', 2)}
-        a = Sim('plebania', self.store, self.lock, ['wml'], codes, self.fetched, delay=0.01)
-        b = Sim('oracle', self.store, self.lock, ['ioe'], codes, self.fetched)
-        run_sims(a, b)
-        by = Counter(r for r, _ in self.fetched)
-        self.assertGreater(by['oracle'], 2)  # more than its own two
-        self.assertIn(('wml', 'oracle'), a.pool.gave)
-        self.assertEqual([(f, p) for f, p, _ in b.pool.took][:1], [('wml', 'plebania')])
-        self.assertEqual(Counter(c for _, c in self.fetched).most_common(1)[0][1], 1)
-
-    def test_walled_on_the_running_faculty_it_takes_one_not_started(self):
-        codes = {'wml': self.codes('WML', 60), 'wel': self.codes('WEL', 20), 'ioe': self.codes('IOE', 2)}
-        a = Sim('plebania', self.store, self.lock, [], codes, self.fetched, delay=0.01)
-        a.own = ['wml']  # wel waits behind wml in its lane: queued until wml is done
-        a.pool.add('wml', 'wml')
-        a.pool.add('wel', 'wel')
-
-        def lane(f):
-            Sim.lane(a, 'wml')
-            a.crawl_slot('wel')
-        a.lane = lane
-        b = Sim('oracle', self.store, self.lock, ['ioe'], codes, self.fetched, probe_walls={'wml'})
-        run_sims(a, b)
-        self.assertTrue(any('refuses this runner' in m for m in b.log))
-        self.assertIn(('wel', 'plebania', True), b.pool.took)
-        self.assertEqual({c for r, c in self.fetched if r == 'oracle' and c.startswith('WEL')}, set(codes['wel']))
-        self.assertFalse(any(c.startswith('WML') for r, c in self.fetched if r == 'oracle'))
-        self.assertEqual(Counter(c for _, c in self.fetched).most_common(1)[0][1], 1)
-
-    def test_a_blocked_owner_hands_everything_on_and_stops_waiting(self):
-        codes = {'wml': self.codes('WML', 40), 'ioe': self.codes('IOE', 1)}
-        a = Sim('plebania', self.store, self.lock, ['wml'], codes, self.fetched, walls={('wml', 'WML010')},
-                wall_wait=20.0)
-        b = Sim('oracle', self.store, self.lock, ['ioe'], codes, self.fetched)
-        b_run = b.run
-
-        def after_the_wall():  # oracle turns up while plebania sits out its wall
-            while self.store.get('plebania', {}).get('slots', {}).get('wml', {}).get('state') != 'blocked':
-                time.sleep(0.005)
-            b_run()
-        b.run = after_the_wall
-        started = time.monotonic()
-        run_sims(a, b)
-        self.assertLess(time.monotonic() - started, 10)  # not the 20 s wall wait
-        self.assertIn(('oracle', 'WML010'), self.fetched)  # the group the wall stopped plebania on
-        self.assertEqual({c for r, c in self.fetched if r == 'plebania' and c < 'WML010'}, set(codes['wml'][:10]))
-        self.assertEqual(a.pool.gone(), {'wml'})
-        self.assertEqual(b.pool.took[0], ('wml', 'plebania', True))
-        seen = Counter(c for _, c in self.fetched)  # plebania, free again, may take a part back: still once each
-        self.assertEqual((sorted(seen), max(seen.values())), (sorted(codes['wml'] + codes['ioe']), 1))
-
-    def test_a_helper_walled_halfway_leaves_the_rest_for_the_owner_to_take_back(self):
-        codes = {'wml': self.codes('WML', 60), 'ioe': self.codes('IOE', 1)}
-        a = Sim('plebania', self.store, self.lock, ['wml'], codes, self.fetched, delay=0.01)
-        b = Sim('oracle', self.store, self.lock, ['ioe'], codes, self.fetched,
-                walls={('wml', c) for c in codes['wml'][40:]})
-        run_sims(a, b)
-        seen = Counter(c for _, c in self.fetched)
-        self.assertEqual(max(seen.values()), 1)
-        self.assertEqual(sorted(seen), sorted(codes['wml'] + codes['ioe']))  # plebania took the rest back
-        self.assertTrue(any(f == 'wml' and p == 'oracle' for f, p, _ in a.pool.took))
-        self.assertEqual(b.pool.taken(), {})  # oracle holds nothing it did not finish
-
-    def test_a_helper_with_nothing_it_may_take_leaves_at_once(self):
-        # northflank's case: done with WIM, while oracle still crawls faculties northflank may not take
-        codes = {'wcy': self.codes('WCY', 60), 'wim': self.codes('WIM', 3)}
-        a = Sim('oracle', self.store, self.lock, ['wcy'], codes, self.fetched, delay=0.04)
-        b = Sim('northflank', self.store, self.lock, ['wim'], codes, self.fetched, may=lambda f: f in {'ioe', 'wig', 'wim'})
-        run_sims(a, b)
-        self.assertLess(b.ended + 0.5, a.ended)  # it did not sit out oracle's whole share
-        self.assertEqual([c for r, c in self.fetched if r == 'northflank'], codes['wim'])
-        self.assertEqual(sorted(c for r, c in self.fetched if r == 'oracle'), codes['wcy'])
-
-    def test_a_helper_waits_for_work_it_may_take(self):
-        codes = {'wcy': self.codes('WCY', 60), 'wim': self.codes('WIM', 3)}
-        a = Sim('oracle', self.store, self.lock, ['wcy'], codes, self.fetched, delay=0.04)
-        b = Sim('northflank', self.store, self.lock, ['wim'], codes, self.fetched)
-        run_sims(a, b)
-        self.assertTrue(any(c.startswith('WCY') for r, c in self.fetched if r == 'northflank'))  # it helped
-        self.assertEqual(Counter(c for _, c in self.fetched).most_common(1)[0][1], 1)
-
-    def test_a_peer_that_goes_quiet_is_not_waited_for(self):
-        codes = {'wml': self.codes('WML', 30), 'ioe': self.codes('IOE', 1)}
-        # plebania's doc says it is crawling wml, then it never speaks again (a crashed runner)
-        pool = steal.Pool('plebania')
-        pool.add('wml', 'wml')
-        pool.start('wml')
-        pool.running('wml', codes['wml'])
-        dead = steal.Coordinator(board.MemoryBoard(self.store, 'plebania', self.lock), pool)
-        dead.tick()
-        b = Sim('oracle', self.store, self.lock, ['ioe'], codes, self.fetched)
-        started = time.monotonic()
-        run_sims(b)
-        self.assertLess(time.monotonic() - started, 5)
-        self.assertTrue(any('no answer from plebania' in m for m in b.log))
-        self.assertEqual([c for r, c in self.fetched], ['IOE000'])
-
-    def test_a_late_grant_is_honoured_never_dropped(self):
-        owner = steal.Pool('plebania')
-        owner.add('wml', 'wml')
-        owner.start('wml')
-        owner.running('wml', self.codes('WML', 30))
-        oc = steal.Coordinator(board.MemoryBoard(self.store, 'plebania', self.lock), owner)
-        oc.tick()
-        helper = steal.Pool('oracle')
-        hc = steal.Coordinator(board.MemoryBoard(self.store, 'oracle', self.lock), helper)
-        hc.tick()
-        rid = hc.request('plebania', 'wml', 'part', None)
-        hc.tick()
-        hc.cancel(rid)        # the helper gave up waiting ...
-        oc.tick()             # ... but plebania had decided already, before it read the cancel
-        hc.tick()
-        late = hc.late_grants(set())
-        self.assertEqual([(p, r) for p, r, _ in late], [('plebania', rid)])
-        self.assertEqual(len(late[0][2]['grant'][0]['codes']), 15)
-
-    def test_a_cancelled_request_is_not_granted(self):
-        owner = steal.Pool('plebania')
-        owner.add('wml', 'wml')
-        owner.start('wml')
-        owner.running('wml', self.codes('WML', 30))
-        oc = steal.Coordinator(board.MemoryBoard(self.store, 'plebania', self.lock), owner)
-        hc = steal.Coordinator(board.MemoryBoard(self.store, 'oracle', self.lock), steal.Pool('oracle'))
-        oc.tick()
-        hc.tick()
-        rid = hc.request('plebania', 'wml', 'part', None)
-        hc.cancel(rid)
-        hc.tick()
-        oc.tick()
-        self.assertEqual(owner.gave, [])
-        self.assertIsNone(hc.answer('plebania', rid))
-
-    def test_the_last_word_denies_what_is_still_asked(self):
-        owner = steal.Pool('plebania')
-        owner.add('wml', 'wml')
-        oc = steal.Coordinator(board.MemoryBoard(self.store, 'plebania', self.lock), owner)
-        hc = steal.Coordinator(board.MemoryBoard(self.store, 'oracle', self.lock), steal.Pool('oracle'))
-        oc.tick()
-        hc.tick()
-        rid = hc.request('plebania', 'wml', 'whole', None)
-        hc.tick()
-        oc.stop()
-        hc.tick()
-        self.assertEqual(hc.answer('plebania', rid)['ok'], False)
-        self.assertEqual(hc.status('plebania'), 'done')
-        self.assertEqual(owner.slots['wml'].state, 'queued')  # nothing was given
-
-    def test_a_failed_push_gives_nothing_away(self):
-        owner = steal.Pool('plebania')
-        owner.add('wml', 'wml')
-        owner.start('wml')
-        owner.running('wml', self.codes('WML', 30))
-        ob = board.MemoryBoard(self.store, 'plebania', self.lock)
-        oc = steal.Coordinator(ob, owner)
-        hc = steal.Coordinator(board.MemoryBoard(self.store, 'oracle', self.lock), steal.Pool('oracle'))
-        oc.tick()
-        hc.tick()
-        rid = hc.request('plebania', 'wml', 'part', None)
-        hc.tick()
-        ob.fail = 1
-        self.assertFalse(oc.tick())
-        self.assertEqual(owner.slots['wml'].reserved | owner.slots['wml'].given, set())
-        self.assertTrue(all(owner.take('wml', c) for c in self.codes('WML', 3)))  # the lane goes on
-        self.assertTrue(oc.tick())  # decided again, and this time it went out
-        hc.tick()
-        self.assertTrue(hc.answer('plebania', rid)['ok'])
-        self.assertEqual(len(owner.slots['wml'].given), 13)  # half of the 27 left
-
-
-    def test_randomized_interleavings_with_help_alongside_the_lanes(self):
-        # refresh.main's way with a board: help from the first free lane on, both runners at once
-        for seed in range(12):
-            with self.subTest(seed=seed):
-                random.seed(seed)
-                self.store.clear()
-                self.fetched = []
-                codes = {'wml': self.codes('WML', random.randint(20, 80)), 'wcy': self.codes('WCY', random.randint(5, 40)),
-                         'ioe': self.codes('IOE', random.randint(1, 30)), 'wig': self.codes('WIG', random.randint(1, 30))}
-                speeds = {'plebania': random.choice([1, 4]), 'oracle': 1}
-                a = Sim('plebania', self.store, self.lock, ['wml', 'wcy'], codes, self.fetched, speeds['plebania'],
-                        speeds, delay=0.004, eager=True, workers=random.choice([2, 3, 4]))
-                b = Sim('oracle', self.store, self.lock, ['ioe', 'wig'], codes, self.fetched, 1, speeds, delay=0.004,
-                        eager=True, workers=random.choice([2, 3, 4]))
-                run_sims(a, b)
-                seen = Counter(c for _, c in self.fetched)
-                every = [c for cs in codes.values() for c in cs]
-                self.assertEqual(sorted(seen), sorted(every))
-                self.assertEqual(max(seen.values()), 1, [c for c, n in seen.items() if n > 1])
-
-    def test_a_free_lane_helps_while_another_lane_still_runs(self):
-        codes = {'wml': self.codes('WML', 60), 'ioe': self.codes('IOE', 1), 'wig': self.codes('WIG', 40)}
-        a = Sim('plebania', self.store, self.lock, ['wml'], codes, self.fetched, delay=0.02)
-        b = Sim('oracle', self.store, self.lock, ['ioe', 'wig'], codes, self.fetched, delay=0.02, eager=True,
-                workers=2)
-        run_sims(a, b)
-        helped = [t for f, c, t in b.stamps if f == 'wml']
-        self.assertTrue(helped)
-        self.assertLess(min(helped), b.lane_ended['wig'])  # wig's lane was still running
-        self.assertEqual(Counter(c for _, c in self.fetched).most_common(1)[0][1], 1)
-
-    def test_help_never_joins_a_policy_group_an_own_lane_still_crawls(self):
-        groups = {'wlo': 'wat-edge', 'wel': 'wat-edge'}
-        codes = {'wel': self.codes('WEL', 60), 'wlo': self.codes('WLO', 30)}
-        a = Sim('plebania', self.store, self.lock, ['wel'], codes, self.fetched, delay=0.02, groups=groups)
-        b = Sim('oracle', self.store, self.lock, ['wlo'], codes, self.fetched, delay=0.02, eager=True, workers=3,
-                groups=groups)
-        run_sims(a, b)
-        helped = [t for f, c, t in b.stamps if f == 'wel']
-        self.assertTrue(helped)  # once its own wlo was done
-        self.assertGreater(min(helped), b.lane_ended['wlo'])
-        self.assertEqual(Counter(c for _, c in self.fetched).most_common(1)[0][1], 1)
-
-    def test_walled_on_one_faculty_of_a_policy_it_still_takes_the_other(self):
-        # oracle meets WLO's wall while WEL lets it in, though both stand behind one policy
-        groups = {'wlo': 'wat-edge', 'wel': 'wat-edge'}
-        codes = {'wlo': self.codes('WLO', 60), 'wel': self.codes('WEL', 20), 'ioe': self.codes('IOE', 2)}
-        a = Sim('plebania', self.store, self.lock, [], codes, self.fetched, delay=0.01, groups=groups)
-        a.own = ['wlo']
-        a.pool.add('wlo', 'wat-edge')
-        a.pool.add('wel', 'wat-edge')
-
-        def lane(f):
-            Sim.lane(a, 'wlo')
-            a.crawl_slot('wel')
-        a.lane = lane
-        b = Sim('oracle', self.store, self.lock, ['ioe'], codes, self.fetched, probe_walls={'wlo'}, groups=groups)
-        run_sims(a, b)
-        self.assertTrue(any('wlo refuses this runner' in m for m in b.log))
-        self.assertIn(('wel', 'plebania', True), b.pool.took)
-        self.assertFalse(any(c.startswith('WLO') for r, c in self.fetched if r == 'oracle'))
-        seen = Counter(c for _, c in self.fetched)
-        self.assertEqual((sorted(seen), max(seen.values())), (sorted(c for cs in codes.values() for c in cs), 1))
-
-    def test_a_runner_stays_for_what_it_left_at_a_wall_and_a_peer_takes_it_in_the_wave(self):
-        codes = {'wtc': self.codes('WTC', 20), 'wml': self.codes('WML', 30)}
-        # refresh.py's may(): a faculty walled here lately is not asked again, so oracle never takes wtc back
-        a = Sim('oracle', self.store, self.lock, ['wtc'], codes, self.fetched, walls={('wtc', 'WTC000')},
-                may=lambda f: f not in ('wml', 'wtc'))
-        b = Sim('plebania', self.store, self.lock, ['wml'], codes, self.fetched, delay=0.02)
-        run_sims(a, b)
-        self.assertEqual(sorted(c for r, c in self.fetched if r == 'plebania' and c.startswith('WTC')), codes['wtc'])
-        self.assertEqual(a.pool.gone(), {'wtc'})  # handed on in the wave: nothing left for a handoff
-        self.assertIn(('wtc', 'oracle', True), b.pool.took)
-
-    def test_runners_that_both_wait_for_the_other_both_leave(self):
-        codes = {'wtc': self.codes('WTC', 10), 'wcy': self.codes('WCY', 10)}
-        a = Sim('oracle', self.store, self.lock, ['wtc'], codes, self.fetched, walls={('wtc', 'WTC000')},
-                may=lambda f: f == 'wtc')
-        b = Sim('plebania', self.store, self.lock, ['wcy'], codes, self.fetched, walls={('wcy', 'WCY000')},
-                may=lambda f: f == 'wcy')
-        started = time.monotonic()
-        run_sims(a, b)
-        self.assertLess(time.monotonic() - started, 5)
-        self.assertEqual(self.fetched, [])
-        self.assertEqual((a.pool.gone(), b.pool.gone()), (set(), set()))
-
-    def test_a_runner_with_a_request_out_reads_the_board_at_the_reply_pace(self):
-        pool = steal.Pool('oracle')
-        coord = steal.Coordinator(board.MemoryBoard(self.store, 'oracle', self.lock), pool, busy=10, idle=60, reply=5)
-        self.assertEqual(coord._interval(), 60)
-        coord.peers['plebania'] = {'mode': 'helping', 'idle': True, 'slots': {}, 'requests': [], 'answers': {}}
-        coord.seen['plebania'] = (('n', 1), coord.clock())
-        self.assertEqual(coord._interval(), 60)  # an idle helper asks nothing
-        coord.peers['plebania']['idle'] = False
-        self.assertEqual(coord._interval(), 10)
-        coord.request('plebania', 'wml', 'part', None)
-        self.assertEqual(coord._interval(), 5)
-
-class PoolDecisions(unittest.TestCase):
-    """steal.Pool: what an owner hands on, and when its lanes skip or wait."""
-
-    def pool(self, speed=4.0, n=40, state='running'):
-        p = steal.Pool('plebania', speed, {'oracle': 1.0}, lambda peer, f: f != 'wtc')
-        p.add('wml', 'wml', '2027-28-lato')
-        p.add('wtc', 'wtc')
-        if state == 'running':
-            p.start('wml')
-            p.running('wml', [f'C{i:02d}' for i in range(n)])
-        return p
-
-    def req(self, slot='wml', kind='part', room=None, rid=1):
-        return {'id': rid, 'to': 'plebania', 'slot': slot, 'kind': kind, 'room': room}
-
-    def test_the_share_follows_the_speeds_and_comes_off_the_tail(self):
-        p = self.pool()
-        answer, token = p.decide('oracle', 'n', self.req())
-        self.assertEqual(answer['grant'], [{'slot': 'wml', 'codes': [f'C{i:02d}' for i in range(32, 40)]}])
-        self.assertFalse(answer['rest'])
-        p.commit(token)
-        self.assertFalse(p.take('wml', 'C35'))
-        self.assertTrue(p.take('wml', 'C00'))
-        self.assertEqual(p.gave, [('wml', 'oracle')])
-
-    def test_a_small_rest_or_a_small_room_is_kept(self):
-        self.assertFalse(self.pool(n=7).decide('oracle', 'n', self.req())[0]['ok'])        # under SPLIT_MIN_LEFT
-        self.assertFalse(self.pool(n=19).decide('oracle', 'n', self.req())[0]['ok'])       # 3 for the slow helper
-        self.assertFalse(self.pool().decide('oracle', 'n', self.req(room=3))[0]['ok'])    # no time to do them
-        self.assertEqual(len(self.pool().decide('oracle', 'n', self.req(room=5))[0]['grant'][0]['codes']), 5)
-
-    def test_a_whole_faculty_asked_for_as_it_starts_is_answered_with_a_part(self):
-        pool = steal.Pool('plebania')
-        pool.add('wml', 'wml')
-        pool.start('wml')
-        pool.running('wml', [f'WML{i:03d}' for i in range(20)])
-        answer, token = pool.decide('oracle', 'n', {'slot': 'wml', 'kind': 'whole', 'room': None})
-        self.assertTrue(answer['ok'])
-        self.assertEqual(answer['grant'][0]['codes'], [f'WML{i:03d}' for i in range(10, 20)])
-        self.assertFalse(answer['rest'])
-        pool.commit(token)
-        self.assertEqual(pool.slots['wml'].state, 'running')
-
-    def test_what_the_lane_took_is_never_given(self):
-        p = self.pool(speed=1.0)
-        for i in range(30):
-            self.assertTrue(p.take('wml', f'C{i:02d}'))
-        answer, _ = p.decide('oracle', 'n', self.req())
-        self.assertEqual(answer['grant'][0]['codes'], ['C35', 'C36', 'C37', 'C38', 'C39'])
-
-    def test_a_reserved_group_holds_the_lane_until_the_push_is_decided(self):
-        p = self.pool(speed=1.0)
-        _, token = p.decide('oracle', 'n', self.req())
-        got = []
-        lane = threading.Thread(target=lambda: got.append(p.take('wml', 'C39')))
-        lane.start()
-        time.sleep(0.05)
-        self.assertEqual(got, [])  # waiting
-        p.release(token)
-        lane.join(5)
-        self.assertEqual(got, [True])
-
-    def test_a_whole_grant_takes_the_coming_semester_along(self):
-        p = self.pool(state='queued')
-        answer, token = p.decide('oracle', 'n', self.req(kind='whole'))
-        self.assertEqual([g['slot'] for g in answer['grant']], ['wml', 'wml~2027-28-lato'])
-        self.assertTrue(answer['rest'])
-        p.commit(token)
-        self.assertFalse(p.start('wml'))
-        self.assertFalse(p.start('wml~2027-28-lato'))
-        self.assertEqual(p.gone(), {'wml'})
-
-    def test_a_started_faculty_is_not_given_whole_nor_one_off_its_list(self):
-        p = self.pool()
-        answer = p.decide('oracle', 'n', self.req(kind='whole'))[0]  # a part of it at most, never its record
-        self.assertIsNotNone(answer['grant'][0]['codes'])
-        self.assertFalse(answer['rest'])
-        self.assertEqual(p.decide('oracle', 'n', self.req(slot='wtc', kind='whole'))[0]['why'],
-                         "not on that runner's list")
-        self.assertEqual(p.decide('oracle', 'n', self.req(slot='wig', kind='whole'))[0]['ok'], False)
-
-    def test_a_blocked_owner_gives_all_that_is_left_and_its_wait_ends(self):
-        p = self.pool(speed=4.0)
-        for i in range(11):
-            p.take('wml', f'C{i:02d}')
-        p.finish('wml', 'blocked')  # C10 hit the wall: not checked
-        self.assertTrue(p.has_work(['wml']))
-        answer, token = p.decide('oracle', 'n', self.req())
-        self.assertEqual(answer['grant'][0]['codes'][0], 'C10')
-        self.assertEqual(len(answer['grant'][0]['codes']), 30)
-        self.assertTrue(answer['rest'])
-        self.assertEqual(answer['grant'][1]['slot'], 'wml~2027-28-lato')
-        p.commit(token)
-        self.assertFalse(p.has_work(['wml']))
-        self.assertEqual(p.gone(), {'wml'})
-
-    def test_taken_work_is_reported_until_handed_back(self):
-        p = steal.Pool('oracle')
-        keys = p.adopt('plebania', {'ok': True, 'grant': [{'slot': 'wml', 'codes': ['A', 'B', 'C']}], 'rest': False},
-                       'wml')
-        self.assertEqual(keys, ['wml'])
-        p.start('wml')
-        p.running('wml', ['A', 'B', 'C'])
-        p.take('wml', 'A')
-        p.take('wml', 'B')
-        p.finish('wml', 'blocked')
-        self.assertEqual(p.taken(), {'wml': (True, True)})
-        self.assertEqual(p.ask(p.slots['wml']), 'part')
-        answer, token = p.decide('plebania', 'n', {'id': 1, 'to': 'oracle', 'slot': 'wml', 'kind': 'part', 'room': None})
-        self.assertEqual(answer['grant'][0]['codes'], ['B', 'C'])
-        self.assertFalse(answer['rest'])  # a part, not the faculty's record
-        p.commit(token)
-        self.assertEqual(p.taken(), {})
-
-    def test_a_second_grant_of_one_faculty_gets_its_own_slot(self):
-        p = steal.Pool('plebania')
-        p.add('wml', 'wml')
-        keys = p.adopt('oracle', {'ok': True, 'grant': [{'slot': 'wml', 'codes': ['X']}], 'rest': False}, 'wml')
-        self.assertEqual(keys, ['wml#2'])
-
-    def test_foreign_docs_are_checked(self):
-        good = {'runner': 'oracle', 'nonce': 'ab', 'beat': 3, 'mode': 'helping',
-                'slots': {'wml': {'state': 'running', 'group': 'wml', 'ask': 'part', 'left': 4}},
-                'requests': [{'id': 1, 'to': 'plebania', 'slot': 'wml', 'kind': 'part', 'room': 9}],
-                'cancel': [], 'answers': {'plebania': {'1': {'ok': True, 'n': 'x',
-                                                            'grant': [{'slot': 'wml', 'codes': ['WML26A1']}]}}}}
-        self.assertIsNotNone(steal.clean_doc(good))
-        for bad in ({**good, 'mode': 'x'}, {**good, 'slots': {'../x': {}}},
-                    {**good, 'requests': [{'id': 0, 'to': 'plebania', 'slot': 'wml', 'kind': 'part'}]},
-                    {**good, 'answers': {'plebania': {'1': {'ok': True, 'n': 'x', 'grant': [{'slot': 'wml',
-                                                                                            'codes': ['a b']}]}}}},
-                    {**good, 'answers': {'plebania': {'1': {'ok': True, 'n': 'x', 'grant': []}}}}, []):
-            self.assertIsNone(steal.clean_doc(bad), bad)
+import stack  # noqa: E402
 
 
 class WaitStops(unittest.TestCase):
@@ -3810,9 +3290,49 @@ class WaitStops(unittest.TestCase):
         self.assertTrue(all(s <= 30 for s in clock.sleeps))
 
 
+def quick_stack(test, **over):
+    """Stack timings in milliseconds for the length of a test."""
+    values = dict(POLL=0.02, HEARTBEAT=0.05, STALE=0.4, JOIN_GRACE=0.5, LANE_STALE=1.5, STORE_DOWN=0.8,
+                  RETRY_ERROR=0.2, CHUNK=4)
+    values.update(over)
+    for name, value in values.items():
+        orig = getattr(stack, name)
+        setattr(stack, name, value)
+        test.addCleanup(setattr, stack, name, orig)
+
+
+class StoreCAS(unittest.TestCase):
+    """board.MemoryStore: compare-and-swap, and the failures the tests inject."""
+
+    def test_a_swap_sees_the_doc_as_it_stands_and_racers_never_lose_an_update(self):
+        shared, lock = {}, threading.Lock()
+        stores = [board.MemoryStore(shared, lock) for _ in range(4)]
+        stores[0].update('s/wml', lambda d: {'n': 0})
+        self.assertEqual(stores[1].update('s/wml', lambda d: None if d else {'n': 99}), ({'n': 0}, False))
+
+        def bump(st):
+            for _ in range(50):
+                st.update('s/wml', lambda d: dict(d, n=d['n'] + 1))
+        threads = [threading.Thread(target=bump, args=(st,)) for st in stores]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual(stores[2].read()['s/wml']['n'], 200)
+
+    def test_failures_on_demand(self):
+        st = board.MemoryStore()
+        st.down = True
+        with self.assertRaises(board.StoreError):
+            st.read()
+        st.down, st.rejects = False, 10
+        with self.assertRaises(board.Conflict):
+            st.update('s/wel', lambda d: {'x': 1}, tries=3)
+        with self.assertRaises(ValueError):
+            st.put('x/../y', {})
+
+
 @unittest.skipUnless(shutil.which('git'), 'git is needed')
-class GitBoardTest(unittest.TestCase):
-    """The board on git refs, against a local bare repository standing in for GitHub."""
+class GitStoreTest(unittest.TestCase):
+    """The store on git refs, against a local bare repository standing in for GitHub."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -3820,7 +3340,7 @@ class GitBoardTest(unittest.TestCase):
         self.remote = self.tmp / 'remote.git'
         subprocess.run(['git', 'init', '-q', '--bare', str(self.remote)], check=True)
         self.repos = []
-        for name in ('a', 'b'):
+        for name in ('a', 'b', 'c'):
             repo = self.tmp / name
             subprocess.run(['git', 'init', '-q', str(repo)], check=True)
             subprocess.run(['git', '-C', str(repo), 'remote', 'add', 'origin', str(self.remote)], check=True)
@@ -3830,200 +3350,654 @@ class GitBoardTest(unittest.TestCase):
         out = subprocess.run(['git', 'ls-remote', str(self.remote)], capture_output=True, text=True).stdout
         return sorted(line.split('\t')[1] for line in out.splitlines())
 
-    def test_each_runner_writes_its_own_doc_and_reads_the_others(self):
-        key = '1761000000-42/w1'
-        a = board.GitBoard(self.repos[0], key, 'plebania')
-        b = board.GitBoard(self.repos[1], key, 'oracle')
-        self.assertEqual(b.peers(), {})
-        self.assertTrue(a.publish({'beat': 1}))
-        self.assertTrue(b.publish({'beat': 7}))
-        self.assertEqual(b.peers(), {'plebania': {'beat': 1}})
-        self.assertTrue(a.publish({'beat': 2}))  # forced over the last one
-        self.assertEqual(b.peers(), {'plebania': {'beat': 2}})
-        self.assertEqual(a.peers(), {'oracle': {'beat': 7}})
-        self.assertEqual(self.refs(), [f'refs/planwat/pass/{key}/oracle', f'refs/planwat/pass/{key}/plebania'])
+    def test_a_swap_is_atomic_across_machines(self):
+        stores = [board.GitStore(r, '1761000000-42') for r in self.repos]
+        self.assertEqual(stores[0].update('s/wml', lambda d: {'n': 0} if d is None else None), ({'n': 0}, True))
+        self.assertEqual(stores[1].update('s/wml', lambda d: {'n': 99} if d is None else None), ({'n': 0}, False))
 
-    def test_an_unreachable_board_reads_as_unknown_and_publishes_nothing(self):
-        lost = board.GitBoard(self.repos[0], '1-2/w1', 'plebania', remote='nowhere')
-        self.assertIsNone(lost.peers())
-        self.assertFalse(lost.publish({'beat': 1}))
+        def bump(st):
+            for _ in range(5):
+                st.update('s/wml', lambda d: dict(d, n=d['n'] + 1), tries=40)
+        threads = [threading.Thread(target=bump, args=(st,)) for st in stores]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual(stores[2].read()['s/wml']['n'], 15)
+        stores[0].put('r/oracle', {'beat': 1})
+        stores[1].update('s/wml@2027-28-zima', lambda d: {'x': 1})
+        self.assertEqual(sorted(stores[2].read()), ['r/oracle', 's/wml', 's/wml@2027-28-zima'])
+        stores[2].forget()
+        local = subprocess.run(['git', '-C', str(self.repos[2]), 'for-each-ref'], capture_output=True, text=True)
+        self.assertEqual(local.stdout, '')
+
+    def test_an_unreachable_store_raises(self):
+        lost = board.GitStore(self.repos[0], '1-2', remote='nowhere')
+        with self.assertRaises(board.StoreError):
+            lost.read()
+        with self.assertRaises(board.StoreError):
+            lost.put('r/oracle', {'beat': 1})
 
     def test_bad_keys_and_names_are_refused(self):
-        for key, name in (('x/w1', 'plebania'), ('1-2/w1', 'Ple bania'), ('1-2/w1/../..', 'a')):
+        for key in ('x', '1-2/w1', '1-2/../..'):
             with self.assertRaises(ValueError):
-                board.GitBoard(self.repos[0], key, name)
+                board.GitStore(self.repos[0], key)
+        with self.assertRaises(ValueError):
+            board.GitStore(self.repos[0], '1-2').put('r/Ple bania', {})
 
     def test_the_sweep_takes_the_finished_pass_and_old_leftovers(self):
         now = 1_761_000_000
-        keep = f'{now - 600}-43/w1'
-        for key in (f'{now - 600}-42/w1', f'{now - 300}-42/w2', keep, f'{now - 7 * 3600}-40/w1'):
-            self.assertTrue(board.GitBoard(self.repos[0], key, 'oracle').publish({'beat': 1}))
+        keep = f'{now - 600}-43'
+        for key in (f'{now - 600}-42', keep, f'{now - 7 * 3600}-40'):
+            board.GitStore(self.repos[0], key).put('r/oracle', {'beat': 1})
+        subprocess.run(['git', '-C', str(self.repos[0]), 'push', '-q', 'origin',  # the older layout, by wave
+                        f"{subprocess.run(['git', '-C', str(self.repos[0]), 'rev-parse', 'refs/planwat-seen/' + keep + '/r/oracle'], capture_output=True, text=True).stdout.strip() or 'HEAD'}:refs/planwat/pass/{now - 300}-42/w2/oracle"],
+                       capture_output=True)
         gone = board.sweep(self.repos[0], run_id='42', now=now)
-        self.assertEqual(len(gone), 3)
-        self.assertEqual(self.refs(), [f'refs/planwat/pass/{keep}/oracle'])
+        self.assertGreaterEqual(len(gone), 2)
+        self.assertEqual(self.refs(), [f'refs/planwat/pass/{keep}/r/oracle'])
 
 
-class StealInRefresh(unittest.TestCase):
-    """refresh.main with a board: a runner hands a part of its faculty to a helper, or helps a busy peer itself."""
+def me_of(name, slots, expected=(), prefers=(), allow=None, prefers_of=None, costs=None, chronic=(), shy=(), **pool):
+    groups = {s: core.group_of(stack.faculty_of(s)) for s in slots}
+    return stack.Me(name, slots, groups, expected, prefers, allow or {}, prefers_of or {}, costs or {}, chronic, shy,
+                    **pool)
+
+
+def slot_doc(slot, state='open', leader=None, chunks=(), cant=None):
+    return {'slot': slot, 'group': core.group_of(stack.faculty_of(slot)), 'state': state, 'leader': leader,
+            'chunks': [dict({'id': i, 'codes': [f'C{i}'], 'state': 'free', 'by': None, 'fails': 0}, **c)
+                       for i, c in enumerate(chunks)], 'cant': cant or {}}
+
+
+class StackPolicy(unittest.TestCase):
+    """stack.choose: what a runner's lane does next, from the store alone."""
+
+    def view(self, slots, **statuses):
+        return stack.View(slots, dict(statuses), uptime=10, join_grace=180, stale=150)
+
+    def test_a_runner_opens_what_it_prefers_and_leaves_what_another_prefers(self):
+        me = me_of('oracle', ['wlo', 'wel'], ['plebania'], prefers=[], prefers_of={'plebania': ['wel']})
+        self.assertEqual(stack.choose(self.view({}, plebania='live'), me, 'wat-edge'), ('open', 'wlo'))
+        me = me_of('oracle', ['wel'], ['plebania'], prefers_of={'plebania': ['wel']})
+        self.assertEqual(stack.choose(self.view({}, plebania='live'), me, 'wat-edge'), ('linger',))
+        # it never came (past the grace), it is gone, or it cannot list it: the reservation lapses
+        late = stack.View({}, {}, uptime=500, join_grace=180)
+        self.assertEqual(stack.choose(late, me, 'wat-edge'), ('open', 'wel'))
+        self.assertEqual(stack.choose(self.view({}, plebania='stale'), me, 'wat-edge'), ('open', 'wel'))
+        walled = {'wel': slot_doc('wel', 'unlisted', cant={'plebania': {'cause': 'wall'}})}
+        self.assertEqual(stack.choose(self.view(walled, plebania='live'), me, 'wat-edge'), ('open', 'wel'))
+
+    def test_exclusive_work_first_then_the_largest(self):
+        allow = {'oracle': None, 'northflank': {'ioe', 'wig'}}
+        me = me_of('oracle', ['ioe', 'wcy', 'wig'], ['northflank'], allow=allow,
+                   costs={'ioe': 15, 'wig': 33, 'wcy': 180})
+        view = self.view({}, northflank='live')
+        self.assertEqual(stack.choose(view, me, 'wcy'), ('open', 'wcy'))
+        me.slots, me.groups = ['ioe', 'wig'], {'ioe': 'g', 'wig': 'g'}
+        self.assertEqual(stack.choose(view, me, 'g'), ('open', 'wig'))  # the larger one
+        me.slots.append('wcy')
+        me.groups['wcy'] = 'g'
+        self.assertEqual(stack.choose(view, me, 'g'), ('open', 'wcy'))  # only oracle may take it
+
+    def test_own_slots_from_the_front_help_from_the_back_preferred_and_fullest_first(self):
+        slots = {'ioe': slot_doc('ioe', leader='northflank', chunks=[{}, {}]),
+                 'wig': slot_doc('wig', leader='northflank', chunks=[{}, {}, {}]),
+                 'wim': slot_doc('wim', leader='oracle', chunks=[{'state': 'done'}, {}])}
+        me = me_of('oracle', ['ioe', 'wig', 'wim'], ['northflank'])
+        for s in me.slots:
+            me.groups[s] = 'g'
+        view = self.view(slots, northflank='live')
+        self.assertEqual(stack.choose(view, me, 'g'), ('claim', 'wim', True))
+        slots['wim']['chunks'][1]['state'] = 'done'
+        self.assertEqual(stack.choose(view, me, 'g'), ('claim', 'wig', False))  # the most left
+        me.prefers = ['ioe']
+        self.assertEqual(stack.choose(view, me, 'g'), ('claim', 'ioe', False))
+
+    def test_a_chunk_held_by_a_runner_gone_or_stuck_is_free(self):
+        slots = {'wml': slot_doc('wml', leader='plebania', chunks=[{'state': 'done'}, {'state': 'held', 'by': 'plebania'}])}
+        me = me_of('oracle', ['wml'], ['plebania'])
+        self.assertEqual(stack.choose(self.view(slots, plebania='live'), me, 'wml'), ('linger',))
+        self.assertEqual(stack.choose(self.view(slots, plebania='stale'), me, 'wml'), ('claim', 'wml', False))
+        stuck = stack.View(slots, {'plebania': 'live'}, hung={('plebania', 'wml', 1)})
+        self.assertEqual(stack.choose(stuck, me, 'wml'), ('claim', 'wml', False))
+
+    def test_a_wall_here_waits_only_when_nobody_else_can_and_never_when_chronic(self):
+        slots = {'wtc': slot_doc('wtc', 'unlisted', cant={'oracle': {'cause': 'wall'}})}
+        me = me_of('oracle', ['wtc'], ['plebania'])
+        me.cant['wtc'] = {'cause': 'wall', 'at': 0, 'tries': 1}
+        self.assertEqual(stack.choose(self.view(slots, plebania='live'), me, 'wtc'), ('linger',))
+        self.assertEqual(stack.choose(self.view(slots, plebania='done'), me, 'wtc'), ('wait', 'wtc'))
+        me.waited.add('wtc')
+        self.assertEqual(stack.choose(self.view(slots, plebania='done'), me, 'wtc'), ('end',))
+        me.waited.clear()
+        me.chronic.add('wtc')
+        self.assertEqual(stack.choose(self.view(slots, plebania='done'), me, 'wtc'), ('end',))
+
+    def test_a_listing_error_gets_one_more_try_later(self):
+        me = me_of('oracle', ['wim'])
+        me.cant['wim'] = {'cause': 'error', 'at': 0.0, 'tries': 1}
+        view = self.view({'wim': slot_doc('wim', 'unlisted', cant={'oracle': {'cause': 'error'}})})
+        self.assertEqual(stack.choose(view, me, 'wim', now=1.0, retry_error=300), ('linger',))
+        self.assertEqual(stack.choose(view, me, 'wim', now=400.0, retry_error=300), ('open', 'wim'))
+        me.cant['wim']['tries'] = 2
+        self.assertEqual(stack.choose(view, me, 'wim', now=900.0, retry_error=300), ('end',))
+
+    def test_nothing_left_ends(self):
+        me = me_of('oracle', ['ioe'])
+        self.assertEqual(stack.choose(self.view({'ioe': slot_doc('ioe', 'closed', 'oracle')}), me, 'ioe'), ('end',))
+
+    def test_a_walled_hunter_hunts_only_when_nobody_up_reaches_the_slot(self):
+        slots = {'wml': slot_doc('wml', 'unlisted', cant={'oracle': {'cause': 'wall'}})}
+        me = me_of('oracle', ['wml'], ['plebania'], hunter=True)
+        me.cant['wml'] = {'cause': 'wall', 'at': 0, 'tries': 1}
+        self.assertEqual(stack.choose(self.view(slots, plebania='live'), me, 'wml'), ('linger',))
+        self.assertEqual(stack.choose(self.view(slots, plebania='stale'), me, 'wml'), ('hunt', 'wml'))
+        me.hunter = False  # no egress: as before, it waits the wall out
+        self.assertEqual(stack.choose(self.view(slots, plebania='stale'), me, 'wml'), ('wait', 'wml'))
+
+    def test_a_pool_runner_never_goes_direct_and_hunts_after_the_others_failed(self):
+        pool = {'pool': {'wml'}, 'hunter': True, 'pool_of': {'northflank': {'wml'}}}
+        me = me_of('northflank', ['wml'], ['oracle'], **pool)
+        self.assertEqual(stack.choose(self.view({}, oracle='live'), me, 'wml'), ('linger',))  # oracle tries first
+        walled = {'wml': slot_doc('wml', 'unlisted', cant={'oracle': {'cause': 'wall'}})}
+        self.assertEqual(stack.choose(self.view(walled, oracle='live'), me, 'wml'), ('hunt', 'wml'))
+        # oracle hunting it now: wait for what it finds, then check those exits
+        walled['wml']['hunting'] = {'runner': 'oracle'}
+        self.assertEqual(stack.choose(self.view(walled, oracle='live'), me, 'wml'), ('linger',))
+        walled['wml']['exits'] = ['http://8.8.8.8:3128']
+        self.assertEqual(stack.choose(self.view(walled, oracle='live'), me, 'wml'), ('hunt', 'wml'))
+
+    def test_exits_make_a_slot_reachable_and_new_ones_are_worth_a_second_look(self):
+        slots = {'wml': dict(slot_doc('wml', leader='oracle', chunks=[{}, {}, {}]), via={'oracle': 'pool'},
+                             exits=['http://8.8.8.8:3128'])}
+        me = me_of('northflank', ['wml'], ['oracle'], pool={'wml'}, hunter=True, pool_of={'northflank': {'wml'}})
+        view = self.view(slots, oracle='live')
+        me.hunted['wml'] = frozenset(['http://8.8.8.8:3128'])  # checked them: none worked from here
+        self.assertEqual(stack.choose(view, me, 'wml'), ('linger',))
+        slots['wml']['exits'].append('http://9.9.9.9:80')
+        self.assertEqual(stack.choose(view, me, 'wml'), ('hunt', 'wml'))
+        me.via['wml'] = 'pool'
+        self.assertEqual(stack.choose(view, me, 'wml'), ('claim', 'wml', False))
+        me.via['wml'] = 'lost'
+        me.cant['wml'] = {'cause': 'wall', 'at': 0, 'tries': 1}
+        me.hunted['wml'] = frozenset(slots['wml']['exits'])
+        self.assertNotEqual(stack.choose(view, me, 'wml')[0], 'hunt')
+
+    def test_pool_help_joins_a_slot_another_leads_while_much_is_left(self):
+        pool = {'pool': {'wcy'}, 'pool_help': {'wcy'}, 'hunter': True, 'pool_of': {'northflank': {'wcy'}}}
+        me = me_of('northflank', ['wcy'], ['oracle'], **pool)
+        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{}, {}, {}])}
+        self.assertEqual(stack.choose(self.view(slots, oracle='live'), me, 'wcy'), ('hunt', 'wcy'))
+        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{'state': 'done'}, {'state': 'done'}, {}])}
+        self.assertEqual(stack.choose(self.view(slots, oracle='live'), me, 'wcy'), ('linger',))
+
+    def test_slot_status(self):
+        able = ['plebania', 'oracle']
+        self.assertEqual(stack.slot_status(None, able), 'absent')
+        self.assertEqual(stack.slot_status(slot_doc('wel', 'closed', 'p', [{'state': 'done'}]), able), 'done')
+        self.assertEqual(stack.slot_status(dict(slot_doc('wel', 'closed'), note='empty'), able), 'empty')
+        walls = {r: {'cause': 'wall'} for r in able}
+        self.assertEqual(stack.slot_status(slot_doc('wel', 'open', 'p', [{}], walls), able), 'blocked')
+        self.assertEqual(stack.slot_status(slot_doc('wel', 'unlisted', cant={r: {'cause': 'error'} for r in able}),
+                                           able), 'failed')
+        self.assertEqual(stack.slot_status(slot_doc('wel', 'open', 'p', [{}], {'oracle': {'cause': 'wall'}}), able),
+                         'unfinished')
+        poisoned = slot_doc('wel', 'closed', 'p', [{'state': 'done', 'failed': ['C0']}])
+        self.assertEqual(stack.slot_status(poisoned, able), 'failed')
+
+
+class FakeSite(stack.Ops):
+    """A runner's sites for the stack tests: lists of codes, walls per faculty, crashes on demand."""
+
+    def __init__(self, name, sizes, fetched, lock, walled=(), wall_mid=(), errors=(), poison=(), per=0.001,
+                 crash_after=None, exits=None, exits_wall_mid=(), exits_dead=()):
+        self.name, self.sizes, self.fetched, self.lock = name, sizes, fetched, lock
+        self.walled, self.wall_mid, self.errors, self.poison = set(walled), set(wall_mid), set(errors), set(poison)
+        self.per, self.crash_after, self.pages, self.runner = per, crash_after, 0, None
+        # the pool: what a hunt finds per faculty (any shared exit works where the faculty has exits at all)
+        self.exits, self.exits_wall_mid = dict(exits or {}), set(exits_wall_mid)
+        self.exits_dead = set(exits_dead)  # found, but gone before the listing (the hunt port then answers 403)
+        self.routes, self.hunts, self.route_probes = set(), [], 0
+
+    def hunt(self, slot, exits):
+        f = stack.faculty_of(slot)
+        with self.lock:
+            self.hunts.append((slot, tuple(exits)))
+        found = list(exits) if exits and self.exits.get(f) else list(self.exits.get(f, ()))
+        if found:
+            self.routes.add(slot)
+        return found
+
+    def probe(self, slot):
+        f = stack.faculty_of(slot)
+        if slot in self.routes:
+            with self.lock:
+                self.route_probes += 1
+            if f in self.exits_dead:
+                raise RuntimeError('curl: (56) CONNECT tunnel failed, response 403')
+            return [Item(f'{slot.upper()}{i:03d}', '', '') for i in range(self.sizes[slot])]
+        if f in self.walled:
+            raise stack.Walled('403')
+        if f in self.errors:
+            raise RuntimeError('listing broke')
+        return [Item(f'{slot.upper()}{i:03d}', '', '') for i in range(self.sizes[slot])]
+
+    def todo(self, slot, items):
+        return [i.code for i in items], {'listed': len(items)}
+
+    def crawl(self, slot, codes, items, check, tick):
+        done = []
+        for i, code in enumerate(codes):
+            if not check():
+                break
+            walls = self.exits_wall_mid if slot in self.routes else self.wall_mid
+            if stack.faculty_of(slot) in walls and i == 2:
+                return {'done': done, 'blocked': True, 'changed': []}
+            if code in self.poison:
+                raise RuntimeError('converter crashed')
+            if self.crash_after is not None and self.pages >= self.crash_after:
+                self.runner.store.down = True  # the machine is gone: no heartbeat, no word on the store
+                self.runner.halt.set()
+                raise SystemExit('crashed')
+            time.sleep(self.per)
+            self.pages += 1
+            with self.lock:
+                self.fetched.append((self.name, slot, code))
+            done.append(code)
+            tick()
+        return {'done': done, 'blocked': False, 'changed': []}
+
+
+SIZES = {'wlo': 30, 'wel': 40, 'wml': 50, 'wcy': 45, 'ioe': 15, 'wig': 30, 'wim': 25, 'wtc': 12}
+FLEET3 = {'plebania': {'prefers': ['wtc', 'wlo', 'wel']},
+          'oracle': {'prefers': ['wig', 'ioe'], 'walled': ['wlo', 'wml', 'wtc']},
+          'northflank': {'allow': {'ioe', 'wig', 'wim'}}}
+
+
+def run_pass(test, spec, sizes=SIZES, absent=(), crash=None, outage=None, rejects=0, lanes=3):
+    """The runners of `spec` on one MemoryStore: (pages fetched, reports, summary, seconds)."""
+    shared, lock, fetched, flock = {}, threading.Lock(), [], threading.Lock()
+    allow = {n: spec[n].get('allow') for n in spec}
+    prefers_of = {n: spec[n].get('prefers', []) for n in spec}
+    runners = {}
+    for n, sp in spec.items():
+        slots = [s for s in sizes if allow[n] is None or stack.faculty_of(s) in allow[n]]
+        me = me_of(n, slots, list(spec), prefers_of[n], allow, prefers_of, dict(sizes),
+                   pool=sp.get('pool', ()), pool_help=sp.get('pool_help', ()), hunter=bool(sp.get('hunter')),
+                   pool_of={m: set(spec[m].get('pool', ())) for m in spec})
+        site = FakeSite(n, sizes, fetched, flock, sp.get('walled', ()), sp.get('wall_mid', ()), sp.get('errors', ()),
+                        sp.get('poison', ()), crash_after=crash[1] if crash and crash[0] == n else None,
+                        exits=sp.get('exits'), exits_wall_mid=sp.get('exits_wall_mid', ()),
+                        exits_dead=sp.get('exits_dead', ()))
+        st = board.MemoryStore(shared, lock)
+        st.rejects = rejects
+        r = stack.Runner(st, me, site, lanes=lanes, deadline=time.monotonic() + 40, log=lambda m: None)
+        site.runner = r
+        runners[n] = r
+    reports = {}
+
+    def go(r):
+        try:
+            r.start()
+            reports[r.me.name] = r.run()
+        except SystemExit:
+            pass
+    threads = [threading.Thread(target=go, args=(r,)) for n, r in runners.items() if n not in absent]
+    if outage:
+        def flip():
+            time.sleep(outage[1])
+            runners[outage[0]].store.down = True
+            time.sleep(outage[2])
+            runners[outage[0]].store.down = False
+        threading.Thread(target=flip, daemon=True).start()
+    t0 = time.monotonic()
+    [t.start() for t in threads]
+    [t.join(60) for t in threads]
+    test.assertFalse(any(t.is_alive() for t in threads), 'a runner never ended')
+    docs = {k: json.loads(v[1]) for k, v in shared.items()}
+    test.sites = {n: r.ops for n, r in runners.items()}
+    summary = stack.summarize(docs, [{'runner': n, 'faculties': ','.join(sizes)} for n in spec], allow)
+    return fetched, reports, summary, time.monotonic() - t0
+
+
+class StackChaos(unittest.TestCase):
+    """Runners that fail often, on one store: every group is checked at least once unless no runner able could, rarely
+    twice, and every runner ends."""
+
+    def setUp(self):
+        quick_stack(self)
+
+    def check(self, fetched, summary, sizes=SIZES, lost=(), dup_ok=False):
+        count = {}
+        for _, slot, code in fetched:
+            count[(slot, code)] = count.get((slot, code), 0) + 1
+        for slot, n in sizes.items():
+            got = sum(1 for (s, _) in count if s == slot)
+            if slot in lost:
+                continue
+            self.assertEqual(got, n, f'{slot}: {got} of {n} checked')
+        if not dup_ok:
+            self.assertEqual([k for k, v in count.items() if v > 1], [])
+        return {f: v['status'] for f, v in summary['faculties'].items()}
+
+    def test_everyone_up(self):
+        fetched, reports, summary, _ = run_pass(self, FLEET3)
+        status = self.check(fetched, summary)
+        self.assertEqual(set(status.values()), {'done'})
+        self.assertTrue({'wel', 'wlo', 'wml', 'wtc'} <= set(reports['plebania']['led']))
+        self.assertTrue({'ioe', 'wig'} <= set(reports['oracle']['led']))  # oracle leads what it prefers
+        helped = {r: set(rep['helped']) for r, rep in reports.items()}
+        self.assertTrue(helped['northflank'] & {'ioe', 'wig'})  # and northflank helps with them
+
+    def test_the_home_server_off_leaves_its_faculties_blocked_and_nothing_else(self):
+        spec = {k: v for k, v in FLEET3.items() if k != 'plebania'}
+        fetched, reports, summary, _ = run_pass(self, spec)
+        status = self.check(fetched, summary, lost={'wlo', 'wml', 'wtc'})
+        self.assertEqual({f for f, v in status.items() if v != 'done'}, {'wlo', 'wml', 'wtc'})
+        self.assertEqual({status[f] for f in ('wlo', 'wml', 'wtc')}, {'blocked'})
+        self.assertEqual(reports['oracle']['cant'], {'wlo': 'wall', 'wml': 'wall', 'wtc': 'wall'})
+
+    def test_without_the_home_server_the_exits_found_get_the_walled_faculties_crawled(self):
+        pool = ['wlo', 'wel', 'wml', 'wtc', 'wcy']
+        found = {'wml': ['http://8.8.8.8:3128'], 'wlo': ['http://9.9.9.9:80'], 'wcy': ['http://7.7.7.7:1080']}
+        spec = {'oracle': dict(FLEET3['oracle'], hunter=True, exits=found),
+                'northflank': {'allow': {'ioe', 'wig', 'wim', *pool}, 'pool': pool, 'pool_help': ['wcy'],
+                               'hunter': True, 'exits': found}}
+        fetched, reports, summary, _ = run_pass(self, spec, sizes={k: v for k, v in SIZES.items()})
+        status = self.check(fetched, summary, lost={'wtc'})
+        self.assertEqual(status['wtc'], 'blocked')  # no exit gets through: blocked, as before
+        self.assertEqual({f for f, v in status.items() if v != 'done'}, {'wtc'})
+        crawled = {(r, slot) for r, slot, _ in fetched}
+        self.assertTrue({('oracle', 'wml'), ('northflank', 'wml')} <= crawled)  # both through the exits found
+        self.assertTrue(set(summary['faculties']['wml']['via_pool']) & {'oracle', 'northflank'})
+        self.assertIn('wml', reports['oracle']['pool'] + reports['northflank']['pool'])
+
+    def test_with_the_home_server_up_nobody_hunts_its_faculties(self):
+        pool = ['wlo', 'wel', 'wml', 'wtc', 'wcy']
+        spec = dict(FLEET3, oracle=dict(FLEET3['oracle'], hunter=True, exits={'wml': ['http://8.8.8.8:3128']}),
+                    northflank={'allow': {'ioe', 'wig', 'wim', *pool}, 'pool': pool, 'pool_help': ['wcy'],
+                                'hunter': True, 'exits': {'wcy': ['http://7.7.7.7:1080']}})
+        fetched, reports, summary, _ = run_pass(self, spec)
+        status = self.check(fetched, summary)
+        self.assertEqual(set(status.values()), {'done'})
+        hunted = {s for site in self.sites.values() for s, _ in site.hunts}
+        self.assertTrue(hunted <= {'wcy'}, hunted)  # WCY help through the pool only
+
+    def test_exits_that_meet_the_wall_halfway_strand_nothing(self):
+        found = {'wml': ['http://8.8.8.8:3128']}
+        spec = {'oracle': dict(FLEET3['oracle'], hunter=True, exits=found, exits_wall_mid=['wml']),
+                'northflank': {'allow': {'ioe', 'wig', 'wim', 'wml'}, 'pool': ['wml'], 'hunter': True,
+                               'exits': found}}
+        fetched, _, summary, _ = run_pass(self, spec)
+        status = self.check(fetched, summary, lost={'wlo', 'wtc'})
+        self.assertEqual(status['wml'], 'done')  # northflank's exits went on where oracle's met the wall
+
+    def test_exits_that_die_before_the_listing_are_not_tried_forever(self):
+        # pass 43490421617: the one WTC exit died between the hunt and the listing, and oracle retried the listing
+        # through the empty hunt port every 18 s for an hour
+        spec = {'oracle': dict(FLEET3['oracle'], hunter=True, exits={'wtc': ['http://8.8.8.8:3128']},
+                               exits_dead=['wtc']),
+                'northflank': FLEET3['northflank']}
+        started = time.monotonic()
+        fetched, reports, summary, _ = run_pass(self, spec)
+        status = self.check(fetched, summary, lost={'wlo', 'wml', 'wtc'})
+        self.assertEqual(status['wtc'], 'blocked')
+        self.assertEqual(self.sites['oracle'].route_probes, 1)
+        self.assertEqual(reports['oracle']['cant']['wtc'], 'wall')
+        self.assertLess(time.monotonic() - started, 20)
+
+    def test_a_runner_that_never_starts_is_not_waited_for(self):
+        fetched, _, summary, _ = run_pass(self, FLEET3, absent=('plebania',))
+        status = self.check(fetched, summary, lost={'wlo', 'wml', 'wtc'})
+        self.assertEqual(status['wel'], 'done')  # plebania prefers it, but it never came: oracle took it
+        self.assertEqual({status[f] for f in ('wlo', 'wml', 'wtc')}, {'unfinished'})
+
+    def test_a_runner_that_dies_leaves_its_chunks_to_the_others(self):
+        fetched, _, summary, _ = run_pass(self, FLEET3, crash=('oracle', 30))
+        status = self.check(fetched, summary, dup_ok=True)
+        self.assertEqual(set(status.values()), {'done'})
+
+    def test_helpers_that_cannot_list_or_meet_walls_halfway_strand_nothing(self):
+        spec = {'plebania': dict(FLEET3['plebania'], wall_mid=['wel']),
+                'oracle': dict(FLEET3['oracle'], errors=['wim']),
+                'northflank': dict(FLEET3['northflank'], errors=['wig'])}
+        fetched, reports, summary, _ = run_pass(self, spec)
+        status = self.check(fetched, summary)
+        self.assertEqual(set(status.values()), {'done'})
+
+    def test_a_faculty_nobody_can_list_is_failed_not_hung(self):
+        spec = {'oracle': dict(FLEET3['oracle'], errors=['wim']),
+                'northflank': dict(FLEET3['northflank'], errors=['wim'])}
+        fetched, _, summary, _ = run_pass(self, spec)
+        status = self.check(fetched, summary, lost={'wlo', 'wml', 'wtc', 'wim'})
+        self.assertEqual(status['wim'], 'failed')
+
+    def test_a_poisoned_chunk_is_closed_after_two_tries(self):
+        spec = {'oracle': dict(FLEET3['oracle'], walled=[], poison=['IOE003']), 'northflank': FLEET3['northflank']}
+        sizes = {'ioe': 15, 'wig': 30}
+        fetched, _, summary, _ = run_pass(self, spec, sizes=sizes)
+        status = self.check(fetched, summary, sizes=sizes, lost={'ioe'}, dup_ok=True)
+        self.assertEqual((status['ioe'], summary['faculties']['ioe']['failed']), ('failed', 4))
+        self.assertEqual(len({c for _, s, c in fetched if s == 'ioe'}), 14)  # all but the page that crashes it
+
+    def test_a_store_that_goes_away_and_comes_back(self):
+        fetched, _, summary, _ = run_pass(self, FLEET3, outage=('oracle', 0.03, 1.2))
+        self.check(fetched, summary, dup_ok=True)
+        fetched, _, summary, _ = run_pass(self, FLEET3, outage=('oracle', 0.03, 0.2))
+        self.check(fetched, summary, dup_ok=True)
+
+    def test_lost_races_are_retried(self):
+        fetched, _, summary, _ = run_pass(self, FLEET3, rejects=40)
+        self.assertEqual(set(self.check(fetched, summary).values()), {'done'})
+
+    def test_randomized(self):
+        for seed in range(6):
+            rng = random.Random(seed)
+            spec = {}
+            for name, base in FLEET3.items():
+                sp = dict(base)
+                sp['wall_mid'] = rng.sample(sorted(SIZES), rng.randint(0, 2))
+                sp['errors'] = rng.sample(sorted(SIZES), rng.randint(0, 1))
+                spec[name] = sp
+            crash = (rng.choice(sorted(spec)), rng.randint(5, 60)) if rng.random() < 0.5 else None
+            fetched, _, summary, _ = run_pass(self, spec, crash=crash, rejects=rng.randint(0, 5))
+            allow = {n: spec[n].get('allow') for n in spec}
+            for f, v in summary['faculties'].items():
+                if v['status'] == 'done':
+                    got = {c for _, s, c in fetched if s == f}
+                    self.assertEqual(len(got), SIZES[f], (seed, f))
+                else:
+                    able = [n for n in spec if allow[n] is None or f in allow[n]]
+                    crashed = crash is not None and crash[0] in able
+                    self.assertTrue(crashed or all(n in v['cant'] for n in able), (seed, f, v))
+
+
+class StackReplay(unittest.TestCase):
+    """Passes #135 and #136 (2026-11-09/10) replayed on the stack: their faculties, their sizes, every runner's walls
+    and limits, seconds per page as measured (1 s = 1 ms here). The pass ends at its floor: the faculty only one runner
+    can reach, crawled without a break."""
+
+    PER = {'wel': 8.4, 'wlo': 8.3, 'wml': 8.9, 'wcy': 8.0, 'ioe': 3.7, 'wig': 2.6, 'wim': 1.6, 'wtc': 6.5}
+
+    def replay(self, spec, sizes):
+        quick_stack(self, CHUNK=8, POLL=0.01, HEARTBEAT=0.03, STALE=0.3, JOIN_GRACE=0.3)
+        per, scale = self.PER, 0.001
+        spans = {}
+
+        class Timed(FakeSite):
+            def crawl(site, slot, codes, items, check, tick):
+                done = []
+                for code in codes:
+                    if not check():
+                        break
+                    time.sleep(per[slot] * scale)
+                    with site.lock:
+                        now = time.monotonic()
+                        first, _ = spans.get((site.name, slot), (now, now))
+                        spans[(site.name, slot)] = (first, now)
+                        site.fetched.append((site.name, slot, code))
+                    done.append(code)
+                    tick()
+                return {'done': done, 'blocked': False, 'changed': []}
+        orig = FakeSite.crawl
+        FakeSite.crawl = Timed.crawl
+        self.addCleanup(setattr, FakeSite, 'crawl', orig)
+        fetched, reports, summary, seconds = run_pass(self, spec, sizes, lanes=6)
+        return fetched, reports, summary, spans, seconds / scale / 60
+
+    def test_136_home_server_off(self):
+        sizes = {'wlo': 131, 'wel': 160, 'ioe': 15, 'wcy': 135, 'wml': 162, 'wtc': 23, 'wig': 33, 'wim': 88}
+        spec = {k: v for k, v in FLEET3.items() if k != 'plebania'}
+        fetched, reports, summary, spans, minutes = self.replay(spec, sizes)
+        floor = sizes['wel'] * self.PER['wel'] / 60  # oracle alone reaches WEL
+        self.assertLess(minutes, floor * 1.15 + 1, (minutes, floor))
+        by = {}
+        for name, slot, _ in fetched:
+            by[(name, slot)] = by.get((name, slot), 0) + 1
+        self.assertTrue(by.get(('northflank', 'ioe'), 0) + by.get(('northflank', 'wig'), 0) > 0)  # it helps at once
+
+    def test_135_everyone_up(self):
+        sizes = {'wlo': 131, 'wel': 143, 'ioe': 15, 'wcy': 186, 'wml': 162, 'wtc': 23, 'wig': 33, 'wim': 88}
+        fetched, reports, summary, spans, minutes = self.replay(FLEET3, sizes)
+        self.assertEqual({v['status'] for v in summary['faculties'].values()}, {'done'})
+        first, last = spans[('plebania', 'wml')]
+        # WML (only plebania gets through) runs from the first minute to the end, never waiting for a lane
+        self.assertLess((last - first) / 0.001 / 60, sizes['wml'] * self.PER['wml'] / 60 * 1.15)
+        self.assertLess(minutes, sizes['wml'] * self.PER['wml'] / 60 * 1.15 + 1.5)
+        self.assertIn('wml', reports['plebania']['led'])
+
+
+class StackSummary(unittest.TestCase):
+    def test_a_pass_summed_up_per_faculty(self):
+        docs = {'s/wel': slot_doc('wel', 'closed', 'plebania', [{'state': 'done', 'done_by': 'plebania', 'changed': 1},
+                                                               {'state': 'done', 'done_by': 'oracle'}]),
+                's/wtc': slot_doc('wtc', 'unlisted', cant={'oracle': {'cause': 'wall'}}),
+                's/wel@2027-28-zima': dict(slot_doc('wel~2027-28-zima', 'closed', 'oracle'), note='empty')}
+        matrix = [{'runner': 'oracle', 'faculties': 'wel,wtc,ioe'}]
+        out = stack.summarize(docs, matrix, {'oracle': None})
+        wel = out['faculties']['wel']
+        self.assertEqual((wel['status'], wel['leader'], wel['helpers'], wel['checked'], wel['changed']),
+                         ('done', 'plebania', {'oracle': 1}, 2, 1))
+        self.assertEqual(out['faculties']['wtc']['status'], 'blocked')
+        self.assertEqual(out['faculties']['ioe']['status'], 'unfinished')  # nobody opened it
+
+    def test_cli_reads_the_store_through_git(self):
+        if not shutil.which('git'):
+            self.skipTest('git is needed')
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        subprocess.run(['git', 'init', '-q', '--bare', str(tmp / 'remote.git')], check=True)
+        subprocess.run(['git', 'init', '-q', str(tmp / 'data')], check=True)
+        subprocess.run(['git', '-C', str(tmp / 'data'), 'remote', 'add', 'origin', str(tmp / 'remote.git')], check=True)
+        board.GitStore(tmp / 'data', '1761000000-9').update('s/ioe', lambda d: slot_doc('ioe', 'closed', 'oracle'))
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = stack.main(['summary', '--repo', str(tmp / 'data'), '--planned', '1761000000', '--run-id', '9',
+                               '--matrix', '[{"runner": "oracle", "faculties": "ioe"}]', '--out', str(tmp / 's.json')])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads((tmp / 's.json').read_text())['faculties']['ioe']['status'], 'done')
+
+
+class StackInRefresh(unittest.TestCase):
+    """refresh.main on the work stack: the runners split a faculty, each record stays its leader's."""
 
     _restore_egress = MainTest._restore_egress
 
     def setUp(self):
         MainTest.setUp(self)
-        quick_board(self)
+        quick_stack(self)
         self.fleet = self.tmp / 'fleet.json'
         self.fleet.write_text(json.dumps({'runners': [
-            {'name': 'plebania', 'label': 'planwat-plebania', 'speed': 1},
-            {'name': 'oracle', 'label': 'planwat-oracle', 'speed': 1, 'always_on': True}]}), encoding='utf-8')
-        self.out = self.tmp / 'out'
-        self.store, self.lock, self.fetched = {}, threading.Lock(), []
-        self.output = self.tmp / 'github_output'
-        self.output.write_text('')
-        orig = os.environ.get('GITHUB_OUTPUT')
-        os.environ['GITHUB_OUTPUT'] = str(self.output)
-        self.addCleanup(lambda: os.environ.pop('GITHUB_OUTPUT') if orig is None
-                        else os.environ.__setitem__('GITHUB_OUTPUT', orig))
-
+            {'name': 'plebania', 'label': 'planwat-plebania', 'prefers': ['wml']},
+            {'name': 'oracle', 'label': 'planwat-oracle', 'always_on': True, 'prefers': ['ioe']}]}), encoding='utf-8')
+        self.shared, self.lock, self.fetched = {}, threading.Lock(), []
         test = self
 
         class Counting(FakeSession):
             def get(self, url, timeout=0, headers=None):
                 with test.lock:
-                    test.fetched.append(url)
+                    test.fetched.append((threading.current_thread().name, url))
+                time.sleep(0.003)
                 return super().get(url, timeout, headers)
 
-        def fresh():
+        def fresh(proxy=None):
             session = Counting({})
             session.headers = {}
             return session
         refresh.new_session = fresh
+        self.outputs = {}
 
-    def exports(self):
-        return dict(line.split('=', 1) for line in self.output.read_text().splitlines() if '=' in line)
+        def export(**values):
+            with open(self.outputs[threading.get_ident()], 'a', encoding='utf-8') as fh:
+                for k, v in values.items():
+                    fh.write(f'{k}={str(v).lower()}\n')
+        orig_export = refresh.export
+        refresh.export = export
+        self.addCleanup(setattr, refresh, 'export', orig_export)
 
-    def code(self, f, i):
-        return f'{f.upper()}26A{i}1S1'
+    def main_as(self, runner, faculty, out, outputs, store=None, extra=()):
+        # GITHUB_OUTPUT is one variable for the whole process: two runners in threads each get their own file here
+        self.outputs[threading.get_ident()] = outputs
+        return refresh.main(['--out', str(out), '--force', '--faculty', faculty, '--runner', runner,
+                             '--expected', 'plebania,oracle', '--fleet', str(self.fleet), *extra],
+                            today=dt.date(2026, 10, 15), sleep=lambda s: time.sleep(0.001),
+                            store=store or board.MemoryStore(self.shared, self.lock))
 
-    def main_as(self, runner, faculty, slow=0.02):
-        return refresh.main(['--out', str(self.out), '--force', '--faculty', faculty, '--runner', runner,
-                             '--board', '1761000000-7/w1', '--fleet', str(self.fleet)],
-                            today=dt.date(2026, 10, 15), sleep=lambda s: time.sleep(slow),
-                            board=board.MemoryBoard(self.store, runner, self.lock))
+    def exports(self, path):
+        return dict(line.split('=', 1) for line in path.read_text().splitlines() if '=' in line)
 
-    def test_an_owner_hands_the_tail_to_a_helper_and_skips_it(self):
-        StubDriver.counts = {'wml': 40}
-        every = {self.code('wml', i) for i in range(40)}
-        helper = Sim('oracle', self.store, self.lock, [], {'wml': sorted(every)}, [])
+    def test_two_runners_share_a_faculty_and_publish_one_record(self):
+        StubDriver.counts = {'wml': 40, 'ioe': 4}
+        outs = {n: self.tmp / f'gh-{n}' for n in ('plebania', 'oracle')}
+        codes = {}
 
-        def help_once_wml_runs():  # done with its own share as soon as plebania is crawling
-            while self.store.get('plebania', {}).get('slots', {}).get('wml', {}).get('state') != 'running':
-                time.sleep(0.005)
-            helper.run()
-        th = threading.Thread(target=help_once_wml_runs)
-        th.start()
-        self.main_as('plebania', 'wml')
-        th.join(30)
-        mine = {u.rsplit('/', 1)[1][:-4] for u in self.fetched if u.endswith('.htm')}
-        theirs = {c for _, c in helper.fetched}
-        self.assertTrue(theirs)
-        self.assertEqual(mine & theirs, set())
-        self.assertEqual(mine | theirs, every)
-        out = self.exports()
-        self.assertEqual(out['gave_faculties'], 'wml:oracle')
-        self.assertEqual(out['owned_faculties'], 'wml')
-        self.assertEqual((out['incomplete'], out['incomplete_faculties']), ('false', ''))
+        def go(name):
+            codes[name] = self.main_as(name, 'wml,ioe', self.tmp / name, outs[name])
+        threads = [threading.Thread(target=go, args=(n,)) for n in outs]
+        [t.start() for t in threads]
+        [t.join(60) for t in threads]
+        self.assertEqual(codes, {'plebania': 0, 'oracle': 0})
+        pages = [u.rsplit('/', 1)[1][:-4] for _, u in self.fetched if u.endswith('.htm')]
+        self.assertEqual(sorted(pages), sorted({f'WML26A{i}1S1' for i in range(40)} | {f'IOE26A{i}1S1' for i in range(4)}))
+        p, o = self.exports(outs['plebania']), self.exports(outs['oracle'])
+        self.assertEqual((p['owned_faculties'], o['owned_faculties']), ('wml', 'ioe'))
+        self.assertEqual((p['incomplete'], o['incomplete'], p['done_faculties']), ('false', 'false', 'wml,ioe'))
+        self.assertEqual(o['took_faculties'], 'wml:plebania')  # oracle helped with plebania's WML
+        record = json.loads((self.tmp / 'plebania' / 'refresh-state.json').read_text())['faculties']['wml']['run']
+        theirs = json.loads((self.tmp / 'oracle' / 'refresh-state.json').read_text())['faculties']['wml']['run']
+        self.assertEqual(record['checked'] + theirs['checked'], 40)  # the leader's record counts its own chunks
 
-    def test_a_runner_done_early_helps_a_busy_peer(self):
-        StubDriver.counts = {'ioe': 1, 'wim': 40}
-        wim = [self.code('wim', i) for i in range(40)]
-        owner = Sim('plebania', self.store, self.lock, ['wim'], {'wim': wim}, [], delay=0.03)
-        th = threading.Thread(target=owner.run)
-        th.start()
-        self.main_as('oracle', 'ioe')
-        th.join(30)
-        mine = {u.rsplit('/', 1)[1][:-4] for u in self.fetched if u.endswith('.htm')} - {self.code('ioe', 0)}
-        theirs = {c for _, c in owner.fetched}
-        self.assertTrue(mine)
-        self.assertEqual(mine & theirs, set())
-        self.assertEqual(mine | theirs, set(wim))
-        out = self.exports()
-        self.assertEqual(out['took_faculties'], 'wim:plebania')
-        self.assertEqual(out['owned_faculties'], 'ioe')  # a part: the record stays the owner's
-        self.assertEqual(out['incomplete'], 'false')
-
-    def test_a_runner_helps_while_its_own_lane_still_runs(self):
-        StubDriver.counts = {'ioe': 30, 'wim': 40}
-        wim = [self.code('wim', i) for i in range(40)]
-        owner = Sim('plebania', self.store, self.lock, ['wim'], {'wim': wim}, [], delay=0.03)
-        th = threading.Thread(target=owner.run)
-        th.start()
-        self.main_as('oracle', 'ioe')
-        th.join(30)
-        pages = [u.rsplit('/', 1)[1][:-4] for u in self.fetched if u.endswith('.htm')]
-        last_ioe = max(i for i, c in enumerate(pages) if c.startswith('IOE'))
-        self.assertTrue(any(c.startswith('WIM') for c in pages[:last_ioe]))  # before its own ioe was done
-        theirs = [c for _, c in owner.fetched]  # plebania, done early, may help with ioe in turn
-        every = pages + theirs
-        self.assertEqual(len(every), len(set(every)))
-        self.assertEqual(set(every), set(wim) | {self.code('ioe', i) for i in range(30)})
-
-    def test_without_a_board_nothing_changes(self):
-        StubDriver.counts = {'ioe': 2}
-        code = refresh.main(['--out', str(self.out), '--force', '--faculty', 'ioe'], today=dt.date(2026, 10, 15),
-                            sleep=lambda s: None)
+    def test_an_unreachable_store_falls_back_to_the_static_share(self):
+        StubDriver.counts = {'wml': 3, 'ioe': 2}
+        dead = board.MemoryStore()
+        dead.down = True
+        out = self.tmp / 'gh'
+        code = self.main_as('oracle', 'wml,ioe', self.tmp / 'oracle', out, store=dead, extra=('--fallback', 'ioe'))
         self.assertEqual(code, 0)
-        out = self.exports()
-        self.assertEqual((out['took_faculties'], out['gave_faculties'], out['owned_faculties']), ('', '', 'ioe'))
+        pages = {u.rsplit('/', 1)[1][:-4] for _, u in self.fetched if u.endswith('.htm')}
+        self.assertEqual(pages, {'IOE26A01S1', 'IOE26A11S1'})
+        self.assertEqual(self.exports(out)['owned_faculties'], 'ioe')
 
+    def test_a_wall_here_is_left_to_the_other_runner(self):
+        StubDriver.counts = {'wcy': 12}
+        StubDriver.fails = {'wcy': {'main': 100}}  # whoever lists it first meets the wall; the other gets through
+        outs = {n: self.tmp / f'gh-{n}' for n in ('plebania', 'oracle')}
+        codes = {}
 
-class FleetSteal(unittest.TestCase):
-    """fleet.py over shards that helped each other during the wave."""
+        def go(name):
+            codes[name] = self.main_as(name, 'wcy', self.tmp / name, outs[name])
+        first = threading.Thread(target=go, args=('oracle',))
+        first.start()
+        time.sleep(0.2)
+        StubDriver.fails = {}
+        second = threading.Thread(target=go, args=('plebania',))
+        second.start()
+        first.join(60)
+        second.join(60)
+        pages = {u for _, u in self.fetched if u.endswith('.htm')}
+        self.assertEqual(len(pages), 12)
+        self.assertEqual(codes['plebania'], 0)
+        self.assertIn('wcy:wall', self.exports(outs['oracle'])['cant_faculties'])
 
-    PLAN = [{'runner': 'plebania', 'faculties': 'wml,wel', 'wave': 1}, {'runner': 'oracle', 'faculties': 'ioe', 'wave': 1}]
-
-    def shard(self, runner, wave=1, **kw):
-        return {'runner': runner, 'wave': str(wave), 'skipped': 'false', 'pushed': 'true', 'changed': '0',
-                'blocked': 'false', 'incomplete': 'false', 'degraded': 'false', 'failed': 'false',
-                'blocked_faculties': '', 'incomplete_faculties': '', 'took': '', 'gave': '', **kw}
-
-    def test_a_faculty_handed_on_counts_as_its_taker_left_it(self):
-        done = [self.shard('plebania', gave='wel:oracle'), self.shard('oracle', took='wel:plebania')]
-        self.assertEqual(fleet.combine(self.PLAN, done, 0)['incomplete'], 'false')
-        walled = [self.shard('plebania', gave='wel:oracle'),
-                  self.shard('oracle', took='wel:plebania', blocked='true', incomplete='true',
-                             blocked_faculties='wel', incomplete_faculties='wel')]
-        out = fleet.combine(self.PLAN, walled, 0)
-        self.assertEqual((out['blocked'], out['blocked_faculties']), ('true', ['wel']))
-        self.assertEqual(fleet.held(self.PLAN[1], walled[1]), ['ioe', 'wel'])
-
-    def test_a_split_is_unfinished_when_either_part_is(self):
-        out = fleet.combine(self.PLAN, [self.shard('plebania', gave='wml:oracle'),
-                                        self.shard('oracle', took='wml:plebania', incomplete='true',
-                                                   incomplete_faculties='wml')], 0)
-        self.assertEqual(out['incomplete'], 'true')
-
-    def test_a_grant_nobody_confirmed_is_unfinished_and_handed_off(self):
-        for oracle in (None, self.shard('oracle')):
-            outcomes = [self.shard('plebania', gave='wml:oracle')] + ([oracle] if oracle else [])
-            self.assertEqual(fleet.combine(self.PLAN, outcomes, 0)['incomplete'], 'true')
-            result = fleet.handoff([{'name': 'plebania', 'label': 'p', 'speed': 4, 'always_on': False,
-                                     'faculties': None, 'prefers': [], 'census': []},
-                                    {'name': 'oracle', 'label': 'o', 'speed': 1, 'always_on': True,
-                                     'faculties': None, 'prefers': [], 'census': []}],
-                                   self.PLAN, outcomes, {}, {'p', 'o'})
-            self.assertIn('wml', result['shards'][0]['faculties'])
-            self.assertEqual(result['shards'][0]['runner'], 'plebania')  # the silent taker is avoided
-
-    def test_a_helper_walled_on_what_it_took_hands_it_back_to_the_owner(self):
-        fleet_ = [{'name': n, 'label': n[0], 'speed': s, 'always_on': n == 'oracle', 'faculties': None,
-                   'prefers': [], 'census': []} for n, s in (('plebania', 4), ('oracle', 1))]
-        outcomes = [self.shard('plebania', gave='wel:oracle'),
-                    self.shard('oracle', took='wel:plebania', blocked='true', incomplete='true',
-                               blocked_faculties='wel', incomplete_faculties='wel')]
-        result = fleet.handoff(fleet_, self.PLAN, outcomes, {}, {'p', 'o'})
-        self.assertEqual([(s['runner'], s['faculties']) for s in result['shards']], [('plebania', 'wel')])
-        self.assertEqual(result['left']['wel'], {'runner': 'oracle', 'why': 'blocked'})
-
+class FleetOwned(unittest.TestCase):
     def test_merge_owned_is_exact_even_empty(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
@@ -4040,38 +4014,28 @@ class FleetSteal(unittest.TestCase):
         self.assertEqual(json.loads((tmp / 'into.json').read_text())['faculties'],
                          {'wel': {'last_count': 9}, 'ioe': {'last_count': 3}})
 
-    def test_the_run_history_says_who_helped(self):
-        record = runs.build_run(run_id=7, number=1, attempt=1, event='schedule', url='u',
-                                planned=dt.datetime(2026, 10, 25, 12, tzinfo=dt.timezone.utc),
-                                ended=dt.datetime(2026, 10, 25, 12, 40, tzinfo=dt.timezone.utc),
-                                matrix=self.PLAN,
-                                outcomes=[self.shard('plebania', gave='wml:oracle'),
-                                          self.shard('oracle', took='wml:plebania')],
-                                plan_info={}, state={})
-        oracle = [r for r in record['runners'] if r['name'] == 'oracle'][0]
-        self.assertEqual(oracle['helped'], {'wml': 'plebania'})
-        wml = [f for f in record['faculties'] if f['id'] == 'wml'][0]
-        self.assertEqual(wml['helpers'], ['oracle'])
-        import build
-        self.assertEqual(build.runner_share(oracle), 'IOE, WML (pomoc dla plebania)')
-        self.assertIn('z pomocą oracle', build.faculty_notes(wml))
-
 
 
 class FleetLimitedRunner(unittest.TestCase):
-    """A runner limited by `faculties` (northflank) takes only those, and does not shorten anyone's wall wait."""
+    """A runner limited by `faculties` (northflank) is started for those only, and falls back to a share of them."""
 
     def test_the_real_fleet_with_a_limited_runner(self):
         f = fleet.load_fleet()
-        both = fleet.plan(f, fleet.enabled_faculties(), {}, {'planwat-oracle', 'planwat-northflank'})
-        by = {s['runner']: s for s in both['shards']}
+        wanted = fleet.enabled_faculties()
+        jobs, result = fleet.matrix_of(f, wanted, {}, {'planwat-oracle', 'planwat-northflank'})
+        by = {j['runner']: j for j in jobs}
         limited = [r for r in f if r['name'] == 'northflank'][0]
-        self.assertTrue(set(by['northflank']['faculties'].split(',')) <= set(limited['faculties']))
-        # oracle's share holds walls northflank may not take: the full wait stays
-        self.assertEqual(by['oracle']['wait'], fleet.BLOCK_WAIT)
-        everyone = fleet.plan(f, fleet.enabled_faculties(), {},
-                              {'planwat-oracle', 'planwat-northflank', 'planwat-plebania'})
-        self.assertTrue(all(s['wait'] == fleet.HANDOFF_WAIT for s in everyone['shards']))
+        self.assertEqual(set(by['northflank']['faculties'].split(',')),
+                         (set(limited['faculties']) | set(limited['pool'])) & set(wanted))
+        self.assertEqual(set(by['northflank']['pool'].split(',')), set(limited['pool']) & set(wanted))
+        self.assertEqual((by['northflank']['egress'], by['oracle']['egress'], by['oracle']['pool']),
+                         ('local', 'remote', ''))
+        self.assertEqual(by['oracle']['faculties'].split(','), wanted)
+        self.assertTrue(set(by['northflank']['fallback'].split(',')) <= set(limited['faculties']))
+        self.assertEqual(by['oracle']['expected'], 'oracle,northflank')
+        self.assertEqual(result['unassigned'], [])
+        nobody = fleet.matrix_of(f, wanted, {}, set())[0]
+        self.assertEqual(nobody, [])
 
 
 if __name__ == '__main__':

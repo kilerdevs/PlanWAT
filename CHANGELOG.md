@@ -16,6 +16,38 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Tor z polskimi wyjściami w puli egressu** (`tools/egress/pool.py`, `server.py`, `Dockerfile.tor`, `torrc`,
+  `deploy/runner/compose.yml`, `tools/refresh/egress.py`): ściany WLO, WML, WTC i WCY przepuszczają tylko adresy z Polski, a
+  publiczne listy nie mają żywych polskich proxy. Klient Tor z `ExitNodes {pl}` przechodzi wszystkie cztery. Egress trzyma
+  jego porty (`EGRESS_TOR`) jako przypięte wpisy puli, które nigdy nie wypadają i są sprawdzane co cykl; oracle ma kontener
+  `tor`, northflank uruchamia Tor z paczki Tor Expert Bundle (przypięty sha256) obok swojego egressu.
+- **Nowe źródła proxy z opisem sieci** (`tools/egress/pool.py`): ProxyScrape (czy adres jest hostingowy), Geonode (nazwa
+  ISP, także lista polskich proxy) i spys.me (kraj). Pierwszeństwo w zwiadzie i polowaniu mają polskie łącza domowe, potem
+  polskie adresy, potem łącza domowe gdzie indziej — tych ściany wydziałów nie odbijają jak centrów danych — i mogą mieć
+  ping do 6 s.
+- **Zwiad egressu: ciągłe szukanie szybszych wyjść przez ściany** (`tools/egress/pool.py` `scout_once`, `server.py`,
+  `tools/refresh/egress.py`): egress na oracle i northflanku przez cały czas bierze z list proxy kandydatów, których
+  jeszcze nie widział, odsiewa martwych samym połączeniem TCP, robi Round 1 na żywych i każde nowe proxy z sensownym pingiem
+  sprawdza na stronach wszystkich 8 wydziałów, oznaczając, które przepuszcza. Wydział z 12 wyjściami dostaje do testu tylko
+  szybsze proxy, a najszybsze wyjścia każdego wydziału są sprawdzane co 20 minut, więc polowanie bez plebanii oddaje gotowe
+  wyjścia przez WLO, WML i WTC od razu. Panel egressu ma kartę „Wyjścia na wydziały”, a `GET /api/exits` je zwraca.
+  Northflank uruchamia zwiad między przebiegami (kopia kodu i venv w tool cache, bez zmian w obrazie), a zadanie zatrzymuje
+  go na swój czas: 512 MB kontenera nie mieści zwiadu, crawla i `pip install` naraz. Plebania ma zwiad wyłączony.
+- **Polowanie na wyjścia przez ściany, gdy plebania jest wyłączona** (`tools/egress/pool.py` `hunt`/`adopt`,
+  `server.py`, `tools/refresh/egress.py`, `stack.py`): gdy żaden włączony runner nie przechodzi ściany wydziału z
+  własnego adresu (bez plebanii WLO, WEL, WML i WTC), runner z egressem każe mu sprawdzić każde żywe publiczne proxy z
+  sensownym pingiem (Round 1 do 2,5 s) na stronie listy wydziału — proxy, które przeszło jeden wydział, od razu na
+  pozostałych — i crawluje przez znalezione wyjścia nowym portem polowania (8889: tylko sprawdzone wyjścia, tylko HTTPS,
+  nigdy bezpośrednio). Znalezione wyjścia trafiają na stos pracy, więc drugi runner sprawdza je własnym egressem i
+  pomaga. Northflank uruchamia egress z checkoutu na własnym loopbacku, bierze WLO, WEL, WML, WTC i WCY wyłącznie przez
+  pulę, a przy WCY pomaga oracle zawsze, gdy zostało dość pracy. Historia przebiegów mówi „przez proxy (pula) na …”.
+  Oracle potrzebuje przebudowanego egressu; starszy odpowiada 404 i oracle po prostu nie poluje.
+- **Nadrabianie po powrocie serwera** (`.github/workflows/refresh-wake.yml`, `fleet.py owed`, `plan --catchup`): gdy
+  przebieg zastaje runner wyłączony, kolejkuje na niego czekające zadanie, które GitHub uruchamia w chwili, gdy maszyna
+  połączy się z GitHubem. Wtedy rusza przebieg tylko z tego, co opuszczone przebiegi zostawiły dla niego (dla plebanii
+  zwykle WLO, WML i WTC), z pomocą pozostałych tam, gdzie nie stoi ich ściana. Na runner czeka najwyżej jedno zadanie
+  (odnawiane po 20 h, przed limitem kolejki GitHuba), a własny runner nie dostaje przy tym żadnego tokenu. Historia
+  przebiegów nazywa taki przebieg „nadrabiający za serwer …”.
 - **Relay Cloudflare dla wydziałów, których nie wpuszcza żadne wyjście puli** (`tools/refresh/relay.py`,
   `tools/egress/cloudflare/`): opcjonalny Worker z tokenem i dokładną listą hostów pobiera z adresów Cloudflare strony,
   które ściana Incapsuli serwuje normalnie, a runnerowi oddaje status, `ETag`/`Last-Modified` i treść. Relay włącza się
@@ -139,6 +171,21 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Nowy podział pracy między serwerami: wspólny stos pracy** (`tools/refresh/stack.py`, `board.py`). Plan niczego już
+  nie przydziela: każdy włączony runner bierze pracę ze wspólnego stosu przebiegu (jeden dokument na wydział na
+  referencji gita, zmieniany atomowo przez compare-and-swap). Lider wydziału wylicza go i tnie na kawałki po 8 grup,
+  bierze je od przodu, a pomocnicy od tyłu. Serwery mają **preferencje**: wydział, który ktoś preferuje (`prefers`),
+  otwiera i prowadzi tylko on, dopóki jest włączony, a inni pomagają mu kawałkami. Kolejność to preferowane, potem
+  wydziały, których nikt inny nie może wziąć, potem największe; praca wyłącznie danego runnera (WML na plebanii) ma
+  pierwszeństwo na jego ścieżkach. Limity zostają: jedno zapytanie naraz na politykę Incapsula z jednego adresu i listy
+  `faculties`. Odtworzone przebiegi #135 i #136 kończą się na dolnej granicy (24 i 22 min), a northflank od pierwszej
+  minuty pomaga przy IOE i WIG, zamiast stać bezczynnie po WIM.
+- **Odporność na awarie pomocniczych serwerów.** Runner, który nie może wyliczyć wydziału (ściana, błąd, zniknięta
+  strona), zapisuje to, zanim cokolwiek weźmie, więc nic nie utyka. Ściana w połowie kawałka oddaje resztę na stos.
+  Kawałki runnera, który padł, przestał bić sercem (150 s) albo zawiesił ścieżkę (10 min), bierze inny. Kawałek, który
+  dwa razy wywraca konwersję, jest zamykany jako nieudany. Nieosiągalny stos to samodzielny udział zapasowy, a znikający
+  w trakcie oznacza dokończenie wydziałów, które się prowadzi. Na ścianę czeka się tylko wtedy, gdy nikt inny włączony
+  nie może wziąć wydziału. Zasada: każda grupa co najmniej raz, rzadko dwa razy.
 - **Flota wraca do wydziałów, które naprawdę przechodzą przez relay** (`tools/refresh/fleet.json`, `docs/`): 29.10.2026
   strony planów WLO, WML i WTC odpowiadały Workerowi `403` z AMS i FRA (z WLO przechodziła tylko strona główna), a WEL
   i WIG działały. Northflank bierze więc znowu tylko IOE, WIG i WIM, a plebania preferuje WTC, WLO i WEL, żeby jej czysta
@@ -180,6 +227,29 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Log crawla zalany jednym ostrzeżeniem** (`tools/refresh/rozklad2ics.py`): „unknown subject …; assigned fallback colour”
+  szło przy każdych zajęciach WCY, ok. 11 tys. linii, 95% logu przebiegu. Kolor zastępczy jest deterministyczny i dotyczy
+  większości przedmiotów, więc ostrzeżenie zniknęło.
+- **Sonda WLO pytała o nieistniejący `index.xml`** (`tools/egress/server.py`): WLO publikuje listę grup już tylko jako
+  `planzajec/<sezon>/index.html` (`index.xml` daje 404 także z Polski; crawler przechodzi na `index.html` sam), więc
+  żadne wyjście nie mogło przejść sondy. Sonda pyta teraz o `index.html` i szuka `Plansoft`.
+- **Sondy WLO i WML nigdy nie mogły przejść** (`tools/egress/server.py` `faculty_targets`): WLO był sprawdzany pod
+  pisownią WEL (`/planyzajec/`, 404), a WML na stronie `/rozklady-zajec/` usuniętej w październiku, więc polowanie i
+  zwiad odrzucały każde proxy, także takie, które przechodzi ścianę. Ściany to reguły Imperva na katalogach planów (z VPS-a
+  403 na `/planzajec/`, `/Plany/`, `/rozklady_zajec/`, `/pl/rozklad`; strony główne 200), więc sonda pyta teraz o tę samą
+  stronę, którą listuje crawler (WML: indeks bieżącego semestru), sezon liczy się z daty, a test pilnuje zgodności z
+  `sources.json`. Werdykty ze starych stron są odrzucane.
+- **Crawl przez pulę zapętlał się na martwych wyjściach** (`tools/refresh/stack.py`): gdy jedyne znalezione wyjście
+  umarło między polowaniem a listowaniem, port polowania odpowiadał 403, a runner ponawiał listowanie co 18 s przez
+  godzinę (dla trasy przez pulę każdy błąd był pomijany). Teraz każdy błąd listowania przez pulę gubi trasę jak ściana:
+  w tym przebiegu runner poluje znowu tylko wtedy, gdy inny dopisze do slotu nowe wyjścia.
+- **Pula proxy stała w miejscu** (`tools/egress/pool.py`): pudło na stronie wydziału odświeżało werdykt „żywe” proxy, więc
+  pula oracle trzymała 2000 wpisów, prawie wszystkie rzekomo żywe, a usuwanie przy pełnej puli wyrzucało tylko odrzucone —
+  nowy kandydat nie miał jak wejść. Listy były czytane tylko od pierwszych 80 wpisów każdej (około 640 proxy w ogóle) i
+  pobierane od nowa w każdej rundzie polowania. Teraz pudło na wydziale to werdykt tylko tego wydziału, pełna pula robi
+  miejsce kosztem odrzuconych, nieaktualnych i najwolniejszych (nigdy wyjść wydziałów), kandydaci są brani z całych list
+  (polskie pierwsze), listy są trzymane 30 minut, martwi czekają 12 h w `seen.json`, a Round 1 to puste 204 Cloudflare
+  zamiast kafelka OSM.
 - **WIM znowu jest crawlowny**: wydział zamienił `index.xml` na `index.html` (listopad 2026), a sterownik Plansoft znał
   tylko XML, więc przebieg uznawał listę grup za usuniętą, a plany WIM zostawały z października. Sterownik czyta teraz
   oba eksporty (po 404/410 sięga po drugi) i z HTML bierze wyłącznie pierwszą kolumnę „Grupy”, żeby nie crawlować stron
@@ -273,6 +343,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Ruch na mapie kampusu:** krzywa `--ease-out` na stronie mapy wskazywała sama na siebie, więc przeglądarka ją
   odrzucała. Przez to nie działały wejście nagłówka, wyszukiwarki i panelu ani płynne zwijanie panelu. Teraz ma tę samą
   wartość co na pozostałych stronach.
+
+### Usunięto
+- Etap **handoff/takeover** (druga fala zadań) i wymiana próśb między runnerami (`steal.py`): to, czego jeden runner nie
+  zrobił, wraca na stos i bierze to inny w tym samym przebiegu. Raport czyta werdykt każdego wydziału ze stosu
+  (`stack.py summary`), a historia przebiegów pokazuje lidera, pomoc i odmowy („blokada dla oracle”, „bez listy grup”).
 
 ## [1.1.1] - 2026-10-22
 

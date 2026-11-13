@@ -1174,6 +1174,15 @@ STATUS_DESCRIPTION = ('Ostatnie przebiegi pobierania planów ze stron wydziałó
                       'i co się zmieniło.')
 RUN_RESULTS = ('ok', 'changed', 'degraded', 'incomplete', 'blocked', 'idle')
 RUN_EVENTS = {'schedule': 'automatyczny', 'workflow_dispatch': 'uruchomiony ręcznie'}
+
+
+def run_event(run):
+    """How a pass was started: 'automatyczny', 'uruchomiony ręcznie', or, for the catch-up a server started once it
+    was back online (refresh-wake.yml), 'nadrabiający za serwer X'."""
+    who = run.get('catchup')
+    if isinstance(who, str) and who:
+        return f'nadrabiający za serwer {who}'
+    return RUN_EVENTS.get(run.get('event'), '')
 RUN_CAUSES = {'wall': 'blokada Incapsula', 'listing': 'nie udało się pobrać listy grup'}
 MONTHS_SHORT = ('sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru')
 
@@ -1284,8 +1293,12 @@ def runner_state(r):
     took = minutes_label(r['minutes']) if count(r.get('minutes')) or r.get('minutes') == 0 else ''
     blocked_on = [str(f).upper() for f in r.get('blocked_on', []) if isinstance(f, str)]
     degraded_on = [str(f).upper() for f in r.get('degraded_on', []) if isinstance(f, str)]
+    cant = r.get('cant') if isinstance(r.get('cant'), dict) else {}
+    unlisted = [str(f).upper() for f, c in cant.items() if isinstance(f, str) and c != 'wall']
     if blocked_on:
         extra = f"zablokowany na {', '.join(blocked_on)}"
+    elif unlisted:
+        extra = f"bez listy grup {', '.join(unlisted)}"
     elif r.get('status') == 'degraded':
         extra = f"odrzucone strony{' na ' + ', '.join(degraded_on) if degraded_on else ''}"
     else:
@@ -1294,9 +1307,9 @@ def runner_state(r):
 
 
 def runner_share(r):
-    """A server's faculties in a pass; a takeover says whose they were: 'WTC (od oracle)', or 'WTC (ponownie)' when the
-    server gets back what it let go after a short wait (nobody else was up to take it). What it took off another server
-    during the pass comes last: 'WML (pomoc dla plebania)'."""
+    """A server's faculties in a pass: those it led, then those it helped another server with: 'WML (pomoc dla
+    plebania)'. In an older pass a takeover says whose they were: 'WTC (od oracle)', or 'WTC (ponownie)' when the server
+    got back what it let go after a short wait."""
     return ', '.join(label for _, label in share_parts(r))
 
 
@@ -1310,8 +1323,12 @@ def share_parts(r):
         return ' (ponownie)' if took[f] == r.get('name') else f' (od {took[f]})'
     own = [f for f in r.get('faculties', []) if isinstance(f, str)]
     helped = r.get('helped') if isinstance(r.get('helped'), dict) else {}
-    return ([(f, f.upper() + note(f)) for f in own]
-            + [(f, f'{f.upper()} (pomoc dla {who})') for f, who in helped.items()
+    pooled = {f for f in r.get('via_pool', []) if isinstance(f, str)} if isinstance(r.get('via_pool'), list) else set()
+
+    def via(f):
+        return ' przez proxy' if f in pooled else ''
+    return ([(f, f.upper() + note(f) + via(f)) for f in own]
+            + [(f, f'{f.upper()} (pomoc dla {who}{via(f)})') for f, who in helped.items()
                if isinstance(f, str) and isinstance(who, str) and f not in own])
 
 
@@ -1340,6 +1357,17 @@ def faculty_notes(f):
     helpers = [h for h in f.get('helpers', []) if isinstance(h, str)] if isinstance(f.get('helpers'), list) else []
     if helpers:
         notes.append(f"z pomocą {', '.join(helpers)}")
+    cant = f.get('cant') if isinstance(f.get('cant'), dict) else {}
+    walled = [r for r, c in cant.items() if isinstance(r, str) and c == 'wall']
+    unlisted = [r for r, c in cant.items() if isinstance(r, str) and c != 'wall']
+    pooled = [r for r in f.get('via_pool', []) if isinstance(r, str)] if isinstance(f.get('via_pool'), list) else []
+    if pooled:
+        # the hunt (docs/EGRESS.md): public proxies that got through the wall the servers' own lines met
+        notes.append(f"przez proxy (pula) na {', '.join(pooled)}")
+    if walled and not f.get('blocked'):
+        notes.append(f"blokada dla {', '.join(walled)}")
+    if unlisted:
+        notes.append(f"bez listy grup na {', '.join(unlisted)}")
     if not f.get('fresh'):
         return notes + ['brak danych z tego przebiegu']
     cause = f.get('cause')
@@ -1408,7 +1436,7 @@ def _status_section(title, body):
 def _status_link(run, e):
     number = count(run.get('number')) or run['id']
     url = run.get('url') if isinstance(run.get('url'), str) and run['url'].startswith('https://') else ''
-    bits = [RUN_EVENTS.get(run.get('event'), ''),
+    bits = [run_event(run),
             f'trwał {minutes_label(run_minutes(run))}' if run_minutes(run) is not None else '']
     if count(run.get('attempt')) > 1:
         bits.append(f"próba {run['attempt']}")

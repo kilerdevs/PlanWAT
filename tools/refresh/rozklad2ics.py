@@ -305,8 +305,8 @@ def subject_color(subject):
     if subject in SUBJECT_COLORS:
         return SUBJECT_COLORS[subject]
     palette = sorted(set(SUBJECT_COLORS.values()))
+    # deterministic per subject, and most subjects are not in the map: no warning (it was 95% of a crawl's log)
     idx = int(hashlib.sha1(subject.encode("utf-8")).hexdigest(), 16) % len(palette)
-    warn("unknown subject %r; assigned fallback colour %s" % (subject, palette[idx]))
     return palette[idx]
 
 

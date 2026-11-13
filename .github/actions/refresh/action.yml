@@ -18,20 +18,25 @@ inputs:
     description: Comma-separated faculties whose site census to take after the crawl (at most once a week; project mode only).
     default: ''
   runner:
-    description: Project mode, this runner's name in tools/refresh/fleet.json (with `board`, it helps its peers).
+    description: Project mode, this runner's name in tools/refresh/fleet.json (with `board`, it shares the work stack).
     default: ''
   board:
     description: >
-      Project mode, the wave's work board (<planned>-<run id>/w<wave>, tools/refresh/board.py): the runners of a wave
-      take work off each other while they crawl. Empty: no help.
+      Project mode, the pass's work stack (<planned>-<run id>, tools/refresh/stack.py on git refs): the runners of a
+      pass pull their work from it. Empty: this runner crawls its faculties alone.
+    default: ''
+  expected:
+    description: Project mode, comma-separated runners the plan started for this pass.
+    default: ''
+  fallback:
+    description: Project mode, comma-separated faculties to crawl alone should the work stack be out of reach.
     default: ''
   max-minutes:
     description: Stop gracefully after this many minutes.
     default: '100'
   max-block-wait-minutes:
     description: >
-      How long to wait out a wall before letting the faculty go. refresh.yml shortens it when another runner is up to
-      take the faculty over.
+      How long to wait out a wall. With the work stack a runner waits only for a faculty no other runner up can take.
     default: '30'
   adaptive-hours:
     description: Cap (hours) for how far an unchanged group may stretch its revalidation gap (0 rechecks every pass).
@@ -67,12 +72,24 @@ outputs:
   incomplete-faculties:
     description: Comma-separated faculties this pass did not finish (the blocked ones included)
     value: ${{ steps.run.outputs.incomplete_faculties }}
+  done-faculties:
+    description: Comma-separated faculties this runner last saw done (by anyone)
+    value: ${{ steps.run.outputs.done_faculties }}
   took-faculties:
-    description: faculty:runner pairs this runner took work of from a peer during the wave
+    description: faculty:leader pairs of the faculties this runner helped with
     value: ${{ steps.run.outputs.took_faculties }}
   gave-faculties:
-    description: faculty:runner pairs this runner handed work of to a peer during the wave
+    description: faculty:runner pairs of the runners that helped with the faculties this one led
     value: ${{ steps.run.outputs.gave_faculties }}
+  led-faculties:
+    description: Comma-separated faculties this runner led (listed for the work stack)
+    value: ${{ steps.run.outputs.led_faculties }}
+  cant-faculties:
+    description: faculty:cause pairs of the faculties this runner could not list (wall, gone, error)
+    value: ${{ steps.run.outputs.cant_faculties }}
+  pool-faculties:
+    description: Comma-separated faculties this runner crawled through proxy exits its egress hunted (docs/EGRESS.md)
+    value: ${{ steps.run.outputs.pool_faculties }}
   changed:
     description: Number of calendars that changed
     value: ${{ steps.run.outputs.changed }}
@@ -96,7 +113,14 @@ runs:
       with:
         python-version: '3.13'
     - shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
       run: |
+        # A runner-local egress scouting between passes (tools/refresh/egress.py, northflank) gives the job its memory
+        # back first: on a 512 MB container it and this job's pip install do not fit together. The crawl starts it again.
+        if [ -f "$RUNNER_TOOL_CACHE/planwat/egress/daemon.json" ]; then
+          python3 "$GITHUB_WORKSPACE/$SOURCE/tools/refresh/egress.py" stop || true
+        fi
         # Dependencies go into a throwaway venv on writable scratch: the self-hosted runner's baked
         # /opt/venv is read-only at job time (container hardening), so `pip install` there fails
         # with EROFS. $RUNNER_TEMP is writable on both hosted and self-hosted runners.
@@ -111,6 +135,8 @@ runs:
         CENSUS: ${{ inputs.census }}
         RUNNER: ${{ inputs.runner }}
         BOARD: ${{ inputs.board }}
+        EXPECTED: ${{ inputs.expected }}
+        FALLBACK: ${{ inputs.fallback }}
         MAX_MINUTES: ${{ inputs.max-minutes }}
         BLOCK_WAIT: ${{ inputs.max-block-wait-minutes }}
         ADAPTIVE_HOURS: ${{ inputs.adaptive-hours }}
@@ -152,8 +178,10 @@ runs:
             args+=(--faculty-state "$line")
           fi
           if [ -n "$CENSUS" ]; then args+=(--census "$CENSUS"); fi
-          # The runners of a wave help each other through git refs pushed with the data checkout's credentials.
-          if [ -n "$BOARD" ] && [ -n "$RUNNER" ]; then args+=(--board "$BOARD" --runner "$RUNNER"); fi
+          # The runners of a pass share one work stack on git refs, pushed with the data checkout's credentials.
+          if [ -n "$BOARD" ] && [ -n "$RUNNER" ]; then
+            args+=(--board "$BOARD" --runner "$RUNNER" --expected "$EXPECTED" --fallback "$FALLBACK")
+          fi
         fi
         "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}"
         code=$?
@@ -175,8 +203,7 @@ runs:
       env:
         SOURCE: ${{ inputs.source }}
         FACULTY: ${{ inputs.faculty }}
-        # The faculties whose records this pass publishes: its own but those it handed on whole, plus those it took
-        # whole (refresh.py). Exact, and may be empty; an older crawl without it falls back to the share's faculties.
+        # The faculties whose records this pass publishes: those it led (refresh.py). Exact, and may be empty.
         OWNED: ${{ steps.run.outputs.owned_faculties }}
         OWNED_KNOWN: ${{ steps.run.outputs.owned_known }}
       run: |
@@ -211,6 +238,16 @@ runs:
           sleep $((attempt * 3 + RANDOM % 5))
         done
         exit 1
+    - if: always() && inputs.mode == 'project' && inputs.runner != ''
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        RUNNER: ${{ inputs.runner }}
+      run: |
+        # A runner without an egress box (northflank) scouts the proxy pool between passes: whatever became of the crawl,
+        # the scouting egress runs again, on this checkout's code, until the next job stops it (docs/EGRESS.md, "Zwiad").
+        python3 "$GITHUB_WORKSPACE/$SOURCE/tools/refresh/egress.py" start --runner "$RUNNER" \
+          --fleet "$GITHUB_WORKSPACE/$SOURCE/tools/refresh/fleet.json" || echo "::warning::the scouting egress did not start"
     # No `gh workflow run pages.yml` here on purpose: pages.yml rebuilds daily on its own and picks
     # the refreshed calendars up. Granting actions:write so the crawl could trigger deploys would let
     # anyone holding the refresh token (or a workflow patch) run arbitrary workflows.
