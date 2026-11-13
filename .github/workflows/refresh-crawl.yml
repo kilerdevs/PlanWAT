@@ -109,6 +109,7 @@ jobs:
           GAVE: ${{ steps.refresh.outputs.gave-faculties }}
           LED: ${{ steps.refresh.outputs.led-faculties }}
           CANT: ${{ steps.refresh.outputs.cant-faculties }}
+          POOL: ${{ steps.refresh.outputs.pool-faculties }}
           OUTCOME: ${{ steps.refresh.outcome }}
         run: |
           # A refresh step that failed outright leaves its outputs empty: nothing it did can be trusted as done.
@@ -119,7 +120,7 @@ jobs:
             --arg pushed "$PUSHED" --arg changed "$CHANGED" --arg blocked "$BLOCKED" --arg incomplete "$INCOMPLETE" \
             --arg degraded "$DEGRADED" --arg failed "$FAILED" --arg blocked_faculties "$BLOCKED_FACULTIES" \
             --arg incomplete_faculties "$INCOMPLETE_FACULTIES" --arg done_faculties "$DONE_FACULTIES" \
-            --arg took "$TOOK" --arg gave "$GAVE" --arg led "$LED" --arg cant "$CANT" \
+            --arg took "$TOOK" --arg gave "$GAVE" --arg led "$LED" --arg cant "$CANT" --arg pool "$POOL" \
             --arg started "$STARTED" --arg ended "$(date +%s)" \
             '$ARGS.named' > "shard/shard-$SHARD.json"
           cat "shard/shard-$SHARD.json"

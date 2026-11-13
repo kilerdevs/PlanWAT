@@ -53,6 +53,7 @@ import board as boards  # noqa: E402
 import core  # noqa: E402
 import drivers  # noqa: E402
 import fleet  # noqa: E402
+import egress as egress_client  # noqa: E402
 import relay  # noqa: E402
 import stack  # noqa: E402
 
@@ -383,13 +384,18 @@ def robots_allows(session, url, state=None):
         return True
 
 
-def new_session():
+def new_session(proxy=None):
+    """A browser-like session; with `proxy` (an egress hunt port, egress.py) every request rides it, the relay
+    included: a faculty reached through pool exits is never sent to the Worker instead."""
     from curl_cffi import requests as cr
     # 'chrome' tracks curl_cffi's current Chrome fingerprint (chrome136 in 0.13.0). A pinned old release
     # (chrome131 was kept long after Chrome moved on) is itself a bot signal to Incapsula.
-    s = cr.Session(impersonate='chrome')
+    if proxy:
+        s = cr.Session(impersonate='chrome', proxies={'http': proxy, 'https': proxy})
+    else:
+        s = cr.Session(impersonate='chrome')
     s.headers['Accept-Language'] = 'pl-PL,pl;q=0.9'
-    return relay.wrap(s)
+    return s if proxy else relay.wrap(s)
 
 
 def conditional_headers(entry):
@@ -607,18 +613,25 @@ def todo_of(name, cfg, args, state, today, items, ahead=False, only=None):
 
 
 def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic,
-                     progress=None, ahead=False, part=None, only=None, listed=None, settle=True):
+                     progress=None, ahead=False, part=None, only=None, listed=None, settle=True, report_block=None):
     """refresh_faculty's body. A chunk of the work stack (stack.py) passes `only` (its codes), `listed` (the listing
     this runner made), `part` (asked before each group: False skips it, the chunk is no longer this runner's) and
     `settle` (False: a further chunk of a faculty this runner already crawled cleanly this pass, which does not ease
-    the learned pacing again)."""
+    the learned pacing again). `report_block` replaces the block report to the egress (a crawl through an egress's
+    hunt port tells that one)."""
     driver = load_driver(name, cfg, state, today)
     tid = core.term_id(today)
     out = Path(args.out)
     fac = state.faculties.setdefault(name, {})
     group = core.group_of(name)
     host = faculty_host(cfg)
-    on_block = (lambda: post_block_report(host)) if host else None
+
+    def block_report():
+        if report_block is not None:
+            report_block()
+        elif host:
+            post_block_report(host)
+    on_block = block_report if host or report_block is not None else None
     # AIMD pacing: the policy group's multiplier stretches the pause between pages. It grows on
     # every block verdict and decays on every clean faculty, persisting through state.save.
     mult = state.data.get('pacing', {}).get(group, 1.0)
@@ -716,7 +729,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             except core.Blocked as err:
                 # Exhausted 429/5xx/empty 200s are a block response too: report the exit that
                 # carried them and ride a fresh connection before calling it a wall.
-                post_block_report(host)
+                block_report()
                 if attempt < attempts:
                     log(f'[{name}] {item.code}: block response ({err}); '
                         f'riding a fresh connection ({attempt + 1}/{attempts})')
@@ -742,7 +755,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             text = r.content.decode('utf-8', errors='replace') if r.status_code == 200 else ''
             if not core.is_blocked(r.status_code, text):
                 break
-            post_block_report(host)
+            block_report()
             if attempt >= attempts:
                 log(f'[{name}] BLOCKED on {item.code} (HTTP {r.status_code}) after {n - 1} pages')
                 fac['blocked_at'] = core.now_utc().isoformat()
@@ -1114,12 +1127,24 @@ class FleetOps(stack.Ops):
     """What a fleet runner does on the sites for the work stack (stack.py): list a faculty, cut its work, crawl a chunk,
     wait a wall out. One session per slot, so a faculty's chunks ride the cookies its listing got."""
 
-    def __init__(self, sources, args, state, model, today, coming, sleep, clock, progress):
+    def __init__(self, sources, args, state, model, today, coming, sleep, clock, progress, hunter=None):
         self.sources, self.args, self.state, self.model = sources, args, state, model
         self.today, self.coming, self.sleep, self.clock, self.progress = today, coming, sleep, clock, progress
         self.lock = threading.Lock()
         self.sessions, self.settled, self.listed = {}, set(), set()
         self.changed = []
+        self.egress = hunter  # egress.Egress that hunts for exits through a wall, or None
+        self.routes = {}  # slot -> 'pool': reached through the exits the hunt found (its hunt port)
+
+    def pooled(self, slot):
+        with self.lock:
+            return self.routes.get(slot) == 'pool' and self.egress is not None
+
+    def reporter(self, slot, host):
+        """What tells an egress that a page of `slot` came back as a block page."""
+        if self.pooled(slot):
+            return lambda: self.egress.report_block(host)
+        return (lambda: post_block_report(host)) if host else None
 
     def day(self, slot):
         """(a date in the slot's semester, whether it is the coming one)."""
@@ -1131,9 +1156,10 @@ class FleetOps(stack.Ops):
         raise ValueError(f'{slot}: not a semester this pass refreshes')
 
     def session(self, slot):
+        pooled = self.pooled(slot)
         with self.lock:
             if slot not in self.sessions:
-                self.sessions[slot] = new_session()
+                self.sessions[slot] = new_session(self.egress.proxy_url() if pooled else None)
             return self.sessions[slot]
 
     def walled(self, name, ahead, cause='wall'):
@@ -1158,12 +1184,14 @@ class FleetOps(stack.Ops):
         try:
             items = discover_with_retry(driver, self.session(slot), self.args.retries, self.args.retry_backoff,
                                         self.sleep, block_retries=self.args.block_retries,
-                                        on_block=(lambda: post_block_report(host)) if host else None)
+                                        on_block=self.reporter(slot, host))
         except core.Blocked as err:
-            log(f'[{name}] BLOCKED while listing groups: {err}')
+            pooled = self.pooled(slot)
+            log(f'[{name}] BLOCKED while listing groups{" through the pool exits" if pooled else ""}: {err}')
             with self.lock:
                 self.sessions.pop(slot, None)
-            self.walled(name, ahead)
+            if not pooled:
+                self.walled(name, ahead)  # a wall in front of this runner's own address, not the exits'
             raise stack.Walled(str(err)) from err
         except core.Gone as err:
             if ahead:
@@ -1217,9 +1245,11 @@ class FleetOps(stack.Ops):
             return True
         with self.lock:
             settle = slot not in self.settled
+        pooled = self.pooled(slot)
         done, blocked, complete = _refresh_faculty(name, cfg, self.args, self.state, day, self.session(slot),
                                                    self.sleep, self.clock, self.progress, ahead, part=part,
-                                                   only=codes, listed=items, settle=settle)
+                                                   only=codes, listed=items, settle=settle,
+                                                   report_block=self.reporter(slot, faculty_host(cfg)))
         run = fac.get('run')
         since = getattr(self.args, 'started', None)
         if (isinstance(before, dict) and isinstance(run, dict) and since and str(before.get('at') or '') >= since
@@ -1232,8 +1262,9 @@ class FleetOps(stack.Ops):
             self.changed.extend(done)
         if blocked:
             cause = (run or {}).get('cause') or 'wall'
-            self.model.note_blocked(name, cause)
-            note_wall(self.state, name, cause, self.args.runner)
+            if not pooled:  # the exits' wall says nothing of this runner's own line
+                self.model.note_blocked(name, cause)
+                note_wall(self.state, name, cause, self.args.runner)
             with self.lock:
                 self.sessions.pop(slot, None)  # a fresh jar next time: the old one may be the blocked one
             return {'done': taken[:-1], 'blocked': True, 'changed': done}
@@ -1279,6 +1310,22 @@ class FleetOps(stack.Ops):
         return recovered
 
 
+    def hunt(self, slot, exits):
+        """Exits through the faculty's wall, from this runner's egress (egress.py): from then on the slot's pages
+        ride them. Raises when there is no egress that can hunt."""
+        if self.egress is None:
+            raise egress_client.Unavailable('this runner has no egress')
+        host = faculty_host(self.sources[stack.faculty_of(slot)])
+        if not host:
+            return []
+        found = self.egress.hunt(host, exits)
+        if found:
+            with self.lock:
+                self.routes[slot] = 'pool'
+                self.sessions.pop(slot, None)  # a fresh jar, through the hunt port
+        return found
+
+
 def fleet_runner(args, wanted, sources, state, model, today, coming, sleep, clock, progress, store=None):
     """This runner's part of the pass on the work stack (stack.py): (Runner, FleetOps), or None when the runners of
     this pass do not share one (no store, a volunteer, a dry run)."""
@@ -1301,8 +1348,9 @@ def fleet_runner(args, wanted, sources, state, model, today, coming, sleep, cloc
             return None
     term = core.term_id(coming) if coming else None
     slots = []
+    reach = fleet.reach(me)
     for name in wanted:
-        if name in sources and fleet.may_take(me, [name], {}):  # `wanted` is already the enabled ones, or those named
+        if name in sources and (reach is None or name in reach):  # `wanted` is already the enabled ones, or named
             slots.append(name)
             if term:
                 slots.append(f'{name}~{term}')
@@ -1310,13 +1358,15 @@ def fleet_runner(args, wanted, sources, state, model, today, coming, sleep, cloc
     line = state.data
     shy = {f for f in wanted if isinstance(state.faculties.get(f, {}).get('cant'), dict)
            and build_count(state.faculties[f]['cant'].get('passes')) >= stack.SHY_PASSES}
+    hunter = egress_client.make(me.get('egress'), log)
     me_ = stack.Me(args.runner, slots, {s: core.group_of(stack.faculty_of(s)) for s in slots}, expected,
-                   me['prefers'], {n: (set(r['faculties']) if r['faculties'] is not None else None)
-                                   for n, r in runners.items()},
+                   me['prefers'], {n: fleet.reach(r) for n, r in runners.items()},
                    {n: r['prefers'] for n, r in runners.items()},
                    {s: fleet.faculty_cost(line, stack.faculty_of(s)) for s in slots},
-                   {f for f in wanted if chronic(state, f, args.runner)}, shy)
-    ops = FleetOps(sources, args, state, model, today, coming, sleep, clock, progress)
+                   {f for f in wanted if chronic(state, f, args.runner)}, shy,
+                   pool=me.get('pool') or (), pool_help=me.get('pool_help') or (), hunter=hunter is not None,
+                   pool_of={n: set(r.get('pool') or ()) for n, r in runners.items()})
+    ops = FleetOps(sources, args, state, model, today, coming, sleep, clock, progress, hunter)
     runner = stack.Runner(store, me_, ops, lanes=args.lanes, deadline=args.deadline, clock=clock, sleep=sleep, log=log)
     return runner, ops
 
@@ -1390,7 +1440,11 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
             if progress.url:
                 progress.send('run_start', profile=args.profile, parallel=True,
                               lanes=[{'lane': core.group_of(ns[0]), 'faculties': list(ns)} for ns in lanes])
-            report = runner.run()
+            try:
+                report = runner.run()
+            finally:
+                if ops.egress is not None:
+                    ops.egress.close()  # a local egress started for a hunt goes with the crawl
             forget = getattr(runner.store, 'forget', None)
             if forget is not None:
                 forget()  # the copies of the store's docs this checkout fetched: the pass is over
@@ -1463,6 +1517,7 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
            done_faculties=','.join(outcome['done_faculties']),
            took_faculties=','.join(outcome['took']), gave_faculties=','.join(outcome['gave']),
            led_faculties=','.join(outcome['led']), cant_faculties=','.join(outcome['cant']),
+           pool_faculties=','.join(outcome.get('pool', [])),
            owned_faculties=','.join(outcome['owned']), owned_known=True)
     log(f'changed: {len(tallies["changed"])}; blocked: {outcome["blocked"]}; incomplete: {outcome["incomplete"]}')
     if progress.url:
@@ -1519,7 +1574,7 @@ def stack_outcome(report, state, sources, started):
                                        if leader)),
             'gave': list(dict.fromkeys(f'{stack.faculty_of(s)}:{h}' for s, hs in report['gave'].items() for h in hs)),
             'led': led, 'cant': list(dict.fromkeys(f'{stack.faculty_of(s)}:{c}' for s, c in report['cant'].items())),
-            'owned': owned}
+            'owned': owned, 'pool': list(dict.fromkeys(stack.faculty_of(s) for s in report.get('pool', ())))}
 
 
 if __name__ == '__main__':

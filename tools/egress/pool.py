@@ -66,6 +66,16 @@ HOST_BREAKER_HOLD_S = 120  # ... for 120 s (a live success clears immediately)
 RETRY_AFTER_S = 5 * 60  # after a total list-fetch failure, retry soon instead of freezing for max_age
 HEAL_MIN_GAP_S = 10 * 60  # thin coverage alone re-runs a refresh at most this often (max_age still applies)
 MIN_ROUND2_CAP = 12
+# The hunt (hunt()): when nobody's own line gets through a faculty's wall, every alive proxy with a sensible
+# Round-1 latency is tried against it, fastest first, until a few pass or the budget runs out.
+HUNT_MAX_MS = 2500  # "sensible ping": Round-1 latency at most this
+HUNT_WANT = 4  # exits per host that end its search (enough to rotate)
+HUNT_WORKERS = 4  # probes at once, all hosts together: the faculty sites see a trickle, not a scan
+HUNT_BUDGET_S = 300
+HUNT_MIN_ALIVE = 40  # fewer fresh-enough alive candidates than this: fetch the lists and Round-1 them first
+HUNT_FRESH_S = 3600  # an alive verdict older than this is not trusted for a hunt
+HUNT_CACHE_S = 30 * 60  # a host hunted this recently only has its known exits re-checked, nobody else probed
+ADOPT_CAP = 8  # shared exits checked per request
 
 # WAF/captive-portal bodies can be HTTP 200 with plenty of bytes. A probe that lands on
 # one must not count as "this proxy reaches the faculty".
@@ -185,7 +195,7 @@ class ProxyPool:
     """Thread-safe pool: refresh (fetch lists + Round 1/2 probes), per-host pick, mark, persist."""
 
     def __init__(self, path, round2, max_probe=150, probe_timeout=8, max_age=4 * 3600,
-                 min_alive=25, min_verified=5, active_hosts=None):
+                 min_alive=25, min_verified=5, active_hosts=None, hunt=False):
         # round2: {hostname: (url, marker_bytes)} — the per-faculty verification targets.
         # active_hosts: the subset that actually rides the pool (all by default). Hosts in
         # EGRESS_DIRECT_FACULTY are filtered out by the server, so a volunteer deployment
@@ -213,6 +223,12 @@ class ProxyPool:
         self._host_fails = {}  # host -> deque of live-failure monotonic stamps
         self._host_open = {}   # host -> monotonic until which it is not offered
         self._rotor = {}  # host -> rotation cursor over the verified tier (see pick_many)
+        # hunt(): on demand, for any faculty host (direct ones included), whatever active_hosts says
+        self.hunt_on = bool(hunt)
+        self.hunts = {}  # host -> {state, verified, tried, exits, at, error}
+        self._hunt_lock = threading.Lock()
+        self._hunt_pending = {}  # host -> kwargs of the hunt asked for, while the worker runs
+        self._hunt_thread = None
         self.load()
 
     @property
@@ -360,7 +376,7 @@ class ProxyPool:
             ranked = self._pick_ranked(host)
             return ranked[0][1] if ranked else None
 
-    def pick_many(self, host, n=3):
+    def pick_many(self, host, n=3, verified_only=False):
         """Up to `n` candidate URLs for `host`, best-first — but rotating across the verified tier.
 
         One fast verified exit would otherwise absorb every request (each pick returns the same
@@ -369,11 +385,14 @@ class ProxyPool:
         and the exits' reputations survive; unverified globally-alive proxies stay the tail.
         """
         with self.lock:
-            if not self.enabled or self._tripped(host):
+            # verified_only: the hunt port (server.py), which only rides exits checked for the host, so it works
+            # for hunted hosts even where no host rides the pool by default
+            usable = self.enabled or (verified_only and self.hunt_on)
+            if not usable or self._tripped(host):
                 return []
             ranked = self._pick_ranked(host)
             verified = [url for key, url in ranked if key[0] == 0]
-            rest = [url for key, url in ranked if key[0] != 0]
+            rest = [] if verified_only else [url for key, url in ranked if key[0] != 0]
             if len(verified) > 1:
                 k = self._rotor.get(host, 0) % len(verified)
                 self._rotor[host] = k + 1
@@ -582,13 +601,158 @@ class ProxyPool:
         except Exception:
             return None
 
-    def refresh(self, fetcher=None, workers=32, round2_cap=56):
-        """Fetch the lists, Round-1 the new candidates, Round-2 the survivors at
-        under-covered hosts. Dead entries are replaced by fresh ones (prune first)."""
+    # -- the hunt: exits for a faculty nobody's own line gets through -------------
+    def _fresh_alive(self, max_ms, now=None):
+        """Alive candidates with a sensible ping and a recent enough verdict, fastest first."""
+        now = time.time() if now is None else now
+        with self.lock:
+            rows = [(e['latency_ms'], u) for u, e in self.entries.items()
+                    if e.get('status') == 'ok' and e.get('latency_ms') is not None and e['latency_ms'] <= max_ms
+                    and now - e.get('last_checked', 0) <= HUNT_FRESH_S]
+        return [u for _, u in sorted(rows)]
+
+    def hunt(self, hosts, max_ms=HUNT_MAX_MS, want=HUNT_WANT, workers=HUNT_WORKERS, budget_s=HUNT_BUDGET_S,
+             fetcher=None, clock=time.monotonic):
+        """Search for exits that get through to each of `hosts` (faculty hosts the pool knows): {host: result}.
+
+        Every alive proxy with Round-1 latency up to `max_ms` is tried, fastest first, against every host still
+        short of `want` exits, so a proxy that gets through one walled faculty is tried on the others at once.
+        Each try is the host's own Round-2 probe (its listing, its marker, no block page) and is recorded like
+        one. A host hunted within HUNT_CACHE_S has only its known exits re-checked. The search stops when every
+        host has `want` exits, nothing is left to try, or `budget_s` is spent; at most `workers` probes run at
+        once, all hosts together. Too few fresh alive candidates first fetch the lists and Round-1 them."""
+        start = clock()
+        hosts = [h for h in dict.fromkeys(hosts) if h in self.round2]
+        found = {h: [] for h in hosts}
+        tried = {h: 0 for h in hosts}
+        now = time.time()
+        recent = {h for h in hosts
+                  if self.hunts.get(h, {}).get('state') == 'done' and now - self.hunts[h].get('at', 0) < HUNT_CACHE_S}
+
+        def probe(url, host):
+            ms = self.probe_host(url, host)
+            self.mark(url, host, ms is not None, ms)
+            return ms is not None
+
+        # what is already known to work: re-checked first, for every host
+        for h in hosts:
+            for c in self.verified(h)[:want]:
+                tried[h] += 1
+                if probe(c['url'], h):
+                    found[h].append(c['url'])
+        searching = [h for h in hosts if len(found[h]) < want and h not in recent]
+        if searching:
+            if len(self._fresh_alive(max_ms)) < HUNT_MIN_ALIVE:
+                if self._refresh_lock.acquire(timeout=REFRESH_DEADLINE_S):
+                    try:
+                        self._discover(fetcher, 32, clock())
+                    except Exception as err:
+                        self.last_error = f'hunt discovery: {err}'
+                    finally:
+                        self._refresh_lock.release()
+            jobs = []
+            now = time.time()
+            for url in self._fresh_alive(max_ms, now):
+                for h in searching:
+                    with self.lock:
+                        hv = dict(self.entries.get(url, {}).get('hosts', {}).get(h) or {}) or None
+                    if hv is not None and (hv.get('ok') or now - hv.get('checked', 0) < HUNT_CACHE_S):
+                        continue  # known to work (re-checked above) or failed lately: not again
+                    jobs.append((url, h))
+            jobs_lock = threading.Lock()
+            queue = iter(jobs)
+
+            def worker():
+                while clock() - start < budget_s:
+                    with jobs_lock:
+                        job = next(queue, None)
+                        while job is not None and len(found[job[1]]) >= want:
+                            job = next(queue, None)
+                        if job is None:
+                            return
+                        tried[job[1]] += 1
+                    if probe(*job):
+                        with jobs_lock:
+                            found[job[1]].append(job[0])
+
+            threads = [threading.Thread(target=worker, daemon=True) for _ in range(max(1, workers))]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        done = time.time()
+        out = {}
+        for h in hosts:
+            exits = list(dict.fromkeys(found[h]))
+            out[h] = {'state': 'done', 'verified': len(exits), 'tried': tried[h], 'exits': exits[:ADOPT_CAP],
+                      'at': done, 'error': None}
+        with self._hunt_lock:
+            self.hunts.update(out)
+        self._save_throttled(force=True)
+        return out
+
+    def hunt_async(self, hosts, **kwargs):
+        """Start hunt(hosts) in the background, or add the hosts to the one running. The state per host, as
+        hunt_status() shows it, is 'running' until its result is in."""
+        hosts = [h for h in dict.fromkeys(hosts) if h in self.round2]
+        with self._hunt_lock:
+            for h in hosts:
+                if self.hunts.get(h, {}).get('state') != 'running':
+                    self._hunt_pending[h] = kwargs
+                    self.hunts[h] = {**self.hunts.get(h, {}), 'state': 'running', 'error': None}
+            if self._hunt_thread is None or not self._hunt_thread.is_alive():
+                self._hunt_thread = threading.Thread(target=self._hunt_worker, daemon=True)
+                self._hunt_thread.start()
+        return self.hunt_status()
+
+    def _hunt_worker(self):
+        while True:
+            with self._hunt_lock:
+                if not self._hunt_pending:
+                    self._hunt_thread = None
+                    return
+                batch = dict(self._hunt_pending)
+                self._hunt_pending.clear()
+            kwargs = next(iter(batch.values()))
+            try:
+                self.hunt(list(batch), **kwargs)
+            except Exception as err:
+                with self._hunt_lock:
+                    for h in batch:
+                        self.hunts[h] = {**self.hunts.get(h, {}), 'state': 'error', 'error': str(err)[:200],
+                                         'at': time.time()}
+
+    def hunt_status(self):
+        with self._hunt_lock:
+            return {h: dict(v) for h, v in self.hunts.items()}
+
+    def adopt(self, host, urls, workers=HUNT_WORKERS):
+        """The exits another runner found for `host`, each checked here before use (parse_proxy_url, then the
+        host's own probe): the list of those that got through, now verified in this pool."""
+        if host not in self.round2:
+            return []
+        cands = []
+        for raw in list(urls or [])[:ADOPT_CAP]:
+            url = parse_proxy_url(raw) if isinstance(raw, str) else None
+            if url and url not in cands:
+                cands.append(url)
+
+        def check(url):
+            ms = self.probe_host(url, host)
+            if ms is not None:
+                self.mark_alive(url, True, None)
+            self.mark(url, host, ms is not None, ms)
+            return url if ms is not None else None
+
+        if not cands:
+            return []
+        with ThreadPoolExecutor(max_workers=max(1, min(workers, len(cands)))) as ex:
+            return [u for u in ex.map(check, cands) if u]
+
+    def _discover(self, fetcher, workers, start_mono):
+        """Fetch the lists and Round-1 the candidates nobody knows yet: ('ok', fresh, alive urls), ('failed',
+        alive count) when every list failed, ('late', alive count, tried) past the refresh deadline."""
         import random
-        if not self.enabled:
-            return 0, 0, 0  # every faculty host is direct: nothing to discover or probe
-        start_mono = time.monotonic()
         self.prune()
 
         def _fetch_one(item):
@@ -639,7 +803,7 @@ class ProxyPool:
             self.last_error = self.last_error or 'all proxy list sources returned nothing'
             self.retry_after = time.time() + RETRY_AFTER_S
             cov, alive_n = self.coverage()
-            return alive_n, 0, 0
+            return 'failed', alive_n
         random.shuffle(fresh)
         fresh = fresh[:self.max_probe]
         alive = []
@@ -663,7 +827,23 @@ class ProxyPool:
             cov, alive_n = self.coverage()
             self.last_error = None if alive_n else (self.last_error or 'no candidate passed Round 1')
             self.save()
-            return alive_n, len(fresh), 0
+            return 'late', alive_n, len(fresh)
+        return 'ok', fresh, alive
+
+    def refresh(self, fetcher=None, workers=32, round2_cap=56):
+        """Fetch the lists, Round-1 the new candidates, Round-2 the survivors at
+        under-covered hosts. Dead entries are replaced by fresh ones (prune first)."""
+        import random
+        if not self.enabled:
+            return 0, 0, 0  # every faculty host is direct: nothing to discover or probe
+        start_mono = time.monotonic()
+        found = self._discover(fetcher, workers, start_mono)
+        if found[0] == 'failed':
+            return found[1], 0, 0
+        if found[0] == 'late':
+            return found[1], found[2], 0
+        _, fresh, alive = found
+
         # Round 2 only where coverage is thin, cheapest hosts first.
         cov, _ = self.coverage()
         thin = sorted([h for h, n in cov.items() if n < self.min_verified],

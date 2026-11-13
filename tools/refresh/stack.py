@@ -32,6 +32,13 @@ crash may cost a check twice, never a check lost:
   * a store that cannot be reached at the start sends the runner back to its static share (fleet.py's fallback); one
     that goes away later lets it finish what it leads, then stop.
 
+  hunt     When no runner up can reach a faculty from its own address (plebania off, the others at its wall), a runner
+           with an egress (fleet.json `egress`) has it search the pool's public proxies for exits that get through
+           (docs/EGRESS.md, "Polowanie na wyjścia"), and crawls the slot through them: `via` on the slot. What it found
+           goes on the slot too (`exits`), so another runner checks those with its own egress and helps from the back.
+           A runner may also take some faculties only that way (fleet.json `pool`), and help with some of them through
+           the pool while another runner leads them (`pool_help`).
+
 Nothing here touches a faculty site: refresh.py hands in what crawls (Ops). Unit-tested offline (tests/test_refresh.py).
 """
 import argparse
@@ -57,6 +64,7 @@ POLL = 10               # seconds between reads of the store
 STORE_DOWN = 180        # the store unreadable this long: finish what this runner leads, then stop
 RETRY_ERROR = 300       # a listing that failed for another reason than a wall is tried once more after this long
 MAX_FAILS = 2           # a chunk whose crawl crashed this many times is closed as failed
+MAX_EXITS = 8           # proxy exits kept on a slot for the other runners
 START_TRIES = 4         # attempts to reach the store at the start before falling back
 SHY_PASSES = 3          # passes in a row a runner could not list a faculty before it turns there last
 WALL = 'wall'
@@ -221,7 +229,7 @@ class Me:
     """What choose() knows of the runner it decides for."""
 
     def __init__(self, name, slots, groups, expected=(), prefers=(), allow=None, prefers_of=None, costs=None,
-                 chronic=(), shy=()):
+                 chronic=(), shy=(), pool=(), pool_help=(), hunter=False, pool_of=None):
         self.name = name
         self.slots = list(slots)                    # the slots this runner may take, in the pass's order
         self.groups = dict(groups)                  # slot -> policy group
@@ -232,8 +240,14 @@ class Me:
         self.costs = costs or {}                    # slot -> estimated work
         self.chronic = set(chronic)                 # faculties whose wall here outlasted a full wait lately
         self.shy = set(shy)                         # faculties this runner could not list SHY_PASSES passes in a row
+        self.pool = set(pool)                       # faculties this runner takes only through pool exits
+        self.pool_help = set(pool_help)             # ... and helps with through them while another runner leads
+        self.hunter = bool(hunter)                  # it has an egress that can hunt for exits
+        self.pool_of = pool_of or {}                # runner -> faculties it takes only through the pool
         self.cant = {}                              # slot -> {'cause', 'at' (our clock), 'tries'}
         self.waited = set()                         # slots this runner already waited a wall out for
+        self.via = {}                               # slot -> 'pool' (reached through exits) or 'lost' (not any more)
+        self.hunted = {}                            # slot -> the exits on it when this runner last searched
 
     def may(self, runner, slot):
         allowed = self.allow.get(runner)
@@ -250,6 +264,8 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
 
     ('open', slot)            list a slot nobody leads and cut it into chunks
     ('claim', slot, front)    take a chunk (front: the leader's end)
+    ('hunt', slot)            search the pool for exits to a slot no runner up reaches directly (or check the
+                              exits another runner found for it)
     ('wait', slot)            wait a wall out: work is left there that no runner up can take
     ('linger',)               nothing now, but a runner up holds work this one could get (or a leader is coming)
     ('end',)                  nothing this lane could ever do in this pass
@@ -263,7 +279,14 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
         d = doc(s)
         return (d or {}).get('cant', {}).get(r) if d else None
 
+    def via_of(s, r):
+        return ((doc(s) or {}).get('via') or {}).get(r)
+
     def blocked_here(s):
+        if me.via.get(s) == 'pool':
+            return False  # reached through the exits the hunt found
+        if faculty_of(s) in me.pool:
+            return True  # never from this runner's own address
         c = me.cant.get(s)
         if c is None:
             return cant_of(s, me.name) is not None
@@ -272,7 +295,15 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
         return True
 
     def able(r, s):
-        return me.may(r, s) and cant_of(s, r) is None
+        """Runner `r` may take slot `s` and nothing stops it there (a runner taking it only through the pool: once
+        it found exits)."""
+        if not me.may(r, s) or cant_of(s, r) is not None:
+            return False
+        return faculty_of(s) not in me.pool_of.get(r, ()) or via_of(s, r) == 'pool'
+
+    def direct(r, s):
+        """`r` may reach `s` from its own address and has not met its wall there."""
+        return me.may(r, s) and cant_of(s, r) is None and faculty_of(s) not in me.pool_of.get(r, ())
 
     def others_able(s):
         return sum(1 for r in me.expected if able(r, s) and not view.gone(r))
@@ -298,6 +329,30 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
         return sum(1 for c in d.get('chunks', [])
                    if c.get('state') == 'free' or (c.get('state') == 'held' and view.holder_dead(c, s)))
 
+    def hunting_elsewhere(s):
+        """Another runner up is searching exits for `s` right now."""
+        h = (doc(s) or {}).get('hunting') or {}
+        return bool(h.get('runner')) and h['runner'] != me.name and view.status(h['runner']) == 'live'
+
+    def hunt_for(s):
+        if not me.hunter or me.via.get(s) == 'pool' or not remaining(doc(s)):
+            return False
+        exits = set((doc(s) or {}).get('exits') or ())
+        if s in me.hunted:
+            return bool(exits - me.hunted[s])  # exits found since this runner's own search: worth a check
+        f = faculty_of(s)
+        mark = me.cant.get(s)
+        walled = f in me.pool or (mark is not None and mark['cause'] == WALL)
+        if not walled:
+            return False
+        if exits:
+            return True  # another runner found exits: checking them is a few requests, then this one helps
+        if hunting_elsewhere(s):
+            return False
+        if f in me.pool_help and claimable(s) >= 2:
+            return True
+        return not any(direct(r, s) and not view.gone(r) for r in me.expected)
+
     # 1. open: what this runner prefers, then what only it can take, the largest first; never what another prefers
     opens = [s for s in mine if openable(s) and not blocked_here(s) and not reserved(s)]
     if opens:
@@ -314,8 +369,14 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
     if helps:
         helps.sort(key=lambda s: (_pref_rank(me.prefers, s), faculty_of(s) in me.shy, -claimable(s), s))
         return ('claim', helps[0], False)
-    # 4. nothing to take now. A wall here: wait it out only when no other runner up (or still coming) can take what
-    # is left, and not when it already outlasted a full wait lately (chronic); otherwise stay while they may need us.
+    # 4. nothing to take now. Hunt for exits where no runner up (or still coming) reaches what is left directly, or
+    # where another runner already found some; help through the pool where this runner always may (pool_help).
+    for s in mine:
+        hunt = hunt_for(s)
+        if hunt:
+            return ('hunt', s)
+    # A wall here: wait it out only when no other runner up (or still coming) can take what is left, and not when it
+    # already outlasted a full wait lately (chronic); otherwise stay while they may need us.
     for s in mine:
         mark = me.cant.get(s)
         if (remaining(doc(s)) and mark and mark['cause'] == WALL and s not in me.waited
@@ -326,6 +387,8 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
         d = doc(s)
         if not remaining(d):
             continue
+        if me.hunter and s not in me.hunted and me.via.get(s) != 'pool' and hunting_elsewhere(s):
+            return ('linger',)  # what another runner's hunt finds, this one may use
         if blocked_here(s):
             c = me.cant.get(s)
             if c and c['cause'] != WALL and c.get('tries', 1) < 2:
@@ -402,6 +465,11 @@ class Ops:
     def wait(self, slot, stop):
         """Wait a wall out; True when it is down."""
         return False
+
+    def hunt(self, slot, exits):
+        """Find proxy exits that get through to the slot's faculty, the shared `exits` checked first: the ones that
+        work (from then on this runner reaches the slot through them), [] for none. May raise."""
+        return []
 
 
 class Runner:
@@ -582,6 +650,12 @@ class Runner:
                 self.gate.drop(group)
                 self._wait(group, act[1])
                 continue
+            if kind == 'hunt':
+                # the search goes out through the pool's exits, not this runner's address: no place in the gate
+                self.gate.drop(group)
+                if not self._hunt(group, act[1]):
+                    self._nap(min(1.0, self.poll))
+                continue
             prio = self._rank(act)
             if self.gate.outranked(prio):
                 self.gate.drop(group)
@@ -736,6 +810,8 @@ class Runner:
                 d['next'] = d.get('next', len(chunks)) + 1
         if result.get('blocked'):
             d.setdefault('cant', {})[me] = {'cause': WALL, 'at': time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())}
+            if (d.get('via') or {}).get(me) == 'pool':
+                d['via'][me] = 'lost'
         if d.get('state') == 'open' and not remaining(d):
             d['state'] = 'closed'
         return True
@@ -770,6 +846,9 @@ class Runner:
                 with self.lock:
                     self.me.cant[slot] = {'cause': WALL, 'at': self.clock(), 'tries': 1}
                     self.items.pop(slot, None)
+                    if self.me.via.get(slot) == 'pool':
+                        self.me.via[slot] = 'lost'  # the exits met the wall too: no more this pass, unless new ones
+                        self.log(f'[{slot}] the exits met its wall too')
             go_on = (not result.get('blocked') and result.get('error') is None and not result.get('cut')
                      and not self._late() and not self.store_away() and not self.gate.outranked(prio))
             held[0] = None
@@ -860,6 +939,60 @@ class Runner:
                 self.items.pop(slot, None)
             self._uncant(slot)
 
+    def _hunt(self, group, slot):
+        """Search exits for `slot` (or check the ones on it), and say on the slot what came of it. False when the
+        store would not take the claim (read again, then decide)."""
+        me, view = self.me.name, self.view()
+        at = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())
+
+        def claim(d):
+            d = d or {'slot': slot, 'group': group, 'state': 'unlisted', 'leader': None, 'chunks': [], 'cant': {},
+                      'next': 0}
+            h = d.get('hunting') or {}
+            if h.get('runner') not in (None, me) and view.status(h['runner']) == 'live' and not d.get('exits'):
+                return None
+            d['hunting'] = {'runner': me, 'at': at}
+            return d
+        doc, written = self._update(slot, claim)
+        if not written:
+            return False
+        exits = [e for e in (doc or {}).get('exits') or [] if isinstance(e, str)]
+        with self.lock:
+            self.me.hunted[slot] = frozenset(exits)
+        self.log(f'[{slot}] no runner up reaches it directly; '
+                 + (f'checking the {len(exits)} exits found for it' if exits else 'hunting the pool for exits to it'))
+        try:
+            found = [e for e in self.ops.hunt(slot, exits) or [] if isinstance(e, str)]
+            outcome = 'found' if found else 'none'
+        except Exception as err:
+            self.log(f'[{slot}] the hunt failed ({err!r})')
+            found, outcome = [], 'error'
+
+        def settle(d):
+            d = d or {'slot': slot, 'group': group, 'state': 'unlisted', 'leader': None, 'chunks': [], 'cant': {},
+                      'next': 0}
+            if (d.get('hunting') or {}).get('runner') == me:
+                d.pop('hunting')
+            d.setdefault('hunted', {})[me] = outcome
+            if found:
+                d.setdefault('via', {})[me] = 'pool'
+                d['exits'] = list(dict.fromkeys(list(d.get('exits') or []) + found))[:MAX_EXITS]
+                d.get('cant', {}).pop(me, None)
+            elif faculty_of(slot) in self.me.pool and me not in d.get('cant', {}):
+                # the only way this runner had there: it ends at the same wall as the others
+                d.setdefault('cant', {})[me] = {'cause': WALL if outcome == 'none' else 'error', 'at': at}
+            return d
+        self._update(slot, settle)
+        with self.lock:
+            self.me.hunted[slot] = frozenset(exits) | frozenset(found)
+            if found:
+                self.me.via[slot] = 'pool'
+                self.me.cant.pop(slot, None)
+                self.items.pop(slot, None)  # listed again, through the exits
+        self.log(f'[{slot}] ' + (f'{len(found)} exits get through; crawling it through them' if found
+                                 else 'no exit gets through'))
+        return True
+
     def _solo(self, group):
         """The store is away: crawl what is left of the slots this runner leads (as last seen), nothing else."""
         self.log(f'stack: the store has not answered for {self.store_down} s; finishing what this runner leads')
@@ -899,6 +1032,9 @@ class Runner:
                              for s in self.led if leaders.get(s) == self.me.name},
                     'cant': cant, 'changed': list(self.changed),
                     'checked': {s: len(c) for s, c in self.done_here.items()},
+                    # the slots it crawled through pool exits (a hunt's, or another runner's it checked)
+                    'pool': sorted(s for s, v in self.me.via.items()
+                                   if v in ('pool', 'lost') and self.done_here.get(s)),
                     'failed': sorted(s for s, d in self.slots.items() if s in self.me.slots
                                      and any(c.get('failed') for c in (d or {}).get('chunks', [])))}
 
@@ -930,7 +1066,9 @@ def summarize(docs, matrix, allow):
                        'done_by': by, 'changed_by': changed,
                        'cant': {r: c.get('cause') for r, c in ((d or {}).get('cant') or {}).items()},
                        'failed': sum(len(c.get('failed') or ()) for c in (d or {}).get('chunks', [])),
-                       'note': (d or {}).get('note'), 'not_ready': (d or {}).get('not_ready')}
+                       'note': (d or {}).get('note'), 'not_ready': (d or {}).get('not_ready'),
+                       'via_pool': sorted(r for r, v in ((d or {}).get('via') or {}).items()
+                                          if v in ('pool', 'lost') and by.get(r))}
     rank = {'blocked': 0, 'unfinished': 1, 'absent': 1, 'failed': 2, 'done': 3, 'empty': 3}
     faculties = {}
     for f in wanted:
@@ -948,7 +1086,8 @@ def summarize(docs, matrix, allow):
                         'checked': sum(n for v in mine.values() for n in v['done_by'].values()),
                         'changed': sum(n for v in mine.values() for n in v['changed_by'].values()),
                         'cant': {r: c for v in mine.values() for r, c in v['cant'].items()},
-                        'failed': sum(v['failed'] for v in mine.values())}
+                        'failed': sum(v['failed'] for v in mine.values()),
+                        'via_pool': sorted({r for v in mine.values() for r in v.get('via_pool', ())})}
     return {'slots': slots, 'faculties': faculties}
 
 
@@ -969,8 +1108,7 @@ def cmd_summary(args):
         print(f'the store of pass {key} cannot be read ({err}); the outcome counts the runners\' own reports')
         return 1
     try:
-        allow = {r['name']: (set(r['faculties']) if r['faculties'] is not None else None)
-                 for r in fleet.load_fleet(args.fleet)}
+        allow = {r['name']: fleet.reach(r) for r in fleet.load_fleet(args.fleet)}
     except (OSError, ValueError):
         allow = {}
     result = summarize(docs, matrix, allow)
@@ -979,7 +1117,8 @@ def cmd_summary(args):
         helpers = ', '.join(f'{r} {n}' for r, n in v['helpers'].items())
         cant = ', '.join(f'{r} ({c})' for r, c in v['cant'].items())
         print(f"{f}: {v['status']}, led by {v['leader'] or 'nobody'}"
-              + (f', helped by {helpers}' if helpers else '') + (f'; could not list it: {cant}' if cant else ''))
+              + (f', helped by {helpers}' if helpers else '') + (f'; could not list it: {cant}' if cant else '')
+              + (f"; through pool exits: {', '.join(v['via_pool'])}" if v['via_pool'] else ''))
     return 0
 
 

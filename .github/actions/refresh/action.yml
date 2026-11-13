@@ -87,6 +87,9 @@ outputs:
   cant-faculties:
     description: faculty:cause pairs of the faculties this runner could not list (wall, gone, error)
     value: ${{ steps.run.outputs.cant_faculties }}
+  pool-faculties:
+    description: Comma-separated faculties this runner crawled through proxy exits its egress hunted (docs/EGRESS.md)
+    value: ${{ steps.run.outputs.pool_faculties }}
   changed:
     description: Number of calendars that changed
     value: ${{ steps.run.outputs.changed }}

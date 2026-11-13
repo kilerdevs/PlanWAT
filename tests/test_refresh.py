@@ -1974,7 +1974,7 @@ class MainTest(unittest.TestCase):
         self.sessions = []
         orig_new_session = refresh.new_session
 
-        def fresh():
+        def fresh(proxy=None):
             session = FakeSession({})
             session.headers = {}
             self.sessions.append(session)
@@ -2380,7 +2380,7 @@ class LiveProgressTest(unittest.TestCase):
         refresh.drivers.load = lambda name, faculty, cfg, today: StubDriver(faculty, cfg, today)
         self.addCleanup(setattr, refresh.drivers, 'load', orig_load)
         orig_new_session = refresh.new_session
-        refresh.new_session = lambda: self._session()
+        refresh.new_session = lambda proxy=None: self._session()
         self.addCleanup(setattr, refresh, 'new_session', orig_new_session)
         orig_status = os.environ.get('PLANWAT_EGRESS_STATUS')
         os.environ['PLANWAT_EGRESS_STATUS'] = ''
@@ -2722,7 +2722,7 @@ class FleetPlan(unittest.TestCase):
             values = dict(line.split('=', 1) for line in out.read_text().splitlines())
             self.assertEqual(json.loads(values['matrix']),
                              [{'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wcy,wim', 'census': '',
-                               'expected': 'oracle', 'fallback': 'wcy,wim'}])
+                               'expected': 'oracle', 'fallback': 'wcy,wim', 'pool': '', 'egress': 'remote'}])
             self.assertEqual(values['shards'], '1')
             self.assertEqual(fleet.main(['plan', '--state', str(tmp / 'state.json'), '--faculty', 'nope']), 2)
 
@@ -2807,8 +2807,9 @@ class FleetCatchup(unittest.TestCase):
         history = [self.without_plebania()] * 3  # oracle walled on wlo, wml, wtc three times running
         code, values = self.plan(history, ['plebania', 'oracle', 'northflank'])
         self.assertEqual(code, 0)
-        self.assertEqual([(m['runner'], m['faculties']) for m in json.loads(values['matrix'])],
-                         [('plebania', 'wlo,wml,wtc')])
+        # oracle stays out (its wall); northflank helps through pool exits, should its hunt find any
+        self.assertEqual([(m['runner'], m['faculties'], m['pool']) for m in json.loads(values['matrix'])],
+                         [('plebania', 'wlo,wml,wtc', ''), ('northflank', 'wlo,wml,wtc', 'wlo,wml,wtc')])
         self.assertEqual(json.loads(values['asleep']), [])
 
     def test_an_unwalled_helper_joins_the_catchup(self):
@@ -3061,6 +3062,20 @@ class RunHistory(unittest.TestCase):
                               if outcomes is None else outcomes,
                               plan_info=plan_info or {'down': []}, state=self.state() if state is None else state,
                               summary=summary)
+
+    def test_a_faculty_crawled_through_proxy_exits_says_so(self):
+        summary = {'faculties': {'wcy': {'status': 'done', 'leader': 'plebania', 'helpers': {'oracle': 8},
+                                         'checked': 100, 'changed': 2, 'cant': {}, 'via_pool': ['oracle']}}}
+        run = self.record(outcomes=[self.shard('plebania', changed='2'), self.shard('oracle', 12, pool='ioe',
+                                                                                     took='wcy:plebania')],
+                          summary=summary)
+        oracle = next(r for r in run['runners'] if r['name'] == 'oracle')
+        self.assertEqual(oracle['via_pool'], ['ioe'])
+        self.assertEqual(runs.build.runner_share(dict(oracle, helped={'wcy': 'plebania'}, via_pool=['ioe', 'wcy'])),
+                         'IOE przez proxy, WCY (pomoc dla plebania przez proxy)')
+        wcy = next(f for f in run['faculties'] if f['id'] == 'wcy')
+        self.assertEqual(wcy['via_pool'], ['oracle'])
+        self.assertIn('przez proxy (pula) na oracle', runs.build.faculty_notes(wcy))
 
     def test_a_catchup_pass_says_whom_it_was_for(self):
         run = runs.build_run(run_id=8, number=513, attempt=1, event='workflow_dispatch', url='https://x/8',
@@ -3381,9 +3396,10 @@ class GitStoreTest(unittest.TestCase):
         self.assertEqual(self.refs(), [f'refs/planwat/pass/{keep}/r/oracle'])
 
 
-def me_of(name, slots, expected=(), prefers=(), allow=None, prefers_of=None, costs=None, chronic=(), shy=()):
+def me_of(name, slots, expected=(), prefers=(), allow=None, prefers_of=None, costs=None, chronic=(), shy=(), **pool):
     groups = {s: core.group_of(stack.faculty_of(s)) for s in slots}
-    return stack.Me(name, slots, groups, expected, prefers, allow or {}, prefers_of or {}, costs or {}, chronic, shy)
+    return stack.Me(name, slots, groups, expected, prefers, allow or {}, prefers_of or {}, costs or {}, chronic, shy,
+                    **pool)
 
 
 def slot_doc(slot, state='open', leader=None, chunks=(), cant=None):
@@ -3469,6 +3485,51 @@ class StackPolicy(unittest.TestCase):
         me = me_of('oracle', ['ioe'])
         self.assertEqual(stack.choose(self.view({'ioe': slot_doc('ioe', 'closed', 'oracle')}), me, 'ioe'), ('end',))
 
+    def test_a_walled_hunter_hunts_only_when_nobody_up_reaches_the_slot(self):
+        slots = {'wml': slot_doc('wml', 'unlisted', cant={'oracle': {'cause': 'wall'}})}
+        me = me_of('oracle', ['wml'], ['plebania'], hunter=True)
+        me.cant['wml'] = {'cause': 'wall', 'at': 0, 'tries': 1}
+        self.assertEqual(stack.choose(self.view(slots, plebania='live'), me, 'wml'), ('linger',))
+        self.assertEqual(stack.choose(self.view(slots, plebania='stale'), me, 'wml'), ('hunt', 'wml'))
+        me.hunter = False  # no egress: as before, it waits the wall out
+        self.assertEqual(stack.choose(self.view(slots, plebania='stale'), me, 'wml'), ('wait', 'wml'))
+
+    def test_a_pool_runner_never_goes_direct_and_hunts_after_the_others_failed(self):
+        pool = {'pool': {'wml'}, 'hunter': True, 'pool_of': {'northflank': {'wml'}}}
+        me = me_of('northflank', ['wml'], ['oracle'], **pool)
+        self.assertEqual(stack.choose(self.view({}, oracle='live'), me, 'wml'), ('linger',))  # oracle tries first
+        walled = {'wml': slot_doc('wml', 'unlisted', cant={'oracle': {'cause': 'wall'}})}
+        self.assertEqual(stack.choose(self.view(walled, oracle='live'), me, 'wml'), ('hunt', 'wml'))
+        # oracle hunting it now: wait for what it finds, then check those exits
+        walled['wml']['hunting'] = {'runner': 'oracle'}
+        self.assertEqual(stack.choose(self.view(walled, oracle='live'), me, 'wml'), ('linger',))
+        walled['wml']['exits'] = ['http://8.8.8.8:3128']
+        self.assertEqual(stack.choose(self.view(walled, oracle='live'), me, 'wml'), ('hunt', 'wml'))
+
+    def test_exits_make_a_slot_reachable_and_new_ones_are_worth_a_second_look(self):
+        slots = {'wml': dict(slot_doc('wml', leader='oracle', chunks=[{}, {}, {}]), via={'oracle': 'pool'},
+                             exits=['http://8.8.8.8:3128'])}
+        me = me_of('northflank', ['wml'], ['oracle'], pool={'wml'}, hunter=True, pool_of={'northflank': {'wml'}})
+        view = self.view(slots, oracle='live')
+        me.hunted['wml'] = frozenset(['http://8.8.8.8:3128'])  # checked them: none worked from here
+        self.assertEqual(stack.choose(view, me, 'wml'), ('linger',))
+        slots['wml']['exits'].append('http://9.9.9.9:80')
+        self.assertEqual(stack.choose(view, me, 'wml'), ('hunt', 'wml'))
+        me.via['wml'] = 'pool'
+        self.assertEqual(stack.choose(view, me, 'wml'), ('claim', 'wml', False))
+        me.via['wml'] = 'lost'
+        me.cant['wml'] = {'cause': 'wall', 'at': 0, 'tries': 1}
+        me.hunted['wml'] = frozenset(slots['wml']['exits'])
+        self.assertNotEqual(stack.choose(view, me, 'wml')[0], 'hunt')
+
+    def test_pool_help_joins_a_slot_another_leads_while_much_is_left(self):
+        pool = {'pool': {'wcy'}, 'pool_help': {'wcy'}, 'hunter': True, 'pool_of': {'northflank': {'wcy'}}}
+        me = me_of('northflank', ['wcy'], ['oracle'], **pool)
+        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{}, {}, {}])}
+        self.assertEqual(stack.choose(self.view(slots, oracle='live'), me, 'wcy'), ('hunt', 'wcy'))
+        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{'state': 'done'}, {'state': 'done'}, {}])}
+        self.assertEqual(stack.choose(self.view(slots, oracle='live'), me, 'wcy'), ('linger',))
+
     def test_slot_status(self):
         able = ['plebania', 'oracle']
         self.assertEqual(stack.slot_status(None, able), 'absent')
@@ -3488,13 +3549,27 @@ class FakeSite(stack.Ops):
     """A runner's sites for the stack tests: lists of codes, walls per faculty, crashes on demand."""
 
     def __init__(self, name, sizes, fetched, lock, walled=(), wall_mid=(), errors=(), poison=(), per=0.001,
-                 crash_after=None):
+                 crash_after=None, exits=None, exits_wall_mid=()):
         self.name, self.sizes, self.fetched, self.lock = name, sizes, fetched, lock
         self.walled, self.wall_mid, self.errors, self.poison = set(walled), set(wall_mid), set(errors), set(poison)
         self.per, self.crash_after, self.pages, self.runner = per, crash_after, 0, None
+        # the pool: what a hunt finds per faculty (any shared exit works where the faculty has exits at all)
+        self.exits, self.exits_wall_mid = dict(exits or {}), set(exits_wall_mid)
+        self.routes, self.hunts = set(), []
+
+    def hunt(self, slot, exits):
+        f = stack.faculty_of(slot)
+        with self.lock:
+            self.hunts.append((slot, tuple(exits)))
+        found = list(exits) if exits and self.exits.get(f) else list(self.exits.get(f, ()))
+        if found:
+            self.routes.add(slot)
+        return found
 
     def probe(self, slot):
         f = stack.faculty_of(slot)
+        if slot in self.routes:
+            return [Item(f'{slot.upper()}{i:03d}', '', '') for i in range(self.sizes[slot])]
         if f in self.walled:
             raise stack.Walled('403')
         if f in self.errors:
@@ -3509,7 +3584,8 @@ class FakeSite(stack.Ops):
         for i, code in enumerate(codes):
             if not check():
                 break
-            if stack.faculty_of(slot) in self.wall_mid and i == 2:
+            walls = self.exits_wall_mid if slot in self.routes else self.wall_mid
+            if stack.faculty_of(slot) in walls and i == 2:
                 return {'done': done, 'blocked': True, 'changed': []}
             if code in self.poison:
                 raise RuntimeError('converter crashed')
@@ -3540,9 +3616,12 @@ def run_pass(test, spec, sizes=SIZES, absent=(), crash=None, outage=None, reject
     runners = {}
     for n, sp in spec.items():
         slots = [s for s in sizes if allow[n] is None or stack.faculty_of(s) in allow[n]]
-        me = me_of(n, slots, list(spec), prefers_of[n], allow, prefers_of, dict(sizes))
+        me = me_of(n, slots, list(spec), prefers_of[n], allow, prefers_of, dict(sizes),
+                   pool=sp.get('pool', ()), pool_help=sp.get('pool_help', ()), hunter=bool(sp.get('hunter')),
+                   pool_of={m: set(spec[m].get('pool', ())) for m in spec})
         site = FakeSite(n, sizes, fetched, flock, sp.get('walled', ()), sp.get('wall_mid', ()), sp.get('errors', ()),
-                        sp.get('poison', ()), crash_after=crash[1] if crash and crash[0] == n else None)
+                        sp.get('poison', ()), crash_after=crash[1] if crash and crash[0] == n else None,
+                        exits=sp.get('exits'), exits_wall_mid=sp.get('exits_wall_mid', ()))
         st = board.MemoryStore(shared, lock)
         st.rejects = rejects
         r = stack.Runner(st, me, site, lanes=lanes, deadline=time.monotonic() + 40, log=lambda m: None)
@@ -3569,6 +3648,7 @@ def run_pass(test, spec, sizes=SIZES, absent=(), crash=None, outage=None, reject
     [t.join(60) for t in threads]
     test.assertFalse(any(t.is_alive() for t in threads), 'a runner never ended')
     docs = {k: json.loads(v[1]) for k, v in shared.items()}
+    test.sites = {n: r.ops for n, r in runners.items()}
     summary = stack.summarize(docs, [{'runner': n, 'faculties': ','.join(sizes)} for n in spec], allow)
     return fetched, reports, summary, time.monotonic() - t0
 
@@ -3609,6 +3689,41 @@ class StackChaos(unittest.TestCase):
         self.assertEqual({f for f, v in status.items() if v != 'done'}, {'wlo', 'wml', 'wtc'})
         self.assertEqual({status[f] for f in ('wlo', 'wml', 'wtc')}, {'blocked'})
         self.assertEqual(reports['oracle']['cant'], {'wlo': 'wall', 'wml': 'wall', 'wtc': 'wall'})
+
+    def test_without_the_home_server_the_exits_found_get_the_walled_faculties_crawled(self):
+        pool = ['wlo', 'wel', 'wml', 'wtc', 'wcy']
+        found = {'wml': ['http://8.8.8.8:3128'], 'wlo': ['http://9.9.9.9:80'], 'wcy': ['http://7.7.7.7:1080']}
+        spec = {'oracle': dict(FLEET3['oracle'], hunter=True, exits=found),
+                'northflank': {'allow': {'ioe', 'wig', 'wim', *pool}, 'pool': pool, 'pool_help': ['wcy'],
+                               'hunter': True, 'exits': found}}
+        fetched, reports, summary, _ = run_pass(self, spec, sizes={k: v for k, v in SIZES.items()})
+        status = self.check(fetched, summary, lost={'wtc'})
+        self.assertEqual(status['wtc'], 'blocked')  # no exit gets through: blocked, as before
+        self.assertEqual({f for f, v in status.items() if v != 'done'}, {'wtc'})
+        crawled = {(r, slot) for r, slot, _ in fetched}
+        self.assertTrue({('oracle', 'wml'), ('northflank', 'wml')} <= crawled)  # both through the exits found
+        self.assertTrue(set(summary['faculties']['wml']['via_pool']) & {'oracle', 'northflank'})
+        self.assertIn('wml', reports['oracle']['pool'] + reports['northflank']['pool'])
+
+    def test_with_the_home_server_up_nobody_hunts_its_faculties(self):
+        pool = ['wlo', 'wel', 'wml', 'wtc', 'wcy']
+        spec = dict(FLEET3, oracle=dict(FLEET3['oracle'], hunter=True, exits={'wml': ['http://8.8.8.8:3128']}),
+                    northflank={'allow': {'ioe', 'wig', 'wim', *pool}, 'pool': pool, 'pool_help': ['wcy'],
+                                'hunter': True, 'exits': {'wcy': ['http://7.7.7.7:1080']}})
+        fetched, reports, summary, _ = run_pass(self, spec)
+        status = self.check(fetched, summary)
+        self.assertEqual(set(status.values()), {'done'})
+        hunted = {s for site in self.sites.values() for s, _ in site.hunts}
+        self.assertTrue(hunted <= {'wcy'}, hunted)  # WCY help through the pool only
+
+    def test_exits_that_meet_the_wall_halfway_strand_nothing(self):
+        found = {'wml': ['http://8.8.8.8:3128']}
+        spec = {'oracle': dict(FLEET3['oracle'], hunter=True, exits=found, exits_wall_mid=['wml']),
+                'northflank': {'allow': {'ioe', 'wig', 'wim', 'wml'}, 'pool': ['wml'], 'hunter': True,
+                               'exits': found}}
+        fetched, _, summary, _ = run_pass(self, spec)
+        status = self.check(fetched, summary, lost={'wlo', 'wtc'})
+        self.assertEqual(status['wml'], 'done')  # northflank's exits went on where oracle's met the wall
 
     def test_a_runner_that_never_starts_is_not_waited_for(self):
         fetched, _, summary, _ = run_pass(self, FLEET3, absent=('plebania',))
@@ -3783,7 +3898,7 @@ class StackInRefresh(unittest.TestCase):
                 time.sleep(0.003)
                 return super().get(url, timeout, headers)
 
-        def fresh():
+        def fresh(proxy=None):
             session = Counting({})
             session.headers = {}
             return session
@@ -3890,7 +4005,11 @@ class FleetLimitedRunner(unittest.TestCase):
         jobs, result = fleet.matrix_of(f, wanted, {}, {'planwat-oracle', 'planwat-northflank'})
         by = {j['runner']: j for j in jobs}
         limited = [r for r in f if r['name'] == 'northflank'][0]
-        self.assertEqual(set(by['northflank']['faculties'].split(',')), set(limited['faculties']) & set(wanted))
+        self.assertEqual(set(by['northflank']['faculties'].split(',')),
+                         (set(limited['faculties']) | set(limited['pool'])) & set(wanted))
+        self.assertEqual(set(by['northflank']['pool'].split(',')), set(limited['pool']) & set(wanted))
+        self.assertEqual((by['northflank']['egress'], by['oracle']['egress'], by['oracle']['pool']),
+                         ('local', 'remote', ''))
         self.assertEqual(by['oracle']['faculties'].split(','), wanted)
         self.assertTrue(set(by['northflank']['fallback'].split(',')) <= set(limited['faculties']))
         self.assertEqual(by['oracle']['expected'], 'oracle,northflank')

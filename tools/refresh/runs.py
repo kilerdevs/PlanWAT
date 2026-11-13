@@ -54,6 +54,9 @@ def runner_entry(name, faculties, outcome, wave=1, took=None):
     helped = dict(fleet._pairs(outcome.get('took')))
     if helped:
         entry['helped'] = helped
+    via_pool = fleet._names(outcome.get('pool'))
+    if via_pool:
+        entry['via_pool'] = via_pool  # crawled through proxy exits its egress hunted
     blocked_on = [f for f in str(outcome.get('blocked_faculties') or '').split(',') if f in faculties or f in helped]
     if blocked_on:
         entry['blocked_on'] = blocked_on
@@ -124,6 +127,9 @@ def faculty_entry(name, runner, state, since, handed=None, helpers=(), seen=None
                 entry['cause'] = None  # a wall one runner met, while another got the work done
         if cant:
             entry['cant'] = {r: c for r, c in cant.items() if isinstance(r, str) and isinstance(c, str)}
+        via_pool = [r for r in seen.get('via_pool') or () if isinstance(r, str)]
+        if via_pool:
+            entry['via_pool'] = via_pool
     return entry
 
 

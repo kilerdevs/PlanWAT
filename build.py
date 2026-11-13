@@ -1323,8 +1323,12 @@ def share_parts(r):
         return ' (ponownie)' if took[f] == r.get('name') else f' (od {took[f]})'
     own = [f for f in r.get('faculties', []) if isinstance(f, str)]
     helped = r.get('helped') if isinstance(r.get('helped'), dict) else {}
-    return ([(f, f.upper() + note(f)) for f in own]
-            + [(f, f'{f.upper()} (pomoc dla {who})') for f, who in helped.items()
+    pooled = {f for f in r.get('via_pool', []) if isinstance(f, str)} if isinstance(r.get('via_pool'), list) else set()
+
+    def via(f):
+        return ' przez proxy' if f in pooled else ''
+    return ([(f, f.upper() + note(f) + via(f)) for f in own]
+            + [(f, f'{f.upper()} (pomoc dla {who}{via(f)})') for f, who in helped.items()
                if isinstance(f, str) and isinstance(who, str) and f not in own])
 
 
@@ -1356,6 +1360,10 @@ def faculty_notes(f):
     cant = f.get('cant') if isinstance(f.get('cant'), dict) else {}
     walled = [r for r, c in cant.items() if isinstance(r, str) and c == 'wall']
     unlisted = [r for r, c in cant.items() if isinstance(r, str) and c != 'wall']
+    pooled = [r for r in f.get('via_pool', []) if isinstance(r, str)] if isinstance(f.get('via_pool'), list) else []
+    if pooled:
+        # the hunt (docs/EGRESS.md): public proxies that got through the wall the servers' own lines met
+        notes.append(f"przez proxy (pula) na {', '.join(pooled)}")
     if walled and not f.get('blocked'):
         notes.append(f"blokada dla {', '.join(walled)}")
     if unlisted:

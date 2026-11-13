@@ -50,7 +50,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from statistics import median
 
-from pool import ProxyPool
+from pool import HUNT_MAX_MS, ProxyPool
 
 HERE = Path(__file__).resolve().parent
 
@@ -90,6 +90,9 @@ CHAIN_SUFFIXES = ('wat.edu.pl',)
 # refreshed, probed or picked from. A mode, not a hand-copied host list that silently starts pool work
 # the day a faculty is added to faculty_targets() but not to the list.
 POOL_OFF = env('EGRESS_POOL', 'on').strip().lower() in ('0', 'off', 'false', 'no')
+# The hunt (pool.hunt, docs/EGRESS.md "Polowanie na wyjścia"): on a crawler's request, the pool searches for exits
+# that get through a faculty's wall, and a second port rides only those. Never in the volunteer mode.
+HUNT_ON = not POOL_OFF and env('EGRESS_HUNT', 'on').strip().lower() not in ('0', 'off', 'false', 'no')
 
 CONNECT_TIMEOUT = 10
 TUNNEL_IDLE = 120
@@ -864,6 +867,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         "verified" just because it accepted CONNECT.
         """
         import time as _time
+        if getattr(self.server, 'pool_only', False):
+            return self._open_pooled(host, port)
         policy = route(host)
         if policy == 'deny' or port not in (80, 443):
             raise OSError('deny')
@@ -903,6 +908,40 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 print(f'remember tunnel failed: {merr}', flush=True)
             return sock, proxy, ms
         return self._fallback(host, port)
+
+    def _open_pooled(self, host, port):
+        """The hunt port: a faculty host over HTTPS, through an exit verified for it, or nothing.
+
+        Never direct (the crawler came here because this box's own line is walled) and never an exit merely
+        alive (it would most likely meet the same wall); only port 443, so the faculty's TLS runs end to end and
+        a public proxy cannot alter a page."""
+        h = canonical_host(host)
+        if not h or port != 443 or not any(h == s or h.endswith('.' + s) for s in CHAIN_SUFFIXES):
+            raise OSError('deny')
+        try:
+            candidates = [c for c in self.server.pool.pick_many(h, 3, verified_only=True) if c][:3]
+        except Exception as err:
+            print(f'pick failed: {err}', flush=True)
+            candidates = []
+        for proxy in candidates:
+            start = time.monotonic()
+            try:
+                sock = chain_connect(proxy, h, port, timeout=6)
+            except BadTarget:
+                raise OSError('deny')
+            except Exception as err:
+                print(f'chain via {proxy} failed: {err}', flush=True)
+                try:
+                    self.server.pool.mark(proxy, h, False, live=True)
+                except Exception as merr:
+                    print(f'mark fail failed: {merr}', flush=True)
+                continue
+            try:
+                self.server.remember_tunnel(h, proxy)
+            except Exception as merr:
+                print(f'remember tunnel failed: {merr}', flush=True)
+            return sock, proxy, int((time.monotonic() - start) * 1000)
+        raise OSError('proxy_empty')
 
     def _fallback(self, host, port):
         if fail_closed(host):
@@ -970,6 +1009,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             TUNNEL_SLOTS.release()
 
     def _forward_plain(self):
+        if getattr(self.server, 'pool_only', False):
+            return self._deny(403)  # plain HTTP through a public proxy could be altered on the way
         if not TUNNEL_SLOTS.acquire(blocking=False):
             return self._deny(503)
         self.server.requests += 1
@@ -1084,9 +1125,10 @@ class ProxyServer(BoundedThreadingHTTPServer):
     request_queue_size = 32
     connection_limit = MAX_CONNECTIONS
 
-    def __init__(self, addr, pool):
+    def __init__(self, addr, pool, pool_only=False):
         super().__init__(addr, ProxyHandler)
         self.pool = pool
+        self.pool_only = pool_only  # the hunt port: verified exits only, never direct (ProxyHandler._open_pooled)
         self.blocks = 0
         self.started = time.time()
         self.requests = 0   # proxy requests handled (CONNECT + absolute-URI) since start
@@ -1829,6 +1871,7 @@ class GuiHandler(BaseHTTPRequestHandler):
         else:
             fallbacks = dict(getattr(self.server.proxy_server, 'fallbacks', {}))
         host_modes = {}
+        hunts = pool.hunt_status() if hasattr(pool, 'hunt_status') else {}
         for h in self.server.pool.round2:
             n = stats.get('verified', {}).get(h, 0)
             if route(h) == 'direct':
@@ -1838,11 +1881,17 @@ class GuiHandler(BaseHTTPRequestHandler):
             else:
                 # No exit: either this box's own line carries it, or every request gets a 403.
                 host_mode = 'DIRECT' if falls_back_direct(h) else 'FAIL-CLOSED'
+            hunt = hunts.get(h) or {}
+            if hunt.get('state') == 'running':
+                host_mode += ' · POLOWANIE'
+            elif hunt.get('state') == 'done' and route(h) == 'direct':
+                host_mode += f" · PULA {hunt.get('verified', 0)}/{hunt.get('tried', 0)}"
             host_modes[h] = {'mode': host_mode, 'verified': n, 'fallbacks': fallbacks.get(h, 0)}
         open_runs = (runs.open_snapshot() if hasattr(runs, 'open_snapshot')
                      else list(getattr(runs, 'open_runs', [])))
         ps = self.server.proxy_server
         return {'mode': mode, 'proxy_port': self.server.proxy_port,
+                'hunt_port': getattr(self.server, 'hunt_port', None), 'hunts': hunts,
                 'started': getattr(ps, 'started', None),
                 'requests': getattr(ps, 'requests', 0),
                 'active': getattr(ps, 'active', 0),
@@ -1871,6 +1920,13 @@ class GuiHandler(BaseHTTPRequestHandler):
             if not authed:
                 return self._send('{"error":"unauthorized"}', code=401)
             return self._send(json.dumps(_live(self.server).snapshot(), ensure_ascii=False))
+        if self.path == '/api/hunt':
+            if not authed:
+                return self._send('{"error":"unauthorized"}', code=401)
+            if not HUNT_ON:
+                return self._send('{"error":"hunt-disabled"}', code=409)
+            return self._send(json.dumps({'port': getattr(self.server, 'hunt_port', None),
+                                          'hosts': self.server.pool.hunt_status()}))
         if self.path in ('/', '/index.html'):
             if not authed:
                 return self._login_page()
@@ -1886,7 +1942,7 @@ class GuiHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == '/login':
             return self._login()  # the body is the credential, so it is read before any check
-        if self.path not in ('/api/run', '/api/progress', '/api/block', '/api/refresh'):
+        if self.path not in ('/api/run', '/api/progress', '/api/block', '/api/refresh', '/api/hunt', '/api/exits'):
             self.close_connection = True  # a body may be waiting unread
             return self._send('{"error":"not found"}', code=404)
         # Authenticate before reading a single body byte: an unauthenticated client
@@ -1927,8 +1983,36 @@ class GuiHandler(BaseHTTPRequestHandler):
             host = canonical_host(str(report.get('host') or '')) if isinstance(report, dict) else ''
             if not host:
                 return self._send('{"error":"bad json"}', code=400)
-            demoted = self.server.proxy_server.demote_recent(host)
+            # a block met through the hunt port blames the exit that carried it there
+            hunt_server = getattr(self.server, 'hunt_server', None)
+            demoted = hunt_server.demote_recent(host) if hunt_server is not None else None
+            demoted = demoted or self.server.proxy_server.demote_recent(host)
             return self._send(json.dumps({'demoted': demoted}))
+        if self.path in ('/api/hunt', '/api/exits'):
+            if not HUNT_ON:
+                return self._send('{"error":"hunt-disabled"}', code=409)
+            try:
+                ask = json.loads(body.decode('utf-8'))
+            except ValueError:
+                return self._send('{"error":"bad json"}', code=400)
+            pool = self.server.pool
+            if not isinstance(ask, dict):
+                return self._send('{"error":"bad json"}', code=400)
+            if self.path == '/api/exits':
+                host = canonical_host(str(ask.get('host') or ''))
+                exits = ask.get('exits')
+                if host not in pool.round2 or not isinstance(exits, list):
+                    return self._send('{"error":"bad json"}', code=400)
+                return self._send(json.dumps({'host': host, 'verified': pool.adopt(host, exits)}))
+            hosts = ask.get('hosts')
+            if not isinstance(hosts, list) or not hosts or len(hosts) > len(pool.round2):
+                return self._send('{"error":"bad json"}', code=400)
+            hosts = [canonical_host(str(h)) for h in hosts]
+            if not all(h in pool.round2 for h in hosts):
+                return self._send('{"error":"unknown host"}', code=400)
+            state = pool.hunt_async(hosts, max_ms=env_int('EGRESS_HUNT_MAX_MS', HUNT_MAX_MS, 100))
+            return self._send(json.dumps({'port': getattr(self.server, 'hunt_port', None), 'hosts': state}),
+                              code=202)
         # /api/refresh
         pool = self.server.pool
         if not getattr(pool, 'enabled', True):
@@ -2048,12 +2132,16 @@ def main():
             print(f'WARNING: {h} is on EGRESS_DIRECT_FACULTY and EGRESS_FAIL_CLOSED; '
                   f'fail-closed wins: it stays on the pool and never goes direct', flush=True)
     pool = ProxyPool(data / 'pool.json', targets, active_hosts=active,
-                     max_probe=env_int('EGRESS_MAX_PROBE', 240))
+                     max_probe=env_int('EGRESS_MAX_PROBE', 240), hunt=HUNT_ON)
     runs = RunLog(data / 'runs.json')
     proxy_port = env_int('EGRESS_PROXY_PORT', 8888)
     gui_port = env_int('EGRESS_GUI_PORT', 8080)
-    proxy_server = ProxyServer(('0.0.0.0', proxy_port), pool)
-    gui = GuiServer(('0.0.0.0', gui_port), GuiHandler)
+    hunt_port = env_int('EGRESS_HUNT_PORT', 8889)
+    bind = env('EGRESS_BIND', '0.0.0.0').strip() or '0.0.0.0'
+    proxy_server = ProxyServer((bind, proxy_port), pool)
+    gui = GuiServer((bind, gui_port), GuiHandler)
+    hunt_server = ProxyServer((bind, hunt_port), pool, pool_only=True) if HUNT_ON else None
+    gui.hunt_server, gui.hunt_port = hunt_server, hunt_port if HUNT_ON else None
     if not api_token():
         print(f'WARNING: EGRESS_API_TOKEN is empty: the GUI API on :{gui_port} is open to anyone '
               f'who reaches it; fine only while its host port is bound to localhost', flush=True)
@@ -2062,8 +2150,11 @@ def main():
     if pool.enabled:
         threading.Thread(target=maintain, args=(pool,), daemon=True).start()
     threading.Thread(target=gui.serve_forever, daemon=True).start()
-    print(f'egress proxy on :{proxy_port}, GUI on :{gui_port} (pool={len(pool.entries)} known, '
-          f'{len(active)} pooled host(s))', flush=True)
+    if hunt_server is not None:
+        threading.Thread(target=hunt_server.serve_forever, daemon=True).start()
+    print(f'egress proxy on :{proxy_port}, GUI on :{gui_port}'
+          + (f', hunt port :{hunt_port}' if hunt_server is not None else '')
+          + f' (pool={len(pool.entries)} known, {len(active)} pooled host(s))', flush=True)
     try:
         proxy_server.serve_forever()
     except KeyboardInterrupt:

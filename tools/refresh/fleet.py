@@ -64,8 +64,14 @@ def load_json(path, default, kind=dict):
     return value if isinstance(value, kind) else default
 
 
+EGRESS_KINDS = ('remote', 'local')
+
+
 def load_fleet(path=FLEET):
-    """The runners from fleet.json, checked: [{name, label, speed, always_on, faculties, prefers, census}]."""
+    """The runners from fleet.json, checked: [{name, label, speed, always_on, faculties, prefers, census, egress, pool,
+    pool_help}]. `egress` says whether the runner can hunt the pool for exits through a wall (stack.py): 'remote' (the
+    egress box beside it), 'local' (one it starts itself) or None; `pool` the faculties it may take only through such
+    exits, `pool_help` those of them it helps with through the pool even while another runner leads them."""
     raw = json.loads(Path(path).read_text(encoding='utf-8'))
     runners = raw.get('runners') if isinstance(raw, dict) else None
     if not isinstance(runners, list):
@@ -83,14 +89,22 @@ def load_fleet(path=FLEET):
         if isinstance(speed, bool) or not isinstance(speed, (int, float)) or not speed > 0:
             raise ValueError(f'{name}: speed must be a positive number')
         only, prefers, census = r.get('faculties'), r.get('prefers', []), r.get('census', [])
+        pool, pool_help, egress = r.get('pool', []), r.get('pool_help', []), r.get('egress')
         if only is not None and not (isinstance(only, list) and all(isinstance(f, str) for f in only)):
             raise ValueError(f'{name}: faculties must be a list of faculty ids')
-        for key, value in (('prefers', prefers), ('census', census)):
+        if egress is not None and egress not in EGRESS_KINDS:
+            raise ValueError(f'{name}: egress must be one of {", ".join(EGRESS_KINDS)}')
+        for key, value in (('prefers', prefers), ('census', census), ('pool', pool), ('pool_help', pool_help)):
             if not (isinstance(value, list) and all(isinstance(f, str) for f in value)):
                 raise ValueError(f'{name}: {key} must be a list of faculty ids')
+        if pool and egress is None:
+            raise ValueError(f'{name}: a pool needs an egress to hunt with')
+        if not set(pool_help) <= set(pool):
+            raise ValueError(f'{name}: pool_help must be among its pool')
         seen.add(name)
         fleet.append({'name': name, 'label': label, 'speed': float(speed), 'always_on': bool(r.get('always_on')),
-                      'faculties': only, 'prefers': prefers, 'census': census})
+                      'faculties': only, 'prefers': prefers, 'census': census, 'egress': egress, 'pool': pool,
+                      'pool_help': pool_help})
     if not fleet:
         raise ValueError('the fleet has no runners')
     return fleet
@@ -138,6 +152,13 @@ def may_take(runner, lane, avoid):
     """Whether `runner` may crawl every faculty of `lane`: its allowlist has them and none is to be avoided by it."""
     return all((runner['faculties'] is None or f in runner['faculties']) and runner['name'] not in avoid.get(f, ())
                for f in lane)
+
+
+def reach(runner):
+    """The faculties a runner may take at all, its own address or pool exits (`pool`): a set, None for any."""
+    if runner['faculties'] is None:
+        return None
+    return set(runner['faculties']) | set(runner.get('pool') or ())
 
 
 def walled_runners(runs):
@@ -221,10 +242,13 @@ def matrix_of(fleet, wanted, state, online, walled=None, avoid=None):
     jobs = []
     for name in result['up']:
         r = by[name]
-        mine = [f for f in wanted if may_take(r, [f], avoid)]
+        pooled = [f for f in wanted if f in (r.get('pool') or ()) and not may_take(r, [f], avoid)
+                  and name not in avoid.get(f, ())]
+        mine = [f for f in wanted if may_take(r, [f], avoid) or f in pooled]
         if mine:
             jobs.append({'runner': name, 'label': r['label'], 'faculties': ','.join(mine),
-                         'census': census.get(name, ''), 'fallback': fallback.get(name, '')})
+                         'census': census.get(name, ''), 'fallback': fallback.get(name, ''),
+                         'pool': ','.join(pooled), 'egress': r.get('egress') or ''})
     expected = ','.join(j['runner'] for j in jobs)
     for j in jobs:
         j['expected'] = expected
@@ -354,7 +378,8 @@ def cmd_plan(args):
         log(f"::warning::no runner up may take {', '.join(result['unassigned'])}; left for the next pass")
     if not jobs:
         log('::warning::no runner of the fleet is online; this pass crawls nothing')
-    matrix = [{k: j[k] for k in ('runner', 'label', 'faculties', 'census', 'expected', 'fallback')} for j in jobs]
+    matrix = [{k: j[k] for k in ('runner', 'label', 'faculties', 'census', 'expected', 'fallback', 'pool', 'egress')}
+              for j in jobs]
     planned = int(dt.datetime.now(dt.timezone.utc).timestamp())
     # runs.py records which servers were off and what nobody could take
     info = {'down': result['down'], 'unassigned': result['unassigned']}

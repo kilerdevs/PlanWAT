@@ -2161,3 +2161,242 @@ class StatusHonesty(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+R2_HUNT = {'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', b'index.xml'),
+           'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', b'<?xml'),
+           'wlo.wat.edu.pl': ('https://wlo.wat.edu.pl/planyzajec/zima/index.xml', b'<?xml')}
+
+
+class PoolHunt(unittest.TestCase):
+    """pool.hunt / adopt: exits for a faculty nobody's own line gets through (docs/EGRESS.md)."""
+
+    def make(self, alive, works, hunt=True):
+        """A pool of `alive` {url: latency}, where works(url, host) says who gets through."""
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_HUNT, active_hosts=[], hunt=hunt)
+        now = time.time()
+        p.entries = {u: {'status': 'ok', 'latency_ms': ms, 'fails': 0, 'last_checked': now, 'hosts': {}}
+                     for u, ms in alive.items()}
+        self.probes = []
+        lock = threading.Lock()
+
+        def probe_host(url, host):
+            with lock:
+                self.probes.append((url, host))
+            return 50 if works(url, host) else None
+        p.probe_host = probe_host
+        p._discover = lambda *a, **k: ('ok', [], [])  # no list fetching offline
+        return p
+
+    def alive(self, n, slow=()):
+        return {f'http://8.8.{i}.1:8080': (9000 if i in slow else 100 + i) for i in range(n)}
+
+    def test_every_candidate_with_a_sensible_ping_is_tried_until_one_gets_through(self):
+        p = self.make(self.alive(50, slow={3}), lambda u, h: u == 'http://8.8.40.1:8080' and h == 'wml.wat.edu.pl')
+        out = p.hunt(['wml.wat.edu.pl'], want=1, workers=1)
+        self.assertEqual(out['wml.wat.edu.pl']['exits'], ['http://8.8.40.1:8080'])
+        tried = [u for u, _ in self.probes]
+        self.assertNotIn('http://8.8.3.1:8080', tried)  # 9 s ping: not sensible
+        self.assertEqual(tried[:3], ['http://8.8.0.1:8080', 'http://8.8.1.1:8080', 'http://8.8.2.1:8080'])
+        self.assertEqual(tried[-1], 'http://8.8.40.1:8080')  # stopped once it had what it wanted
+        self.assertEqual(p.verified('wml.wat.edu.pl')[0]['url'], 'http://8.8.40.1:8080')
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.40.1:8080'])
+
+    def test_a_proxy_that_passes_one_wall_is_tried_on_the_others(self):
+        good = 'http://8.8.7.1:8080'
+        p = self.make(self.alive(10), lambda u, h: u == good and h in ('wml.wat.edu.pl', 'wlo.wat.edu.pl'))
+        out = p.hunt(['wml.wat.edu.pl', 'wtc.wat.edu.pl', 'wlo.wat.edu.pl'], want=1, workers=1)
+        self.assertEqual({h: r['exits'] for h, r in out.items()},
+                         {'wml.wat.edu.pl': [good], 'wtc.wat.edu.pl': [], 'wlo.wat.edu.pl': [good]})
+        self.assertIn((good, 'wtc.wat.edu.pl'), self.probes)
+        self.assertEqual(out['wtc.wat.edu.pl']['tried'], 10)  # every candidate, nothing found
+
+    def test_budget_and_the_cache_spare_the_faculty(self):
+        clock = FakeClock()
+        p = self.make(self.alive(30), lambda u, h: False)
+
+        def slow(url, host):
+            clock.t += 20
+            return None
+        p.probe_host = slow
+        out = p.hunt(['wtc.wat.edu.pl'], workers=1, budget_s=100, clock=clock)
+        self.assertLessEqual(out['wtc.wat.edu.pl']['tried'], 6)
+        # asked again within half an hour: nobody new is probed
+        p.probe_host = lambda u, h: self.fail('probed again')
+        again = p.hunt(['wtc.wat.edu.pl'], workers=1)
+        self.assertEqual(again['wtc.wat.edu.pl']['verified'], 0)
+
+    def test_known_exits_are_rechecked_first(self):
+        p = self.make(self.alive(5), lambda u, h: u == 'http://8.8.2.1:8080')
+        p.mark('http://8.8.2.1:8080', 'wml.wat.edu.pl', True, 40)
+        self.probes.clear()
+        out = p.hunt(['wml.wat.edu.pl'], want=1)
+        self.assertEqual(self.probes, [('http://8.8.2.1:8080', 'wml.wat.edu.pl')])
+        self.assertEqual(out['wml.wat.edu.pl']['exits'], ['http://8.8.2.1:8080'])
+
+    def test_hunt_async_reports_running_then_done(self):
+        p = self.make(self.alive(3), lambda u, h: True)
+        gate = threading.Event()
+        real = p.probe_host
+
+        def held(url, host):
+            gate.wait(5)
+            return real(url, host)
+        p.probe_host = held
+        state = p.hunt_async(['wml.wat.edu.pl'], want=1, workers=1)
+        self.assertEqual(state['wml.wat.edu.pl']['state'], 'running')
+        gate.set()
+        for _ in range(100):
+            if p.hunt_status()['wml.wat.edu.pl']['state'] == 'done':
+                break
+            time.sleep(0.02)
+        self.assertEqual(p.hunt_status()['wml.wat.edu.pl']['verified'], 1)
+
+    def test_adopt_checks_every_shared_exit_itself(self):
+        p = self.make({}, lambda u, h: u == 'http://8.8.8.8:3128')
+        got = p.adopt('wml.wat.edu.pl', ['8.8.8.8:3128', 'http://9.9.9.9:80', '127.0.0.1:80', 'junk', 42])
+        self.assertEqual(got, ['http://8.8.8.8:3128'])
+        self.assertEqual(sorted(u for u, _ in self.probes), ['http://8.8.8.8:3128', 'http://9.9.9.9:80'])
+        self.assertEqual(p.adopt('example.org', ['8.8.8.8:3128']), [])
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.8.8:3128'])
+
+    def test_verified_only_picks_need_the_hunt(self):
+        p = self.make({'http://8.8.8.8:3128': 100}, lambda u, h: True, hunt=False)
+        p.mark('http://8.8.8.8:3128', 'wml.wat.edu.pl', True, 40)
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), [])  # no pooled host, no hunt
+        p.hunt_on = True
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.8.8:3128'])
+        p.entries['http://9.9.9.9:80'] = {'status': 'ok', 'latency_ms': 10, 'fails': 0, 'hosts': {}}
+        # merely alive is not offered on the hunt port
+        self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.8.8:3128'])
+
+
+class HuntPort(unittest.TestCase):
+    """server.py's hunt port: verified exits only, faculty HTTPS only, never direct."""
+
+    def handler(self, p):
+        from types import SimpleNamespace
+        h = server.ProxyHandler.__new__(server.ProxyHandler)
+        h.server = SimpleNamespace(pool=p, pool_only=True, remember_tunnel=lambda host, via: None)
+        return h
+
+    def test_routes_only_faculty_https_through_verified_exits(self):
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_HUNT, active_hosts=[], hunt=True)
+        h = self.handler(p)
+        for host, port in (('github.com', 443), ('wml.wat.edu.pl', 80), ('localhost', 443)):
+            with self.assertRaises(OSError):
+                h._open(host, port)
+        with self.assertRaisesRegex(OSError, 'proxy_empty'):
+            h._open('wml.wat.edu.pl', 443)  # no exit: refused, never this box's own line
+        p.mark('http://8.8.8.8:3128', 'wml.wat.edu.pl', True, 40)
+        with unittest.mock.patch.object(server, 'chain_connect', lambda *a, **k: 'sock'):
+            self.assertEqual(h._open('WML.wat.edu.pl.', 443)[:2], ('sock', 'http://8.8.8.8:3128'))
+
+    def test_plain_http_is_refused(self):
+        h = self.handler(None)
+        sent = []
+        h._deny = lambda code=403: sent.append(code)
+        h._forward_plain()
+        self.assertEqual(sent, [403])
+
+    def test_hunt_api_needs_the_token_and_known_hosts(self):
+        import json
+        import urllib.error
+        import urllib.request
+        from types import SimpleNamespace
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_HUNT, active_hosts=[], hunt=True)
+        p.probe_host = lambda u, h: 30 if u == 'http://8.8.8.8:3128' else None
+        p._discover = lambda *a, **k: ('ok', [], [])
+        gui = server.GuiServer(('127.0.0.1', 0), server.GuiHandler)
+        gui.pool, gui.runs, gui.proxy_port = p, server.RunLog(Path(tempfile.mkdtemp()) / 'runs.json'), 8888
+        gui.proxy_server = SimpleNamespace(fallbacks={}, blocks=0, fallbacks_lock=threading.Lock(),
+                                           demote_recent=lambda host: None)
+        gui.hunt_server, gui.hunt_port = None, 8889
+        threading.Thread(target=gui.serve_forever, daemon=True).start()
+        base = f'http://127.0.0.1:{gui.server_address[1]}'
+
+        def call(path, body=None, token='sekret'):
+            data = json.dumps(body).encode() if body is not None else None
+            req = urllib.request.Request(base + path, data=data, method='POST' if data else 'GET',
+                                         headers={'X-Token': token, 'Content-Type': 'application/json'})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    return r.status, json.loads(r.read())
+            except urllib.error.HTTPError as err:
+                return err.code, json.loads(err.read())
+        try:
+            with unittest.mock.patch.dict(os.environ, {'EGRESS_API_TOKEN': 'sekret'}):
+                self.assertEqual(call('/api/hunt', {'hosts': ['wml.wat.edu.pl']}, token='nope')[0], 401)
+                self.assertEqual(call('/api/hunt', {'hosts': ['example.org']})[0], 400)
+                self.assertEqual(call('/api/exits', {'host': 'wml.wat.edu.pl', 'exits': 'x'})[0], 400)
+                code, got = call('/api/exits', {'host': 'wml.wat.edu.pl', 'exits': ['8.8.8.8:3128', '9.9.9.9:80']})
+                self.assertEqual((code, got['verified']), (200, ['http://8.8.8.8:3128']))
+                code, got = call('/api/hunt', {'hosts': ['wtc.wat.edu.pl']})
+                self.assertEqual((code, got['port']), (202, 8889))
+                for _ in range(100):
+                    code, got = call('/api/hunt')
+                    if got['hosts'].get('wtc.wat.edu.pl', {}).get('state') == 'done':
+                        break
+                    time.sleep(0.02)
+                self.assertEqual(got['hosts']['wtc.wat.edu.pl']['state'], 'done')
+                with unittest.mock.patch.object(server, 'HUNT_ON', False):
+                    self.assertEqual(call('/api/hunt', {'hosts': ['wtc.wat.edu.pl']})[0], 409)
+        finally:
+            gui.shutdown()
+
+
+class EgressClient(unittest.TestCase):
+    """tools/refresh/egress.py: the crawler asks its egress to check shared exits, then to hunt."""
+
+    def setUp(self):
+        import egress as client
+        self.client = client
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_HUNT, active_hosts=[], hunt=True)
+        p.probe_host = lambda u, h: 30 if (u, h) in self.works else None
+        p._discover = lambda *a, **k: ('ok', [], [])
+        p.entries = {'http://8.8.4.4:3128': {'status': 'ok', 'latency_ms': 90, 'fails': 0,
+                                             'last_checked': time.time(), 'hosts': {}}}
+        self.works = set()
+        from types import SimpleNamespace
+        gui = server.GuiServer(('127.0.0.1', 0), server.GuiHandler)
+        gui.pool, gui.runs, gui.proxy_port = p, server.RunLog(Path(tempfile.mkdtemp()) / 'runs.json'), 8888
+        gui.proxy_server = SimpleNamespace(fallbacks={}, blocks=0, fallbacks_lock=threading.Lock(),
+                                           demote_recent=lambda host: None)
+        gui.hunt_server, gui.hunt_port = None, 8889
+        threading.Thread(target=gui.serve_forever, daemon=True).start()
+        self.addCleanup(gui.shutdown)
+        self.api = f'http://127.0.0.1:{gui.server_address[1]}'
+        env = unittest.mock.patch.dict(os.environ, {'EGRESS_API_TOKEN': 'sekret'})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def egress(self, token='sekret'):
+        return self.client.Egress(self.api, 'http://127.0.0.1:8889', token, log=lambda m: None,
+                                  sleep=lambda s: time.sleep(0.01))
+
+    def test_shared_exits_first_then_a_hunt(self):
+        self.works = {('http://8.8.8.8:3128', 'wml.wat.edu.pl'), ('http://8.8.4.4:3128', 'wtc.wat.edu.pl')}
+        e = self.egress()
+        self.assertEqual(e.hunt('wml.wat.edu.pl', ['8.8.8.8:3128']), ['http://8.8.8.8:3128'])
+        self.assertEqual(e.hunt('wtc.wat.edu.pl', ['8.8.8.8:3128']), ['http://8.8.4.4:3128'])
+        self.assertEqual(e.hunt('wlo.wat.edu.pl'), [])
+
+    def test_an_egress_without_the_hunt_or_the_token_cannot_hunt(self):
+        with self.assertRaises(self.client.Unavailable):
+            self.egress(token='wrong').hunt('wml.wat.edu.pl')
+        old = self.client.Egress('http://127.0.0.1:9', 'http://127.0.0.1:9', '', log=lambda m: None)
+        self.assertFalse(old.available())
+
+    def test_a_local_egress_starts_on_loopback_and_stops_with_the_crawl(self):
+        local = self.client.LocalEgress(data=tempfile.mkdtemp(), log=lambda m: None)
+        try:
+            self.assertTrue(local.available())
+            self.assertTrue(local.proxy_url().startswith('http://127.0.0.1:'))
+            code, got = local._call('/api/status')
+            self.assertEqual(code, 200)
+            self.assertIsNotNone(got.get('hunt_port'))
+            # no regular pool work there: every faculty host is off the pool until a hunt asks for one
+            self.assertTrue(all(v['mode'].startswith('DIRECT') for v in got['hosts'].values()))
+        finally:
+            local.close()
+        self.assertIsNotNone(local.proc.poll())

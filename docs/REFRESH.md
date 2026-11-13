@@ -267,7 +267,9 @@ Kolejność, w jakiej ścieżka runnera bierze pracę, wynika z samego stosu (`s
    wziąć, potem największe. Slotu, który preferuje inny uruchomiony runner, **nie otwiera** — ten go prowadzi — dopóki tamten
    jest włączony albo może jeszcze dołączyć (3 minuty od startu, `JOIN_GRACE`) i nie odbił się od jego ściany;
 2. **kontynuuje** własne sloty od przodu;
-3. **pomaga** od tyłu: najpierw w wydziałach, które preferuje, potem tam, gdzie zostało najwięcej.
+3. **pomaga** od tyłu: najpierw w wydziałach, które preferuje, potem tam, gdzie zostało najwięcej;
+4. **szuka wyjść w puli** (`hunt`), gdy wydziału, który zostaje, nie przejdzie z własnego adresu żaden włączony runner
+   (zob. niżej „Wyjścia przez pulę”).
 
 Preferencje: plebania prowadzi WTC, WLO i WEL (WTC odrzuca adres VPS, a 29.10.2026 WLO i WTC odpowiadały 403 także przez
 relay Cloudflare z AMS i FRA), oracle prowadzi WIG i IOE (oba runnery przeszły 26.10.2026 po dwa przebiegi WIG, 33 z 33 grup,
@@ -295,7 +297,9 @@ kosztować podwójne sprawdzenie, nigdy zgubione.
 | zadanie runnera w ogóle nie ruszyło | nic nie było mu przydzielone, więc robią to inni; jego preferencje wygasają po 3 minutach |
 | stos nieosiągalny na starcie | runner crawluje sam swój udział zapasowy (`fallback`), dawną drogą |
 | stos znika w trakcie | każda zamiana ponawia się; po 3 min runner kończy wydziały, które prowadzi (możliwe podwójne sprawdzenie), i kończy |
-| ściana, której nikt włączony nie przejdzie | runner czeka na nią (`--max-block-wait-minutes`) tylko wtedy, gdy żaden inny włączony runner nie może wziąć wydziału i gdy ta ściana nie przetrwała u niego ostatnio pełnego czekania; czekanie kończy się, gdy ktoś inny weźmie pracę |
+| ściana, której nikt włączony nie przejdzie z własnego adresu | runner z egressem (`egress` w `fleet.json`) każe mu najpierw poszukać w puli publicznych proxy wyjść, które ją przechodzą (niżej), i crawluje przez nie; gdy żadne nie przechodzi, wydział zostaje `blocked` jak dawniej |
+| wyjścia z puli trafiają w połowie na ścianę | sprawdzone grupy są zrobione, reszta wraca na stos; runner nie szuka już w tym przebiegu, chyba że inny runner dopisze do slotu nowe wyjścia |
+| ściana, której nikt włączony nie przejdzie (także przez pulę) | runner czeka na nią (`--max-block-wait-minutes`) tylko wtedy, gdy żaden inny włączony runner nie może wziąć wydziału i gdy ta ściana nie przetrwała u niego ostatnio pełnego czekania; czekanie kończy się, gdy ktoś inny weźmie pracę |
 | powtarzające się odmowy | runner, który 3 przebiegi z rzędu nie mógł wyliczyć wydziału (`cant` w jego stanie łącza), zagląda tam na końcu; jedna udana lista to kasuje |
 
 Każda ścieżka się kończy: zajęte kawałki wracają przez bicie serca i postęp, odmowy (`cant`) tylko przybywają, czekanie
@@ -310,6 +314,26 @@ trafiają na różne ściany, więc trzyma go w `$RUNNER_TOOL_CACHE/planwat/refr
 Na `data` trafia stan łącza tego runnera, który ostatnio crawlował dany wydział, więc zasiew pomija ściany, przed którymi
 stał tamten (`fleet.py seed`: epizod ściany, czekanie, otwarta blokada), a epizod ściany nosi nazwę runnera (`by`) i
 liczy się tylko dla niego: plebania nie pomija już WML przez ścianę oracle.
+
+#### Wyjścia przez pulę
+
+Bez plebanii WLO (z WEL na tej samej ścieżce polityki), WML i WTC zatrzymują własne adresy oracle i northflanka, a relay
+Cloudflare dostaje od nich 403. Pula publicznych proxy ma jednak czasem wyjścia, które przechodzą (pomiar z 27.10.2026:
+WLO 1, WEL 14, WML 17, WTC 0). Dlatego runner z egressem, który odbił się od ściany wydziału, gdy żaden inny włączony
+runner nie przejdzie go z własnego adresu (plebania wyłączona, nie dołączyła w 3 minuty albo też stoi pod ścianą), zleca
+egressowi **polowanie** ([docs/EGRESS.md](EGRESS.md#polowanie-na-wyjścia)): każde żywe proxy z sensownym pingiem jest
+sprawdzane na stronie listy tego wydziału, a proxy, które przeszło jedną ścianę, od razu także na pozostałych. Gdy coś
+przejdzie, runner crawluje ten wydział przez port polowania egressu (`via` w slocie), który używa tylko sprawdzonych
+wyjść, zawsze przez HTTPS i nigdy z adresu runnera.
+
+Znalezione wyjścia trafiają do slotu (`exits`, najwyżej 8), więc drugi runner sprawdza je własnym egressem (kilka zapytań
+zamiast polowania) i pomaga od tyłu. Polowanie na jeden slot prowadzi naraz jeden runner (`hunting`); drugi czeka na wynik.
+Northflank nie ma egressu w kontenerze, więc uruchamia kod egressu z checkoutu na własnym loopbacku, dopiero gdy polowanie
+jest potrzebne, i zamyka go z końcem crawla. WLO, WEL, WML, WTC i WCY bierze **wyłącznie** przez pulę (`pool`), a przy WCY
+pomaga oracle przez swoją pulę zawsze, gdy zostały co najmniej 2 wolne kawałki (`pool_help`). Gdy plebania jest włączona,
+nikt nie poluje na jej wydziały. Ściana spotkana przez pulę nie liczy się do ścian własnego łącza runnera (czekanie,
+„chroniczna” ściana). Oracle potrzebuje przebudowanego egressu (`docker compose up -d --build egress` na VPS-ie):
+starszy odpowiada 404 i oracle po prostu nie poluje. Historia przebiegów pokazuje „przez proxy (pula) na northflank”.
 
 #### Nadrabianie po powrocie serwera
 

@@ -154,6 +154,39 @@ starszych obrazów, wszystkimi hostami wydziałów na liście `EGRESS_DIRECT_FAC
 bezpośrednio GitHub (`github.com`, `api.github.com`, `codeload.github.com`, `*.githubusercontent.com`), magazyn artefaktów
 GitHub Actions (`*.blob.core.windows.net`), PyPI (`pypi.org`, `*.pythonhosted.org`) i `*.wat.edu.pl`, reszta 403. Zob. [WOLONTARIUSZE.md](WOLONTARIUSZE.md#instalacja-ręczna).
 
+## Polowanie na wyjścia
+
+Gdy żaden włączony runner nie przechodzi ściany wydziału z własnego adresu (bez plebanii: WLO, WEL, WML i WTC), stos
+pracy ([docs/REFRESH.md](REFRESH.md#wyjścia-przez-pulę)) każe runnerowi z egressem szukać w puli wyjść, które ją przechodzą.
+Egress robi to na żądanie, poza zwykłym odświeżaniem puli, także dla hostów z `EGRESS_DIRECT_FACULTY`:
+
+- `POST /api/hunt {"hosts": [...]}` (202) zaczyna polowanie w tle albo dopisuje hosty do trwającego. Gdy świeżych żywych
+  kandydatów jest mniej niż 40 (albo są starsi niż godzina), najpierw pobiera listy i robi Round 1. Potem każde żywe
+  proxy z opóźnieniem Round 1 najwyżej `EGRESS_HUNT_MAX_MS` (domyślnie 2500 ms), od najszybszego, przechodzi Round 2
+  dla każdego hosta, który nie ma jeszcze 4 wyjść: ta sama strona listy, znacznik treści i weto stron blokady co zwykle.
+  Proxy, które przeszło jeden wydział, jest więc od razu próbowane na pozostałych. Najwyżej 4 sondy naraz (wydziały widzą
+  strumyczek, nie skan), najwyżej 5 minut. Host sprawdzany w ostatnich 30 minutach ma tylko powtórnie sprawdzane znane
+  wyjścia, a proxy, które niedawno go nie przeszło, nie jest pytane znowu.
+- `GET /api/hunt` pokazuje stan każdego hosta (`running`, `done`, `error`), liczbę wyjść i prób oraz znalezione wyjścia.
+- `POST /api/exits {"host": ..., "exits": [...]}` sprawdza wyjścia, które znalazł inny runner (najwyżej 8, każde przez
+  `parse_proxy_url` i Round 2 tutaj), zanim ich użyje; odpowiada tymi, które przeszły.
+- **Port polowania** `EGRESS_HUNT_PORT` (domyślnie 8889): drugie proxy, które prowadzi `*.wat.edu.pl` wyłącznie przez
+  wyjścia sprawdzone dla danego hosta (z rotacją), zawsze fail-closed (nigdy bezpośrednio) i tylko `CONNECT` na 443, więc TLS
+  wydziału idzie od końca do końca i publiczne proxy nie może zmienić strony. Zwykłe HTTP i każdy inny cel dostają 403.
+  Zgłoszenie blokady (`POST /api/block`) wycofuje wyjście, które ją przyniosło, także na tym porcie.
+
+Wszystkie trzy endpointy wymagają tokenu jak reszta API. `EGRESS_HUNT=off` wyłącza polowanie i port; tryb wolontariusza
+(`EGRESS_POOL=off`) nie ma go nigdy. `EGRESS_BIND` (domyślnie `0.0.0.0`) pozwala związać wszystkie porty z loopbackiem.
+Panel pokazuje polowanie przy hoście („POLOWANIE”, potem „PULA wyjścia/próby”).
+
+Strona crawlera to [`tools/refresh/egress.py`](../tools/refresh/egress.py): na oracle i plebanii rozmawia z egressem obok
+(`PLANWAT_EGRESS_API`, domyślnie `http://egress:8080`, i `PLANWAT_EGRESS_HUNT_PROXY`, domyślnie `http://egress:8889`;
+sieć wewnętrzna compose, bez zmian w `compose.yml`). Northflank, który egressu nie ma, uruchamia `tools/egress/server.py`
+z checkoutu na `127.0.0.1` z losowymi portami i własnym tokenem, dopiero gdy polowanie jest potrzebne, z każdym hostem
+wydziału poza zwykłą pulą (sonduje tylko polowanie), i zamyka go z końcem crawla; `pool.json` zostaje w
+`$RUNNER_TOOL_CACHE/planwat/egress` na następne zadania. Egress zbudowany przed tą zmianą odpowiada na `/api/hunt` 404:
+runner wtedy nie poluje i zachowuje się jak dawniej. Na oracle wystarczy `docker compose up -d --build egress`.
+
 ## GUI monitoringu
 
 Domyślnie tylko z maszyny: `compose.fragment.yml` wiąże port z `127.0.0.1:18080` (kontener `:8080`), więc z innego komputera

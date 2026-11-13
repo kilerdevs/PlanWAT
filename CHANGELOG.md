@@ -16,6 +16,15 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Polowanie na wyjścia przez ściany, gdy plebania jest wyłączona** (`tools/egress/pool.py` `hunt`/`adopt`,
+  `server.py`, `tools/refresh/egress.py`, `stack.py`): gdy żaden włączony runner nie przechodzi ściany wydziału z
+  własnego adresu (bez plebanii WLO, WEL, WML i WTC), runner z egressem każe mu sprawdzić każde żywe publiczne proxy z
+  sensownym pingiem (Round 1 do 2,5 s) na stronie listy wydziału — proxy, które przeszło jeden wydział, od razu na
+  pozostałych — i crawluje przez znalezione wyjścia nowym portem polowania (8889: tylko sprawdzone wyjścia, tylko HTTPS,
+  nigdy bezpośrednio). Znalezione wyjścia trafiają na stos pracy, więc drugi runner sprawdza je własnym egressem i
+  pomaga. Northflank uruchamia egress z checkoutu na własnym loopbacku, bierze WLO, WEL, WML, WTC i WCY wyłącznie przez
+  pulę, a przy WCY pomaga oracle zawsze, gdy zostało dość pracy. Historia przebiegów mówi „przez proxy (pula) na …”.
+  Oracle potrzebuje przebudowanego egressu; starszy odpowiada 404 i oracle po prostu nie poluje.
 - **Nadrabianie po powrocie serwera** (`.github/workflows/refresh-wake.yml`, `fleet.py owed`, `plan --catchup`): gdy
   przebieg zastaje runner wyłączony, kolejkuje na niego czekające zadanie, które GitHub uruchamia w chwili, gdy maszyna
   połączy się z GitHubem. Wtedy rusza przebieg tylko z tego, co opuszczone przebiegi zostawiły dla niego (dla plebanii
