@@ -227,6 +227,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Log crawla zalany jednym ostrzeżeniem** (`tools/refresh/rozklad2ics.py`): „unknown subject …; assigned fallback colour”
+  szło przy każdych zajęciach WCY, ok. 11 tys. linii, 95% logu przebiegu. Kolor zastępczy jest deterministyczny i dotyczy
+  większości przedmiotów, więc ostrzeżenie zniknęło.
 - **Sonda WLO pytała o nieistniejący `index.xml`** (`tools/egress/server.py`): WLO publikuje listę grup już tylko jako
   `planzajec/<sezon>/index.html` (`index.xml` daje 404 także z Polski; crawler przechodzi na `index.html` sam), więc
   żadne wyjście nie mogło przejść sondy. Sonda pyta teraz o `index.html` i szuka `Plansoft`.
