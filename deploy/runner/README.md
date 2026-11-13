@@ -65,9 +65,11 @@ stara wartość przestaje działać: wpisz świeży `RUNNER_TOKEN`, a po starcie
 tylko przez ściany IOE, WIG i WIM (próba 27.10.2026); relay Cloudflare daje mu jeszcze WEL i WIG, ale WLO, WML i WTC
 odpowiadają z zachodnich wyjść Workera 403 (sprawdzone 29.10.2026 z AMS i FRA), a WEL dzieli ścieżkę polityki z WLO.
 Dlatego `faculties` w `fleet.json` obejmują tylko IOE, WIG i WIM: te trzy działają także bez relaya. WLO, WEL, WML, WTC
-i WCY northflank bierze wyłącznie przez publiczne proxy (`pool` w `fleet.json`): crawl uruchamia wtedy kod egressu z
-checkoutu na loopbacku kontenera (`tools/refresh/egress.py`, bez zmian w obrazie ani zmiennych) i zamyka go na końcu
-([docs/EGRESS.md](../../docs/EGRESS.md#polowanie-na-wyjścia)).
+i WCY northflank bierze wyłącznie przez publiczne proxy (`pool` w `fleet.json`): crawl uruchamia kod egressu na
+loopbacku kontenera z kopii w `$RUNNER_TOOL_CACHE` i z własnym venv tam (`tools/refresh/egress.py`, bez zmian w obrazie ani
+zmiennych) i zostawia go działającego między przebiegami, żeby zwiad cały czas szukał wyjść
+([docs/EGRESS.md](../../docs/EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść)). Restart kontenera go zatrzymuje, następny
+przebieg uruchamia go znowu.
 
 ## Utrzymanie
 

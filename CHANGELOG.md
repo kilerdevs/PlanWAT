@@ -16,6 +16,14 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Zwiad egressu: ciągłe szukanie szybszych wyjść przez ściany** (`tools/egress/pool.py` `scout_once`, `server.py`,
+  `tools/refresh/egress.py`): egress na oracle i northflanku przez cały czas bierze z list proxy kandydatów, których
+  jeszcze nie widział, odsiewa martwych samym połączeniem TCP, robi Round 1 na żywych i każde nowe proxy z sensownym pingiem
+  sprawdza na stronach wszystkich 8 wydziałów, oznaczając, które przepuszcza. Wydział z 12 wyjściami dostaje do testu tylko
+  szybsze proxy, a najszybsze wyjścia każdego wydziału są sprawdzane co 20 minut, więc polowanie bez plebanii oddaje gotowe
+  wyjścia przez WLO, WML i WTC od razu. Panel egressu ma kartę „Wyjścia na wydziały”, a `GET /api/exits` je zwraca.
+  Northflank trzyma swój egress lokalny między przebiegami (kopia kodu i venv w tool cache, bez zmian w obrazie). Plebania
+  ma zwiad wyłączony.
 - **Polowanie na wyjścia przez ściany, gdy plebania jest wyłączona** (`tools/egress/pool.py` `hunt`/`adopt`,
   `server.py`, `tools/refresh/egress.py`, `stack.py`): gdy żaden włączony runner nie przechodzi ściany wydziału z
   własnego adresu (bez plebanii WLO, WEL, WML i WTC), runner z egressem każe mu sprawdzić każde żywe publiczne proxy z
@@ -210,6 +218,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Pula proxy stała w miejscu** (`tools/egress/pool.py`): pudło na stronie wydziału odświeżało werdykt „żywe” proxy, więc
+  pula oracle trzymała 2000 wpisów, prawie wszystkie rzekomo żywe, a usuwanie przy pełnej puli wyrzucało tylko odrzucone —
+  nowy kandydat nie miał jak wejść. Listy były czytane tylko od pierwszych 80 wpisów każdej (około 640 proxy w ogóle) i
+  pobierane od nowa w każdej rundzie polowania. Teraz pudło na wydziale to werdykt tylko tego wydziału, pełna pula robi
+  miejsce kosztem odrzuconych, nieaktualnych i najwolniejszych (nigdy wyjść wydziałów), kandydaci są brani z całych list
+  (polskie pierwsze), listy są trzymane 30 minut, martwi czekają 12 h w `seen.json`, a Round 1 to puste 204 Cloudflare
+  zamiast kafelka OSM.
 - **WIM znowu jest crawlowny**: wydział zamienił `index.xml` na `index.html` (listopad 2026), a sterownik Plansoft znał
   tylko XML, więc przebieg uznawał listę grup za usuniętą, a plany WIM zostawały z października. Sterownik czyta teraz
   oba eksporty (po 404/410 sięga po drugi) i z HTML bierze wyłącznie pierwszą kolumnę „Grupy”, żeby nie crawlować stron

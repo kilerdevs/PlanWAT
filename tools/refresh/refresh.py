@@ -1359,6 +1359,8 @@ def fleet_runner(args, wanted, sources, state, model, today, coming, sleep, cloc
     shy = {f for f in wanted if isinstance(state.faculties.get(f, {}).get('cant'), dict)
            and build_count(state.faculties[f]['cant'].get('passes')) >= stack.SHY_PASSES}
     hunter = egress_client.make(me.get('egress'), log)
+    if hunter is not None:
+        hunter.ensure_async()  # a persistent local egress comes up (or is reused) while the crawl starts
     me_ = stack.Me(args.runner, slots, {s: core.group_of(stack.faculty_of(s)) for s in slots}, expected,
                    me['prefers'], {n: fleet.reach(r) for n, r in runners.items()},
                    {n: r['prefers'] for n, r in runners.items()},

@@ -328,8 +328,11 @@ wyjść, zawsze przez HTTPS i nigdy z adresu runnera.
 
 Znalezione wyjścia trafiają do slotu (`exits`, najwyżej 8), więc drugi runner sprawdza je własnym egressem (kilka zapytań
 zamiast polowania) i pomaga od tyłu. Polowanie na jeden slot prowadzi naraz jeden runner (`hunting`); drugi czeka na wynik.
-Northflank nie ma egressu w kontenerze, więc uruchamia kod egressu z checkoutu na własnym loopbacku, dopiero gdy polowanie
-jest potrzebne, i zamyka go z końcem crawla. WLO, WEL, WML, WTC i WCY bierze **wyłącznie** przez pulę (`pool`), a przy WCY
+Polowanie zwykle nie musi już szukać: **zwiad** egressu ([docs/EGRESS.md](EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść))
+na oracle i northflanku przez cały czas sprawdza nowe proxy z list na stronach wszystkich wydziałów i trzyma dla każdego
+wydziału najszybsze sprawdzone wyjścia, więc gdy plebanii brakuje, polowanie oddaje je od razu.
+Northflank nie ma egressu w kontenerze, więc crawl uruchamia kod egressu na własnym loopbacku na początku zadania i zostawia
+go działającego między przebiegami (trwały egress lokalny ze zwiadem). WLO, WEL, WML, WTC i WCY bierze **wyłącznie** przez pulę (`pool`), a przy WCY
 pomaga oracle przez swoją pulę zawsze, gdy zostały co najmniej 2 wolne kawałki (`pool_help`). Gdy plebania jest włączona,
 nikt nie poluje na jej wydziały. Ściana spotkana przez pulę nie liczy się do ścian własnego łącza runnera (czekanie,
 „chroniczna” ściana). Oracle potrzebuje przebudowanego egressu (`docker compose up -d --build egress` na VPS-ie):

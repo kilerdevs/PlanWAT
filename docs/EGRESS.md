@@ -34,11 +34,20 @@ dotyczyła — a to wycofuje wyjście z ostatniego tunelu do tego hosta. Bez teg
 
 ## Części
 
-- `tools/egress/pool.py`: pula proxy (wzorzec z DeadDropMGMT). Pobiera te same 8 list proxy z GitHub (proxifly, monosans,
-  thespeedx, roosterkid) i sprawdza kandydatów *przez nich samych*: Round 1 to neutralny kafelek OSM, Round 2 — strona indeksu
-  wydziału. Zdrowy wynik to 200, odpowiedni rozmiar, dodatni znacznik treści i brak znanych stron blokad (WAF potrafi oddać
-  duże 200), więc fałszywe „żywe” nie trafia do puli. Wybór sortuje ok → nowe → błąd według opóźnienia i zapisuje `pool.json`.
-  Pula odświeża się co 4 h, sprawdza do 240 kandydatów na 32 wątkach i dorabia do 56 weryfikacji na host; uszkodzone proxy
+- `tools/egress/pool.py`: pula proxy (wzorzec z DeadDropMGMT). Pobiera listy proxy z GitHub (proxifly, także jego osobna
+  lista polskich proxy, monosans, thespeedx, roosterkid, vakhov, hookzof, ErcinDedeoglu) w całości, najwyżej co 30 minut, i
+  sprawdza kandydatów *przez nich samych*, od najtańszej bramki: najpierw samo połączenie TCP z portem proxy (nieblokujące,
+  setki naraz na jednym selektorze: większość wpisów z list jest martwa i odpada tu prawie za darmo), potem Round 1 —
+  `https://cp.cloudflare.com/generate_204` (puste 204 przez TLS od końca do końca; mała strona, więc czas to opóźnienie
+  samego proxy), potem Round 2 — strona indeksu wydziału. Zdrowy Round 2 to 200, odpowiedni rozmiar, dodatni znacznik treści
+  i brak znanych stron blokad (WAF potrafi oddać duże 200), więc fałszywe „żywe” nie trafia do puli. Wynik Round 2 jest
+  zapisywany per wydział (to są wyjścia oznaczone dla wydziału, z czasem strony i licznikiem udanych i nieudanych prób);
+  pudło na wydziale nie odświeża werdyktu „żywe” proxy (wcześniej odświeżało i martwe proxy wyglądały wiecznie świeżo).
+  Kandydaci są brani z całych list (polskie pierwsze, reszta losowo), nie z ich początku; ten, który odpadł na połączeniu
+  albo Round 1, trafia do mapy martwych (`seen.json` obok `pool.json`) i wraca do sprawdzenia po 12 h. Pełna pula (2000
+  wpisów) robi miejsce, wyrzucając najpierw odrzucone, potem najdawniej sprawdzone, potem najwolniejsze; wpis z wyjściem dla
+  jakiegoś wydziału zostaje. Wybór sortuje ok → nowe → błąd według opóźnienia i zapisuje `pool.json`.
+  Bez zwiadu (niżej) pula odświeża się co 4 h, sprawdza do 240 kandydatów na 32 wątkach i dorabia do 56 weryfikacji na host; uszkodzone proxy
   odpoczywają 10 minut, a po całkowitej awarii list mechanizm utrzymania wraca po 5 minutach, nie po 4 h. Samo niskie pokrycie
   hosta (np. WCY za WAF-em) uruchamia ponowne odświeżenie najwyżej co 10 minut, więc nie zapętla pobierania list i sond. Osiem niepowodzeń
   w 2 minuty wyłącza wyjścia tylko dla jednego hosta (sukces zdejmuje blokadę od razu), a wybór z warstwy zweryfikowanej
@@ -154,6 +163,52 @@ starszych obrazów, wszystkimi hostami wydziałów na liście `EGRESS_DIRECT_FAC
 bezpośrednio GitHub (`github.com`, `api.github.com`, `codeload.github.com`, `*.githubusercontent.com`), magazyn artefaktów
 GitHub Actions (`*.blob.core.windows.net`), PyPI (`pypi.org`, `*.pythonhosted.org`) i `*.wat.edu.pl`, reszta 403. Zob. [WOLONTARIUSZE.md](WOLONTARIUSZE.md#instalacja-ręczna).
 
+## Zwiad: ciągłe szukanie szybszych wyjść
+
+Polowanie (niżej) szuka wyjść dopiero wtedy, gdy crawl uderzy w ścianę, i ma na to 5 minut. 13.11.2026 bez plebanii nie
+znalazło nic dla WLO, WML i WTC, a pula oracle stała w miejscu: 2000 wpisów, prawie wszystkie „żywe” tylko dlatego, że
+pudła na WCY odświeżały ich znacznik czasu, więc nowy kandydat nie miał jak wejść, a listy były czytane tylko od początku.
+Zwiad (`EGRESS_SCOUT=on`, `pool.scout_once`) szuka przez cały czas, w cyklach:
+
+1. Ponownie sprawdza Round 1 żywe wpisy starsze niż godzina (do 200 na cykl); martwe wypadają do mapy martwych, chyba że
+   mają wyjście dla wydziału (o tym decyduje wtedy sonda wydziału).
+2. Bierze do `EGRESS_SCOUT_BATCH` (1500) kandydatów, których nikt jeszcze nie widział: połączenie TCP
+   (`EGRESS_SCOUT_TCP` naraz, 128), potem Round 1 tych, które odpowiedziały, od najszybszego połączenia
+   (`EGRESS_SCOUT_R1` naraz, 32).
+3. **Testuje strony wydziałów:** każde świeżo żywe proxy z pingiem do `EGRESS_HUNT_MAX_MS` (2500 ms), polskie pierwsze,
+   potem najszybsze, przechodzi Round 2 na każdym z 8 wydziałów, także tych, które linia egressu przechodzi sama. Wydział,
+   który ma już `EGRESS_SCOUT_KEEP` (12) wyjść, dostaje do testu tylko proxy szybsze niż najwolniejsze z jego 12 najszybszych
+   — zwiad szuka więc ciągle szybszych wyjść, a wydziały nie są zasypywane. Proxy, którego wydział nie przepuścił, nie jest na
+   nim próbowane przez 12 h (ściany są trwałe). Najwyżej 400 testów stron na cykl.
+4. Ponownie sprawdza 12 najszybszych wyjść każdego wydziału, gdy ich werdykt jest starszy niż 20 minut; nieudana próba zdejmuje
+   oznaczenie, więc port polowania nie wyda martwego wyjścia.
+5. Czeka `EGRESS_SCOUT_PAUSE` (60 s); gdy na listach nie ma już nikogo nowego, a testy się skończyły, śpi do odświeżenia list
+   (najwyżej 10 minut, żeby wyjścia wydziałów pozostały sprawdzone). `POST /api/refresh` budzi go od razu.
+
+Wszystkie sondy stron wydziałów w egressie (zwiad, polowanie, sprawdzanie cudzych wyjść, zwykłe odświeżanie) przechodzą przez
+jedną bramkę `EGRESS_FACULTY_PROBES` (4 naraz), a zwiad dodatkowo odstępuje 2 s między dwiema sondami jednego wydziału i
+ustępuje trwającemu polowaniu. Polowanie korzysta z tego, co zwiad już ma: wyjście sprawdzone w ostatnich 10 minutach dostaje
+od razu, bez nowej sondy, więc przy włączonym zwiadzie runner bez plebanii zwykle ma wyjścia przez WLO, WML i WTC, zanim
+o nie poprosi. `EGRESS_NICE` obniża priorytet procesu (mała maszyna oddaje CPU crawlowi obok).
+
+Gdzie działa:
+
+- **oracle** (`deploy/runner/compose.yml`): `EGRESS_SCOUT=on`, `EGRESS_SCOUT_R1=24` (wątki liczą się do `pids_limit`, dlatego
+  384). Wdrożenie: `docker compose up -d --build egress`.
+- **northflank**: egress lokalny jest trwały. Crawl uruchamia go na początku zadania z kopii kodu w
+  `$RUNNER_TOOL_CACHE/planwat/egress/code/` i z własnym venv w `$RUNNER_TOOL_CACHE/planwat/egress-venv` (budowany raz),
+  z `RUNNER_TRACKING_ID=0`, więc sprzątanie procesów po zadaniu go nie zabija, i ze skromnymi ustawieniami (TCP 48, Round 1
+  6, sondy stron 2, partia 600, przerwa 120 s, `EGRESS_NICE=10`). Następny crawl go przejmuje (stan, porty i token w
+  `daemon.json`, `0600`) albo uruchamia od nowa, gdy zmienił się kod. Restart kontenera go zatrzymuje; wraca z następnym
+  przebiegiem. `python3 tools/refresh/egress.py status` pokazuje jego stan, `... stop` go zatrzymuje. Bez venv (np. brak sieci
+  do PyPI) wraca stary tryb: egress tymczasowy dla polowania, zamykany z crawlem.
+- **plebania** (`tools/egress/compose.fragment.yml`): wyłączony (`EGRESS_SCOUT=off`). Linia domowa otwierająca tysiące
+  połączeń z publicznymi proxy wygląda dla operatora jak skan, a plebania przechodzi te wydziały sama.
+
+Panel pokazuje kartę „Wyjścia na wydziały”: stan ostatniego cyklu zwiadu (ile proxy na listach, ile jeszcze nieprzejrzanych,
+ile nowych wyjść) i dla każdego wydziału liczbę oznaczonych wyjść oraz pięć najszybszych (kraj, czas strony, kiedy sprawdzone).
+`GET /api/exits[?host=...]` (z tokenem) zwraca pełną listę wyjść per wydział.
+
 ## Polowanie na wyjścia
 
 Gdy żaden włączony runner nie przechodzi ściany wydziału z własnego adresu (bez plebanii: WLO, WEL, WML i WTC), stos
@@ -183,10 +238,9 @@ Panel pokazuje polowanie przy hoście („POLOWANIE”, potem „PULA wyjścia/p
 
 Strona crawlera to [`tools/refresh/egress.py`](../tools/refresh/egress.py): na oracle i plebanii rozmawia z egressem obok
 (`PLANWAT_EGRESS_API`, domyślnie `http://egress:8080`, i `PLANWAT_EGRESS_HUNT_PROXY`, domyślnie `http://egress:8889`;
-sieć wewnętrzna compose, bez zmian w `compose.yml`). Northflank, który egressu nie ma, uruchamia `tools/egress/server.py`
-z checkoutu na `127.0.0.1` z losowymi portami i własnym tokenem, dopiero gdy polowanie jest potrzebne, z każdym hostem
-wydziału poza zwykłą pulą (sonduje tylko polowanie), i zamyka go z końcem crawla; `pool.json` zostaje w
-`$RUNNER_TOOL_CACHE/planwat/egress` na następne zadania. Egress zbudowany przed tą zmianą odpowiada na `/api/hunt` 404:
+sieć wewnętrzna compose, bez zmian w `compose.yml`). Northflank, który egressu nie ma, trzyma własny na `127.0.0.1` z
+losowymi portami i własnym tokenem, z każdym hostem wydziału poza zwykłą pulą (sondują tylko zwiad i polowanie); jest trwały
+(„Zwiad” wyżej), a `pool.json` zostaje w `$RUNNER_TOOL_CACHE/planwat/egress` na następne zadania. Egress zbudowany przed tą zmianą odpowiada na `/api/hunt` 404:
 runner wtedy nie poluje i zachowuje się jak dawniej. Na oracle wystarczy `docker compose up -d --build egress`.
 
 ## GUI monitoringu

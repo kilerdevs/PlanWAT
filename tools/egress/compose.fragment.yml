@@ -47,6 +47,9 @@ services:
       # Worker relay (docs/EGRESS.md) lives on <name>.<account>.workers.dev: put that exact
       # hostname here, or the egress answers the relay request with 403 before it leaves the box.
       EGRESS_DIRECT_HOSTS: "${EGRESS_DIRECT_HOSTS:-}"
+      # The scout (docs/EGRESS.md, "Zwiad") stays off on a home line: thousands of connections to public proxies
+      # look like a scan to the ISP, and this line gets through the faculties itself. The VPS runs it.
+      EGRESS_SCOUT: "${EGRESS_SCOUT:-off}"
     # Pin resolvers: Docker snapshots the host's /etc/resolv.conf when a container starts, so a
     # container that starts before DHCP has written it can resolve nothing for the rest of its
     # life (seen 2026-10-17: runner offline with proxy 502s after a host reboot).

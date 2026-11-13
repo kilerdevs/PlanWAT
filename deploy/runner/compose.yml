@@ -54,7 +54,8 @@ services:
     cap_drop: [ALL]
     security_opt: ['no-new-privileges:true']
     mem_limit: 256m
-    pids_limit: 256
+    # threads count here: up to 96 proxied connections plus the scout's probes (EGRESS_SCOUT_R1 below)
+    pids_limit: 384
     ulimits:
       nofile: 4096
     tmpfs:
@@ -75,6 +76,11 @@ services:
       # The Cloudflare Worker relay is infrastructure, not a faculty target: allow its host
       # through directly so the crawler can reach it (set to the deployed workers.dev hostname).
       EGRESS_DIRECT_HOSTS: ${EGRESS_DIRECT_HOSTS:-}
+      # The scout (docs/EGRESS.md, "Zwiad"): always looking for new and faster public exits and testing each on
+      # every faculty page, so when the home runner is off, the walled faculties (WLO, WML, WTC) already have exits
+      # for the hunt. A datacenter box opening many proxy connections is fine; a home line should leave it off.
+      EGRESS_SCOUT: ${EGRESS_SCOUT:-on}
+      EGRESS_SCOUT_R1: ${EGRESS_SCOUT_R1:-24}
     dns:
       - 1.1.1.1
       - 9.9.9.9
