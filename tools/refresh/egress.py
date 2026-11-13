@@ -298,6 +298,17 @@ class LocalEgress(Egress):
             self.stop(quiet=True)
         return True
 
+    def resume(self):
+        """Have the scouting daemon run this checkout's code: left alone when it already does, else (re)started."""
+        st = self._read_state()
+        if st and st.get('hash') == code_hash() and _pid_alive(st['pid']):
+            self.pid = st['pid']
+            self.log(f"egress: scouting between passes (pid {st['pid']}, already on this code)")
+            return True
+        if st and _pid_alive(st['pid']):
+            self._stop_pid(st['pid'])
+        return self._launch()
+
     def _launch(self):
         """At the end of a crawl: start the scouting daemon from this checkout's code, detached from the job."""
         try:
@@ -362,7 +373,7 @@ class LocalEgress(Egress):
             except Exception:
                 self.proc.kill()
         if self.persistent:
-            self._launch()
+            self.resume()
 
     def stop(self, quiet=False):
         """Stop the scouting daemon (the action before a job's pip install, ensure(), or by hand: egress.py stop)."""
@@ -391,9 +402,21 @@ def make(kind, log=print):
 
 def main(argv=None):
     import argparse
-    ap = argparse.ArgumentParser(description='The runner-local egress (stop it, or say how it is).')
-    ap.add_argument('command', choices=('stop', 'status'))
+    ap = argparse.ArgumentParser(description='The runner-local scouting egress: start (or update) it, stop it, or say '
+                                             'how it is.')
+    ap.add_argument('command', choices=('start', 'stop', 'status'))
+    ap.add_argument('--runner', help="with --fleet: start only if this runner's egress is local (fleet.json)")
+    ap.add_argument('--fleet', help='tools/refresh/fleet.json')
     args = ap.parse_args(argv)
+    if args.command == 'start':
+        if args.runner and args.fleet:
+            try:
+                runners = json.loads(Path(args.fleet).read_text(encoding='utf-8')).get('runners') or []
+            except (OSError, ValueError):
+                runners = []
+            if not any(r.get('name') == args.runner and r.get('egress') == 'local' for r in runners):
+                return 0  # an egress box beside it, or none at all: nothing to run here
+        return 0 if LocalEgress(persistent=True).resume() else 1
     local = LocalEgress(persistent=True)
     if args.command == 'stop':
         local.stop()

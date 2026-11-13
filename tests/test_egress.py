@@ -2777,6 +2777,33 @@ class EgressClient(unittest.TestCase):
         nxt.stop()
         self.assertFalse(self.client._pid_alive(nxt.pid))
 
+    def test_start_updates_the_scout_only_when_its_code_changed_and_only_where_it_belongs(self):
+        import json
+        import sys as _sys
+        home = Path(tempfile.mkdtemp())
+        launched = []
+
+        def local():
+            e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=home, scout={'EGRESS_SCOUT': 'off'})
+            e._venv = lambda: _sys.executable
+            real = e._launch
+            e._launch = lambda: (launched.append(1), real())[1]
+            return e
+
+        first = local()
+        self.addCleanup(first.stop)
+        self.assertTrue(first.resume())
+        self.assertTrue(local().resume())  # running this code already: left alone
+        self.assertEqual(len(launched), 1)
+        with unittest.mock.patch.object(self.client, 'code_hash', lambda: 'newer'):
+            self.assertTrue(local().resume())  # new code: restarted
+        self.assertEqual(len(launched), 2)
+        self.assertFalse(self.client._pid_alive(first.pid))
+        fleet = home / 'fleet.json'
+        fleet.write_text(json.dumps({'runners': [{'name': 'oracle', 'egress': 'remote'}]}))
+        with unittest.mock.patch.object(self.client, 'LocalEgress', lambda **k: self.fail('started on oracle')):
+            self.assertEqual(self.client.main(['start', '--runner', 'oracle', '--fleet', str(fleet)]), 0)
+
     def test_without_a_venv_there_is_no_scouting_but_hunts_still_work(self):
         from types import SimpleNamespace
         e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=tempfile.mkdtemp(),

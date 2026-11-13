@@ -211,8 +211,11 @@ Gdzie działa:
   Następne zadanie zatrzymuje go, zanim zainstaluje zależności: 13.11.2026 kontener (512 MB) z działającym zwiadem
   (ok. 27% pamięci), crawlem i jego `pip install` doszedł do 100% i Northflank go zrestartował, gubiąc zadanie i tool
   cache. Polowanie w trakcie crawla uruchamia egress tymczasowy na tych samych danych (`pool.json`, `seen.json`), więc
-  ma wszystko, co zwiad znalazł. Restart kontenera zatrzymuje zwiad do końca następnego crawla.
-  `python3 tools/refresh/egress.py status` pokazuje jego stan, `... stop` go zatrzymuje. Bez venv (np. brak sieci do
+  ma wszystko, co zwiad znalazł. Ostatni krok akcji (`if: always()`) uruchamia zwiad znowu niezależnie od wyniku crawla,
+  na kodzie z checkoutu tego zadania (`egress.py start --runner ... --fleet ...`: tylko dla runnera z `egress: local`;
+  działający zwiad na tym samym kodzie zostaje, na starszym jest restartowany). Restart kontenera zatrzymuje zwiad do
+  końca następnego zadania. `python3 tools/refresh/egress.py status` pokazuje jego stan, `... start` uruchamia go albo
+  aktualizuje, `... stop` go zatrzymuje. Bez venv (np. brak sieci do
   PyPI) zwiadu nie ma, a polowanie działa jak dawniej.
 - **plebania** (`tools/egress/compose.fragment.yml`): wyłączony (`EGRESS_SCOUT=off`). Linia domowa otwierająca tysiące
   połączeń z publicznymi proxy wygląda dla operatora jak skan, a plebania przechodzi te wydziały sama.

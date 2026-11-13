@@ -119,7 +119,7 @@ runs:
         # A runner-local egress scouting between passes (tools/refresh/egress.py, northflank) gives the job its memory
         # back first: on a 512 MB container it and this job's pip install do not fit together. The crawl starts it again.
         if [ -f "$RUNNER_TOOL_CACHE/planwat/egress/daemon.json" ]; then
-          python3 "$SOURCE/tools/refresh/egress.py" stop || true
+          python3 "$GITHUB_WORKSPACE/$SOURCE/tools/refresh/egress.py" stop || true
         fi
         # Dependencies go into a throwaway venv on writable scratch: the self-hosted runner's baked
         # /opt/venv is read-only at job time (container hardening), so `pip install` there fails
@@ -238,6 +238,16 @@ runs:
           sleep $((attempt * 3 + RANDOM % 5))
         done
         exit 1
+    - if: always() && inputs.mode == 'project' && inputs.runner != ''
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        RUNNER: ${{ inputs.runner }}
+      run: |
+        # A runner without an egress box (northflank) scouts the proxy pool between passes: whatever became of the crawl,
+        # the scouting egress runs again, on this checkout's code, until the next job stops it (docs/EGRESS.md, "Zwiad").
+        python3 "$GITHUB_WORKSPACE/$SOURCE/tools/refresh/egress.py" start --runner "$RUNNER" \
+          --fleet "$GITHUB_WORKSPACE/$SOURCE/tools/refresh/fleet.json" || echo "::warning::the scouting egress did not start"
     # No `gh workflow run pages.yml` here on purpose: pages.yml rebuilds daily on its own and picks
     # the refreshed calendars up. Granting actions:write so the crawl could trigger deploys would let
     # anyone holding the refresh token (or a workflow patch) run arbitrary workflows.
