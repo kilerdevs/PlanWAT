@@ -7,12 +7,12 @@ pool of public proxies for exits that do, and crawl the faculty through them. Th
            (PLANWAT_EGRESS_API, http://egress:8080) and its hunt port (PLANWAT_EGRESS_HUNT_PROXY, http://egress:8889),
            which rides only exits verified for the host. An egress built before the hunt answers 404: no hunt here.
   local    a runner without one (northflank) runs tools/egress/server.py on its own loopback, with a token of its own
-           and every faculty host off its regular pool (only the scout and hunts probe anybody). On a runner (a tool
-           cache) it is persistent: started at the beginning of a crawl from a copy of the code in the tool cache, with
-           a venv of its own there, it outlives the job (RUNNER_TRACKING_ID keeps the runner's orphan cleanup off it)
-           and keeps scouting between passes (docs/EGRESS.md, "Zwiad"); the next crawl reuses it, or restarts it when
-           the code changed. Elsewhere, or when that venv cannot be built, it is started the first time a hunt is
-           needed and stopped when the crawl ends. Its pool.json stays in the runner's tool cache between jobs.
+           and every faculty host off its regular pool (only the scout and hunts probe anybody). During a crawl it is
+           started the first time a hunt is needed and stopped when the crawl ends. On a runner (a tool cache) it also
+           scouts between passes (docs/EGRESS.md, "Zwiad"): the end of a crawl starts it from a copy of the code in the
+           tool cache, with a venv of its own there, detached from the job (RUNNER_TRACKING_ID keeps the runner's orphan
+           cleanup off it); the next job stops it before its pip install (512 MB do not hold both, 13.11.2026), and its
+           hunts use what the scout found (the same pool.json and seen.json in the tool cache).
 
 Every call bypasses the job's HTTP proxy (the egress answers 403 for its own address). Unit-tested offline
 (tests/test_refresh.py).
@@ -27,7 +27,6 @@ import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import urllib.error
 import urllib.request
@@ -90,12 +89,6 @@ class Egress:
     def ensure(self):
         """Have the egress up before it is needed (a remote one is somebody else's to run)."""
         return True
-
-    def ensure_async(self):
-        """ensure() in the background, so the crawl does not wait for it."""
-        t = threading.Thread(target=self.ensure, daemon=True)
-        t.start()
-        return t
 
     def hunt(self, host, exits=(), wait=HUNT_WAIT):
         """Exits that get through to `host`: the shared `exits` checked first, then a search of the pool if none
@@ -193,8 +186,6 @@ class LocalEgress(Egress):
         self.scout = dict(SMALL_SCOUT if scout is None else scout)
         self.proc = None
         self.pid = None
-        self._lock = threading.Lock()
-        self._ensured = None
 
     # -- persistent: one daemon per runner, reused while its code is this checkout's
     @property
@@ -223,10 +214,6 @@ class LocalEgress(Egress):
         self.ports, self.token, self.pid = dict(st['ports']), st['token'], st['pid']
         self.api = f"http://127.0.0.1:{self.ports['gui']}"
         self.proxy = f"http://127.0.0.1:{self.ports['hunt']}"
-
-    def _answers(self):
-        code, got = self._call('/api/status', timeout=5)
-        return code == 200 and 'mode' in got  # with the token: the full status, not the liveness stub
 
     def _venv(self):
         """The daemon's own python, with the egress requirements, built once in the tool cache (None if it cannot)."""
@@ -303,40 +290,27 @@ class LocalEgress(Egress):
         return False
 
     def ensure(self):
-        """Persistent: the running daemon if it is this checkout's code, else a new one (the old one stopped).
-        False when it cannot run (then a hunt falls back to a temporary egress)."""
-        if not self.persistent:
-            return True  # started when a hunt needs it
-        with self._lock:
-            if self._ensured is not None:
-                return self._ensured
-            self._ensured = self._ensure()
-            if not self._ensured:
-                self.persistent = False
-                self.log('egress: no persistent local egress; a hunt starts a temporary one')
-            return self._ensured
+        """At the start of a crawl: a scouting daemon still running gives the crawl its memory back (northflank has
+        512 MB, and the daemon, the crawl and its pip install do not fit together; the action stops it before the pip
+        install already). A hunt during the crawl starts a temporary egress on the same data, so it has everything
+        the scout found."""
+        if self.persistent:
+            self.stop(quiet=True)
+        return True
 
-    def _ensure(self):
+    def _launch(self):
+        """At the end of a crawl: start the scouting daemon from this checkout's code, detached from the job."""
         try:
             digest = code_hash()
-            st = self._read_state()
-            if st and st.get('hash') == digest and _pid_alive(st['pid']):
-                mine = (self.ports, self.token, self.pid, self.api, self.proxy)
-                self._use(st)
-                if self._answers():
-                    self.log(f"egress: the local one is running (pid {st['pid']}, scouting since "
-                             f"{time.strftime('%d.%m %H:%M', time.gmtime(st.get('started', 0)))} UTC)")
-                    return True
-                self.ports, self.token, self.pid, self.api, self.proxy = mine
-            if st and _pid_alive(st['pid']):
-                self.log(f"egress: restarting the local one (pid {st['pid']}): "
-                         + ('new code' if st.get('hash') != digest else 'it does not answer'))
-                self._stop_pid(st['pid'])
             python = self._venv()
             if python is None:
                 return False
             code = self._install_code(digest)
             self.data.mkdir(parents=True, exist_ok=True)
+            self.ports = {'gui': _free_port(), 'proxy': _free_port(), 'hunt': _free_port()}
+            self.token = secrets.token_hex(24)
+            self.api = f"http://127.0.0.1:{self.ports['gui']}"
+            self.proxy = f"http://127.0.0.1:{self.ports['hunt']}"
             env = self._env()
             env.update(self.scout)
             env['RUNNER_TRACKING_ID'] = '0'  # not this job's: the runner's orphan cleanup leaves it running
@@ -347,18 +321,17 @@ class LocalEgress(Egress):
                 proc = self.popen([python, str(code / 'server.py')], env=env, stdin=subprocess.DEVNULL, stdout=out,
                                   stderr=subprocess.STDOUT, cwd=str(code), start_new_session=True)
             self.pid = proc.pid
-            self.log(f"egress: started a persistent local one (pid {proc.pid}, hunt port {self.ports['hunt']}, "
-                     f"scouting)")
             if not self._wait_up(lambda: proc.poll() is None):
-                self.log('egress: the persistent local one did not come up')
+                self.log('egress: the scouting egress did not come up')
                 if proc.poll() is None:
                     proc.terminate()
                 return False
             self._write_state({'pid': proc.pid, 'ports': self.ports, 'token': self.token, 'hash': digest,
                                'started': time.time()})
+            self.log(f'egress: scouting between passes (pid {proc.pid})')
             return True
         except OSError as err:
-            self.log(f'egress: persistent local egress: {err}')
+            self.log(f'egress: the scouting egress: {err}')
             return False
 
     # -- temporary: started for a hunt, stopped with the crawl
@@ -373,8 +346,6 @@ class LocalEgress(Egress):
 
     def available(self):
         if self._ok is None:
-            if self.persistent and self.ensure():
-                return super().available()
             if not self._start():
                 self.log('egress: the local one did not start; no hunt here')
                 self._ok = False
@@ -382,20 +353,24 @@ class LocalEgress(Egress):
         return super().available()
 
     def close(self):
-        """A temporary egress goes with the crawl; a persistent one keeps scouting."""
+        """The end of the crawl: the temporary egress (if a hunt started one) goes, and a persistent runner starts
+        scouting again until the next crawl."""
         if self.proc is not None and self.proc.poll() is None:
             self.proc.terminate()
             try:
                 self.proc.wait(timeout=10)
             except Exception:
                 self.proc.kill()
+        if self.persistent:
+            self._launch()
 
-    def stop(self):
-        """Stop the persistent one by hand (egress.py stop)."""
+    def stop(self, quiet=False):
+        """Stop the scouting daemon (the action before a job's pip install, ensure(), or by hand: egress.py stop)."""
         st = self._read_state()
         if st and _pid_alive(st['pid']):
             self._stop_pid(st['pid'])
-            self.log(f"egress: stopped the local one (pid {st['pid']})")
+            self.log(f"egress: stopped the scouting egress (pid {st['pid']}) for the crawl" if quiet
+                     else f"egress: stopped the local one (pid {st['pid']})")
         try:
             self.state_path.unlink()
         except OSError:

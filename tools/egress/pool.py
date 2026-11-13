@@ -990,7 +990,10 @@ class ProxyPool:
                 marks = self.entries[u].get('hosts', {})
                 for h in hosts:
                     hv = marks.get(h)
-                    if hv is not None and (hv.get('ok') or now - hv.get('checked', 0) < HOST_RETRY_S):
+                    # a proxy the faculty refused rests HOST_RETRY_S; one that got through before only VERIFY_TTL_S
+                    # (free proxies flap: one timeout must not cost a good exit half a day)
+                    rest = VERIFY_TTL_S if hv and hv.get('n_ok') else HOST_RETRY_S
+                    if hv is not None and (hv.get('ok') or now - hv.get('checked', 0) < rest):
                         continue
                     if bar[h] is not None and lat >= bar[h]:
                         continue

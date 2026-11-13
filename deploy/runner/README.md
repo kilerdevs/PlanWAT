@@ -67,9 +67,9 @@ odpowiadają z zachodnich wyjść Workera 403 (sprawdzone 29.10.2026 z AMS i FRA
 Dlatego `faculties` w `fleet.json` obejmują tylko IOE, WIG i WIM: te trzy działają także bez relaya. WLO, WEL, WML, WTC
 i WCY northflank bierze wyłącznie przez publiczne proxy (`pool` w `fleet.json`): crawl uruchamia kod egressu na
 loopbacku kontenera z kopii w `$RUNNER_TOOL_CACHE` i z własnym venv tam (`tools/refresh/egress.py`, bez zmian w obrazie ani
-zmiennych) i zostawia go działającego między przebiegami, żeby zwiad cały czas szukał wyjść
-([docs/EGRESS.md](../../docs/EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść)). Restart kontenera go zatrzymuje, następny
-przebieg uruchamia go znowu.
+zmiennych) między przebiegami, żeby zwiad szukał wyjść
+([docs/EGRESS.md](../../docs/EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść)); zadanie zatrzymuje go na swój czas (512 MB
+nie mieści zwiadu, crawla i jego `pip install` naraz), a koniec crawla uruchamia go znowu.
 
 ## Utrzymanie
 

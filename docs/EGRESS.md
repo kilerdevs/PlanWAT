@@ -197,13 +197,16 @@ Gdzie działa:
 
 - **oracle** (`deploy/runner/compose.yml`): `EGRESS_SCOUT=on`, `EGRESS_SCOUT_R1=24`, `EGRESS_FACULTY_PROBES=8` (wątki liczą
   się do `pids_limit`, dlatego 384; odstęp 2 s nadal trzyma najwyżej jedną sondę zwiadu na wydział co 2 s). Wdrożenie: `docker compose up -d --build egress`.
-- **northflank**: egress lokalny jest trwały. Crawl uruchamia go na początku zadania z kopii kodu w
+- **northflank**: zwiad działa **między przebiegami**. Koniec crawla uruchamia egress z kopii kodu w
   `$RUNNER_TOOL_CACHE/planwat/egress/code/` i z własnym venv w `$RUNNER_TOOL_CACHE/planwat/egress-venv` (budowany raz),
   z `RUNNER_TRACKING_ID=0`, więc sprzątanie procesów po zadaniu go nie zabija, i ze skromnymi ustawieniami (TCP 48, Round 1
-  6, sondy stron 2, partia 600, przerwa 120 s, `EGRESS_NICE=10`). Następny crawl go przejmuje (stan, porty i token w
-  `daemon.json`, `0600`) albo uruchamia od nowa, gdy zmienił się kod. Restart kontenera go zatrzymuje; wraca z następnym
-  przebiegiem. `python3 tools/refresh/egress.py status` pokazuje jego stan, `... stop` go zatrzymuje. Bez venv (np. brak sieci
-  do PyPI) wraca stary tryb: egress tymczasowy dla polowania, zamykany z crawlem.
+  6, sondy stron 2, partia 600, przerwa 120 s, `EGRESS_NICE=10`); stan, porty i token są w `daemon.json` (`0600`).
+  Następne zadanie zatrzymuje go, zanim zainstaluje zależności: 13.11.2026 kontener (512 MB) z działającym zwiadem
+  (ok. 27% pamięci), crawlem i jego `pip install` doszedł do 100% i Northflank go zrestartował, gubiąc zadanie i tool
+  cache. Polowanie w trakcie crawla uruchamia egress tymczasowy na tych samych danych (`pool.json`, `seen.json`), więc
+  ma wszystko, co zwiad znalazł. Restart kontenera zatrzymuje zwiad do końca następnego crawla.
+  `python3 tools/refresh/egress.py status` pokazuje jego stan, `... stop` go zatrzymuje. Bez venv (np. brak sieci do
+  PyPI) zwiadu nie ma, a polowanie działa jak dawniej.
 - **plebania** (`tools/egress/compose.fragment.yml`): wyłączony (`EGRESS_SCOUT=off`). Linia domowa otwierająca tysiące
   połączeń z publicznymi proxy wygląda dla operatora jak skan, a plebania przechodzi te wydziały sama.
 
@@ -241,8 +244,9 @@ Panel pokazuje polowanie przy hoście („POLOWANIE”, potem „PULA wyjścia/p
 Strona crawlera to [`tools/refresh/egress.py`](../tools/refresh/egress.py): na oracle i plebanii rozmawia z egressem obok
 (`PLANWAT_EGRESS_API`, domyślnie `http://egress:8080`, i `PLANWAT_EGRESS_HUNT_PROXY`, domyślnie `http://egress:8889`;
 sieć wewnętrzna compose, bez zmian w `compose.yml`). Northflank, który egressu nie ma, trzyma własny na `127.0.0.1` z
-losowymi portami i własnym tokenem, z każdym hostem wydziału poza zwykłą pulą (sondują tylko zwiad i polowanie); jest trwały
-(„Zwiad” wyżej), a `pool.json` zostaje w `$RUNNER_TOOL_CACHE/planwat/egress` na następne zadania. Egress zbudowany przed tą zmianą odpowiada na `/api/hunt` 404:
+losowymi portami i własnym tokenem, z każdym hostem wydziału poza zwykłą pulą (sondują tylko zwiad i polowanie): w trakcie
+crawla tymczasowy, dla polowania, a między przebiegami jako zwiad („Zwiad” wyżej); `pool.json` zostaje w
+`$RUNNER_TOOL_CACHE/planwat/egress` na następne zadania. Egress zbudowany przed tą zmianą odpowiada na `/api/hunt` 404:
 runner wtedy nie poluje i zachowuje się jak dawniej. Na oracle wystarczy `docker compose up -d --build egress`.
 
 ## GUI monitoringu

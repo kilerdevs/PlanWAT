@@ -2456,6 +2456,13 @@ class PoolScout(unittest.TestCase):
         jobs, _ = p._faculty_jobs(['ioe.wat.edu.pl'], 12, pool.HUNT_MAX_MS, 100)  # short of keep: everyone
         self.assertEqual({u for u, _ in jobs}, {'http://8.8.8.8:80', 'http://9.9.9.9:80'})
 
+    def test_an_exit_that_failed_once_is_tried_again_soon_a_stranger_is_not(self):
+        then = time.time() - pool.VERIFY_TTL_S - 60
+        p = self.make({'http://1.1.1.1:80': self.entry(100, wtc={'ok': False, 'n_ok': 7, 'n_fail': 1, 'checked': then}),
+                       'http://1.1.1.2:80': self.entry(100, wtc={'ok': False, 'n_fail': 1, 'checked': then})})
+        jobs, _ = p._faculty_jobs(['wtc.wat.edu.pl'], 12, pool.HUNT_MAX_MS, 10)
+        self.assertEqual(jobs, [('http://1.1.1.1:80', 'wtc.wat.edu.pl')])  # free proxies flap: a good one comes back
+
     def test_aged_exits_are_reverified_and_dropped_when_they_fail(self):
         old = time.time() - pool.VERIFY_TTL_S - 60
         p = self.make({'http://1.1.1.1:80': self.entry(100, wtc={'ok': True, 'ms': 300, 'checked': old}),
@@ -2651,7 +2658,7 @@ class EgressClient(unittest.TestCase):
             local.close()
         self.assertIsNotNone(local.proc.poll())
 
-    def test_a_persistent_local_egress_outlives_the_crawl_and_is_reused(self):
+    def test_a_runner_local_egress_scouts_between_crawls_and_steps_aside_for_them(self):
         import sys as _sys
         home = Path(tempfile.mkdtemp())
         seen = []
@@ -2660,43 +2667,43 @@ class EgressClient(unittest.TestCase):
             seen.append(kw)
             return __import__('subprocess').Popen(cmd, **kw)
 
-        def local(**kw):
+        def local():
             e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=home, popen=popen,
-                                        scout={'EGRESS_SCOUT': 'off'}, **kw)
+                                        scout={'EGRESS_SCOUT': 'off'})
             e._venv = lambda: _sys.executable  # the test's python has what the egress needs
             return e
 
-        first = local()
-        self.addCleanup(first.stop)
-        self.assertTrue(first.ensure())
-        pid = first.pid
-        self.assertEqual(seen[0]['env']['RUNNER_TRACKING_ID'], '0')  # the runner's orphan cleanup leaves it
-        self.assertTrue(seen[0]['start_new_session'])
+        crawl = local()
+        self.addCleanup(crawl.stop)
+        self.assertTrue(crawl.ensure())  # nothing running yet: nothing to stop
+        crawl.close()  # the crawl ends: scouting starts, detached from the job
+        daemon = crawl.pid
+        self.assertTrue(self.client._pid_alive(daemon))
+        self.assertEqual(seen[-1]['env']['RUNNER_TRACKING_ID'], '0')  # the runner's orphan cleanup leaves it
+        self.assertTrue(seen[-1]['start_new_session'])
+        self.assertEqual(seen[-1]['env']['EGRESS_DATA'], str(home))  # the data a crawl's hunt uses too
         self.assertEqual(oct((home / 'daemon.json').stat().st_mode & 0o777), '0o600')
-        self.assertTrue(first.available())
-        first.close()
-        self.assertTrue(self.client._pid_alive(pid))  # the crawl ended, the egress did not
-        second = local()
-        self.assertTrue(second.ensure())
-        self.assertEqual((second.pid, second.proxy_url(), len(seen)), (pid, first.proxy_url(), 1))
-        # new code: the old one is stopped and a new one started
-        with unittest.mock.patch.object(self.client, 'code_hash', lambda: 'other'):
-            third = local()
-            self.assertTrue(third.ensure())
-        self.assertNotEqual(third.pid, pid)
-        self.assertFalse(self.client._pid_alive(pid))
-        third.stop()
-        self.assertFalse(self.client._pid_alive(third.pid))
+        nxt = local()
+        nxt.ensure()  # the next crawl: the daemon gives the memory back
+        self.assertFalse(self.client._pid_alive(daemon))
+        self.assertTrue(nxt.available())  # a hunt: a temporary egress on the same data
+        self.assertEqual(seen[-1]['env']['EGRESS_DATA'], str(home))
+        temp = nxt.proc
+        nxt.close()
+        self.assertIsNotNone(temp.poll())  # the temporary one went with the crawl...
+        self.assertTrue(self.client._pid_alive(nxt.pid))  # ...and scouting resumed
+        nxt.stop()
+        self.assertFalse(self.client._pid_alive(nxt.pid))
 
-    def test_without_a_venv_a_hunt_starts_a_temporary_egress(self):
+    def test_without_a_venv_there_is_no_scouting_but_hunts_still_work(self):
         from types import SimpleNamespace
         e = self.client.LocalEgress(log=lambda m: None, persistent=True, home=tempfile.mkdtemp(),
                                     run=lambda *a, **k: SimpleNamespace(returncode=1, stderr=b'no network'))
-        self.assertFalse(e.ensure())
-        self.assertFalse(e.persistent)
+        e.ensure()
         try:
             self.assertTrue(e.available())  # the temporary one, as before
         finally:
             e.close()
         self.assertIsNotNone(e.proc.poll())
+        self.assertFalse((Path(e.home) / 'daemon.json').exists())  # no venv, no daemon
 

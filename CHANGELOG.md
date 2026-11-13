@@ -22,8 +22,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   sprawdza na stronach wszystkich 8 wydziałów, oznaczając, które przepuszcza. Wydział z 12 wyjściami dostaje do testu tylko
   szybsze proxy, a najszybsze wyjścia każdego wydziału są sprawdzane co 20 minut, więc polowanie bez plebanii oddaje gotowe
   wyjścia przez WLO, WML i WTC od razu. Panel egressu ma kartę „Wyjścia na wydziały”, a `GET /api/exits` je zwraca.
-  Northflank trzyma swój egress lokalny między przebiegami (kopia kodu i venv w tool cache, bez zmian w obrazie). Plebania
-  ma zwiad wyłączony.
+  Northflank uruchamia zwiad między przebiegami (kopia kodu i venv w tool cache, bez zmian w obrazie), a zadanie zatrzymuje
+  go na swój czas: 512 MB kontenera nie mieści zwiadu, crawla i `pip install` naraz. Plebania ma zwiad wyłączony.
 - **Polowanie na wyjścia przez ściany, gdy plebania jest wyłączona** (`tools/egress/pool.py` `hunt`/`adopt`,
   `server.py`, `tools/refresh/egress.py`, `stack.py`): gdy żaden włączony runner nie przechodzi ściany wydziału z
   własnego adresu (bez plebanii WLO, WEL, WML i WTC), runner z egressem każe mu sprawdzić każde żywe publiczne proxy z

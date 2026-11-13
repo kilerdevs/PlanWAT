@@ -1360,7 +1360,7 @@ def fleet_runner(args, wanted, sources, state, model, today, coming, sleep, cloc
            and build_count(state.faculties[f]['cant'].get('passes')) >= stack.SHY_PASSES}
     hunter = egress_client.make(me.get('egress'), log)
     if hunter is not None:
-        hunter.ensure_async()  # a persistent local egress comes up (or is reused) while the crawl starts
+        hunter.ensure()  # a runner-local egress scouting between passes steps aside for the crawl
     me_ = stack.Me(args.runner, slots, {s: core.group_of(stack.faculty_of(s)) for s in slots}, expected,
                    me['prefers'], {n: fleet.reach(r) for n, r in runners.items()},
                    {n: r['prefers'] for n, r in runners.items()},
@@ -1446,7 +1446,7 @@ def main(argv=None, session=None, today=None, sleep=time.sleep, clock=time.monot
                 report = runner.run()
             finally:
                 if ops.egress is not None:
-                    ops.egress.close()  # a local egress started for a hunt goes with the crawl
+                    ops.egress.close()  # a local egress started for a hunt goes with the crawl (and scouting resumes)
             forget = getattr(runner.store, 'forget', None)
             if forget is not None:
                 forget()  # the copies of the store's docs this checkout fetched: the pass is over

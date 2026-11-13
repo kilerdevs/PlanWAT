@@ -113,7 +113,14 @@ runs:
       with:
         python-version: '3.13'
     - shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
       run: |
+        # A runner-local egress scouting between passes (tools/refresh/egress.py, northflank) gives the job its memory
+        # back first: on a 512 MB container it and this job's pip install do not fit together. The crawl starts it again.
+        if [ -f "$RUNNER_TOOL_CACHE/planwat/egress/daemon.json" ]; then
+          python3 "$SOURCE/tools/refresh/egress.py" stop || true
+        fi
         # Dependencies go into a throwaway venv on writable scratch: the self-hosted runner's baked
         # /opt/venv is read-only at job time (container hardening), so `pip install` there fails
         # with EROFS. $RUNNER_TEMP is writable on both hosted and self-hosted runners.
