@@ -139,24 +139,43 @@ def falls_back_direct(host):
             and env('PLANWAT_EGRESS_DIRECT_FALLBACK', '1') in ('1', 'true', 'yes'))
 
 
-def faculty_targets(season=None):
-    """Round-2 verification targets: each chain host's own index page + content marker.
+def season_of(today):
+    """(season, first year) of the semester running on `today`, as tools/refresh/core.py counts it: Sep-Feb winter,
+    Mar-Aug summer."""
+    if today.month >= 9:
+        return 'zima', today.year
+    if today.month <= 2:
+        return 'zima', today.year - 1
+    return 'lato', today.year - 1
 
-    XML indexes must contain <?xml; the HTML ones (WCY Drupal, WML landing, WIG file listing) need a
-    positive marker too — a WAF block page is also a 200 with a large body. The
-    proxy pool additionally rejects known block-page markers on every probe.
+
+def faculty_targets(season=None, today=None):
+    """Round-2 verification targets: per faculty host, a page *behind its wall* + a content marker.
+
+    Each faculty's Imperva rule walls its plan directory only (13.11.2026, from the VPS: /planzajec/, /Plany/,
+    /wp-content/uploads/rozklady_zajec/ and /pl/rozklad answer 403, the home pages and sitemaps 200), so a probe
+    proves an exit only when it asks for the very page the crawler lists (tools/refresh/sources.json; a test keeps
+    the two in step): a WLO probe on /planyzajec/ (WEL's spelling) or a WML one on the /rozklady-zajec/ page the
+    faculty removed in October could never pass, whatever the exit. XML indexes must contain <?xml; the HTML ones
+    need a positive marker too — a WAF block page is also a 200 with a large body, and the pool rejects known
+    block-page markers on every probe.
     """
-    season = season or env('EGRESS_SEASON', 'zima')
+    import datetime
+    today = today or datetime.date.today()
+    current, year = season_of(today)
+    season = season or env('EGRESS_SEASON', '') or current
     xml = b'<?xml'
     return {
-        'wlo.wat.edu.pl': (f'https://wlo.wat.edu.pl/planyzajec/{season}/index.xml', xml),
+        'wlo.wat.edu.pl': (f'https://wlo.wat.edu.pl/planzajec/{season}/index.xml', xml),
         'wel.wat.edu.pl': (f'https://wel.wat.edu.pl/planyzajec/{season}/index.xml', xml),
         # WIM's plan listing moved from index.xml to index.html (November 2026); the faculty page stays put and
         # links whichever export the semester has, so it is the stable target for a pool probe.
         'www.wim.wat.edu.pl': ('https://www.wim.wat.edu.pl/rozklady-zajec/', b'wp-content/uploads/rozklady/'),
         'ioe.wat.edu.pl': ('https://ioe.wat.edu.pl/plany/lato/index.xml', xml),
         'planzajec.wcy.wat.edu.pl': ('https://planzajec.wcy.wat.edu.pl/pl/rozklad', b'grupa_id=wcy'),
-        'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', b'index.xml'),
+        # the homepage menu links one revisioned directory per semester; the first revision is never renamed
+        'wml.wat.edu.pl': (f'https://wml.wat.edu.pl/wp-content/uploads/rozklady_zajec/{year}_sem_{season}/index.xml',
+                           xml),
         'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', xml),
         'www.wig.wat.edu.pl': ('https://www.wig.wat.edu.pl/cpp/phocadownloadpap/budownictwo/', b'Index of /cpp/'),
     }
@@ -1547,7 +1566,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
     var rows = '';
     (st.proxies || []).slice(0, 100).forEach(function (p) {
       var cls = p.status === 'ok' ? 'rot' : (p.status === 'fail' ? 'empty' : 'dim');
-      var tip = [p.url, p.cc ? 'kraj: ' + p.cc : '', p.faculties ? 'przechodzi na ' + p.faculties + ' wydz.' : '',
+      var tip = [p.url, p.cc ? 'kraj: ' + p.cc : '', p.res === true ? 'łącze domowe/ISP' : (p.res === false ? 'hosting' : ''), p.faculties ? 'przechodzi na ' + p.faculties + ' wydz.' : '',
                  p.source ? 'źr\u00f3d\u0142o: ' + p.source : '',
                  p.last_checked ? 'sprawdzony ' + ago(p.last_checked) : '',
                  p.fails ? p.fails + ' nieudanych pr\u00f3b' : ''].filter(Boolean).join(' \u00b7 ');
@@ -1578,7 +1597,7 @@ DASHBOARD = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
       var list = ex[h] || [], n = (hosts[h] || {}).verified;
       var cells = list.map(function (r) {
         return '<span class="pill sm rot" title="' + esc(r.url + ' \u00b7 ' + (r.n_ok || 0) + ' udanych, ' + (r.n_fail || 0) + ' nieudanych') + '">'
-          + esc(r.url.replace(/^[a-z0-9]+:[/][/]/, '')) + (r.cc ? ' ' + esc(r.cc) : '') + ' \u00b7 ' + fmtMs(r.ms) + ' \u00b7 ' + esc(ago(r.checked)) + '</span>';
+          + esc(r.url.replace(/^[a-z0-9]+:[/][/]/, '')) + (r.cc ? ' ' + esc(r.cc) : '') + (r.res ? ' \u00b7 dom' : '') + ' \u00b7 ' + fmtMs(r.ms) + ' \u00b7 ' + esc(ago(r.checked)) + '</span>';
       }).join(' ');
       rows += '<tr><td class="ell" title="' + esc(h) + '">' + esc(h) + '</td><td class="num">' + fmtNum(n == null ? list.length : n)
         + '</td><td class="ell">' + (cells || '<span class="dim">brak \u2013 \u017cadne proxy nie przesz\u0142o</span>') + '</td></tr>';
@@ -1931,7 +1950,7 @@ class GuiHandler(BaseHTTPRequestHandler):
         marked = {}
         if hasattr(pool, 'exits'):
             for h in pool.round2:
-                marked[h] = [{k: r.get(k) for k in ('url', 'ms', 'checked', 'n_ok', 'n_fail', 'cc')}
+                marked[h] = [{k: r.get(k) for k in ('url', 'ms', 'checked', 'n_ok', 'n_fail', 'cc', 'res')}
                              for r in pool.exits(h, 5)]
         return {'mode': mode, 'proxy_port': self.server.proxy_port,
                 'hunt_port': getattr(self.server, 'hunt_port', None), 'hunts': hunts,
@@ -1947,6 +1966,7 @@ class GuiHandler(BaseHTTPRequestHandler):
                 'progress': _live(self.server).snapshot(),
                 'proxies': [{'url': p['url'], 'status': p.get('status', 'new'),
                              'latency_ms': p.get('latency_ms'), 'source': p.get('source', ''), 'cc': p.get('cc'),
+                             'res': p.get('res'),
                              'faculties': sum(1 for hv in (p.get('hosts') or {}).values()
                                               if isinstance(hv, dict) and hv.get('ok')),
                              'fails': p.get('fails', 0), 'last_checked': p.get('last_checked')}
@@ -2186,6 +2206,9 @@ def scout(pool, config, pause=SCOUT_PAUSE_S):
     """Always looking (pool.scout_once), a cycle at a time; a manual refresh (heal_event) wakes it early."""
     while True:
         try:
+            moved = pool.retarget(faculty_targets())  # a new semester moves some probe pages
+            if moved:
+                print(f"scout: new probe pages for {', '.join(sorted(moved))}", flush=True)
             st = pool.scout_once(**config)
             print(f"scout: cycle {st['cycle']} in {st['took_s']} s: {st['screened']} screened, "
                   f"{st['alive_new']} alive, {st['tests']} faculty tests ({st['passed']} passed), "

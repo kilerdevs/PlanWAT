@@ -2335,6 +2335,52 @@ class PoolHunt(unittest.TestCase):
 R2_ALL = dict(R2_HUNT, **{'ioe.wat.edu.pl': ('https://ioe.wat.edu.pl/plany/lato/index.xml', b'<?xml')})
 
 
+class ProbeTargets(unittest.TestCase):
+    """The egress probes the page the crawler lists: the walls cover the plan directories only (13.11.2026)."""
+
+    def test_probe_targets_are_the_pages_the_crawler_lists(self):
+        import datetime
+        import json
+        from drivers import wml
+        src = json.loads((ROOT / 'tools' / 'refresh' / 'sources.json').read_text(encoding='utf-8'))
+        with unittest.mock.patch.dict(os.environ, {'EGRESS_SEASON': ''}):
+            for day in (datetime.date(2026, 11, 13), datetime.date(2027, 1, 20), datetime.date(2027, 4, 1)):
+                t = {h: url for h, (url, _) in server.faculty_targets(today=day).items()}
+                season, year = core.season_of(day)
+                for f, host in (('wlo', 'wlo.wat.edu.pl'), ('wel', 'wel.wat.edu.pl'), ('wtc', 'wtc.wat.edu.pl'),
+                                ('ioe', 'ioe.wat.edu.pl')):
+                    self.assertEqual(t[host], src[f]['base'].format(season=season) + 'index.xml', (day, f))
+                self.assertEqual(t['planzajec.wcy.wat.edu.pl'], src['wcy']['index'])
+                m = wml.DIR_RE.search(t['wml.wat.edu.pl'])
+                self.assertEqual((int(m.group(1)), m.group(2)), (year, season), day)
+                self.assertTrue(t['wml.wat.edu.pl'].startswith(src['wml']['landing']))
+
+    def test_verdicts_on_a_page_no_longer_probed_are_dropped(self):
+        import json
+        path = Path(tempfile.mkdtemp()) / 'pool.json'
+        old = {'wml.wat.edu.pl': ('https://wml.wat.edu.pl/rozklady-zajec/', b'index.xml'),
+               'wtc.wat.edu.pl': ('https://wtc.wat.edu.pl/Plany/index.xml', b'<?xml')}
+        p = pool.ProxyPool(path, old)
+        p.mark('http://8.8.8.8:80', 'wml.wat.edu.pl', False)
+        p.mark('http://8.8.8.8:80', 'wtc.wat.edu.pl', True, 50)
+        p.save()
+        new = dict(old, **{'wml.wat.edu.pl': ('https://wml.wat.edu.pl/wp-content/uploads/rozklady_zajec/'
+                                              '2026_sem_zima/index.xml', b'<?xml')})
+        again = pool.ProxyPool(path, new)
+        self.assertEqual(set(again.entries['http://8.8.8.8:80']['hosts']), {'wtc.wat.edu.pl'})
+        # a file from before the pages were recorded: the old WLO and WML pages were wrong, the rest stand
+        legacy = json.loads(path.read_text(encoding='utf-8'))
+        legacy.pop('targets')
+        for h in ('wml.wat.edu.pl', 'wtc.wat.edu.pl'):
+            legacy['entries']['http://8.8.8.8:80']['hosts'][h] = {'ok': False, 'checked': time.time()}
+        path.write_text(json.dumps(legacy), encoding='utf-8')
+        self.assertEqual(set(pool.ProxyPool(path, new).entries['http://8.8.8.8:80']['hosts']), {'wtc.wat.edu.pl'})
+        again.mark('http://8.8.8.8:80', 'wml.wat.edu.pl', True, 50)
+        moved = again.retarget(dict(new, **{'wml.wat.edu.pl': ('https://wml.wat.edu.pl/x/index.xml', b'<?xml')}))
+        self.assertEqual(moved, {'wml.wat.edu.pl'})
+        self.assertEqual(set(again.entries['http://8.8.8.8:80']['hosts']), {'wtc.wat.edu.pl'})
+
+
 class PoolScout(unittest.TestCase):
     """The scout and the candidate pipeline (pool.scout_once, docs/EGRESS.md "Zwiad")."""
 
@@ -2400,19 +2446,55 @@ class PoolScout(unittest.TestCase):
                          ['http://8.8.8.8:80', 'socks5://9.9.9.9:1080'])
         self.assertEqual(meta, {'http://8.8.8.8:80': 'DE', 'socks5://9.9.9.9:1080': 'PL'})
         p = self.make()
-        lists = {f'http://8.8.8.{i}:80': ('x', None) for i in range(1, 30)}
-        lists['http://9.9.9.9:80'] = ('proxifly-pl', 'PL')
-        self.assertEqual(p._unseen(lists, 3)[0], 'http://9.9.9.9:80')
+        lists = {f'http://8.8.8.{i}:80': ('x', None, None) for i in range(1, 30)}
+        lists['http://9.9.9.9:80'] = ('proxifly-pl', 'PL', None)
+        lists['http://7.7.7.7:80'] = ('geonode-pl', 'PL', True)        # a Polish home line: first of all
+        lists['http://6.6.6.6:80'] = ('proxyscrape', 'NL', True)       # a home line elsewhere: before the rest
+        self.assertEqual(p._unseen(lists, 3), ['http://7.7.7.7:80', 'http://9.9.9.9:80', 'http://6.6.6.6:80'])
 
     def test_lists_that_yield_more_live_proxies_are_drawn_from_more(self):
         p = self.make()
         p.sources = {'good': [1000, 150], 'bad': [10000, 100]}  # 15% alive vs 1%
-        lists = {f'http://8.8.{i // 250}.{i % 250 + 1}:80': ('good' if i < 500 else 'bad', None) for i in range(5500)}
+        lists = {f'http://8.8.{i // 250}.{i % 250 + 1}:80': ('good' if i < 500 else 'bad', None, None)
+                 for i in range(5500)}
         picked = p._unseen(lists, 500)
         good = sum(1 for u in picked if lists[u][0] == 'good')
         self.assertGreater(good, 150)  # an even draw would give about 45
         p.save_dead()
         self.assertEqual(pool.ProxyPool(p.path, R2_ALL).sources, p.sources)
+
+    def test_lists_that_say_where_a_proxy_lives(self):
+        import json
+        scrape = json.dumps({'proxies': [
+            {'proxy': 'socks5://145.220.227.132:1080', 'ip_data': {'countryCode': 'NL', 'hosting': False}},
+            {'proxy': 'http://51.38.129.42:3169', 'ip_data': {'countryCode': 'PL', 'hosting': True}},
+            {'proxy': 'junk'}]})
+        meta, res = {}, {}
+        self.assertEqual(pool.normalize_list(scrape, 'proxyscrape', '', meta, res),
+                         ['socks5://145.220.227.132:1080', 'http://51.38.129.42:3169'])
+        self.assertEqual((meta, res), ({'socks5://145.220.227.132:1080': 'NL', 'http://51.38.129.42:3169': 'PL'},
+                                       {'socks5://145.220.227.132:1080': True, 'http://51.38.129.42:3169': False}))
+        geo = json.dumps({'data': [
+            {'ip': '83.14.246.42', 'port': '1080', 'protocols': ['socks5'], 'country': 'PL',
+             'isp': 'Orange Polska Spolka Akcyjna'},
+            {'ip': '57.128.231.218', 'port': '1203', 'protocols': ['https', 'socks4'], 'country': 'PL', 'isp': 'OVH SAS'}]})
+        meta, res = {}, {}
+        self.assertEqual(pool.normalize_list(geo, 'geonode', '', meta, res),
+                         ['socks5://83.14.246.42:1080', 'http://57.128.231.218:1203', 'socks4://57.128.231.218:1203'])
+        self.assertEqual(res, {'socks5://83.14.246.42:1080': True, 'http://57.128.231.218:1203': False,
+                               'socks4://57.128.231.218:1203': False})
+        spys = 'Proxy list (#400)\nIP address:Port CountryCode-Anonymity\n\n185.32.4.210:8070 PL-N-S +\n1.0.0.1:x DE-H\n'
+        meta = {}
+        self.assertEqual(pool.normalize_list(spys, 'spys', 'http', meta), ['http://185.32.4.210:8070'])
+        self.assertEqual(meta, {'http://185.32.4.210:8070': 'PL'})
+        self.assertEqual([pool.priority(*a) for a in (('PL', True), ('PL', None), ('NL', True), ('NL', False))],
+                         [0, 1, 2, 3])
+
+    def test_a_home_line_may_be_slower_and_still_be_tried(self):
+        p = self.make({'http://1.1.1.1:80': dict(self.entry(4000), res=True),
+                       'http://1.1.1.2:80': self.entry(4000)})
+        jobs, _ = p._faculty_jobs(['wtc.wat.edu.pl'], 12, pool.HUNT_MAX_MS, 10)
+        self.assertEqual(jobs, [('http://1.1.1.1:80', 'wtc.wat.edu.pl')])
 
     def test_tcp_screen_keeps_only_ports_that_answer(self):
         import socket as _s
@@ -2511,7 +2593,7 @@ class PoolScout(unittest.TestCase):
 
     def test_a_quiet_scout_sleeps_until_the_lists_may_change(self):
         p = self.make()
-        p._lists_cache = (time.monotonic(), {'http://8.8.8.8:80': ('x', None)})
+        p._lists_cache = (time.monotonic(), {'http://8.8.8.8:80': ('x', None, None)})
         p.scout = {'unseen': 0, 'tests_left': 0}
         self.assertEqual(p.scout_wait(60), pool.VERIFY_TTL_S / 2)
         p.scout = {'unseen': 5, 'tests_left': 0}

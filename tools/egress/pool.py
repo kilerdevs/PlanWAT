@@ -61,7 +61,44 @@ LIST_SOURCES = (
     ('ercin-http', 'https://raw.githubusercontent.com/ErcinDedeoglu/proxies/main/proxies/http.txt', 'plain', 'http'),
     ('ercin-socks5', 'https://raw.githubusercontent.com/ErcinDedeoglu/proxies/main/proxies/socks5.txt', 'plain', 'socks5'),
     ('ercin-socks4', 'https://raw.githubusercontent.com/ErcinDedeoglu/proxies/main/proxies/socks4.txt', 'plain', 'socks4'),
+    # Checked lists with the address's network: ProxyScrape says whether it is a hosting address (ip-api), Geonode
+    # names its ISP. The walls (Imperva rules on the plan directories) let a Polish home line in and keep datacenter
+    # addresses out, so a residential or Polish proxy is the one worth trying first (priority()).
+    ('proxyscrape', 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies'
+                    '&proxy_format=protocolipport&format=json', 'proxyscrape', ''),
+    ('geonode-pl', 'https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked'
+                   '&sort_type=desc&country=PL', 'geonode', ''),
+    ('geonode-1', 'https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked'
+                  '&sort_type=desc', 'geonode', ''),
+    ('geonode-2', 'https://proxylist.geonode.com/api/proxy-list?limit=500&page=2&sort_by=lastChecked'
+                  '&sort_type=desc', 'geonode', ''),
+    ('geonode-3', 'https://proxylist.geonode.com/api/proxy-list?limit=500&page=3&sort_by=lastChecked'
+                  '&sort_type=desc', 'geonode', ''),
+    ('spys-http', 'https://spys.me/proxy.txt', 'spys', 'http'),
+    ('spys-socks5', 'https://spys.me/socks.txt', 'spys', 'socks5'),
 )
+
+# Network names that say "a server, not a home": an ISP name from Geonode matching one of these is not residential.
+HOSTING_WORDS = ('hosting', 'host', 'server', 'cloud', 'vps', 'data center', 'datacenter', 'colo', 'ovh', 'hetzner',
+                 'digitalocean', 'digital ocean', 'amazon', 'aws', 'google', 'microsoft', 'azure', 'oracle', 'linode',
+                 'akamai', 'contabo', 'leaseweb', 'm247', 'datacamp', 'vultr', 'choopa', 'scaleway', 'ionos',
+                 'alibaba', 'tencent', 'huawei', 'cdn', 'network solutions', 'security', 'internet services',
+                 'beyond.pl', 'netcup', 'ponynet', 'frantech', 'g-core', 'gcore', 'selectel', 'timeweb', 'aeza',
+                 'skhron', 'snowd', 'vpspay', 'globalconnect', 'global connectivity', 'zenlayer', 'cogent')
+
+
+def is_hosting(isp):
+    """True for a network name that reads like a datacenter, False for one that does not, None for no name."""
+    name = (isp or '').strip().lower()
+    if not name:
+        return None
+    return any(w in name for w in HOSTING_WORDS)
+
+
+def priority(cc, res):
+    """0 (try first) .. 3: a Polish home line, a Polish address, a home line elsewhere, the rest."""
+    return {(True, True): 0, (True, False): 1, (False, True): 2}.get((cc == 'PL', res is True), 3)
+
 
 # Round 1: a neutral aliveness target made for connectivity checks: an empty 204 over TLS (the certificate is
 # checked, so a proxy cannot fake it). Tiny, so its time is the proxy's latency, not a download's.
@@ -112,6 +149,12 @@ SCOUT_PAUSE_S = 60
 SCOUT_HOST_GAP_S = 2.0  # at least this long between two scout probes of one faculty
 HOST_RETRY_S = 12 * 3600  # a proxy a faculty refused is not tried on it again for this long (walls are sticky)
 VERIFY_TTL_S = 20 * 60  # the scout re-probes a faculty's exits verified longer ago than this
+
+# The probe pages a pool.json without a record of them was probed with, where they differ from today's: until
+# 13.11.2026 WLO was probed on WEL's /planyzajec/ spelling and WML on the /rozklady-zajec/ page removed in October,
+# so no exit could ever pass either, and those refusals must not keep anyone off the real pages.
+LEGACY_TARGETS = {'wlo.wat.edu.pl': 'https://wlo.wat.edu.pl/planyzajec/zima/index.xml',
+                  'wml.wat.edu.pl': 'https://wml.wat.edu.pl/rozklady-zajec/'}
 
 # WAF/captive-portal bodies can be HTTP 200 with plenty of bytes. A probe that lands on
 # one must not count as "this proxy reaches the faculty".
@@ -166,11 +209,12 @@ def parse_proxy_url(raw):
     return f'{scheme}://{host}:{port}'
 
 
-def normalize_list(text, kind, scheme='http', meta=None):
-    """Candidate proxy URLs from one downloaded list (proxifly JSON or plain text).
+def normalize_list(text, kind, scheme='http', meta=None, res=None):
+    """Candidate proxy URLs from one downloaded list (proxifly, proxyscrape or geonode JSON, spys or plain text).
 
     Plain lists hold bare ip:port lines, so the list's own protocol tags them. `meta`, when given, collects
-    {url: country code} from proxifly's geolocation.
+    {url: country code} where the list says it; `res` collects {url: True for a home/ISP line, False for a hosting
+    address} where the list says that.
     """
     found = []
 
@@ -178,6 +222,45 @@ def normalize_list(text, kind, scheme='http', meta=None):
         if isinstance(raw, str) and scheme and '://' not in raw.strip():
             return scheme + '://' + raw.strip()
         return raw
+
+    def keep(raw, cc=None, home=None):
+        url = parse_proxy_url(raw) if isinstance(raw, str) else None
+        if not url:
+            return
+        found.append(url)
+        if meta is not None and isinstance(cc, str) and len(cc) == 2 and cc.isalpha():
+            meta[url] = cc.upper()
+        if res is not None and isinstance(home, bool):
+            res[url] = home
+
+    if kind in ('proxyscrape', 'geonode'):
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return found
+        rows = data.get('proxies' if kind == 'proxyscrape' else 'data') if isinstance(data, dict) else None
+        for row in rows if isinstance(rows, list) else ():
+            if not isinstance(row, dict):
+                continue
+            if kind == 'proxyscrape':
+                ip = row.get('ip_data') if isinstance(row.get('ip_data'), dict) else {}
+                hosting = ip.get('hosting')
+                keep(row.get('proxy'), ip.get('countryCode'), (not hosting) if isinstance(hosting, bool) else None)
+            else:
+                hosting = is_hosting(f"{row.get('isp') or ''} {row.get('org') or ''}")
+                for proto in row.get('protocols') or ():
+                    proto = 'http' if proto == 'https' else str(proto).lower()  # https = an HTTP proxy with CONNECT
+                    if proto in SUPPORTED_SCHEMES:
+                        keep(f"{proto}://{row.get('ip')}:{row.get('port')}", row.get('country'),
+                             None if hosting is None else not hosting)
+        return found
+    if kind == 'spys':
+        # "1.2.3.4:8080 PL-H-S +": address, then country-anonymity-ssl
+        for line in text.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and ':' in parts[0] and '-' in parts[1]:
+                keep(tag(parts[0]), parts[1].split('-')[0])
+        return found
 
     if kind == 'proxifly':
         try:
@@ -286,6 +369,18 @@ class ProxyPool:
         self.load()
         self._load_dead()
 
+    def retarget(self, round2):
+        """New probe pages (a new semester): the verdicts of a faculty whose page changed are dropped."""
+        with self.lock:
+            moved = {h for h, t in round2.items() if h in self.round2 and self.round2[h][0] != t[0]}
+            self.round2.update({h: t for h, t in round2.items() if h in self.round2})
+            for entry in self.entries.values():
+                for h in moved:
+                    entry.get('hosts', {}).pop(h, None)
+        if moved:
+            self.save()
+        return moved
+
     @property
     def enabled(self):
         return bool(self.active_hosts)
@@ -331,6 +426,16 @@ class ProxyPool:
                 if not isinstance(hv.get('ok'), bool):
                     hv['ok'] = False
             clean[url] = entry
+        # a faculty whose probe page changed since these verdicts were taken (a fixed target, a new semester): they
+        # say nothing about the page probed now, and a refusal would keep an exit off it for HOST_RETRY_S
+        targets = data.get('targets')
+        if not isinstance(targets, dict):  # written before the pages were recorded: the old ones, two of them wrong
+            targets = {h: LEGACY_TARGETS.get(h, url) for h, (url, _) in self.round2.items()}
+        moved = {h for h, (url, _) in self.round2.items() if targets.get(h) != url}
+        if moved:
+            for entry in clean.values():
+                for h in moved:
+                    entry['hosts'].pop(h, None)
         self.entries = clean
         self.last_refresh = data.get('last_refresh')
         if not isinstance(self.last_refresh, (int, float)):
@@ -389,6 +494,7 @@ class ProxyPool:
         try:
             with self.lock:
                 payload = json.dumps({'version': POOL_VERSION, 'entries': self.entries,
+                                      'targets': {h: t[0] for h, t in self.round2.items()},
                                       'last_refresh': self.last_refresh,
                                       'saved': time.time()}, indent=1, sort_keys=True)
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -727,7 +833,7 @@ class ProxyPool:
         """The exits marked for `host` (its Round 2 passed and has not failed since), fastest first."""
         with self.lock:
             rows = [{'url': u, 'ms': hv.get('ms'), 'checked': hv.get('checked'), 'n_ok': hv.get('n_ok', 0),
-                     'n_fail': hv.get('n_fail', 0), 'cc': e.get('cc'), 'latency_ms': e.get('latency_ms'),
+                     'n_fail': hv.get('n_fail', 0), 'cc': e.get('cc'), 'res': e.get('res'), 'latency_ms': e.get('latency_ms'),
                      'source': e.get('source', '')}
                     for u, e in self.entries.items()
                     for hv in (e.get('hosts', {}).get(host),) if isinstance(hv, dict) and hv.get('ok')]
@@ -736,29 +842,30 @@ class ProxyPool:
 
     # -- candidates: the lists, the screen, Round 1 --------------------------------
     def _lists(self, fetcher=None, force=False):
-        """{url: (source, country)} from every list, fetched whole at most every LIST_TTL_S ({} when all failed)."""
+        """{url: (source, country, residential)} from every list, fetched whole at most every LIST_TTL_S ({} when all
+        failed)."""
         cached = self._lists_cache
         if cached and cached[1] and not force and time.monotonic() - cached[0] < LIST_TTL_S:
             return cached[1]
 
         def one(item):
             name, url, kind, scheme = item
-            meta = {}
+            meta, res = {}, {}
             try:
                 text = fetcher(url) if fetcher else _direct_get(url)
-                return name, normalize_list(text, kind, scheme, meta), meta, None
+                return name, normalize_list(text, kind, scheme, meta, res), meta, res, None
             except Exception as err:
-                return name, [], {}, f'{name}: {err}'
+                return name, [], {}, {}, f'{name}: {err}'
 
         out = {}
         with ThreadPoolExecutor(max_workers=max(1, len(LIST_SOURCES))) as ex:
-            for name, urls, meta, err in ex.map(one, LIST_SOURCES):
+            for name, urls, meta, res, err in ex.map(one, LIST_SOURCES):
                 if err:
                     self.last_error = err
                 for u in urls:
-                    cc = meta.get(u)
-                    if u not in out or (cc and not out[u][1]):
-                        out[u] = (name, cc)
+                    known = out.get(u, (name, None, None))
+                    # the first list that names it keeps it; a later one may add what the first did not say
+                    out[u] = (known[0], known[1] or meta.get(u), known[2] if known[2] is not None else res.get(u))
         if out:
             self._lists_cache = (time.monotonic(), out)
         return out
@@ -784,12 +891,18 @@ class ProxyPool:
         with self.lock:
             cands = [u for u in lists if u not in self.entries and self.dead.get(u, 0) <= cut]
         weight = {name: self._yield_of(name) for name in {lists[u][0] for u in cands}}
-        pl = [u for u in cands if lists[u][1] == 'PL']
-        rest = [u for u in cands if lists[u][1] != 'PL']
-        random.shuffle(pl)
+        # Polish and home lines first (priority 0-2, each tier in random order), then a draw weighted by list yield
+        tiers = {}
+        for u in cands:
+            tiers.setdefault(priority(lists[u][1], lists[u][2]), []).append(u)
+        first = []
+        for t in (0, 1, 2):
+            random.shuffle(tiers.get(t, []))
+            first += tiers.get(t, [])
+        rest = tiers.get(3, [])
         # weighted sampling without replacement (Efraimidis-Spirakis): key = U ** (1 / weight), largest first
         rest.sort(key=lambda u: random.random() ** (1.0 / weight[lists[u][0]]), reverse=True)
-        picked = (pl + rest)[:max(0, cap)]
+        picked = (first + rest)[:max(0, cap)]
         self.unseen_left = len(cands) - len(picked)
         return picked
 
@@ -909,12 +1022,12 @@ class ProxyPool:
                     self.dead[u] = now
         for u in fresh:
             if u not in reach:
-                self._count(lists.get(u, ('', None))[0], False)
+                self._count(lists.get(u, ('', None, None))[0], False)
         alive = []
 
         def _r1(url):
             ms = self.probe_alive(url)
-            name, cc = lists.get(url, ('', None))
+            name, cc, res = lists.get(url, ('', None, None))
             self._count(name, ms is not None)
             if ms is None:
                 with self.lock:
@@ -928,6 +1041,8 @@ class ProxyPool:
                     e['source'] = name
                     if cc:
                         e['cc'] = cc
+                    if res is not None:
+                        e['res'] = res
             return url
 
         with ThreadPoolExecutor(max_workers=max(1, workers)) as tpool:
@@ -966,6 +1081,12 @@ class ProxyPool:
         with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
             return len(stale), sum(1 for lost in ex.map(one, stale) if lost)
 
+    @staticmethod
+    def _max_ms(entry, max_ms):
+        """The ping a proxy may have and still be tried on the faculties: `max_ms`, or up to LATENCY_CUTOFF_MS for a
+        Polish or home line (slower, but the kind the walls let in)."""
+        return max(max_ms, LATENCY_CUTOFF_MS) if priority(entry.get('cc'), entry.get('res')) < 3 else max_ms
+
     # -- faculty tests: which proxies get through to which faculty ------------------
     def _wait_for_hunts(self, sleep=time.sleep):
         while self._hunting > 0:
@@ -973,7 +1094,8 @@ class ProxyPool:
 
     def _faculty_jobs(self, hosts, keep, max_ms, limit):
         """([(url, host)] to probe now, how many are waiting): every fresh alive proxy with Round-1 latency up to
-        `max_ms` (Polish first, then fastest) on every faculty it has not been tried on lately. A faculty that has
+        `max_ms` (Polish and home lines first, with a looser ping; then fastest) on every faculty it has not been tried
+        on lately. A faculty that has
         `keep` exits already is only tried with proxies faster than the slowest of its `keep` fastest."""
         now = time.time()
         with self.lock:
@@ -982,9 +1104,10 @@ class ProxyPool:
                 lats = sorted(e['latency_ms'] if isinstance(e.get('latency_ms'), (int, float)) else 10 ** 9
                               for e in self.entries.values() if (e.get('hosts', {}).get(h) or {}).get('ok'))
                 bar[h] = lats[keep - 1] if keep and len(lats) >= keep else None
-            cands = sorted((e.get('cc') != 'PL', e['latency_ms'], u) for u, e in self.entries.items()
+            cands = sorted((priority(e.get('cc'), e.get('res')), e['latency_ms'], u) for u, e in self.entries.items()
                            if e.get('status') == 'ok' and isinstance(e.get('latency_ms'), (int, float))
-                           and e['latency_ms'] <= max_ms and now - e.get('last_checked', 0) <= ALIVE_TTL_S)
+                           and e['latency_ms'] <= self._max_ms(e, max_ms)
+                           and now - e.get('last_checked', 0) <= ALIVE_TTL_S)
             jobs = []
             for _, lat, u in cands:
                 marks = self.entries[u].get('hosts', {})
@@ -1088,12 +1211,13 @@ class ProxyPool:
 
     # -- the hunt: exits for a faculty nobody's own line gets through -------------
     def _fresh_alive(self, max_ms, now=None):
-        """Alive candidates with a sensible ping and a recent enough verdict: Polish first, then fastest."""
+        """Alive candidates with a sensible ping and a recent enough verdict: Polish and home lines first
+        (priority()), then fastest."""
         now = time.time() if now is None else now
         with self.lock:
-            rows = [(e.get('cc') != 'PL', e['latency_ms'], u) for u, e in self.entries.items()
-                    if e.get('status') == 'ok' and e.get('latency_ms') is not None and e['latency_ms'] <= max_ms
-                    and now - e.get('last_checked', 0) <= HUNT_FRESH_S]
+            rows = [(priority(e.get('cc'), e.get('res')), e['latency_ms'], u) for u, e in self.entries.items()
+                    if e.get('status') == 'ok' and e.get('latency_ms') is not None
+                    and e['latency_ms'] <= self._max_ms(e, max_ms) and now - e.get('last_checked', 0) <= HUNT_FRESH_S]
         return [u for _, _, u in sorted(rows)]
 
     def hunt(self, hosts, max_ms=HUNT_MAX_MS, want=HUNT_WANT, workers=HUNT_WORKERS, budget_s=HUNT_BUDGET_S,

@@ -16,6 +16,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Nowe źródła proxy z opisem sieci** (`tools/egress/pool.py`): ProxyScrape (czy adres jest hostingowy), Geonode (nazwa
+  ISP, także lista polskich proxy) i spys.me (kraj). Pierwszeństwo w zwiadzie i polowaniu mają polskie łącza domowe, potem
+  polskie adresy, potem łącza domowe gdzie indziej — tych ściany wydziałów nie odbijają jak centrów danych — i mogą mieć
+  ping do 6 s.
 - **Zwiad egressu: ciągłe szukanie szybszych wyjść przez ściany** (`tools/egress/pool.py` `scout_once`, `server.py`,
   `tools/refresh/egress.py`): egress na oracle i northflanku przez cały czas bierze z list proxy kandydatów, których
   jeszcze nie widział, odsiewa martwych samym połączeniem TCP, robi Round 1 na żywych i każde nowe proxy z sensownym pingiem
@@ -218,6 +222,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Sondy WLO i WML nigdy nie mogły przejść** (`tools/egress/server.py` `faculty_targets`): WLO był sprawdzany pod
+  pisownią WEL (`/planyzajec/`, 404), a WML na stronie `/rozklady-zajec/` usuniętej w październiku, więc polowanie i
+  zwiad odrzucały każde proxy, także takie, które przechodzi ścianę. Ściany to reguły Imperva na katalogach planów (z VPS-a
+  403 na `/planzajec/`, `/Plany/`, `/rozklady_zajec/`, `/pl/rozklad`; strony główne 200), więc sonda pyta teraz o tę samą
+  stronę, którą listuje crawler (WML: indeks bieżącego semestru), sezon liczy się z daty, a test pilnuje zgodności z
+  `sources.json`. Werdykty ze starych stron są odrzucane.
 - **Crawl przez pulę zapętlał się na martwych wyjściach** (`tools/refresh/stack.py`): gdy jedyne znalezione wyjście
   umarło między polowaniem a listowaniem, port polowania odpowiadał 403, a runner ponawiał listowanie co 18 s przez
   godzinę (dla trasy przez pulę każdy błąd był pomijany). Teraz każdy błąd listowania przez pulę gubi trasę jak ściana:

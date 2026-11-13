@@ -35,11 +35,18 @@ dotyczyła — a to wycofuje wyjście z ostatniego tunelu do tego hosta. Bez teg
 ## Części
 
 - `tools/egress/pool.py`: pula proxy (wzorzec z DeadDropMGMT). Pobiera listy proxy z GitHub (proxifly, także jego osobna
-  lista polskich proxy, monosans, thespeedx, roosterkid, vakhov, hookzof, ErcinDedeoglu) w całości, najwyżej co 30 minut, i
-  sprawdza kandydatów *przez nich samych*, od najtańszej bramki: najpierw samo połączenie TCP z portem proxy (nieblokujące,
+  lista polskich proxy, monosans, thespeedx, roosterkid, vakhov, hookzof, ErcinDedeoglu) oraz sprawdzane listy z opisem
+  sieci adresu (ProxyScrape: czy to adres hostingowy; Geonode: nazwa ISP, także osobna lista polskich; spys.me: kraj) w
+  całości, najwyżej co 30 minut. Ściany wydziałów to reguły Imperva na katalogach planów, które przepuszczają polskie łącze
+  domowe, a odbijają adresy centrów danych, więc pierwszeństwo mają polskie łącza domowe, potem polskie adresy, potem łącza
+  domowe gdzie indziej (`priority()`; nazwa ISP z Geonode jest oceniana listą słów hostingowych), i takie proxy mogą mieć
+  ping do 6 s zamiast 2,5 s. Pula sprawdza kandydatów *przez nich samych*, od najtańszej bramki: najpierw samo połączenie TCP z portem proxy (nieblokujące,
   setki naraz na jednym selektorze: większość wpisów z list jest martwa i odpada tu prawie za darmo), potem Round 1 —
   `https://cp.cloudflare.com/generate_204` (puste 204 przez TLS od końca do końca; mała strona, więc czas to opóźnienie
-  samego proxy), potem Round 2 — strona indeksu wydziału. Zdrowy Round 2 to 200, odpowiedni rozmiar, dodatni znacznik treści
+  samego proxy), potem Round 2 — strona planów wydziału **za jego ścianą**, ta sama, którą listuje crawler
+  (`tools/refresh/sources.json`; test pilnuje zgodności). Do 13.11.2026 WLO był sprawdzany pod pisownią WEL (`/planyzajec/`,
+  404), a WML na stronie `/rozklady-zajec/` usuniętej w październiku, więc żadne proxy nie mogło przejść ani jednego, choćby
+  przechodziło ścianę; werdykty ze starych stron są przy wczytaniu odrzucane (`targets` w `pool.json`). Zdrowy Round 2 to 200, odpowiedni rozmiar, dodatni znacznik treści
   i brak znanych stron blokad (WAF potrafi oddać duże 200), więc fałszywe „żywe” nie trafia do puli. Wynik Round 2 jest
   zapisywany per wydział (to są wyjścia oznaczone dla wydziału, z czasem strony i licznikiem udanych i nieudanych prób);
   pudło na wydziale nie odświeża werdyktu „żywe” proxy (wcześniej odświeżało i martwe proxy wyglądały wiecznie świeżo).
