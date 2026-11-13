@@ -678,12 +678,20 @@ class Runner:
         return 1 if others else 0
 
     def _cant(self, slot, cause, err):
-        """This runner cannot list `slot`: said on the slot, before it takes anything there."""
+        """This runner cannot list `slot`: said on the slot, before it takes anything there. Through the pool, any
+        failure loses the route (the exits died or the wall met them; the hunt port refuses with 403 once no exit is
+        left): no more tries this pass, unless another runner shares new exits on the slot."""
         with self.lock:
+            lost = self.me.via.get(slot) == 'pool'
+            if lost:
+                cause = WALL
+                self.me.via[slot] = 'lost'
+                self.items.pop(slot, None)
             prior = self.me.cant.get(slot)
             self.me.cant[slot] = {'cause': cause, 'at': self.clock(), 'tries': (prior or {}).get('tries', 0) + 1}
         self.log(f'[{slot}] cannot be listed from here ({cause}: {err}); '
-                 + ('leaving it to the others' if cause == WALL else 'the others may'))
+                 + ('the exits do not get through any more' if lost else
+                    'leaving it to the others' if cause == WALL else 'the others may'))
         me = self.me.name
 
         def mark(d):
@@ -691,6 +699,8 @@ class Runner:
                 d = {'slot': slot, 'group': self.me.groups[slot], 'state': 'unlisted', 'leader': None, 'chunks': [],
                      'cant': {}, 'next': 0}
             d.setdefault('cant', {})[me] = {'cause': cause, 'at': time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())}
+            if lost and (d.get('via') or {}).get(me) == 'pool':
+                d['via'][me] = 'lost'
             if d.get('state') == 'listing' and d.get('leader') == me:
                 d['state'], d['leader'] = 'unlisted', None
             return d

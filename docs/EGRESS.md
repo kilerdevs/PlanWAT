@@ -43,7 +43,9 @@ dotyczyła — a to wycofuje wyjście z ostatniego tunelu do tego hosta. Bez teg
   i brak znanych stron blokad (WAF potrafi oddać duże 200), więc fałszywe „żywe” nie trafia do puli. Wynik Round 2 jest
   zapisywany per wydział (to są wyjścia oznaczone dla wydziału, z czasem strony i licznikiem udanych i nieudanych prób);
   pudło na wydziale nie odświeża werdyktu „żywe” proxy (wcześniej odświeżało i martwe proxy wyglądały wiecznie świeżo).
-  Kandydaci są brani z całych list (polskie pierwsze, reszta losowo), nie z ich początku; ten, który odpadł na połączeniu
+  Kandydaci są brani z całych list, nie z ich początku: polskie pierwsze, reszta losowo, ale z wagą według tego, ile
+  kandydatów danej listy okazało się żywych (pomiar na oracle 13.11.2026: monosans 15%, proxifly 2%, ErcinDedeoglu 1% przy
+  65 tys. wpisów; licznik w `seen.json`); ten, który odpadł na połączeniu
   albo Round 1, trafia do mapy martwych (`seen.json` obok `pool.json`) i wraca do sprawdzenia po 12 h. Pełna pula (2000
   wpisów) robi miejsce, wyrzucając najpierw odrzucone, potem najdawniej sprawdzone, potem najwolniejsze; wpis z wyjściem dla
   jakiegoś wydziału zostaje. Wybór sortuje ok → nowe → błąd według opóźnienia i zapisuje `pool.json`.

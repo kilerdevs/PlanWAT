@@ -218,6 +218,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Crawl przez pulę zapętlał się na martwych wyjściach** (`tools/refresh/stack.py`): gdy jedyne znalezione wyjście
+  umarło między polowaniem a listowaniem, port polowania odpowiadał 403, a runner ponawiał listowanie co 18 s przez
+  godzinę (dla trasy przez pulę każdy błąd był pomijany). Teraz każdy błąd listowania przez pulę gubi trasę jak ściana:
+  w tym przebiegu runner poluje znowu tylko wtedy, gdy inny dopisze do slotu nowe wyjścia.
 - **Pula proxy stała w miejscu** (`tools/egress/pool.py`): pudło na stronie wydziału odświeżało werdykt „żywe” proxy, więc
   pula oracle trzymała 2000 wpisów, prawie wszystkie rzekomo żywe, a usuwanie przy pełnej puli wyrzucało tylko odrzucone —
   nowy kandydat nie miał jak wejść. Listy były czytane tylko od pierwszych 80 wpisów każdej (około 640 proxy w ogóle) i

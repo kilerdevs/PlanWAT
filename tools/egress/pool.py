@@ -278,6 +278,7 @@ class ProxyPool:
         self._host_next = {}  # host -> monotonic time of its next allowed scout probe
         self._gap_lock = threading.Lock()
         self.dead = {}  # url -> wall time it failed the screen or Round 1 (seen.json)
+        self.sources = {}  # list name -> [candidates tried, alive] (seen.json): how much each list is worth
         self.dead_path = self.path.with_name('seen.json')
         self._lists_cache = None  # (monotonic fetched, {url: (source, cc)})
         self.unseen_left = None  # candidates on the lists nobody has looked at yet (after the last discovery)
@@ -344,6 +345,10 @@ class ProxyPool:
             cut = time.time() - DEAD_RETRY_S
             self.dead = {u: t for u, t in data['dead'].items()
                          if isinstance(u, str) and isinstance(t, (int, float)) and t > cut}
+        if isinstance(data, dict) and isinstance(data.get('sources'), dict):
+            self.sources = {n: [int(v[0]), int(v[1])] for n, v in data['sources'].items()
+                            if isinstance(n, str) and isinstance(v, list) and len(v) == 2
+                            and all(isinstance(x, int) and x >= 0 for x in v)}
 
     def save_dead(self):
         """The dead map, beside pool.json (written per cycle, not per mark: it is large and only a cache)."""
@@ -356,7 +361,10 @@ class ProxyPool:
         try:
             self.dead_path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.dead_path.with_suffix('.tmp')
-            tmp.write_text(json.dumps({'version': 1, 'dead': dead}, separators=(',', ':')), encoding='utf-8')
+            with self.lock:
+                sources = {n: list(v) for n, v in self.sources.items()}
+            tmp.write_text(json.dumps({'version': 1, 'dead': dead, 'sources': sources}, separators=(',', ':')),
+                           encoding='utf-8')
             tmp.replace(self.dead_path)
         except OSError:
             pass
@@ -755,16 +763,32 @@ class ProxyPool:
             self._lists_cache = (time.monotonic(), out)
         return out
 
+    def _yield_of(self, source):
+        """The share of a list's candidates that came out alive so far (a prior of 1 in 50 for a list not tried)."""
+        tried, alive = self.sources.get(source, (0, 0))
+        return (alive + 1.0) / (tried + 50.0)
+
+    def _count(self, source, alive):
+        with self.lock:
+            st = self.sources.setdefault(source or '?', [0, 0])
+            st[0] += 1
+            st[1] += 1 if alive else 0
+            if st[0] > 20000:  # lists change: old evidence fades
+                st[0], st[1] = st[0] // 2, st[1] // 2
+
     def _unseen(self, lists, cap):
         """Up to `cap` listed candidates nobody has looked at (not in the pool, not dead lately): Polish ones first,
-        each group in random order, so every cycle reaches further down every list."""
+        then a random draw weighted by how many of each list's candidates came out alive (a list that is 15% alive
+        is drawn from far more than a huge one that is 1% alive), so every cycle reaches further down every list."""
         cut = time.time() - DEAD_RETRY_S
         with self.lock:
             cands = [u for u in lists if u not in self.entries and self.dead.get(u, 0) <= cut]
+        weight = {name: self._yield_of(name) for name in {lists[u][0] for u in cands}}
         pl = [u for u in cands if lists[u][1] == 'PL']
         rest = [u for u in cands if lists[u][1] != 'PL']
         random.shuffle(pl)
-        random.shuffle(rest)
+        # weighted sampling without replacement (Efraimidis-Spirakis): key = U ** (1 / weight), largest first
+        rest.sort(key=lambda u: random.random() ** (1.0 / weight[lists[u][0]]), reverse=True)
         picked = (pl + rest)[:max(0, cap)]
         self.unseen_left = len(cands) - len(picked)
         return picked
@@ -883,17 +907,21 @@ class ProxyPool:
             for u in fresh:
                 if u not in reach:
                     self.dead[u] = now
+        for u in fresh:
+            if u not in reach:
+                self._count(lists.get(u, ('', None))[0], False)
         alive = []
 
         def _r1(url):
             ms = self.probe_alive(url)
+            name, cc = lists.get(url, ('', None))
+            self._count(name, ms is not None)
             if ms is None:
                 with self.lock:
                     if url not in self.entries:
                         self.dead[url] = time.time()
                 return None
             self.mark_alive(url, True, ms)
-            name, cc = lists.get(url, ('', None))
             with self.lock:
                 e = self.entries.get(url)
                 if e is not None:

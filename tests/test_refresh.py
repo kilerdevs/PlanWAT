@@ -3549,13 +3549,14 @@ class FakeSite(stack.Ops):
     """A runner's sites for the stack tests: lists of codes, walls per faculty, crashes on demand."""
 
     def __init__(self, name, sizes, fetched, lock, walled=(), wall_mid=(), errors=(), poison=(), per=0.001,
-                 crash_after=None, exits=None, exits_wall_mid=()):
+                 crash_after=None, exits=None, exits_wall_mid=(), exits_dead=()):
         self.name, self.sizes, self.fetched, self.lock = name, sizes, fetched, lock
         self.walled, self.wall_mid, self.errors, self.poison = set(walled), set(wall_mid), set(errors), set(poison)
         self.per, self.crash_after, self.pages, self.runner = per, crash_after, 0, None
         # the pool: what a hunt finds per faculty (any shared exit works where the faculty has exits at all)
         self.exits, self.exits_wall_mid = dict(exits or {}), set(exits_wall_mid)
-        self.routes, self.hunts = set(), []
+        self.exits_dead = set(exits_dead)  # found, but gone before the listing (the hunt port then answers 403)
+        self.routes, self.hunts, self.route_probes = set(), [], 0
 
     def hunt(self, slot, exits):
         f = stack.faculty_of(slot)
@@ -3569,6 +3570,10 @@ class FakeSite(stack.Ops):
     def probe(self, slot):
         f = stack.faculty_of(slot)
         if slot in self.routes:
+            with self.lock:
+                self.route_probes += 1
+            if f in self.exits_dead:
+                raise RuntimeError('curl: (56) CONNECT tunnel failed, response 403')
             return [Item(f'{slot.upper()}{i:03d}', '', '') for i in range(self.sizes[slot])]
         if f in self.walled:
             raise stack.Walled('403')
@@ -3621,7 +3626,8 @@ def run_pass(test, spec, sizes=SIZES, absent=(), crash=None, outage=None, reject
                    pool_of={m: set(spec[m].get('pool', ())) for m in spec})
         site = FakeSite(n, sizes, fetched, flock, sp.get('walled', ()), sp.get('wall_mid', ()), sp.get('errors', ()),
                         sp.get('poison', ()), crash_after=crash[1] if crash and crash[0] == n else None,
-                        exits=sp.get('exits'), exits_wall_mid=sp.get('exits_wall_mid', ()))
+                        exits=sp.get('exits'), exits_wall_mid=sp.get('exits_wall_mid', ()),
+                        exits_dead=sp.get('exits_dead', ()))
         st = board.MemoryStore(shared, lock)
         st.rejects = rejects
         r = stack.Runner(st, me, site, lanes=lanes, deadline=time.monotonic() + 40, log=lambda m: None)
@@ -3724,6 +3730,20 @@ class StackChaos(unittest.TestCase):
         fetched, _, summary, _ = run_pass(self, spec)
         status = self.check(fetched, summary, lost={'wlo', 'wtc'})
         self.assertEqual(status['wml'], 'done')  # northflank's exits went on where oracle's met the wall
+
+    def test_exits_that_die_before_the_listing_are_not_tried_forever(self):
+        # pass 43490421617: the one WTC exit died between the hunt and the listing, and oracle retried the listing
+        # through the empty hunt port every 18 s for an hour
+        spec = {'oracle': dict(FLEET3['oracle'], hunter=True, exits={'wtc': ['http://8.8.8.8:3128']},
+                               exits_dead=['wtc']),
+                'northflank': FLEET3['northflank']}
+        started = time.monotonic()
+        fetched, reports, summary, _ = run_pass(self, spec)
+        status = self.check(fetched, summary, lost={'wlo', 'wml', 'wtc'})
+        self.assertEqual(status['wtc'], 'blocked')
+        self.assertEqual(self.sites['oracle'].route_probes, 1)
+        self.assertEqual(reports['oracle']['cant']['wtc'], 'wall')
+        self.assertLess(time.monotonic() - started, 20)
 
     def test_a_runner_that_never_starts_is_not_waited_for(self):
         fetched, _, summary, _ = run_pass(self, FLEET3, absent=('plebania',))

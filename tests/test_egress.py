@@ -2404,6 +2404,16 @@ class PoolScout(unittest.TestCase):
         lists['http://9.9.9.9:80'] = ('proxifly-pl', 'PL')
         self.assertEqual(p._unseen(lists, 3)[0], 'http://9.9.9.9:80')
 
+    def test_lists_that_yield_more_live_proxies_are_drawn_from_more(self):
+        p = self.make()
+        p.sources = {'good': [1000, 150], 'bad': [10000, 100]}  # 15% alive vs 1%
+        lists = {f'http://8.8.{i // 250}.{i % 250 + 1}:80': ('good' if i < 500 else 'bad', None) for i in range(5500)}
+        picked = p._unseen(lists, 500)
+        good = sum(1 for u in picked if lists[u][0] == 'good')
+        self.assertGreater(good, 150)  # an even draw would give about 45
+        p.save_dead()
+        self.assertEqual(pool.ProxyPool(p.path, R2_ALL).sources, p.sources)
+
     def test_tcp_screen_keeps_only_ports_that_answer(self):
         import socket as _s
         srv = _s.socket()
