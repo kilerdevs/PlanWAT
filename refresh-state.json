@@ -1,7 +1,7 @@
 {
  "blocks": {
   "wat-edge": {
-   "blocked_at": "2026-11-14T19:13:46",
+   "blocked_at": "2026-11-14T20:49:18",
    "cause": "wall",
    "durations": [
     {
@@ -105,8 +105,8 @@
    ]
   },
   "wtc": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-11-14T20:49:35",
+   "cause": "wall",
    "durations": []
   }
  },
@@ -199,19 +199,20 @@
   "wlo": {
    "blocked_at": null,
    "last_count": 131,
-   "last_ok": "2026-11-14T19:18:07",
+   "last_ok": "2026-11-14T20:50:40",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T19:18:07",
+    "at": "2026-11-14T20:50:40",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 68,
+    "checked": 1,
     "degraded": false,
     "not_ready": 0,
     "skipped": 1,
     "term": "2026-27-zima"
-   }
+   },
+   "walled_at": "2026-11-14T20:49:18"
   },
   "wml": {
    "blocked_at": null,
@@ -239,19 +240,25 @@
   "wtc": {
    "blocked_at": null,
    "last_count": 23,
-   "last_ok": "2026-11-14T19:14:20",
+   "last_ok": "2026-11-14T20:50:43",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T19:14:20",
+    "at": "2026-11-14T20:50:43",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 14,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
     "term": "2026-27-zima"
-   }
+   },
+   "wait": {
+    "probes": 0,
+    "recovered": false,
+    "waited": 0
+   },
+   "walled_at": "2026-11-14T20:49:35"
   }
  },
  "found": {
@@ -7237,7 +7244,7 @@
    "text": "User-agent: *\nDisallow: /wp-admin/\nAllow: /wp-admin/admin-ajax.php\n\nSitemap: https://wml.wat.edu.pl/wp-sitemap.xml\n"
   },
   "wtc.wat.edu.pl": {
-   "fetched_iso": "2026-11-13T20:40:28",
+   "fetched_iso": "2026-11-14T20:50:43",
    "text": "User-agent: *\nDisallow: /wp-admin/\nAllow: /wp-admin/admin-ajax.php\n\nSitemap: https://wtc.wat.edu.pl/wp-sitemap.xml\n"
   },
   "www.wig.wat.edu.pl": {
