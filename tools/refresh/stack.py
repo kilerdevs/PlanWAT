@@ -1033,7 +1033,9 @@ class Runner:
                 d.setdefault('via', {})[me] = 'pool'
                 tor = [r for r in d.get('via_tor') or () if r != me]
                 d['via_tor'] = tor + [me] if tor_only(found) else tor  # /stan/ tells Tor from proxies
-                d['exits'] = list(dict.fromkeys(list(d.get('exits') or []) + found))[:MAX_EXITS]
+                # only public proxies are worth sharing: a Tor port (tor:9050, 127.0.0.1:...) is this machine's own
+                shared = [e for e in list(d.get('exits') or []) + found if not tor_only([e])]
+                d['exits'] = list(dict.fromkeys(shared))[:MAX_EXITS]
                 d.get('cant', {}).pop(me, None)
             elif faculty_of(slot) in self.me.pool and me not in d.get('cant', {}):
                 # the only way this runner had there: it ends at the same wall as the others

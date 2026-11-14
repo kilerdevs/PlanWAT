@@ -193,6 +193,7 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
     i przedłużało przebieg;
   - ściany trafione przez wyjścia puli mają osobny mnożnik tempa i nie spowalniają już crawla z własnego adresu runnera;
   - środowisko Pythona crawla jest budowane raz na runnera i wersję zależności (w tool cache), a nie w każdym zadaniu.
+  - na slocie są dzielone tylko publiczne proxy: lokalne porty Tor innych maszyn zajmowały tam 7 z 8 miejsc.
 - **Nowy podział pracy między serwerami: wspólny stos pracy** (`tools/refresh/stack.py`, `board.py`). Plan niczego już
   nie przydziela: każdy włączony runner bierze pracę ze wspólnego stosu przebiegu (jeden dokument na wydział na
   referencji gita, zmieniany atomowo przez compare-and-swap). Lider wydziału wylicza go i tnie na kawałki po 8 grup,

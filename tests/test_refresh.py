@@ -3686,7 +3686,7 @@ def run_pass(test, spec, sizes=SIZES, absent=(), crash=None, outage=None, reject
     [t.join(60) for t in threads]
     test.assertFalse(any(t.is_alive() for t in threads), 'a runner never ended')
     docs = {k: json.loads(v[1]) for k, v in shared.items()}
-    test.sites = {n: r.ops for n, r in runners.items()}
+    test.sites, test.docs = {n: r.ops for n, r in runners.items()}, docs
     summary = stack.summarize(docs, [{'runner': n, 'faculties': ','.join(sizes)} for n in spec], allow)
     return fetched, reports, summary, time.monotonic() - t0
 
@@ -3751,7 +3751,9 @@ class StackChaos(unittest.TestCase):
 
     def test_without_the_home_server_the_exits_found_get_the_walled_faculties_crawled(self):
         pool = ['wlo', 'wel', 'wml', 'wtc', 'wcy']
-        found = {'wml': ['http://8.8.8.8:3128'], 'wlo': ['http://9.9.9.9:80'], 'wcy': ['http://7.7.7.7:1080']}
+        # a runner's own Tor ports work only from its own machine: never shared on the slot
+        found = {'wml': ['socks5://tor:9050', 'http://8.8.8.8:3128', 'socks5://127.0.0.1:40047'],
+                 'wlo': ['http://9.9.9.9:80'], 'wcy': ['http://7.7.7.7:1080']}
         spec = {'oracle': dict(FLEET3['oracle'], hunter=True, exits=found),
                 'northflank': {'allow': {'ioe', 'wig', 'wim', *pool}, 'pool': pool, 'pool_help': ['wcy'],
                                'hunter': True, 'exits': found}}
@@ -3763,6 +3765,7 @@ class StackChaos(unittest.TestCase):
         self.assertTrue({('oracle', 'wml'), ('northflank', 'wml')} <= crawled)  # both through the exits found
         self.assertTrue(set(summary['faculties']['wml']['via_pool']) & {'oracle', 'northflank'})
         self.assertIn('wml', reports['oracle']['pool'] + reports['northflank']['pool'])
+        self.assertEqual(self.docs['s/wml']['exits'], ['http://8.8.8.8:3128'])
 
     def test_with_the_home_server_up_nobody_hunts_its_faculties(self):
         pool = ['wlo', 'wel', 'wml', 'wtc', 'wcy']

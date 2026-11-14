@@ -335,7 +335,8 @@ przejdzie, runner crawluje ten wydział przez port polowania egressu (`via` w sl
 wyjść, zawsze przez HTTPS i nigdy z adresu runnera.
 
 Znalezione wyjścia trafiają do slotu (`exits`, najwyżej 8), więc drugi runner sprawdza je własnym egressem (kilka zapytań
-zamiast polowania) i pomaga od tyłu. Polowanie na jeden slot prowadzi naraz jeden runner (`hunting`); drugi czeka na wynik.
+zamiast polowania) i pomaga od tyłu. Trafiają tam tylko publiczne proxy: porty Tor (`tor:9050`, `127.0.0.1:…`) działają
+wyłącznie na maszynie, która je ma, a każdy runner i tak sprawdza własny Tor. Polowanie na jeden slot prowadzi naraz jeden runner (`hunting`); drugi czeka na wynik.
 Polowanie zwykle nie musi już szukać: **zwiad** egressu ([docs/EGRESS.md](EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść))
 na oracle i northflanku przez cały czas sprawdza nowe proxy z list na stronach wszystkich wydziałów i trzyma dla każdego
 wydziału najszybsze sprawdzone wyjścia, więc gdy plebanii brakuje, polowanie oddaje je od razu.
