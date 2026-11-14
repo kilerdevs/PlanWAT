@@ -1,8 +1,8 @@
 {
  "blocks": {
   "wat-edge": {
-   "blocked_at": "2026-11-14T15:15:16",
-   "cause": "wall",
+   "blocked_at": null,
+   "cause": null,
    "durations": [
     {
      "at_iso": "2026-10-16T15:35:04",
@@ -188,14 +188,14 @@
   "wim": {
    "blocked_at": null,
    "last_count": 88,
-   "last_ok": "2026-11-14T12:01:45",
+   "last_ok": "2026-11-14T15:14:30",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T12:01:45",
+    "at": "2026-11-14T15:14:30",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 56,
+    "checked": 0,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
@@ -205,14 +205,14 @@
   "wlo": {
    "blocked_at": null,
    "last_count": 131,
-   "last_ok": "2026-11-14T12:15:42",
+   "last_ok": "2026-11-14T15:16:01",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T12:15:42",
+    "at": "2026-11-14T15:16:01",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 131,
+    "checked": 1,
     "degraded": false,
     "not_ready": 0,
     "skipped": 1,
@@ -7220,7 +7220,7 @@
  },
  "pacing": {
   "ioe": 1.0,
-  "wat-edge": 2.7,
+  "wat-edge": 1.5943230000000004,
   "wcy": 1.4528268337500005,
   "wig": 1.0,
   "wim": 1.0,
