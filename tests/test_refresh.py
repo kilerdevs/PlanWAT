@@ -2810,13 +2810,14 @@ class FleetCatchup(unittest.TestCase):
         # oracle stays out (its wall); northflank helps through pool exits, should its hunt find any
         self.assertEqual([(m['runner'], m['faculties'], m['pool']) for m in json.loads(values['matrix'])],
                          [('plebania', 'wlo,wml,wtc', ''), ('northflank', 'wlo,wml,wtc', 'wlo,wml,wtc')])
-        self.assertEqual(json.loads(values['asleep']), [])
+        self.assertEqual(json.loads(values['asleep']), [{'runner': 'northflank2', 'label': 'planwat-northflank2'}])
 
     def test_an_unwalled_helper_joins_the_catchup(self):
         code, values = self.plan([self.without_plebania()], ['plebania', 'oracle'])
         self.assertEqual([(m['runner'], m['faculties'], m['expected']) for m in json.loads(values['matrix'])],
                          [('plebania', 'wlo,wml,wtc', 'plebania,oracle'), ('oracle', 'wlo,wml,wtc', 'plebania,oracle')])
-        self.assertEqual(json.loads(values['asleep']), [{'runner': 'northflank', 'label': 'planwat-northflank'}])
+        self.assertEqual(json.loads(values['asleep']), [{'runner': 'northflank', 'label': 'planwat-northflank'},
+                                                        {'runner': 'northflank2', 'label': 'planwat-northflank2'}])
 
     def test_a_catchup_for_a_runner_off_again_or_owing_nothing_crawls_nothing(self):
         code, values = self.plan([self.without_plebania()], ['oracle'])

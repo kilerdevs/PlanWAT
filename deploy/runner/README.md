@@ -74,6 +74,11 @@ z polskimi wyjściami (paczka Tor Expert Bundle w tool cache, przypięty sha256)
 polskie adresy przechodzą ściany WLO, WML, WTC i WCY ([docs/EGRESS.md](../../docs/EGRESS.md#tor-polskie-wyjścia-przez-każdą-ścianę)).
 Na oracle to samo robi kontener `tor` z `compose.yml`.
 
+Darmowy projekt Northflank mieści dwie usługi, więc ten sam obraz działa też jako druga usługa `planwat-crawler-2`
+(runner `northflank2`, etykieta `planwat-northflank2`, od 14.11.2026). To usługa typu *deployment*, która bierze ostatni
+build `planwat-crawler` (bez własnego budowania), z tymi samymi zmiennymi poza `RUNNER_NAME`, `RUNNER_LABELS`, własnym
+`RUNNER_TOKEN` i własnym `RUNNER_STATE`.
+
 ## Utrzymanie
 
 - Aktualizacja egressu albo obrazu runnera: podmień pliki, `docker compose up -d --build`. Sam runner aktualizuje się
