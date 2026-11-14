@@ -1,13 +1,14 @@
 # Odświeżanie planów: ostatnie przebiegi
 
 > [!WARNING]
-> **Ostatni przebieg: część stron odrzucona.** 14 lis 2026 · 00:43 · **oracle** · **northflank** · ~~plebania~~ · 6 min · [przebieg #156](https://github.com/kilerdevs/PlanWAT/actions/runs/43529250060)
+> **Ostatni przebieg: część stron odrzucona.** 14 lis 2026 · 07:47 · **oracle** · **northflank** · ~~plebania~~ · 22 min · [przebieg #157](https://github.com/kilerdevs/PlanWAT/actions/runs/43567992348)
 > Część stron (WEL) nie przeszła kontroli, więc zostają dla nich poprzednie plany.
 
 Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
 
 | Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |
 |---|---|---|--:|--:|---|
+| 14 lis · 07:47 | Część stron odrzucona | **oracle** (IOE, WCY, WEL, WIG, WML przez proxy, WTC przez proxy, WIM (pomoc dla northflank)) · **northflank** (WIM, WLO przez proxy, IOE (pomoc dla oracle), WCY (pomoc dla oracle przez proxy), WTC (pomoc dla oracle przez proxy), WML (pomoc dla oracle przez proxy), WIG (pomoc dla oracle)) · ~~plebania~~ | 798 | 22 min | [#157](https://github.com/kilerdevs/PlanWAT/actions/runs/43567992348) |
 | 14 lis · 00:43 | Część stron odrzucona | **oracle** (IOE, WCY, WEL, WIG, WIM, WML, WTC przez proxy) · **northflank** (WLO przez proxy, WTC (pomoc dla oracle przez proxy)) · ~~plebania~~ | 40 | 6 min | [#156](https://github.com/kilerdevs/PlanWAT/actions/runs/43529250060) |
 | 13 lis · 23:17 | Część stron odrzucona | **oracle** (IOE, WCY, WEL, WIG, WIM (pomoc dla northflank), WML (pomoc dla northflank przez proxy), WTC (pomoc dla northflank przez proxy)) · **northflank** (WIM, WLO przez proxy, WML przez proxy, WTC przez proxy, IOE (pomoc dla oracle), WCY (pomoc dla oracle przez proxy), WIG (pomoc dla oracle)) · ~~plebania~~ | 707 | 19 min | [#155](https://github.com/kilerdevs/PlanWAT/actions/runs/43518082771) |
 | 13 lis · 22:22 | Zablokowany | **oracle** · **northflank** · ~~plebania~~ | 0 | 13 min | [#154](https://github.com/kilerdevs/PlanWAT/actions/runs/43510057757) |
@@ -17,9 +18,32 @@ Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w cza
 | 13 lis · 18:52 | Część stron odrzucona | **plebania** (WCY, WEL, WIM, WLO, WML, WTC, WIG (pomoc dla oracle)) · **oracle** (IOE, WIG, WEL (pomoc dla plebania), WIM (pomoc dla plebania), WCY (pomoc dla plebania)) · **northflank** (WIM (pomoc dla plebania), IOE (pomoc dla oracle), WIG (pomoc dla oracle)) | 798 | 20 min | [#149](https://github.com/kilerdevs/PlanWAT/actions/runs/43476965918) |
 | 13 lis · 10:46 | Zablokowany | **oracle** (WLO, WEL, IOE, WCY, WML, WTC, WIG, WIM (pomoc dla northflank)) · **northflank** (WIM, WIG (pomoc dla oracle)) · ~~plebania~~ | 300 | 36 min | [#148](https://github.com/kilerdevs/PlanWAT/actions/runs/43404099643) |
 | 13 lis · 02:15 | Zablokowany | **oracle** (WLO, WEL, IOE, WCY, WML, WTC, WIG, WIM (pomoc dla northflank)) · **northflank** (WIM, IOE (pomoc dla oracle)) · ~~plebania~~ | 441 | 24 min | [#147](https://github.com/kilerdevs/PlanWAT/actions/runs/43343452080) |
-| 12 lis · 19:28 | Zmiany w 38 planach | **plebania** (WLO, WEL, WML, WTC, IOE (pomoc dla oracle), WIM (pomoc dla northflank), WCY (pomoc dla oracle), WIG (pomoc dla oracle)) · **oracle** (IOE, WCY, WIG, WIM (pomoc dla plebania), WEL (pomoc dla plebania)) · **northflank** (WIM, WIG (pomoc dla oracle)) | 592 | 24 min | [#146](https://github.com/kilerdevs/PlanWAT/actions/runs/43280095510) |
 
 ## Szczegóły
+
+<details>
+<summary><b>14 lis · 07:47</b> · Część stron odrzucona · oracle · northflank</summary>
+
+Część stron (WEL) nie przeszła kontroli, więc zostają dla nich poprzednie plany. Przebieg automatyczny [#157](https://github.com/kilerdevs/PlanWAT/actions/runs/43567992348), od planu do raportu 22 min.
+
+| Serwer | Wydziały | Zmienione | Stan |
+|---|---|--:|---|
+| **oracle** | IOE, WCY, WEL, WIG, WML przez proxy, WTC przez proxy, WIM (pomoc dla northflank) | 3 | 21 min, zablokowany na WLO |
+| **northflank** | WIM, WLO przez proxy, IOE (pomoc dla oracle), WCY (pomoc dla oracle przez proxy), WTC (pomoc dla oracle przez proxy), WML (pomoc dla oracle przez proxy), WIG (pomoc dla oracle) | 10 | 21 min |
+| plebania | | | wyłączony |
+
+| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
+|---|---|--:|--:|---|
+| WLO | northflank | 131 | 0 | przez proxy (pula) na northflank, blokada dla oracle, odrzucone strony: 1 |
+| WEL | oracle | 160 | 0 | odrzucone strony: 3 z 160 |
+| WIM | northflank | 88 | 0 | z pomocą oracle |
+| IOE | oracle | 15 | 0 | z pomocą northflank |
+| WCY | oracle | 186 | 13 | z pomocą northflank, przez proxy (pula) na northflank, odrzucone strony: 1, bez planu na ten semestr: 51 |
+| WML | oracle | 162 | 0 | z pomocą northflank, przez proxy (pula) na northflank, oracle |
+| WTC | oracle | 23 | 0 | z pomocą northflank, przez proxy (pula) na northflank, oracle |
+| WIG | oracle | 33 | 0 | z pomocą northflank |
+
+</details>
 
 <details>
 <summary><b>14 lis · 00:43</b> · Część stron odrzucona · oracle · northflank</summary>
@@ -229,29 +253,5 @@ Strona wydziału WLO, WML, WTC zablokowała pobieranie. Zostają poprzednie plan
 | WTC | oracle | 0 | 0 | blokada Incapsula |
 | WIG | oracle | 33 | 0 |  |
 | WIM | northflank | 52 | 0 | z pomocą oracle |
-
-</details>
-
-<details>
-<summary><b>12 lis · 19:28</b> · Zmiany w 38 planach · plebania · oracle · northflank</summary>
-
-Pobrano nowe wersje 38 planów. Przebieg automatyczny [#146](https://github.com/kilerdevs/PlanWAT/actions/runs/43280095510), od planu do raportu 24 min.
-
-| Serwer | Wydziały | Zmienione | Stan |
-|---|---|--:|---|
-| **plebania** | WLO, WEL, WML, WTC, IOE (pomoc dla oracle), WIM (pomoc dla northflank), WCY (pomoc dla oracle), WIG (pomoc dla oracle) | 28 | 23 min |
-| **oracle** | IOE, WCY, WIG, WIM (pomoc dla plebania), WEL (pomoc dla plebania) | 9 | 20 min |
-| **northflank** | WIM, WIG (pomoc dla oracle) | 1 | 3 min |
-
-| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
-|---|---|--:|--:|---|
-| WLO | plebania | 131 | 0 | odrzucone strony: 1 |
-| WEL | plebania | 140 | 6 | z pomocą oracle, odrzucone strony: 3 |
-| WML | plebania | 162 | 23 |  |
-| WTC | plebania | 23 | 2 |  |
-| IOE | oracle | 9 | 0 | z pomocą plebania |
-| WCY | oracle | 69 | 0 | z pomocą plebania, odrzucone strony: 1, bez planu na ten semestr: 51 |
-| WIG | oracle | 21 | 0 | z pomocą northflank, plebania |
-| WIM | northflank | 37 | 1 | z pomocą oracle, plebania |
 
 </details>
