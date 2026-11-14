@@ -162,8 +162,10 @@ LEGACY_TARGETS = {'wlo.wat.edu.pl': 'https://wlo.wat.edu.pl/planyzajec/zima/inde
 
 # WAF/captive-portal bodies can be HTTP 200 with plenty of bytes. A probe that lands on
 # one must not count as "this proxy reaches the faculty".
+# Good pages behind Incapsula carry its sensor script (`_Incapsula_Resource?...`), so the bare name is no block sign:
+# only its block page's own words are (as core.is_blocked has it).
 BLOCK_MARKERS = (
-    b'incapsula', b'request unsuccessful', b'access denied',
+    b'incapsula incident id', b'incident_id=', b'request unsuccessful', b'access denied',
     b'attention required! | cloudflare', b'cf-error-details',
     b'cloudflare ray id', b'cf-browser-verification', b'__cf_chl',
     b'captcha-delivery', b'are you a robot', b'zablokowan',
@@ -1287,6 +1289,7 @@ class ProxyPool:
         hosts = [h for h in dict.fromkeys(hosts) if h in self.round2]
         found = {h: [] for h in hosts}
         tried = {h: 0 for h in hosts}
+        fresh = {h: 0 for h in hosts}  # handed out as just verified, without a probe of this hunt's own
         now = time.time()
         recent = {h for h in hosts
                   if self.hunts.get(h, {}).get('state') == 'done' and now - self.hunts[h].get('at', 0) < HUNT_CACHE_S}
@@ -1303,11 +1306,20 @@ class ProxyPool:
                     break
                 if now - (c['checked'] or 0) <= HUNT_TRUST_S:
                     found[h].append(c['url'])
+                    fresh[h] += 1
                     continue
                 tried[h] += 1
                 if probe(c['url'], h):
                     found[h].append(c['url'])
-        searching = [h for h in hosts if len(found[h]) < want and h not in recent]
+        # the operator's own Tor ports next, whatever their Round 1: a local egress started for this very hunt has not
+        # run it yet, and until then they are no candidates below (a few probes where Tor usually gets through)
+        for h in hosts:
+            for u in self.pinned:
+                if len(found[h]) < want and u not in found[h]:
+                    tried[h] += 1
+                    if probe(u, h):
+                        found[h].append(u)
+        searching =[h for h in hosts if len(found[h]) < want and h not in recent]
         if searching:
             # "every proxy with a sensible ping": a fresh pool (a local egress just started) has Round-1 probed only
             # a sample of the lists, so keep probing the ones nobody tried yet until enough fast ones are known
@@ -1370,8 +1382,8 @@ class ProxyPool:
         out = {}
         for h in hosts:
             exits = list(dict.fromkeys(found[h]))
-            out[h] = {'state': 'done', 'verified': len(exits), 'tried': tried[h], 'exits': exits[:ADOPT_CAP],
-                      'at': done, 'error': None}
+            out[h] = {'state': 'done', 'verified': len(exits), 'tried': tried[h], 'fresh': fresh[h],
+                      'exits': exits[:ADOPT_CAP], 'at': done, 'error': None}
         with self._hunt_lock:
             self.hunts.update(out)
         self._save_throttled(force=True)

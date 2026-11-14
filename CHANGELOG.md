@@ -16,6 +16,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Panel floty** (`tools/dash/`, `tools/refresh/telemetry.py`, [`docs/DASHBOARD.md`](docs/DASHBOARD.md)): lokalna
+  aplikacja tylko na komputerze operatora (`127.0.0.1:8765`), która na żywo pokazuje przebieg: wydziały z kawałkami w
+  kolorach runnerów, drogi (własny adres, Tor, wyjścia z puli, ściany, polowania), runnery z obciążeniem, odpowiedziami
+  według dróg, Torem i polowaniami, oś czasu pasów i zdarzenia z filtrami. Do tego historię: czas przebiegów,
+  wykorzystanie i udział runnerów, drogi do wydziałów i kolejkę GitHuba. Telemetria jedzie na biciu serca runnera,
+  zaszyfrowana kluczem `PLANWAT_DASH_KEY`, więc w publicznym repozytorium nikt poza operatorem jej nie odczyta.
 - **Runnery `oracle2` i `oracle3`** (`tools/refresh/fleet.json`, `deploy/runner/README.md`): drugi i trzeci darmowy VPS
   Oracle (Ampere A1, aarch64) z tym samym zestawem co oracle1 (runner, egress ze zwiadem, Tor), które pomagają na stosie
   pracy.
@@ -186,6 +192,23 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Bicie serca runnera co 15 s zamiast 30 s** (`tools/refresh/stack.py`), żeby panel floty był świeży. Raport
+  przebiegu zachowuje ostatnie dokumenty stosu na `refs/planwat/archive/` przez 30 dni (`board.py archive`), zanim go
+  usunie.
+- **Nikt nie stoi, gdy jeden runner crawluje wydział przez wyjścia** (`tools/refresh/stack.py`): runner na wyjściach
+  puli (`via: pool`) nie liczy się już jako docierający bezpośrednio, więc pozostałe runnery z egressem szukają własnych
+  wyjść (zwykle własnego Tora) i pomagają, dopóki zostało co najmniej 24 grup. Ścieżka po kawałku najpierw otwiera
+  nieotwarty slot swojej grupy polityki (WLO obok WEL), więc ściana WLO jest znana w pierwszych minutach, a nie po WEL.
+- **Ręczny przebieg może sprawdzić wszystkie grupy** (`refresh.yml`, `refresh-crawl.yml`, akcja `refresh`): opcja
+  `force` przekazuje `--force`, czyli sprawdza także grupy sprawdzone w ostatniej godzinie.
+- **Szybsze przebiegi odświeżania** (`tools/refresh/stack.py`, `refresh.py`, `egress.py`, `.github/actions/refresh`):
+  - rozmiar kawałka na stosie nie jest już stały (8 grup), tylko zależy od pracy, która została, i liczby runnerów na
+    chodzie: od 3 do 24 grup, duże na początku i małe na końcu;
+  - polowanie na wyjścia kończy się, gdy slot skończył już inny runner. Wcześniej trwało do 8 minut po zakończeniu pracy
+    i przedłużało przebieg;
+  - ściany trafione przez wyjścia puli mają osobny mnożnik tempa i nie spowalniają już crawla z własnego adresu runnera;
+  - środowisko Pythona crawla jest budowane raz na runnera i wersję zależności (w tool cache), a nie w każdym zadaniu.
+  - na slocie są dzielone tylko publiczne proxy: lokalne porty Tor innych maszyn zajmowały tam 7 z 8 miejsc.
 - **Nowy podział pracy między serwerami: wspólny stos pracy** (`tools/refresh/stack.py`, `board.py`). Plan niczego już
   nie przydziela: każdy włączony runner bierze pracę ze wspólnego stosu przebiegu (jeden dokument na wydział na
   referencji gita, zmieniany atomowo przez compare-and-swap). Lider wydziału wylicza go i tnie na kawałki po 8 grup,
@@ -242,6 +265,32 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Czytelna linia polowania** (`tools/egress/pool.py`, `tools/refresh/egress.py`): zamiast mylącego „0 tried” log
+  mówi, ile wyjść było świeżo sprawdzonych i ile prób wykonało samo polowanie.
+- **Runner nie zamiera po przegranym wyścigu w magazynie** (`tools/refresh/board.py`): przerwa przed ponowieniem
+  zamiany trzymała blokadę wszystkich wywołań gita runnera, więc jedna ścieżka potrafiła na ok. 50 s zatrzymać pozostałe
+  i bicie serca.
+- **Tor na northflanku znów startuje** (`tools/refresh/egress.py`): Tor zgubiony przez `tor.json` (zadanie przerwane w
+  trakcie) trzymał katalog danych, więc każdy nowy kończył się od razu. Przed startem egress kończy każdy Tor ze swoim
+  `torrc`.
+- **Wyjście, przez które idzie dobra strona WLO, nie jest już odrzucane** (`tools/egress/pool.py`): sprawdzenie wyjścia
+  uznawało za stronę blokady każdą stronę ze słowem „incapsula”, a dobre strony wydziałów niosą skrypt czujnika Incapsuli
+  (`_Incapsula_Resource`). Liczą się teraz tylko słowa samej strony blokady (numer incydentu), jak w crawlerze.
+- **Polowanie sprawdza własny Tor, nawet świeżo uruchomiony** (`tools/egress/pool.py`): porty Tor wchodziły do
+  polowania dopiero po pierwszej rundzie żywotności, a tymczasowy egress northflanka uruchamia Tor razem z polowaniem.
+  northflank1 szukał więc tylko wśród publicznych proxy i nie wszedł do WLO ani WCY, choć jego Tor je przechodził.
+  Polowanie sprawdza teraz porty Tor na stronie wydziału zaraz po znanych wyjściach.
+- **Northflank znów pomaga przy WCY** (`pool_help`, `tools/refresh/stack.py`): warunek liczył wolne kawałki, a odkąd
+  kawałki są cięte przy braniu, otwarty slot ma zwykle jeden duży; liczy się teraz wolne grupy.
+- **Przebieg, który wisiał na jednym kawałku albo jednym wyliczaniu** (`tools/refresh/stack.py`, `board.py`,
+  `.github/actions/refresh`):
+  - wynik kawałka, którego magazyn nie przyjął po przegranych wyścigach, przepadał, a kawałek zostawał zajęty przez
+    runnera, który już po niego nie wracał; inne runnery czekały na niego do końca zadania. Zamiana jest teraz ponawiana,
+    a ścieżka, która się kończy, oddaje to, co jeszcze trzyma. Magazyn próbuje 10 razy z rosnącą przerwą zamiast 6;
+  - wybór następnego kawałka z próby, która przegrała wyścig, zostawał ważny: runner zaczynał kawałek innego runnera i od
+    razu go przerywał;
+  - lider, który zawiesił się na wyliczaniu wydziału, blokował slot: po 4 minutach bez postępu otwiera go inny runner;
+  - anulowane zadanie zostawiało działający crawl i jego egress (na Northflanku). Krok kończy teraz całą ich grupę procesów.
 - **Log crawla zalany jednym ostrzeżeniem** (`tools/refresh/rozklad2ics.py`): „unknown subject …; assigned fallback colour”
   szło przy każdych zajęciach WCY, ok. 11 tys. linii, 95% logu przebiegu. Kolor zastępczy jest deterministyczny i dotyczy
   większości przedmiotów, więc ostrzeżenie zniknęło.

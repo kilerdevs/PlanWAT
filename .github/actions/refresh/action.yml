@@ -14,6 +14,12 @@ inputs:
   faculty:
     description: Comma-separated faculties; empty means every enabled one.
     default: ''
+  force:
+    description: true rechecks every group, also those checked within --fresh-hours.
+    default: 'false'
+  dash-key:
+    description: The operator's dashboard key (64 hex digits); the runner's heartbeat then carries its telemetry, sealed with it (docs/DASHBOARD.md). Empty = none.
+    default: ''
   census:
     description: Comma-separated faculties whose site census to take after the crawl (at most once a week; project mode only).
     default: ''
@@ -121,17 +127,32 @@ runs:
         if [ -f "$RUNNER_TOOL_CACHE/planwat/egress/daemon.json" ]; then
           python3 "$GITHUB_WORKSPACE/$SOURCE/tools/refresh/egress.py" stop || true
         fi
-        # Dependencies go into a throwaway venv on writable scratch: the self-hosted runner's baked
-        # /opt/venv is read-only at job time (container hardening), so `pip install` there fails
-        # with EROFS. $RUNNER_TEMP is writable on both hosted and self-hosted runners.
-        python -m venv "$RUNNER_TEMP/planwat-venv"
-        "$RUNNER_TEMP/planwat-venv/bin/python" -m pip install --disable-pip-version-check curl_cffi==0.13.0 pymupdf==1.28.2
-        echo "PLANWAT_PY=$RUNNER_TEMP/planwat-venv/bin/python" >> "$GITHUB_ENV"
+        # Dependencies go into a venv of their own: the self-hosted runner's baked /opt/venv is read-only at job time
+        # (container hardening), so `pip install` there fails with EROFS. It is kept in the tool cache, which the
+        # project's runners keep between jobs, named by the Python and the pins: built once per runner and version,
+        # in a scratch dir moved into place only once it imports, so a half-built one is never reused.
+        pins='curl_cffi==0.13.0 pymupdf==1.28.2 cryptography==50.0.0'
+        tag="$(python -c 'import sys; print("%d.%d" % sys.version_info[:2])')-$(printf '%s' "$pins" | sha256sum | cut -c1-12)"
+        venv="$RUNNER_TOOL_CACHE/planwat/crawl-venv-$tag"
+        if "$venv/bin/python" -c 'import curl_cffi, fitz, cryptography' 2>/dev/null; then
+          echo "crawl venv reused ($tag)"
+        else
+          mkdir -p "$RUNNER_TOOL_CACHE/planwat"
+          rm -rf "$venv" "$venv.new"
+          python -m venv "$venv.new"
+          # shellcheck disable=SC2086 # the pins are words
+          "$venv.new/bin/python" -m pip install --disable-pip-version-check $pins
+          "$venv.new/bin/python" -c 'import curl_cffi, fitz, cryptography'
+          # only bin/python is used, which finds its venv from wherever it sits (pip's script shebangs would not)
+          mv "$venv.new" "$venv"
+        fi
+        echo "PLANWAT_PY=$venv/bin/python" >> "$GITHUB_ENV"
     - id: run
       shell: bash
       env:
         PROFILE: ${{ inputs.profile }}
         FACULTY: ${{ inputs.faculty }}
+        FORCE: ${{ inputs.force }}
         CENSUS: ${{ inputs.census }}
         RUNNER: ${{ inputs.runner }}
         BOARD: ${{ inputs.board }}
@@ -152,12 +173,15 @@ runs:
         # The crawler also streams coarse live progress here (run/faculty/tick/done/wait, ticks
         # throttled) for the egress GUI's crawl card. Also best effort.
         PLANWAT_EGRESS_PROGRESS: http://egress:8080/api/progress
+        # Seals the runner's telemetry on its heartbeat for the operator's dashboard (tools/refresh/telemetry.py).
+        PLANWAT_DASH_KEY: ${{ inputs.dash-key }}
       run: |
         # Exit 3 (blocked) and 4 (incomplete) are results, not failures: they are reported through the outputs.
         set +e
         args=(--out data --profile "$PROFILE" --max-minutes "$MAX_MINUTES" --adaptive-hours "$ADAPTIVE_HOURS"
               --max-block-wait-minutes "$BLOCK_WAIT")
         if [ -n "$FACULTY" ]; then args+=(--faculty "$FACULTY"); fi
+        if [ "$FORCE" = true ]; then args+=(--force); fi
         if [ "$MODE" = volunteer ]; then
           # The registry comes from the project, not from the fork, and only from a commit GitHub verifies as
           # signed by a registry editor (tools/volunteer/registry.py): it decides who checks what.
@@ -183,8 +207,14 @@ runs:
             args+=(--board "$BOARD" --runner "$RUNNER" --expected "$EXPECTED" --fallback "$FALLBACK")
           fi
         fi
-        "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}"
+        # Its own process group, with the temporary egress a hunt starts: a cancelled job stops both. Bash alone
+        # passes the runner's SIGINT/SIGTERM on to nobody, and the crawl went on writing to a dead pass (14.11.2026).
+        setsid "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}" &
+        pid=$!
+        trap 'kill -TERM -- "-$pid" 2>/dev/null' INT TERM
+        wait "$pid"
         code=$?
+        if kill -0 "$pid" 2>/dev/null; then wait "$pid"; code=$?; fi  # the trap cut the first wait short
         if [ "$code" -ne 0 ] && [ "$code" -ne 3 ] && [ "$code" -ne 4 ]; then exit "$code"; fi
         exit 0
     - id: bundle

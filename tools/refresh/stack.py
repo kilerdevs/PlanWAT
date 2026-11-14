@@ -6,9 +6,11 @@ coming one, its pass over that (slot "wml~2027-28-zima"). Each slot is one docum
 changed only by compare-and-swap:
 
   open     The first runner to claim a slot (its leader) lists the faculty, leaves out what is fresh or not ready, and
-           cuts the rest, stalest first, into chunks of CHUNK groups: a stack with two ends.
+           puts the rest, stalest first, on the slot: a stack with two ends.
   claim    The leader takes chunks from the front, every other runner (a helper) from the back, so they meet in the
-           middle of the faculty's list. Finishing a chunk and taking the next is one swap; a helper first lists the
+           middle of the faculty's list. A chunk is cut off as it is taken, sized by the work left and the runners up
+           to share it (chunk_size): big while much is left, small at the end, so the runners finish together.
+           Finishing a chunk and taking the next is one swap; a helper first lists the
            faculty from its own address (the pages' links, and its wall probe), and only then takes anything.
   choose   Which slot a runner's lane turns to next is one pure function of what the store says (choose()): a runner
            opens the slots it prefers (fleet.json `prefers`) first, and the others leave those to it while it is up;
@@ -55,12 +57,16 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import board  # noqa: E402
+import telemetry  # noqa: E402
 
-CHUNK = 8               # groups per chunk
-HEARTBEAT = 30          # a runner's doc is pushed at least this often
+MIN_CHUNK = 3           # groups per chunk at the end of a slot (each chunk costs a swap on the store)
+MAX_CHUNK = 24          # ... and at most, while much is left (well inside LANE_STALE at the slowest pacing)
+HEARTBEAT = 15          # a runner's doc is pushed at least this often (it carries the dashboard's telemetry)
 STALE = 150             # a runner whose doc stood still this long is gone (by the reader's own clock)
 JOIN_GRACE = 180        # an expected runner that has not shown up this long after we started is not waited for
 LANE_STALE = 600        # a lane holding a chunk without a page checked this long is stuck
+LISTING_STALE = 240     # a lane listing a slot without moving this long is stuck (a listing is a few requests)
+SETTLE_TRIES = 5        # swaps to hand a crawled chunk's result in before the lane gives it up (and back, at its end)
 POLL = 10               # seconds between reads of the store
 STORE_DOWN = 180        # the store unreadable this long: finish what this runner leads, then stop
 RETRY_ERROR = 300       # a listing that failed for another reason than a wall is tried once more after this long
@@ -122,9 +128,25 @@ class StoreUnavailable(Exception):
 # -- the documents ---------------------------------------------------------------------------------------------------
 
 
-def chunks_of(codes, size=CHUNK):
-    return [{'id': i, 'codes': codes[i * size:(i + 1) * size], 'state': 'free', 'by': None, 'fails': 0}
-            for i in range((len(codes) + size - 1) // size)]
+def chunk_size(free, workers):
+    """Groups to take at once: a share of what is free, halved so the last runners to finish still find work."""
+    return max(MIN_CHUNK, min(MAX_CHUNK, -(-free // (2 * max(1, workers)))))
+
+
+def split(d, at, front, n):
+    """Cut `n` codes off chunk `at` (its front for the leader, its back for a helper) as a chunk of their own, the rest
+    staying free where it is; the index of the chunk to take."""
+    c = d['chunks'][at]
+    if len(c['codes']) <= n:
+        return at
+    piece, rest = (c['codes'][:n], c['codes'][n:]) if front else (c['codes'][-n:], c['codes'][:-n])
+    c.update(codes=rest, state='free', by=None)
+    # both halves keep the failures counted: a page that crashes the crawl still closes its chunk after MAX_FAILS
+    new = {'id': d.get('next', len(d['chunks'])), 'codes': piece, 'state': 'free', 'by': None,
+           'fails': c.get('fails', 0)}
+    d['next'] = new['id'] + 1
+    d['chunks'].insert(at if front else at + 1, new)
+    return at if front else at + 1
 
 
 def remaining(doc):
@@ -207,7 +229,10 @@ class Peers:
         names = set(self.docs) | {r for r, _ in self.ticks}
         hung = set()
         for (name, group), ((slot, chunk, _), since) in self.ticks.items():
-            if chunk is not None and self.status(name) == 'live' and self.read_at - since > self.lane_stale:
+            if slot is None or self.status(name) != 'live':
+                continue
+            # a lane on a slot without a chunk is listing it (or idles after: only a slot still `listing` cares)
+            if self.read_at - since > (self.lane_stale if chunk is not None else LISTING_STALE):
                 hung.add((name, slot, chunk))
         return {n: self.status(n) for n in names}, hung, now - self.started
 
@@ -318,8 +343,9 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
         return faculty_of(s) not in me.pool_of.get(r, ()) or via_of(s, r) == 'pool'
 
     def direct(r, s):
-        """`r` may reach `s` from its own address and has not met its wall there."""
-        return me.may(r, s) and cant_of(s, r) is None and faculty_of(s) not in me.pool_of.get(r, ())
+        """`r` may reach `s` from its own address and has not met its wall there (not just through exits)."""
+        return me.may(r, s) and cant_of(s, r) is None and faculty_of(s) not in me.pool_of.get(r, ()) \
+            and via_of(s, r) != 'pool'
 
     def others_able(s):
         return sum(1 for r in me.expected if able(r, s) and not view.gone(r))
@@ -338,12 +364,19 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
             return False
         return any(f in me.prefers_of.get(r, ()) and able(r, s) and not view.gone(r) for r in me.expected)
 
-    def claimable(s):
+    def takeable(s):
         d = doc(s)
         if not d or d.get('state') != 'open':
-            return 0
-        return sum(1 for c in d.get('chunks', [])
-                   if c.get('state') == 'free' or (c.get('state') == 'held' and view.holder_dead(c, s)))
+            return []
+        return [c for c in d.get('chunks', [])
+                if c.get('state') == 'free' or (c.get('state') == 'held' and view.holder_dead(c, s))]
+
+    def claimable(s):
+        return len(takeable(s))
+
+    def left(s):
+        """Groups free to take on `s`."""
+        return sum(len(c.get('codes', ())) for c in takeable(s))
 
     def hunting_elsewhere(s):
         """Another runner up is searching exits for `s` right now."""
@@ -363,11 +396,13 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
             return False
         if exits:
             return True  # another runner found exits: checking them is a few requests, then this one helps
-        if hunting_elsewhere(s):
+        direct_up = any(direct(r, s) and not view.gone(r) for r in me.expected)
+        if (f in me.pool_help or not direct_up) and left(s) >= MAX_CHUNK:
+            return True  # enough left to pay for a search of its own, beside any other runner's
+        if direct_up or hunting_elsewhere(s):
             return False
-        if f in me.pool_help and claimable(s) >= 2:
-            return True
-        return not any(direct(r, s) and not view.gone(r) for r in me.expected)
+        # nobody up reaches it: one search at a time (its exits are shared), none once a runner crawls it through exits
+        return not any(via_of(s, r) == 'pool' and able(r, s) and not view.gone(r) for r in me.expected)
 
     # 1. open: what this runner prefers, then what only it can take, the largest first; never what another prefers
     opens = [s for s in mine if openable(s) and not blocked_here(s) and not reserved(s)]
@@ -482,9 +517,10 @@ class Ops:
         """Wait a wall out; True when it is down."""
         return False
 
-    def hunt(self, slot, exits):
+    def hunt(self, slot, exits, stop=None):
         """Find proxy exits that get through to the slot's faculty, the shared `exits` checked first: the ones that
-        work (from then on this runner reaches the slot through them), [] for none. May raise."""
+        work (from then on this runner reaches the slot through them), [] for none (or once stop() is true). May
+        raise."""
         return []
 
 
@@ -493,7 +529,7 @@ class Runner:
 
     def __init__(self, store, me, ops, lanes=6, deadline=None, clock=time.monotonic, sleep=time.sleep, log=print,
                  poll=None, heartbeat=None, stale=None, join_grace=None, lane_stale=None, store_down=None,
-                 retry_error=None, chunk=None):
+                 retry_error=None):
         # the module's timings unless given (read now, so a test may shorten them for a whole run)
         poll = POLL if poll is None else poll
         heartbeat = HEARTBEAT if heartbeat is None else heartbeat
@@ -502,12 +538,10 @@ class Runner:
         lane_stale = LANE_STALE if lane_stale is None else lane_stale
         store_down = STORE_DOWN if store_down is None else store_down
         retry_error = RETRY_ERROR if retry_error is None else retry_error
-        chunk = CHUNK if chunk is None else chunk
         self.store, self.me, self.ops, self.log = store, me, ops, log
         self.clock, self.sleep = clock, sleep
         self.deadline = deadline
         self.poll, self.heartbeat, self.store_down, self.retry_error = poll, heartbeat, store_down, retry_error
-        self.chunk = chunk
         self.gate = Gate(lanes)
         self.peers = Peers(me.name, clock, stale=stale, lane_stale=lane_stale, join_grace=join_grace)
         self.lock = threading.RLock()
@@ -530,8 +564,12 @@ class Runner:
     def _doc(self, mode='run'):
         with self.lock:
             self.beat += 1
-            return {'runner': self.me.name, 'nonce': self.nonce, 'beat': self.beat, 'mode': mode,
-                    'lanes': copy.deepcopy(self.lanes)}
+            doc = {'runner': self.me.name, 'nonce': self.nonce, 'beat': self.beat, 'mode': mode,
+                   'lanes': copy.deepcopy(self.lanes)}
+        tel = telemetry.sealed()  # only the operator's key opens it (docs/DASHBOARD.md); none without the key
+        if tel:
+            doc['tel'] = tel
+        return doc
 
     def _read(self):
         docs = self.store.read()
@@ -639,8 +677,27 @@ class Runner:
             self.log(f'stack: lane {group} failed ({err!r})')
         finally:
             self.gate.drop(group)
+            self._release(group)
             with self.lock:
                 self.lanes.pop(group, None)
+
+    def _release(self, group):
+        """A lane that ends gives back what it still holds (a result the store would not take, a crash): nobody else
+        takes a chunk of a runner that is up, and this lane will not come back for it."""
+        me = self.me.name
+
+        def free(d):
+            held = [c for c in (d or {}).get('chunks', []) if c.get('state') == 'held' and c.get('by') == me]
+            for c in held:
+                c.update(state='free', by=None)
+            return d if held else None
+        for slot in [s for s in self.me.slots if self.me.groups.get(s) == group]:
+            with self.lock:
+                mine = any(c.get('state') == 'held' and c.get('by') == me
+                           for c in (self.slots.get(slot) or {}).get('chunks', []))
+            if mine:
+                self.log(f'[{slot}] giving back a chunk this lane still held')
+                self._update(slot, free)
 
     def _late(self):
         return self.halt.is_set() or (self.deadline is not None and self.clock() >= self.deadline)
@@ -784,7 +841,8 @@ class Runner:
         except Exception as err:
             self._cant(slot, 'error', err)
             return True
-        chunks = chunks_of(list(codes), self.chunk)
+        codes = list(codes)
+        chunks = [{'id': 0, 'codes': codes, 'state': 'free', 'by': None, 'fails': 0}] if codes else []
 
         def publish(d):
             if d is None or d.get('leader') != me or d.get('state') != 'listing':
@@ -800,15 +858,20 @@ class Runner:
             with self.lock:
                 self.led.add(slot)
             if chunks:
-                self.log(f'[{slot}] leading it: {len(codes)} groups in {len(chunks)} chunks')
+                self.log(f'[{slot}] leading it: {len(codes)} groups')
         return True
 
     def _pick(self, d, front, view):
+        """The chunk to take (free, or held by a runner gone), cut to chunk_size; its index, None for none."""
         free = [i for i, c in enumerate(d.get('chunks', []))
                 if c.get('state') == 'free' or (c.get('state') == 'held' and view.holder_dead(c, d['slot']))]
         if not free:
             return None
-        return free[0] if front else free[-1]
+        slot = d['slot']
+        workers = 1 + sum(1 for r in self.me.expected if self.me.may(r, slot) and r not in (d.get('cant') or {})
+                          and not view.gone(r))
+        left = sum(len(d['chunks'][i]['codes']) for i in free)
+        return split(d, free[0] if front else free[-1], front, chunk_size(left, workers))
 
     def _settle(self, d, chunk_id, result, me):
         """Fold a chunk's result into the doc: done, its rest back on the stack, or a failure counted."""
@@ -854,6 +917,7 @@ class Runner:
         view = self.view()
 
         def take(d):
+            held[0] = None  # the store may call this again after a lost race: only the last call's pick counts
             if d is None or d.get('state') != 'open' or (me in d.get('cant', {}) and slot in self.me.cant):
                 return None
             at = self._pick(d, front, view)
@@ -875,12 +939,15 @@ class Runner:
                     if self.me.via.get(slot) == 'pool':
                         self.me.via[slot] = 'lost'  # the exits met the wall too: no more this pass, unless new ones
                         self.log(f'[{slot}] the exits met its wall too')
-            go_on = (not result.get('blocked') and result.get('error') is None and not result.get('cut')
-                     and not self._late() and not self.store_away() and not self.gate.outranked(prio))
             held[0] = None
             view = self.view()
+            # a slot of this group still to open goes first (a wall met early lets the others hunt it meanwhile)
+            go_on = (not result.get('blocked') and result.get('error') is None and not result.get('cut')
+                     and not self._late() and not self.store_away() and not self.gate.outranked(prio)
+                     and choose(view, self.me, group, self.clock(), self.retry_error)[0] != 'open')
 
             def settle(d):
+                held[0] = None  # as in take: a pick from a call that lost its race is no pick
                 if d is None:
                     return None
                 ok = self._settle(d, chunk_id, result, me)
@@ -891,9 +958,14 @@ class Runner:
                         held[0] = d['chunks'][at]['id']
                 return d if ok else None
             doc, written = self._update(slot, settle)
+            for n in range(SETTLE_TRIES):
+                if doc is not None or self.store_away():
+                    break
+                self._nap(min(30, 2 ** n))  # a lost race (or the store away a moment): the result still counts
+                doc, written = self._update(slot, settle)
             if doc is None:
-                # the store would not take the result: the groups stay checked here, the chunk goes back when this
-                # runner's lease runs out (the others see it held by a runner that moves on)
+                # the store would not take the result: the groups stay checked here, and the chunk goes back to the
+                # stack when this lane ends (_release)
                 break
         with self.lock:
             self.lanes[group] = {'slot': None, 'chunk': None, 'tick': self.lanes.get(group, {}).get('tick', 0)}
@@ -991,7 +1063,9 @@ class Runner:
         self.log(f'[{slot}] {why}; '
                  + (f'checking the {len(exits)} exits found for it' if exits else 'hunting the pool for exits to it'))
         try:
-            found = [e for e in self.ops.hunt(slot, exits) or [] if isinstance(e, str)]
+            # a search may take minutes: it ends once the slot is done (by others) or the pass's time is up
+            stop = lambda: self._late() or not remaining(self.view().slots.get(slot))  # noqa: E731
+            found = [e for e in self.ops.hunt(slot, exits, stop=stop) or [] if isinstance(e, str)]
             outcome = 'found' if found else 'none'
         except Exception as err:
             self.log(f'[{slot}] the hunt failed ({err!r})')
@@ -1007,7 +1081,9 @@ class Runner:
                 d.setdefault('via', {})[me] = 'pool'
                 tor = [r for r in d.get('via_tor') or () if r != me]
                 d['via_tor'] = tor + [me] if tor_only(found) else tor  # /stan/ tells Tor from proxies
-                d['exits'] = list(dict.fromkeys(list(d.get('exits') or []) + found))[:MAX_EXITS]
+                # only public proxies are worth sharing: a Tor port (tor:9050, 127.0.0.1:...) is this machine's own
+                shared = [e for e in list(d.get('exits') or []) + found if not tor_only([e])]
+                d['exits'] = list(dict.fromkeys(shared))[:MAX_EXITS]
                 d.get('cant', {}).pop(me, None)
             elif faculty_of(slot) in self.me.pool and me not in d.get('cant', {}):
                 # the only way this runner had there: it ends at the same wall as the others

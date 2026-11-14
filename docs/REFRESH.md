@@ -79,7 +79,9 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   `degraded=true`.
 - **Tempo i częstotliwość dostosowują się.** `--fresh-hours` (nadpisywalne dla wydziału, nigdy poniżej 1 h) zmniejsza się o
   połowę w sierpniu, styczniu i lutym, gdy wydziały publikują nadchodzący semestr. Przerwa między stronami skaluje się dla
-  każdej grupy polityki (AIMD: ×1,5 przy blokadzie do 3×, ×0,9 przy czystym wydziale do 1×).
+  każdej grupy polityki (AIMD: ×1,5 przy blokadzie do 3×, ×0,9 przy czystym wydziale do 1×). Crawl przez wyjścia puli
+  ma osobny mnożnik (`<grupa>@pool`, tylko w stanie łącza runnera): ściana trafiona przez cudze wyjście nie spowalnia
+  stron, które runner bierze ze swojego adresu.
 - **Ciche grupy wydłużają sobie przerwę, zmieniające wracają na pełne tempo.** Każde zakończone sprawdzenie, po którym plan
   wyszedł ten sam (również `304`), podwaja przerwę przed następnym sprawdzeniem tej grupy: 1 h, 2 h, 4 h… — do sufitu
   `--adaptive-hours` (w akcji 4 h; 0 wyłącza rozciąganie i przywraca sprawdzanie przy każdym przebiegu). Miesiące publikacji
@@ -235,8 +237,9 @@ Każdy przebieg `refresh.yml` ma trzy etapy (część jednego runnera to wspóln
    albo zamyka zgłoszenia o blokadzie i degradacji. Gdy stosu nie da się odczytać, liczy to, co runnery widziały na
    koniec (`done_faculties`, `blocked_faculties`, `incomplete_faculties`): wydział jest zrobiony, gdy którykolwiek runner
    widział go zrobionego. Przebieg, w którym jakiegoś wydziału nikt nie skończył, jest niepełny i niczego nie zamyka;
-   przebieg starszy niż 3 h zostawia zgłoszenia nowszym. Na koniec usuwa stos (`board.py sweep`) i zapisuje przebieg w
-   [historii przebiegów](#historia-przebiegów).
+   przebieg starszy niż 3 h zostawia zgłoszenia nowszym. Na koniec zachowuje ostatnie dokumenty stosu jako jeden plik na
+   `refs/planwat/archive/<plan>-<przebieg>` (`board.py archive`, przez 30 dni, dla [panelu floty](DASHBOARD.md)), usuwa
+   stos (`board.py sweep`) i zapisuje przebieg w [historii przebiegów](#historia-przebiegów).
 
 Dawnego etapu **handoff/takeover** (druga fala zadań dla tego, co ktoś zostawił) już nie ma: to, czego jeden runner nie
 zrobił, od razu wraca na stos i bierze to inny, jeszcze w tym samym przebiegu.
@@ -248,15 +251,19 @@ następny, przez nadchodzący (`wml~2027-28-zima`). Każdy slot to jeden mały d
 repozytorium, `refs/planwat/pass/<plan>-<przebieg>/s/<slot>` ([`board.py`](../tools/refresh/board.py)), zmieniany
 wyłącznie przez **compare-and-swap**: nowy commit idzie z `git push --force-with-lease=<ref>:<sha, które czytał>`, a
 serwer sprawdza to atomowo. Dwa runnery biorące ten sam kawałek naraz nie mogą wygrać obu; przegrany czyta jeszcze raz
-i decyduje od nowa. Każdy runner ma też dokument z biciem serca (`r/<runner>`, co 30 s). Uprawnienia daje checkout
+i decyduje od nowa. Każdy runner ma też dokument z biciem serca (`r/<runner>`, co 15 s), który niesie też jego
+zaszyfrowaną telemetrię dla [panelu floty](DASHBOARD.md) (`tel`, tylko z kluczem `PLANWAT_DASH_KEY`). Uprawnienia daje checkout
 `data`, ruch gita nie zjada limitu API, a referencje spoza `heads/` i `tags/` nie uruchamiają żadnego workflow.
 
 1. **Otwarcie.** Pierwszy runner, który zajmie slot (jego **lider**), wylicza grupy wydziału, odrzuca świeże i
-   niegotowe (te same reguły co zawsze) i tnie resztę, od najdawniej sprawdzonych, na **kawałki po 8 grup**. Rekord
+   niegotowe (te same reguły co zawsze) i kładzie resztę, od najdawniej sprawdzonych, na stos slotu. Rekord
    wydziału w `refresh-state.json` należy do lidera (`owned_faculties` → `fleet.py merge --owned`).
 2. **Branie.** Lider bierze kawałki od przodu, każdy inny runner (pomocnik) od tyłu, więc spotykają się w środku listy:
    to stos z dwoma końcami. Pomocnik najpierw sam wylicza wydział ze swojego adresu (potrzebuje adresów stron, a to
    też jego próba ściany) i dopiero potem cokolwiek bierze. Oddanie gotowego kawałka i wzięcie następnego to jedna zamiana.
+   Kawałek jest odcinany w chwili brania, a jego **rozmiar zależy od pracy**: połowa udziału w tym, co zostało wolne na
+   slocie, na runnera, który może go wziąć i jest na chodzie (`chunk_size`: od 3 do 24 grup). Na początku kawałki są duże
+   (mniej zamian na stosie), pod koniec małe, więc pomocnicy wciąż znajdują pracę i runnery kończą razem.
 3. **Jedno zapytanie naraz na politykę.** Runner ma po jednej ścieżce na grupę polityki Incapsula (WLO i WEL to
    `wat-edge`) i tylko ta ścieżka pyta tę politykę z tego adresu, razem z listami. Naraz crawluje najwyżej `--lanes`
    ścieżek (6); pierwszeństwo ma praca, której nikt inny nie może wziąć (np. WML na plebanii), potem własne wydziały,
@@ -269,7 +276,9 @@ Kolejność, w jakiej ścieżka runnera bierze pracę, wynika z samego stosu (`s
 1. **otwiera** sloty, które preferuje (`prefers` w `fleet.json`, w tej kolejności), potem te, których nikt inny nie może
    wziąć, potem największe. Slotu, który preferuje inny uruchomiony runner, **nie otwiera** — ten go prowadzi — dopóki tamten
    jest włączony albo może jeszcze dołączyć (3 minuty od startu, `JOIN_GRACE`) i nie odbił się od jego ściany;
-2. **kontynuuje** własne sloty od przodu;
+2. **kontynuuje** własne sloty od przodu. Po każdym kawałku ścieżka najpierw otwiera nieotwarty slot tej samej grupy
+   polityki, zamiast brać kolejny kawałek: oracle wylicza WLO w pierwszych minutach, zamiast po WEL, więc jego ściana
+   jest znana od razu i inni mogą w tym czasie szukać do niego wyjść;
 3. **pomaga** od tyłu: najpierw w wydziałach, które preferuje, potem tam, gdzie zostało najwięcej;
 4. **szuka wyjść w puli** (`hunt`), gdy wydziału, który zostaje, nie przejdzie z własnego adresu żaden włączony runner
    (zob. niżej „Wyjścia przez pulę”).
@@ -295,6 +304,10 @@ kosztować podwójne sprawdzenie, nigdy zgubione.
 | lider nie może wyliczyć swojego slotu | slot wraca do nieotwartych, preferencja przestaje obowiązywać, otwiera go następny runner; gdy nie może nikt, slot jest `blocked` (ściany) albo `failed` (inne błędy) |
 | runner pada, zostaje wstrzymany albo wyłączony w trakcie | jego bicie serca staje; po 150 s (`STALE`, zegarem czytającego) jego kawałki są wolne i bierze je inny runner |
 | zawieszona ścieżka żywego runnera | dokument runnera niesie postęp każdej ścieżki; ścieżka bez postępu przez 10 min traci kawałek |
+| zawieszone wyliczanie wydziału | lider, którego ścieżka wylicza slot bez postępu przez 4 min (`LISTING_STALE`), traci go: slot otwiera inny runner |
+| magazyn nie przyjmuje wyniku kawałka (przegrane wyścigi) | zamiana jest ponawiana do 5 razy z rosnącą przerwą (`SETTLE_TRIES`); ścieżka, która mimo to kończy się z zajętym kawałkiem, oddaje go na stos (`_release`) |
+| przegrany wyścig w magazynie | przerwa przed ponowieniem nie trzyma blokady magazynu, więc pozostałe ścieżki runnera i jego bicie serca idą dalej |
+| anulowane zadanie | crawl i jego tymczasowy egress działają we własnej grupie procesów, którą krok kończy razem z zadaniem |
 | kawałek przejęty od wolnego runnera | przed każdą grupą sprawdza, czy kawałek wciąż jest jego; jeśli nie, przestaje, a to, co sprawdził, zostaje |
 | kawałek, który ciągle wywraca konwersję | po 2 próbach jest zamykany jako `failed` (przebieg zdegradowany), zamiast krążyć w nieskończoność |
 | zadanie runnera w ogóle nie ruszyło | nic nie było mu przydzielone, więc robią to inni; jego preferencje wygasają po 3 minutach |
@@ -330,13 +343,17 @@ przejdzie, runner crawluje ten wydział przez port polowania egressu (`via` w sl
 wyjść, zawsze przez HTTPS i nigdy z adresu runnera.
 
 Znalezione wyjścia trafiają do slotu (`exits`, najwyżej 8), więc drugi runner sprawdza je własnym egressem (kilka zapytań
-zamiast polowania) i pomaga od tyłu. Polowanie na jeden slot prowadzi naraz jeden runner (`hunting`); drugi czeka na wynik.
+zamiast polowania) i pomaga od tyłu. Trafiają tam tylko publiczne proxy: porty Tor (`tor:9050`, `127.0.0.1:…`) działają
+wyłącznie na maszynie, która je ma, a każdy runner i tak sprawdza własny Tor. Polowanie na slot, do którego nikt jeszcze nie dociera, prowadzi naraz jeden runner (`hunting`); drugi czeka na wynik.
+Gdy runner crawluje już slot przez wyjścia (`via: pool`), nie liczy się jako docierający bezpośrednio: każdy wolny
+runner z egressem szuka wtedy własnych wyjść (zwykle własny Tor), o ile zostało co najmniej tyle grup co w największym
+kawałku (`MAX_CHUNK`, 24), i pomaga. Bez tego cztery runnery czekały 9–13 minut, aż oracle3 sam skończy WLO.
 Polowanie zwykle nie musi już szukać: **zwiad** egressu ([docs/EGRESS.md](EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść))
 na oracle i northflanku przez cały czas sprawdza nowe proxy z list na stronach wszystkich wydziałów i trzyma dla każdego
 wydziału najszybsze sprawdzone wyjścia, więc gdy plebanii brakuje, polowanie oddaje je od razu.
 Northflank nie ma egressu w kontenerze, więc uruchamia kod egressu na własnym loopbacku: w trakcie crawla tymczasowo, gdy
 polowanie jest potrzebne, a między przebiegami jako zwiad (crawl go zatrzymuje na swój czas, bo 512 MB nie mieści obu). WLO, WEL, WML, WTC i WCY bierze **wyłącznie** przez pulę (`pool`), a przy WCY
-pomaga oracle przez swoją pulę zawsze, gdy zostały co najmniej 2 wolne kawałki (`pool_help`). Gdy plebania jest włączona,
+pomaga oracle przez swoją pulę zawsze, gdy zostało co najmniej 24 wolnych grup (`pool_help`, `MAX_CHUNK`). Gdy plebania jest włączona,
 nikt nie poluje na jej wydziały. Ściana spotkana przez pulę nie liczy się do ścian własnego łącza runnera (czekanie,
 „chroniczna” ściana). Oracle potrzebuje przebudowanego egressu (`docker compose up -d --build egress` na VPS-ie):
 starszy odpowiada 404 i oracle po prostu nie poluje. Historia przebiegów pokazuje „przez proxy (pula) na northflank”.

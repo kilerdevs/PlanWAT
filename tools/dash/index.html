@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PlanWAT flota</title>
+<link rel="stylesheet" href="/dash.css">
+</head>
+<body>
+<main>
+  <header class="head">
+    <div>
+      <h1>PlanWAT · flota</h1>
+      <p class="sub" id="sub">Łączenie…</p>
+    </div>
+    <div class="headside">
+      <span class="pill" id="conn"><i class="dot"></i><span>offline</span></span>
+      <div class="seg themeswitch" role="group" aria-label="Motyw">
+        <button type="button" data-theme-set="auto" aria-pressed="true">Auto</button>
+        <button type="button" data-theme-set="dark" aria-pressed="false">Ciemny</button>
+        <button type="button" data-theme-set="light" aria-pressed="false">Jasny</button>
+      </div>
+    </div>
+  </header>
+  <div id="banners"></div>
+  <nav class="seg tabs" role="tablist">
+    <button type="button" role="tab" data-tab="live" aria-selected="true">Na żywo</button>
+    <button type="button" role="tab" data-tab="history" aria-selected="false">Historia</button>
+  </nav>
+
+  <section id="tab-live">
+    <div class="tiles" id="tiles"></div>
+    <div class="card">
+      <h2>Wydziały</h2>
+      <div class="scroll"><table class="data" id="slots"></table></div>
+      <p class="legend" id="slot-legend"></p>
+    </div>
+    <div class="card">
+      <h2>Runnery</h2>
+      <div class="runners" id="runners"></div>
+    </div>
+    <div class="card">
+      <h2>Oś czasu</h2>
+      <p class="sub">Każdy wiersz to pas runnera (grupa polityk). Pas: wydział, który sprawdza; pomarańczowy: polowanie na wyjścia; przerywana linia: bezczynność.</p>
+      <div class="scroll" id="gantt"></div>
+    </div>
+    <div class="card">
+      <h2>Zdarzenia</h2>
+      <div class="filters">
+        <label>Runner <select id="f-runner"><option value="">wszyscy</option></select></label>
+        <label>Rodzaj <select id="f-kind"><option value="">wszystkie</option></select></label>
+        <label>Wydział <select id="f-slot"><option value="">wszystkie</option></select></label>
+        <label class="grow">Szukaj <input id="f-text" type="search" placeholder="np. hunted, BLOCKED, Tor"></label>
+      </div>
+      <ol class="feed" id="feed"></ol>
+    </div>
+  </section>
+
+  <section id="tab-history" hidden>
+    <div class="filters">
+      <label>Okres <select id="h-days">
+        <option value="3">3 dni</option><option value="7">7 dni</option><option value="14" selected>14 dni</option>
+        <option value="30">30 dni</option><option value="60">60 dni</option></select></label>
+    </div>
+    <div class="card"><h2>Czas przebiegu</h2><p class="sub">Od utworzenia przebiegu do jego końca (minuty); kolejka, crawl i raport razem.</p><div id="h-duration"></div></div>
+    <div class="card"><h2>Wykorzystanie runnerów</h2><p class="sub">Udział próbek (co 10 s) w każdym stanie, z przebiegów oglądanych na żywo.</p><div class="scroll" id="h-util"></div></div>
+    <div class="card"><h2>Udział w pracy</h2><p class="sub">Ile grup sprawdził każdy runner w przebiegu.</p><div class="scroll" id="h-share"></div></div>
+    <div class="card"><h2>Drogi do wydziałów</h2><p class="sub">Jak każdy runner docierał do wydziału w kolejnych przebiegach (najnowszy po prawej).</p><div class="scroll" id="h-routes"></div></div>
+    <div class="card"><h2>Kolejka GitHuba i wyniki zadań</h2><p class="sub">Opóźnienie od utworzenia zadania do jego startu na runnerze; czas trwania zadania.</p><div class="scroll" id="h-jobs"></div></div>
+    <div class="card"><h2>Przebiegi</h2><div class="scroll"><table class="data" id="h-passes"></table></div></div>
+  </section>
+</main>
+<script src="/dash.js"></script>
+</body>
+</html>

@@ -37,6 +37,9 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import telemetry  # noqa: E402
+
 SERVER = HERE.parent / 'egress' / 'server.py'
 HUNT_WAIT = 480  # the egress hunts for up to 5 minutes, after fetching the lists and Round-1 probing if it must
 POLL = 5
@@ -104,9 +107,10 @@ class Egress:
         """Have the egress up before it is needed (a remote one is somebody else's to run)."""
         return True
 
-    def hunt(self, host, exits=(), wait=HUNT_WAIT):
+    def hunt(self, host, exits=(), wait=HUNT_WAIT, stop=None):
         """Exits that get through to `host`: the shared `exits` checked first, then a search of the pool if none
-        of those works. [] when nothing gets through; Unavailable when this egress cannot hunt."""
+        of those works. [] when nothing gets through, or once stop() is true (the egress may finish the search on
+        its own and keeps what it found); Unavailable when this egress cannot hunt."""
         if not self.available():
             raise Unavailable(self.api)
         exits = [e for e in exits or () if isinstance(e, str)][:8]
@@ -123,6 +127,9 @@ class Egress:
         begun, until, cap = None, self.clock() + wait, self.clock() + 2 * wait
         while True:
             self.sleep(POLL)
+            if stop is not None and stop():
+                self.log(f'egress: no need to hunt {host} any more; leaving the search')
+                return []
             code, got = self._call('/api/hunt', timeout=15)
             state = ((got.get('hosts') or {}).get(host) or {}) if code == 200 else {}
             if begun is None and state.get('state') != 'queued':
@@ -130,7 +137,11 @@ class Egress:
                 until = min(cap, begun + wait)
             if state.get('state') == 'done':
                 found = [e for e in state.get('exits') or [] if isinstance(e, str)]
-                self.log(f"egress: hunted {host}: {len(found)} exits through, {state.get('tried', 0)} tried")
+                known = f", {state['fresh']} of them just verified" if state.get('fresh') else ''  # older egresses: none
+                self.log(f"egress: hunted {host}: {len(found)} exits through{known}, {state.get('tried', 0)} probed")
+                telemetry.TEL.gauge(f'hunt:{host}', {'found': len(found), 'fresh': state.get('fresh', 0),
+                                                     'probed': state.get('tried', 0), 'at': round(time.time()),
+                                                     'secs': round(self.clock() - begun) if begun else None})
                 return found
             if state.get('state') == 'error':
                 raise RuntimeError(f"the hunt for {host} failed: {state.get('error')}")
@@ -164,6 +175,20 @@ def code_hash(files=CODE, folder=SERVER.parent):
     for name in files:
         h.update(name.encode() + b'\0' + (folder / name).read_bytes())
     return h.hexdigest()[:16]
+
+
+def _strays(rc):
+    """Pids of the tor processes running with config `rc` (ours, whatever tor.json says)."""
+    want = str(rc).encode()
+    out = []
+    for proc in Path('/proc').glob('[0-9]*'):
+        try:
+            args = (proc / 'cmdline').read_bytes().split(b'\0')
+        except OSError:
+            continue
+        if want in args and args.index(want) > 0 and args[args.index(want) - 1] == b'-f':
+            out.append(int(proc.name))
+    return out
 
 
 def _pid_alive(pid, name=b'server.py'):
@@ -267,12 +292,16 @@ class LocalTor:
         tor = self.binary()
         if tor is None:
             return []
+        rc = self.home / 'torrc'
+        for pid in _strays(rc):
+            # a tor of ours that tor.json lost (a job cut short) holds the data directory: a new one would exit at once
+            self.log(f'egress: stopping a stray Tor (pid {pid})')
+            self._end(pid)
         ports = self._ports((st or {}).get('ports') or [])
         data = self.home / 'tor'
         data.mkdir(parents=True, exist_ok=True)
         os.chmod(data, 0o700)
         log = self.home / 'tor.log'
-        rc = self.home / 'torrc'
         rc.write_text(''.join(f'SocksPort 127.0.0.1:{p}\n' for p in ports)
                       + f'DataDirectory {data}\nGeoIPFile {self.bundle}/data/geoip\n'
                         f'GeoIPv6File {self.bundle}/data/geoip6\n'
@@ -292,16 +321,20 @@ class LocalTor:
             return []
         self.home.mkdir(parents=True, exist_ok=True)
         self.state_path.write_text(json.dumps({'pid': proc.pid, 'ports': ports}), encoding='utf-8')
-        until = self.clock() + TOR_WAIT
+        began = self.clock()
+        until = began + TOR_WAIT
         while self.clock() < until and proc.poll() is None:
             try:
                 if 'Bootstrapped 100%' in log.read_text(encoding='utf-8', errors='replace'):
+                    telemetry.TEL.gauge('tor', {'up': True, 'circuits': len(ports), 'boot_s': round(self.clock() - began),
+                                                'at': round(time.time())})
                     self.log(f'egress: Tor up (pid {proc.pid}, Polish exits, {len(ports)} circuits)')
                     return self.urls(ports)
             except OSError:
                 pass
             self.sleep(1)
         if proc.poll() is not None:
+            telemetry.TEL.gauge('tor', {'up': False, 'at': round(time.time())})
             self.log('egress: Tor did not start')
             return []
         self.log(f'egress: Tor still bootstrapping after {TOR_WAIT} s; the pool retries its ports every cycle')
@@ -310,14 +343,16 @@ class LocalTor:
     def stop(self):
         """Stopped, and gone (its data directory is locked while it runs)."""
         st = self._read_state()
-        if not st or not _pid_alive(st['pid'], b'tor'):
-            return
+        if st and _pid_alive(st['pid'], b'tor'):
+            self._end(st['pid'])
+
+    def _end(self, pid):
         try:
-            os.kill(st['pid'], signal.SIGTERM)
+            os.kill(pid, signal.SIGTERM)
         except OSError:
             return
         until = self.clock() + 10
-        while self.clock() < until and _pid_alive(st['pid'], b'tor'):
+        while self.clock() < until and _pid_alive(pid, b'tor'):
             self.sleep(0.5)
 
 

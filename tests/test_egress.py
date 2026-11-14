@@ -1,4 +1,5 @@
 """Offline tests for the egress rotator (tools/egress) and refresh retry/report logic."""
+import json
 import os
 import sys
 import tempfile
@@ -399,6 +400,11 @@ class PoolPick(unittest.TestCase):
         for body, expected in (
             (marker + b'<plan/>' * 200, 40),
             (b'<html>' + b'x' * 800 + b'Access Denied', None),
+            # a real page carries Incapsula's sensor script; its block page names an incident
+            (marker + b'<script src="/_Incapsula_Resource?SWJIYLWA=719d34d31c8e3a6e"></script>' + b'<plan/>' * 200, 40),
+            (b'<html>' + b'x' * 800 + b'<iframe id="main-iframe" src="/_Incapsula_Resource?CWUDNSAI=9&incident_id=1-2">',
+             None),
+            (b'<html>' + b'x' * 800 + b'Request unsuccessful. Incapsula incident ID: 1-2', None),
             (b'<html>' + b'x' * 800, None),  # 200, no marker: not the real index
             (marker + b'<plan/>', None),     # too small to be an index
         ):
@@ -2208,6 +2214,15 @@ class PoolHunt(unittest.TestCase):
         self.assertEqual(p.verified('wml.wat.edu.pl')[0]['url'], 'http://8.8.40.1:8080')
         self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.40.1:8080'])
 
+    def test_tor_ports_are_tried_before_their_first_round_1(self):
+        tor = 'socks5://127.0.0.1:9050'
+        p = self.make(self.alive(5), lambda u, h: u == tor)
+        p.pinned = [tor]
+        p.entries[tor] = {'pinned': True, 'source': 'tor', 'cc': 'PL', 'fails': 0, 'hosts': {}}  # just started
+        out = p.hunt(['wlo.wat.edu.pl'], want=1, workers=1)
+        self.assertEqual(out['wlo.wat.edu.pl']['exits'], [tor])
+        self.assertEqual(self.probes, [(tor, 'wlo.wat.edu.pl')])  # first, and nobody else was needed
+
     def test_a_proxy_that_passes_one_wall_is_tried_on_the_others(self):
         good = 'http://8.8.7.1:8080'
         p = self.make(self.alive(10), lambda u, h: u == good and h in ('wml.wat.edu.pl', 'wlo.wat.edu.pl'))
@@ -2261,6 +2276,7 @@ class PoolHunt(unittest.TestCase):
         out = p.hunt(['wml.wat.edu.pl'], want=1)
         self.assertEqual(self.probes, [])
         self.assertEqual(out['wml.wat.edu.pl']['exits'], ['http://8.8.2.1:8080'])
+        self.assertEqual((out['wml.wat.edu.pl']['fresh'], out['wml.wat.edu.pl']['tried']), (1, 0))
 
     def test_a_scouted_pool_that_every_wall_refused_still_discovers(self):
         p = self.make(self.alive(50), lambda u, h: False)
@@ -2773,6 +2789,12 @@ class EgressClient(unittest.TestCase):
         self.assertEqual(e.hunt('wtc.wat.edu.pl', ['8.8.8.8:3128']), ['http://8.8.4.4:3128'])
         self.assertEqual(e.hunt('wlo.wat.edu.pl'), [])
 
+    def test_a_hunt_no_longer_needed_ends_at_once(self):
+        self.works = {('http://8.8.4.4:3128', 'wtc.wat.edu.pl')}
+        asked = []
+        self.assertEqual(self.egress().hunt('wtc.wat.edu.pl', stop=lambda: asked.append(1) or True), [])
+        self.assertEqual(asked, [1])
+
     def test_an_egress_without_the_hunt_or_the_token_cannot_hunt(self):
         with self.assertRaises(self.client.Unavailable):
             self.egress(token='wrong').hunt('wml.wat.edu.pl')
@@ -2922,6 +2944,19 @@ class EgressClient(unittest.TestCase):
         self.assertFalse(self.client._pid_alive(pid, b'tor'))
         self.assertEqual(tor.ensure(), urls)  # again, on the same ports (the pool's pinned entries stay)
         self.assertEqual(len(fetched), 1)  # the bundle is kept
+
+    def test_a_stray_tor_that_tor_json_lost_is_stopped_before_a_new_one(self):
+        home = Path(tempfile.mkdtemp()) / 'egress'
+        tor = self.tor(home, [])
+        self.addCleanup(tor.stop)
+        urls = tor.ensure()
+        stray = tor._read_state()['pid']
+        self.assertEqual(self.client._strays(home / 'torrc'), [stray])
+        # a job cut short: tor.json names a dead pid while the old tor still holds the data directory
+        tor.state_path.write_text(json.dumps({'pid': 2 ** 22 + 1, 'ports': []}), encoding='utf-8')
+        self.assertEqual(len(tor.ensure()), len(urls))
+        self.assertFalse(self.client._pid_alive(stray, b'tor'))
+        self.assertNotEqual(tor._read_state()['pid'], stray)
 
     def test_a_tor_bundle_that_does_not_match_its_hash_is_not_run(self):
         home = Path(tempfile.mkdtemp()) / 'egress'

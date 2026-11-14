@@ -419,6 +419,18 @@ class Run(unittest.TestCase):
         state = core.State(self.tmp / core.STATE_FILE)
         self.assertEqual(state.faculties['wlo']['run']['cause'], 'wall')
 
+    def test_a_wall_met_through_pool_exits_slows_only_the_pool(self):
+        routes = dict(self.routes)
+        routes['https://example.test/plan/zima/WLO26AX1S1.htm'] = Resp(200, self.BLOCK_PAGE)
+        args = refresh.parse(['--out', str(self.tmp), '--force'])
+        state = core.State(self.tmp / core.STATE_FILE)
+        group = core.group_of('wlo')
+        state.data['pacing'] = {group: 1.0}
+        _, blocked, _ = refresh._refresh_faculty('wlo', WLO_CFG, args, state, TODAY, SequenceSession(routes),
+                                                 sleep=lambda s: None, pace_key=f'{group}@pool')
+        self.assertTrue(blocked)
+        self.assertEqual(state.data['pacing'], {group: 1.0, f'{group}@pool': 1.5})
+
     def test_block_retries_can_be_switched_off(self):
         routes = dict(self.routes)
         routes['https://example.test/plan/zima/WLO26AX1S1.htm'] = Resp(200, self.BLOCK_PAGE)
@@ -3313,7 +3325,7 @@ class WaitStops(unittest.TestCase):
 def quick_stack(test, **over):
     """Stack timings in milliseconds for the length of a test."""
     values = dict(POLL=0.02, HEARTBEAT=0.05, STALE=0.4, JOIN_GRACE=0.5, LANE_STALE=1.5, STORE_DOWN=0.8,
-                  RETRY_ERROR=0.2, CHUNK=4)
+                  RETRY_ERROR=0.2, MAX_CHUNK=4, MIN_CHUNK=1, LISTING_STALE=1.0)
     values.update(over)
     for name, value in values.items():
         orig = getattr(stack, name)
@@ -3389,6 +3401,26 @@ class GitStoreTest(unittest.TestCase):
         local = subprocess.run(['git', '-C', str(self.repos[2]), 'for-each-ref'], capture_output=True, text=True)
         self.assertEqual(local.stdout, '')
 
+    def test_a_lost_race_backs_off_without_holding_the_store(self):
+        racer, store = board.GitStore(self.repos[1], '1761000000-42'), None
+        free = []
+
+        def other_lane():
+            got = store.lock.acquire(timeout=1)
+            free.append(got)
+            if got:
+                store.lock.release()
+
+        def sleep(seconds):  # the backoff: another lane (another thread) must get the store meanwhile
+            t = threading.Thread(target=other_lane)
+            t.start()
+            t.join()
+        store = board.GitStore(self.repos[0], '1761000000-42', sleep=sleep)
+        store.update('s/wml', lambda d: {'n': 0})
+        racer.update('s/wml', lambda d: {'n': 5})  # store's cached sha is now old: its next push loses once
+        self.assertEqual(store.update('s/wml', lambda d: dict(d, n=d['n'] + 1)), ({'n': 6}, True))
+        self.assertEqual(free, [True])
+
     def test_an_unreachable_store_raises(self):
         lost = board.GitStore(self.repos[0], '1-2', remote='nowhere')
         with self.assertRaises(board.StoreError):
@@ -3414,6 +3446,26 @@ class GitStoreTest(unittest.TestCase):
         gone = board.sweep(self.repos[0], run_id='42', now=now)
         self.assertGreaterEqual(len(gone), 2)
         self.assertEqual(self.refs(), [f'refs/planwat/pass/{keep}/r/oracle'])
+
+    def test_the_archive_keeps_a_passes_last_docs_on_one_ref_and_drops_old_ones(self):
+        now = 1_761_000_000
+        store = board.GitStore(self.repos[0], f'{now - 600}-42')
+        store.put('r/oracle', {'beat': 3, 'tel': 'sealed'})
+        store.update('s/wcy', lambda d: {'state': 'closed', 'chunks': []})
+        board.GitStore(self.repos[0], f'{now - 600}-43').put('r/oracle', {'beat': 1})  # another pass: not this one's
+        old = f'{now - 40 * 86400}-7'
+        sha = subprocess.run(['git', 'ls-remote', str(self.remote), f'refs/planwat/pass/{now - 600}-43/r/oracle'],
+                             capture_output=True, text=True).stdout.split()[0]
+        subprocess.run(['git', '-C', str(self.repos[0]), 'push', '-q', 'origin', f'{sha}:refs/planwat/archive/{old}'],
+                       check=True)
+        made, dropped = board.archive(self.repos[1], '42', now=now)
+        self.assertEqual(made, f'refs/planwat/archive/{now - 600}-42')
+        self.assertEqual(dropped, [f'refs/planwat/archive/{old}'])
+        subprocess.run(['git', '-C', str(self.repos[2]), 'fetch', '-q', 'origin', f'{made}:refs/a'], check=True)
+        kept = json.loads(subprocess.run(['git', '-C', str(self.repos[2]), 'cat-file', 'blob', 'refs/a:pass.json'],
+                                         capture_output=True, text=True, check=True).stdout)
+        self.assertEqual(kept, {'r/oracle': {'beat': 3, 'tel': 'sealed'}, 's/wcy': {'state': 'closed', 'chunks': []}})
+        self.assertEqual(board.archive(self.repos[1], '99', now=now), (None, []))  # no docs: nothing made
 
 
 def me_of(name, slots, expected=(), prefers=(), allow=None, prefers_of=None, costs=None, chronic=(), shy=(), **pool):
@@ -3545,10 +3597,28 @@ class StackPolicy(unittest.TestCase):
     def test_pool_help_joins_a_slot_another_leads_while_much_is_left(self):
         pool = {'pool': {'wcy'}, 'pool_help': {'wcy'}, 'hunter': True, 'pool_of': {'northflank': {'wcy'}}}
         me = me_of('northflank', ['wcy'], ['oracle'], **pool)
-        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{}, {}, {}])}
+        many = [f'C{i}' for i in range(stack.MAX_CHUNK + 5)]
+        # one big free chunk (chunks are cut as they are taken): much is left
+        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{'state': 'held', 'by': 'oracle'}, {'codes': many}])}
         self.assertEqual(stack.choose(self.view(slots, oracle='live'), me, 'wcy'), ('hunt', 'wcy'))
-        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{'state': 'done'}, {'state': 'done'}, {}])}
+        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{'state': 'done'}, {'codes': many[:5]}])}
         self.assertEqual(stack.choose(self.view(slots, oracle='live'), me, 'wcy'), ('linger',))
+
+    def test_helpers_hunt_beside_a_runner_that_crawls_through_exits_while_much_is_left(self):
+        many = [f'C{i}' for i in range(stack.MAX_CHUNK + 5)]
+        cant = {'oracle2': {'cause': 'wall'}}
+        slots = {'wlo': dict(slot_doc('wlo', leader='oracle3', chunks=[{'state': 'held', 'by': 'oracle3'},
+                                                                        {'codes': many}], cant=cant),
+                             via={'oracle3': 'pool'})}  # oracle3 found Tor exits: its own, not shared on the slot
+        me = me_of('oracle2', ['wlo'], ['oracle3'], hunter=True)
+        me.cant['wlo'] = {'cause': 'wall', 'at': 0, 'tries': 1}
+        view = self.view(slots, oracle3='live')
+        self.assertEqual(stack.choose(view, me, 'wat-edge'), ('hunt', 'wlo'))
+        slots['wlo']['hunting'] = {'runner': 'northflank2'}  # another helper searching too: still worth its own
+        self.assertEqual(stack.choose(self.view(slots, oracle3='live', northflank2='live'), me, 'wat-edge'),
+                         ('hunt', 'wlo'))
+        slots['wlo']['chunks'][1]['codes'] = many[:5]  # little left: oracle3 finishes it sooner than a search
+        self.assertEqual(stack.choose(view, me, 'wat-edge'), ('linger',))
 
     def test_slot_status(self):
         able = ['plebania', 'oracle']
@@ -3578,7 +3648,7 @@ class FakeSite(stack.Ops):
         self.exits_dead = set(exits_dead)  # found, but gone before the listing (the hunt port then answers 403)
         self.routes, self.hunts, self.route_probes = set(), [], 0
 
-    def hunt(self, slot, exits):
+    def hunt(self, slot, exits, stop=None):
         f = stack.faculty_of(slot)
         with self.lock:
             self.hunts.append((slot, tuple(exits)))
@@ -3674,9 +3744,121 @@ def run_pass(test, spec, sizes=SIZES, absent=(), crash=None, outage=None, reject
     [t.join(60) for t in threads]
     test.assertFalse(any(t.is_alive() for t in threads), 'a runner never ended')
     docs = {k: json.loads(v[1]) for k, v in shared.items()}
-    test.sites = {n: r.ops for n, r in runners.items()}
+    test.sites, test.docs = {n: r.ops for n, r in runners.items()}, docs
     summary = stack.summarize(docs, [{'runner': n, 'faculties': ','.join(sizes)} for n in spec], allow)
     return fetched, reports, summary, time.monotonic() - t0
+
+
+class StackChunks(unittest.TestCase):
+    """Chunks are cut as they are taken, sized by the work left and the runners up to share it."""
+
+    def test_the_size_follows_the_work_left_and_the_runners(self):
+        self.assertEqual(stack.chunk_size(160, 1), stack.MAX_CHUNK)
+        self.assertEqual(stack.chunk_size(160, 4), 20)
+        self.assertEqual(stack.chunk_size(30, 2), 8)
+        self.assertEqual(stack.chunk_size(4, 3), stack.MIN_CHUNK)
+
+    def test_the_leader_cuts_from_the_front_a_helper_from_the_back(self):
+        d = {'slot': 'wml', 'next': 1, 'chunks': [{'id': 0, 'codes': list('abcdefgh'), 'state': 'free', 'by': None,
+                                                    'fails': 1}]}
+        at = stack.split(d, 0, True, 3)
+        self.assertEqual((d['chunks'][at]['codes'], d['chunks'][at]['id'], d['chunks'][at]['fails']),
+                         (list('abc'), 1, 1))
+        at = stack.split(d, 1, False, 2)
+        self.assertEqual((d['chunks'][at]['codes'], d['chunks'][at]['id']), (list('gh'), 2))
+        self.assertEqual([c['codes'] for c in d['chunks']], [list('abc'), list('def'), list('gh')])
+        self.assertEqual((stack.split(d, 1, True, 5), d['next']), (1, 3))  # small enough: taken whole
+
+
+class StackSettle(unittest.TestCase):
+    """A crawled chunk's result always lands on the store, or the chunk goes back: never held by a runner that moved on."""
+
+    class Counting(FakeSite):
+        def crawl(self, slot, codes, items, check, tick):
+            self.crawls = getattr(self, 'crawls', 0) + 1
+            return super().crawl(slot, codes, items, check, tick)
+
+    def runner(self, store, n=6):
+        quick_stack(self, MIN_CHUNK=n // 2, MAX_CHUNK=n // 2)  # each chunk taken whole
+        store.shared['s/wim'] = (1, json.dumps(dict(slot_doc('wim', leader='other'), next=2, chunks=[
+            {'id': 0, 'codes': [f'WIM{i:03d}' for i in range(n // 2)], 'state': 'free', 'by': None, 'fails': 0},
+            {'id': 1, 'codes': [f'WIM{i:03d}' for i in range(n // 2, n)], 'state': 'free', 'by': None, 'fails': 0}])))
+        site = self.Counting('nf', {'wim': n}, [], threading.Lock())
+        r = stack.Runner(store, me_of('nf', ['wim'], ['other']), site, log=lambda m: None)
+        return r, site
+
+    def chunks(self, store):
+        return {c['id']: (c['state'], c['by']) for c in json.loads(store.shared['s/wim'][1])['chunks']}
+
+    def test_a_pick_made_in_a_swap_that_lost_its_race_is_no_pick(self):
+        class Racing(board.MemoryStore):
+            calls = 0
+
+            def update(self, name, fn, tries=board.TRIES):
+                Racing.calls += 1
+                if Racing.calls == 2:  # the settle: computed once, then another runner takes the last chunk first
+                    fn(json.loads(self.shared[name][1]))
+                    doc = json.loads(self.shared[name][1])
+                    doc['chunks'][0].update(state='held', by='other')
+                    self.shared[name] = (self.shared[name][0] + 1, json.dumps(doc))
+                return super().update(name, fn, tries)
+        store = Racing({}, threading.Lock())
+        r, site = self.runner(store)
+        r._work('wim', 'wim', False, 2)
+        self.assertEqual(site.crawls, 1)  # not a second "crawl" of the chunk the other runner took
+        self.assertEqual(self.chunks(store), {0: ('held', 'other'), 1: ('done', None)})
+
+    def test_a_result_the_store_refuses_once_still_lands(self):
+        class Refusing(board.MemoryStore):
+            calls = 0
+
+            def update(self, name, fn, tries=board.TRIES):
+                Refusing.calls += 1
+                if Refusing.calls == 2:
+                    raise board.Conflict(f'{name}: lost {tries} races in a row')
+                return super().update(name, fn, tries)
+        store = Refusing({}, threading.Lock())
+        r, _ = self.runner(store)
+        r._work('wim', 'wim', False, 2)
+        self.assertEqual(self.chunks(store)[1], ('done', None))
+
+    def test_a_lane_that_ends_gives_back_what_it_still_holds(self):
+        store = board.MemoryStore({}, threading.Lock())
+        r, _ = self.runner(store)
+        doc = json.loads(store.shared['s/wim'][1])
+        doc['chunks'][1].update(state='held', by='nf')
+        store.shared['s/wim'] = (2, json.dumps(doc))
+        r.slots['wim'] = doc
+        r._release('wim')
+        self.assertEqual(self.chunks(store), {0: ('free', None), 1: ('free', None)})
+
+    def test_a_slot_of_the_same_group_still_to_open_goes_before_the_next_chunk(self):
+        quick_stack(self, MIN_CHUNK=3, MAX_CHUNK=3)
+        store = board.MemoryStore({}, threading.Lock())
+        store.shared['s/wel'] = (1, json.dumps(dict(slot_doc('wel', leader='other'), next=2, chunks=[
+            {'id': i, 'codes': [f'WEL{3 * i + j:03d}' for j in range(3)], 'state': 'free', 'by': None, 'fails': 0}
+            for i in range(2)])))
+        site = self.Counting('nf', {'wel': 6, 'wlo': 6}, [], threading.Lock())
+        r = stack.Runner(store, me_of('nf', ['wel', 'wlo'], ['other']), site, log=lambda m: None)
+        r._work('wat-edge', 'wel', False, 2)
+        self.assertEqual(site.crawls, 1)  # handed its chunk in to open WLO (and meet any wall there) first
+        self.assertEqual(stack.choose(r.view(), r.me, 'wat-edge'), ('open', 'wlo'))
+
+    def test_a_listing_that_stands_still_is_opened_by_another_runner(self):
+        clock = [0.0]
+        peers = stack.Peers('oracle', lambda: clock[0])
+        lane = {'wtc': {'slot': 'wtc', 'chunk': None, 'tick': 0}}
+        for beat in range(1, 4):  # the runner beats on, its listing lane does not move
+            peers.observe({'northflank': {'nonce': 'n', 'beat': beat, 'lanes': lane}})
+            clock[0] += stack.LISTING_STALE / 2 + 1
+        statuses, hung, _ = peers.snapshot()
+        self.assertIn(('northflank', 'wtc', None), hung)
+        slots = {'wtc': slot_doc('wtc', 'listing', 'northflank')}
+        me = me_of('oracle', ['wtc'], ['northflank'])
+        view = stack.View(slots, statuses, hung, uptime=10)
+        self.assertEqual(stack.choose(view, me, core.group_of('wtc')), ('open', 'wtc'))
+        self.assertEqual(stack.choose(stack.View(slots, statuses, set(), uptime=10), me, core.group_of('wtc')),
+                         ('linger',))
 
 
 class StackChaos(unittest.TestCase):
@@ -3718,7 +3900,9 @@ class StackChaos(unittest.TestCase):
 
     def test_without_the_home_server_the_exits_found_get_the_walled_faculties_crawled(self):
         pool = ['wlo', 'wel', 'wml', 'wtc', 'wcy']
-        found = {'wml': ['http://8.8.8.8:3128'], 'wlo': ['http://9.9.9.9:80'], 'wcy': ['http://7.7.7.7:1080']}
+        # a runner's own Tor ports work only from its own machine: never shared on the slot
+        found = {'wml': ['socks5://tor:9050', 'http://8.8.8.8:3128', 'socks5://127.0.0.1:40047'],
+                 'wlo': ['http://9.9.9.9:80'], 'wcy': ['http://7.7.7.7:1080']}
         spec = {'oracle': dict(FLEET3['oracle'], hunter=True, exits=found),
                 'northflank': {'allow': {'ioe', 'wig', 'wim', *pool}, 'pool': pool, 'pool_help': ['wcy'],
                                'hunter': True, 'exits': found}}
@@ -3730,6 +3914,7 @@ class StackChaos(unittest.TestCase):
         self.assertTrue({('oracle', 'wml'), ('northflank', 'wml')} <= crawled)  # both through the exits found
         self.assertTrue(set(summary['faculties']['wml']['via_pool']) & {'oracle', 'northflank'})
         self.assertIn('wml', reports['oracle']['pool'] + reports['northflank']['pool'])
+        self.assertEqual(self.docs['s/wml']['exits'], ['http://8.8.8.8:3128'])
 
     def test_with_the_home_server_up_nobody_hunts_its_faculties(self):
         pool = ['wlo', 'wel', 'wml', 'wtc', 'wcy']
@@ -3796,7 +3981,9 @@ class StackChaos(unittest.TestCase):
         sizes = {'ioe': 15, 'wig': 30}
         fetched, _, summary, _ = run_pass(self, spec, sizes=sizes)
         status = self.check(fetched, summary, sizes=sizes, lost={'ioe'}, dup_ok=True)
-        self.assertEqual((status['ioe'], summary['faculties']['ioe']['failed']), ('failed', 4))
+        self.assertEqual(status['ioe'], 'failed')
+        # closed with at most the chunk the page sat in (a chunk cut smaller after the first crash closes fewer)
+        self.assertIn(summary['faculties']['ioe']['failed'], range(1, 5))
         self.assertEqual(len({c for _, s, c in fetched if s == 'ioe'}), 14)  # all but the page that crashes it
 
     def test_a_store_that_goes_away_and_comes_back(self):
@@ -3839,7 +4026,7 @@ class StackReplay(unittest.TestCase):
     PER = {'wel': 8.4, 'wlo': 8.3, 'wml': 8.9, 'wcy': 8.0, 'ioe': 3.7, 'wig': 2.6, 'wim': 1.6, 'wtc': 6.5}
 
     def replay(self, spec, sizes):
-        quick_stack(self, CHUNK=8, POLL=0.01, HEARTBEAT=0.03, STALE=0.3, JOIN_GRACE=0.3)
+        quick_stack(self, MAX_CHUNK=8, MIN_CHUNK=8, POLL=0.01, HEARTBEAT=0.03, STALE=0.3, JOIN_GRACE=0.3)
         per, scale = self.PER, 0.001
         spans = {}
 
