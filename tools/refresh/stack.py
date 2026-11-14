@@ -64,6 +64,8 @@ HEARTBEAT = 30          # a runner's doc is pushed at least this often
 STALE = 150             # a runner whose doc stood still this long is gone (by the reader's own clock)
 JOIN_GRACE = 180        # an expected runner that has not shown up this long after we started is not waited for
 LANE_STALE = 600        # a lane holding a chunk without a page checked this long is stuck
+LISTING_STALE = 240     # a lane listing a slot without moving this long is stuck (a listing is a few requests)
+SETTLE_TRIES = 5        # swaps to hand a crawled chunk's result in before the lane gives it up (and back, at its end)
 POLL = 10               # seconds between reads of the store
 STORE_DOWN = 180        # the store unreadable this long: finish what this runner leads, then stop
 RETRY_ERROR = 300       # a listing that failed for another reason than a wall is tried once more after this long
@@ -226,7 +228,10 @@ class Peers:
         names = set(self.docs) | {r for r, _ in self.ticks}
         hung = set()
         for (name, group), ((slot, chunk, _), since) in self.ticks.items():
-            if chunk is not None and self.status(name) == 'live' and self.read_at - since > self.lane_stale:
+            if slot is None or self.status(name) != 'live':
+                continue
+            # a lane on a slot without a chunk is listing it (or idles after: only a slot still `listing` cares)
+            if self.read_at - since > (self.lane_stale if chunk is not None else LISTING_STALE):
                 hung.add((name, slot, chunk))
         return {n: self.status(n) for n in names}, hung, now - self.started
 
@@ -657,8 +662,27 @@ class Runner:
             self.log(f'stack: lane {group} failed ({err!r})')
         finally:
             self.gate.drop(group)
+            self._release(group)
             with self.lock:
                 self.lanes.pop(group, None)
+
+    def _release(self, group):
+        """A lane that ends gives back what it still holds (a result the store would not take, a crash): nobody else
+        takes a chunk of a runner that is up, and this lane will not come back for it."""
+        me = self.me.name
+
+        def free(d):
+            held = [c for c in (d or {}).get('chunks', []) if c.get('state') == 'held' and c.get('by') == me]
+            for c in held:
+                c.update(state='free', by=None)
+            return d if held else None
+        for slot in [s for s in self.me.slots if self.me.groups.get(s) == group]:
+            with self.lock:
+                mine = any(c.get('state') == 'held' and c.get('by') == me
+                           for c in (self.slots.get(slot) or {}).get('chunks', []))
+            if mine:
+                self.log(f'[{slot}] giving back a chunk this lane still held')
+                self._update(slot, free)
 
     def _late(self):
         return self.halt.is_set() or (self.deadline is not None and self.clock() >= self.deadline)
@@ -878,6 +902,7 @@ class Runner:
         view = self.view()
 
         def take(d):
+            held[0] = None  # the store may call this again after a lost race: only the last call's pick counts
             if d is None or d.get('state') != 'open' or (me in d.get('cant', {}) and slot in self.me.cant):
                 return None
             at = self._pick(d, front, view)
@@ -905,6 +930,7 @@ class Runner:
             view = self.view()
 
             def settle(d):
+                held[0] = None  # as in take: a pick from a call that lost its race is no pick
                 if d is None:
                     return None
                 ok = self._settle(d, chunk_id, result, me)
@@ -915,9 +941,14 @@ class Runner:
                         held[0] = d['chunks'][at]['id']
                 return d if ok else None
             doc, written = self._update(slot, settle)
+            for n in range(SETTLE_TRIES):
+                if doc is not None or self.store_away():
+                    break
+                self._nap(min(30, 2 ** n))  # a lost race (or the store away a moment): the result still counts
+                doc, written = self._update(slot, settle)
             if doc is None:
-                # the store would not take the result: the groups stay checked here, the chunk goes back when this
-                # runner's lease runs out (the others see it held by a runner that moves on)
+                # the store would not take the result: the groups stay checked here, and the chunk goes back to the
+                # stack when this lane ends (_release)
                 break
         with self.lock:
             self.lanes[group] = {'slot': None, 'chunk': None, 'tick': self.lanes.get(group, {}).get('tick', 0)}

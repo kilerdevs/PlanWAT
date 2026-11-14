@@ -250,6 +250,15 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Przebieg, który wisiał na jednym kawałku albo jednym wyliczaniu** (`tools/refresh/stack.py`, `board.py`,
+  `.github/actions/refresh`):
+  - wynik kawałka, którego magazyn nie przyjął po przegranych wyścigach, przepadał, a kawałek zostawał zajęty przez
+    runnera, który już po niego nie wracał; inne runnery czekały na niego do końca zadania. Zamiana jest teraz ponawiana,
+    a ścieżka, która się kończy, oddaje to, co jeszcze trzyma. Magazyn próbuje 10 razy z rosnącą przerwą zamiast 6;
+  - wybór następnego kawałka z próby, która przegrała wyścig, zostawał ważny: runner zaczynał kawałek innego runnera i od
+    razu go przerywał;
+  - lider, który zawiesił się na wyliczaniu wydziału, blokował slot: po 4 minutach bez postępu otwiera go inny runner;
+  - anulowane zadanie zostawiało działający crawl i jego egress (na Northflanku). Krok kończy teraz całą ich grupę procesów.
 - **Log crawla zalany jednym ostrzeżeniem** (`tools/refresh/rozklad2ics.py`): „unknown subject …; assigned fallback colour”
   szło przy każdych zajęciach WCY, ok. 11 tys. linii, 95% logu przebiegu. Kolor zastępczy jest deterministyczny i dotyczy
   większości przedmiotów, więc ostrzeżenie zniknęło.

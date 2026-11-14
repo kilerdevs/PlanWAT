@@ -37,7 +37,7 @@ KEY_RE = re.compile(r'^(\d{1,12})-(\d{1,20})$')
 NAME_RE = re.compile(r'^(?:r/[a-z0-9][a-z0-9-]{0,38}|s/[a-z]{2,8}(?:@\d{4}-\d{2}-(?:zima|lato))?)$')
 MAX_DOC = 256 * 1024
 SWEEP_HOURS = 6
-TRIES = 6
+TRIES = 10  # five runners swapping one slot every few seconds: a slow writer needs its window
 # git's messages in English whatever the machine's locale: a lost race is told apart by them
 GIT_ENV = dict(os.environ, LC_ALL='C', LANG='C', LANGUAGE='C')
 
@@ -187,7 +187,7 @@ class GitStore:
                     if name not in refs:
                         self.cache.pop(name, None)
                     sha, doc = self.cache.get(name, (None, None))
-                    self.sleep(random.uniform(0.05, 0.4) * (attempt + 1))
+                    self.sleep(random.uniform(0.2, 1.0) * 2 ** min(attempt, 3))  # jittered, at most 8 s
                     continue
                 self.cache[name] = (commit, copy.deepcopy(new))
                 return copy.deepcopy(new), True

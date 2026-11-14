@@ -197,8 +197,14 @@ runs:
             args+=(--board "$BOARD" --runner "$RUNNER" --expected "$EXPECTED" --fallback "$FALLBACK")
           fi
         fi
-        "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}"
+        # Its own process group, with the temporary egress a hunt starts: a cancelled job stops both. Bash alone
+        # passes the runner's SIGINT/SIGTERM on to nobody, and the crawl went on writing to a dead pass (14.11.2026).
+        setsid "$PLANWAT_PY" "$SOURCE/tools/refresh/refresh.py" "${args[@]}" &
+        pid=$!
+        trap 'kill -TERM -- "-$pid" 2>/dev/null' INT TERM
+        wait "$pid"
         code=$?
+        if kill -0 "$pid" 2>/dev/null; then wait "$pid"; code=$?; fi  # the trap cut the first wait short
         if [ "$code" -ne 0 ] && [ "$code" -ne 3 ] && [ "$code" -ne 4 ]; then exit "$code"; fi
         exit 0
     - id: bundle

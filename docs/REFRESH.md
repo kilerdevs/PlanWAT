@@ -300,6 +300,9 @@ kosztować podwójne sprawdzenie, nigdy zgubione.
 | lider nie może wyliczyć swojego slotu | slot wraca do nieotwartych, preferencja przestaje obowiązywać, otwiera go następny runner; gdy nie może nikt, slot jest `blocked` (ściany) albo `failed` (inne błędy) |
 | runner pada, zostaje wstrzymany albo wyłączony w trakcie | jego bicie serca staje; po 150 s (`STALE`, zegarem czytającego) jego kawałki są wolne i bierze je inny runner |
 | zawieszona ścieżka żywego runnera | dokument runnera niesie postęp każdej ścieżki; ścieżka bez postępu przez 10 min traci kawałek |
+| zawieszone wyliczanie wydziału | lider, którego ścieżka wylicza slot bez postępu przez 4 min (`LISTING_STALE`), traci go: slot otwiera inny runner |
+| magazyn nie przyjmuje wyniku kawałka (przegrane wyścigi) | zamiana jest ponawiana do 5 razy z rosnącą przerwą (`SETTLE_TRIES`); ścieżka, która mimo to kończy się z zajętym kawałkiem, oddaje go na stos (`_release`) |
+| anulowane zadanie | crawl i jego tymczasowy egress działają we własnej grupie procesów, którą krok kończy razem z zadaniem |
 | kawałek przejęty od wolnego runnera | przed każdą grupą sprawdza, czy kawałek wciąż jest jego; jeśli nie, przestaje, a to, co sprawdził, zostaje |
 | kawałek, który ciągle wywraca konwersję | po 2 próbach jest zamykany jako `failed` (przebieg zdegradowany), zamiast krążyć w nieskończoność |
 | zadanie runnera w ogóle nie ruszyło | nic nie było mu przydzielone, więc robią to inni; jego preferencje wygasają po 3 minutach |
