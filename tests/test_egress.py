@@ -2214,6 +2214,15 @@ class PoolHunt(unittest.TestCase):
         self.assertEqual(p.verified('wml.wat.edu.pl')[0]['url'], 'http://8.8.40.1:8080')
         self.assertEqual(p.pick_many('wml.wat.edu.pl', 3, verified_only=True), ['http://8.8.40.1:8080'])
 
+    def test_tor_ports_are_tried_before_their_first_round_1(self):
+        tor = 'socks5://127.0.0.1:9050'
+        p = self.make(self.alive(5), lambda u, h: u == tor)
+        p.pinned = [tor]
+        p.entries[tor] = {'pinned': True, 'source': 'tor', 'cc': 'PL', 'fails': 0, 'hosts': {}}  # just started
+        out = p.hunt(['wlo.wat.edu.pl'], want=1, workers=1)
+        self.assertEqual(out['wlo.wat.edu.pl']['exits'], [tor])
+        self.assertEqual(self.probes, [(tor, 'wlo.wat.edu.pl')])  # first, and nobody else was needed
+
     def test_a_proxy_that_passes_one_wall_is_tried_on_the_others(self):
         good = 'http://8.8.7.1:8080'
         p = self.make(self.alive(10), lambda u, h: u == good and h in ('wml.wat.edu.pl', 'wlo.wat.edu.pl'))

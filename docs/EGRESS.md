@@ -248,7 +248,8 @@ cztery porty to cztery wyjścia. Innym runnerom ich nie podajemy: adres `tor:905
   tylko `tor`, jego biblioteki i bazy GeoIP (bez nich `{pl}` nic nie znaczy). Tor żyje razem z egressem: startuje z nim
   (czeka do „Bootstrapped 100%”, z zapisanym konsensusem trwa to sekundy), kończy się z nim, a porty zachowuje w
   `tor.json`, więc przypięte wpisy puli są te same po restarcie. Tor ze swoim `torrc`, którego `tor.json` już nie zna
-  (zadanie przerwane w trakcie), jest kończony przed startem nowego: trzyma katalog danych, więc nowy by od razu padł. Nowa wersja paczki: te same sprawdzenia, nowe
+  (zadanie przerwane w trakcie), jest kończony przed startem nowego: trzyma katalog danych, więc nowy by od razu padł.
+  Polowanie sprawdza porty Tor na stronie wydziału zaraz po znanych wyjściach, także przed ich pierwszą rundą żywotności. Nowa wersja paczki: te same sprawdzenia, nowe
   `TOR_VERSION` i `TOR_SHA256`.
 - **plebania**: bez Tora (przechodzi wydziały sama).
 

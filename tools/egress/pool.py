@@ -1309,7 +1309,15 @@ class ProxyPool:
                 tried[h] += 1
                 if probe(c['url'], h):
                     found[h].append(c['url'])
-        searching = [h for h in hosts if len(found[h]) < want and h not in recent]
+        # the operator's own Tor ports next, whatever their Round 1: a local egress started for this very hunt has not
+        # run it yet, and until then they are no candidates below (a few probes where Tor usually gets through)
+        for h in hosts:
+            for u in self.pinned:
+                if len(found[h]) < want and u not in found[h]:
+                    tried[h] += 1
+                    if probe(u, h):
+                        found[h].append(u)
+        searching =[h for h in hosts if len(found[h]) < want and h not in recent]
         if searching:
             # "every proxy with a sensible ping": a fresh pool (a local egress just started) has Round-1 probed only
             # a sample of the lists, so keep probing the ones nobody tried yet until enough fast ones are known

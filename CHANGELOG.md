@@ -265,6 +265,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Wyjście, przez które idzie dobra strona WLO, nie jest już odrzucane** (`tools/egress/pool.py`): sprawdzenie wyjścia
   uznawało za stronę blokady każdą stronę ze słowem „incapsula”, a dobre strony wydziałów niosą skrypt czujnika Incapsuli
   (`_Incapsula_Resource`). Liczą się teraz tylko słowa samej strony blokady (numer incydentu), jak w crawlerze.
+- **Polowanie sprawdza własny Tor, nawet świeżo uruchomiony** (`tools/egress/pool.py`): porty Tor wchodziły do
+  polowania dopiero po pierwszej rundzie żywotności, a tymczasowy egress northflanka uruchamia Tor razem z polowaniem.
+  northflank1 szukał więc tylko wśród publicznych proxy i nie wszedł do WLO ani WCY, choć jego Tor je przechodził.
+  Polowanie sprawdza teraz porty Tor na stronie wydziału zaraz po znanych wyjściach.
 - **Northflank znów pomaga przy WCY** (`pool_help`, `tools/refresh/stack.py`): warunek liczył wolne kawałki, a odkąd
   kawałki są cięte przy braniu, otwarty slot ma zwykle jeden duży; liczy się teraz wolne grupy.
 - **Przebieg, który wisiał na jednym kawałku albo jednym wyliczaniu** (`tools/refresh/stack.py`, `board.py`,
