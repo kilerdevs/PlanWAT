@@ -33,6 +33,10 @@ on:
         description: When the share was planned (Unix seconds).
         type: string
         required: true
+      force:
+        description: Recheck every group, also the fresh ones.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -88,6 +92,7 @@ jobs:
           expected: ${{ inputs.expected }}
           fallback: ${{ inputs.fallback }}
           max-minutes: '90'
+          force: ${{ inputs.force }}
       # The report reads these when the work stack cannot be read. A runner that never wrote one (a crash before this,
       # a runner lost mid-crawl) counts as missing; what it held went back on the stack for the others.
       - name: Write this share's outcome

@@ -170,6 +170,20 @@ def code_hash(files=CODE, folder=SERVER.parent):
     return h.hexdigest()[:16]
 
 
+def _strays(rc):
+    """Pids of the tor processes running with config `rc` (ours, whatever tor.json says)."""
+    want = str(rc).encode()
+    out = []
+    for proc in Path('/proc').glob('[0-9]*'):
+        try:
+            args = (proc / 'cmdline').read_bytes().split(b'\0')
+        except OSError:
+            continue
+        if want in args and args.index(want) > 0 and args[args.index(want) - 1] == b'-f':
+            out.append(int(proc.name))
+    return out
+
+
 def _pid_alive(pid, name=b'server.py'):
     """A live (not zombie) process running the egress server (or `name`)."""
     try:
@@ -271,12 +285,16 @@ class LocalTor:
         tor = self.binary()
         if tor is None:
             return []
+        rc = self.home / 'torrc'
+        for pid in _strays(rc):
+            # a tor of ours that tor.json lost (a job cut short) holds the data directory: a new one would exit at once
+            self.log(f'egress: stopping a stray Tor (pid {pid})')
+            self._end(pid)
         ports = self._ports((st or {}).get('ports') or [])
         data = self.home / 'tor'
         data.mkdir(parents=True, exist_ok=True)
         os.chmod(data, 0o700)
         log = self.home / 'tor.log'
-        rc = self.home / 'torrc'
         rc.write_text(''.join(f'SocksPort 127.0.0.1:{p}\n' for p in ports)
                       + f'DataDirectory {data}\nGeoIPFile {self.bundle}/data/geoip\n'
                         f'GeoIPv6File {self.bundle}/data/geoip6\n'
@@ -314,14 +332,16 @@ class LocalTor:
     def stop(self):
         """Stopped, and gone (its data directory is locked while it runs)."""
         st = self._read_state()
-        if not st or not _pid_alive(st['pid'], b'tor'):
-            return
+        if st and _pid_alive(st['pid'], b'tor'):
+            self._end(st['pid'])
+
+    def _end(self, pid):
         try:
-            os.kill(st['pid'], signal.SIGTERM)
+            os.kill(pid, signal.SIGTERM)
         except OSError:
             return
         until = self.clock() + 10
-        while self.clock() < until and _pid_alive(st['pid'], b'tor'):
+        while self.clock() < until and _pid_alive(pid, b'tor'):
             self.sleep(0.5)
 
 

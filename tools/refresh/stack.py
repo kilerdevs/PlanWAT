@@ -342,8 +342,9 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
         return faculty_of(s) not in me.pool_of.get(r, ()) or via_of(s, r) == 'pool'
 
     def direct(r, s):
-        """`r` may reach `s` from its own address and has not met its wall there."""
-        return me.may(r, s) and cant_of(s, r) is None and faculty_of(s) not in me.pool_of.get(r, ())
+        """`r` may reach `s` from its own address and has not met its wall there (not just through exits)."""
+        return me.may(r, s) and cant_of(s, r) is None and faculty_of(s) not in me.pool_of.get(r, ()) \
+            and via_of(s, r) != 'pool'
 
     def others_able(s):
         return sum(1 for r in me.expected if able(r, s) and not view.gone(r))
@@ -362,12 +363,19 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
             return False
         return any(f in me.prefers_of.get(r, ()) and able(r, s) and not view.gone(r) for r in me.expected)
 
-    def claimable(s):
+    def takeable(s):
         d = doc(s)
         if not d or d.get('state') != 'open':
-            return 0
-        return sum(1 for c in d.get('chunks', [])
-                   if c.get('state') == 'free' or (c.get('state') == 'held' and view.holder_dead(c, s)))
+            return []
+        return [c for c in d.get('chunks', [])
+                if c.get('state') == 'free' or (c.get('state') == 'held' and view.holder_dead(c, s))]
+
+    def claimable(s):
+        return len(takeable(s))
+
+    def left(s):
+        """Groups free to take on `s`."""
+        return sum(len(c.get('codes', ())) for c in takeable(s))
 
     def hunting_elsewhere(s):
         """Another runner up is searching exits for `s` right now."""
@@ -387,11 +395,13 @@ def choose(view, me, group, now=0.0, retry_error=RETRY_ERROR):
             return False
         if exits:
             return True  # another runner found exits: checking them is a few requests, then this one helps
-        if hunting_elsewhere(s):
+        direct_up = any(direct(r, s) and not view.gone(r) for r in me.expected)
+        if (f in me.pool_help or not direct_up) and left(s) >= MAX_CHUNK:
+            return True  # enough left to pay for a search of its own, beside any other runner's
+        if direct_up or hunting_elsewhere(s):
             return False
-        if f in me.pool_help and claimable(s) >= 2:
-            return True
-        return not any(direct(r, s) and not view.gone(r) for r in me.expected)
+        # nobody up reaches it: one search at a time (its exits are shared), none once a runner crawls it through exits
+        return not any(via_of(s, r) == 'pool' and able(r, s) and not view.gone(r) for r in me.expected)
 
     # 1. open: what this runner prefers, then what only it can take, the largest first; never what another prefers
     opens = [s for s in mine if openable(s) and not blocked_here(s) and not reserved(s)]
@@ -924,10 +934,12 @@ class Runner:
                     if self.me.via.get(slot) == 'pool':
                         self.me.via[slot] = 'lost'  # the exits met the wall too: no more this pass, unless new ones
                         self.log(f'[{slot}] the exits met its wall too')
-            go_on = (not result.get('blocked') and result.get('error') is None and not result.get('cut')
-                     and not self._late() and not self.store_away() and not self.gate.outranked(prio))
             held[0] = None
             view = self.view()
+            # a slot of this group still to open goes first (a wall met early lets the others hunt it meanwhile)
+            go_on = (not result.get('blocked') and result.get('error') is None and not result.get('cut')
+                     and not self._late() and not self.store_away() and not self.gate.outranked(prio)
+                     and choose(view, self.me, group, self.clock(), self.retry_error)[0] != 'open')
 
             def settle(d):
                 held[0] = None  # as in take: a pick from a call that lost its race is no pick

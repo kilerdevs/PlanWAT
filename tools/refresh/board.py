@@ -167,18 +167,21 @@ class GitStore:
         the doc as it now stands and whether this call wrote it. Raises Conflict after `tries` lost races."""
         if not NAME_RE.match(name):
             raise ValueError(f'bad doc name: {name!r}')
-        with self.lock:
-            if name not in self.cache:  # never read: ask the remote first rather than lose a race to a known doc
-                self._load(self._listed(name))
-            sha, doc = self.cache.get(name, (None, None))
-            for attempt in range(tries):
+        ref = ref_of(self.key, name)
+        for attempt in range(tries):
+            # the lock per attempt, never over the backoff: the runner's other lanes and its heartbeat go on meanwhile
+            with self.lock:
+                if name not in self.cache:  # never read: ask the remote first rather than lose a race to a known doc
+                    self._load(self._listed(name))
+                sha, doc = self.cache.get(name, (None, None))
                 new = fn(copy.deepcopy(doc))
                 if new is None:
                     return copy.deepcopy(doc), False
                 commit = self._commit(name, new)
-                ref = ref_of(self.key, name)
                 try:
                     self._git('push', '-q', f'--force-with-lease={ref}:{sha or ""}', self.remote, f'{commit}:{ref}')
+                    self.cache[name] = (commit, copy.deepcopy(new))
+                    return copy.deepcopy(new), True
                 except StoreError as err:
                     if not _rejected(err):
                         raise
@@ -186,11 +189,8 @@ class GitStore:
                     self._load(refs)
                     if name not in refs:
                         self.cache.pop(name, None)
-                    sha, doc = self.cache.get(name, (None, None))
-                    self.sleep(random.uniform(0.2, 1.0) * 2 ** min(attempt, 3))  # jittered, at most 8 s
-                    continue
-                self.cache[name] = (commit, copy.deepcopy(new))
-                return copy.deepcopy(new), True
+            if attempt + 1 < tries:
+                self.sleep(random.uniform(0.2, 1.0) * 2 ** min(attempt, 3))  # jittered, at most 8 s
         raise Conflict(f'{name}: lost {tries} races in a row')
 
 

@@ -30,6 +30,10 @@ on:
         description: 'A runner back online (refresh-wake.yml): crawl only what the passes it missed left for it'
         type: string
         default: ''
+      force:
+        description: 'Recheck every group, also those checked within the last hour (--force)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -137,6 +141,7 @@ jobs:
       expected: ${{ matrix.expected }}
       fallback: ${{ matrix.fallback || '' }}
       planned: ${{ needs.plan.outputs.planned }}
+      force: ${{ inputs.force || false }}
 
   report:
     needs: [plan, crawl]

@@ -14,6 +14,9 @@ inputs:
   faculty:
     description: Comma-separated faculties; empty means every enabled one.
     default: ''
+  force:
+    description: true rechecks every group, also those checked within --fresh-hours.
+    default: 'false'
   census:
     description: Comma-separated faculties whose site census to take after the crawl (at most once a week; project mode only).
     default: ''
@@ -146,6 +149,7 @@ runs:
       env:
         PROFILE: ${{ inputs.profile }}
         FACULTY: ${{ inputs.faculty }}
+        FORCE: ${{ inputs.force }}
         CENSUS: ${{ inputs.census }}
         RUNNER: ${{ inputs.runner }}
         BOARD: ${{ inputs.board }}
@@ -172,6 +176,7 @@ runs:
         args=(--out data --profile "$PROFILE" --max-minutes "$MAX_MINUTES" --adaptive-hours "$ADAPTIVE_HOURS"
               --max-block-wait-minutes "$BLOCK_WAIT")
         if [ -n "$FACULTY" ]; then args+=(--faculty "$FACULTY"); fi
+        if [ "$FORCE" = true ]; then args+=(--force); fi
         if [ "$MODE" = volunteer ]; then
           # The registry comes from the project, not from the fork, and only from a commit GitHub verifies as
           # signed by a registry editor (tools/volunteer/registry.py): it decides who checks what.

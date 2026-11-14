@@ -274,7 +274,9 @@ Kolejność, w jakiej ścieżka runnera bierze pracę, wynika z samego stosu (`s
 1. **otwiera** sloty, które preferuje (`prefers` w `fleet.json`, w tej kolejności), potem te, których nikt inny nie może
    wziąć, potem największe. Slotu, który preferuje inny uruchomiony runner, **nie otwiera** — ten go prowadzi — dopóki tamten
    jest włączony albo może jeszcze dołączyć (3 minuty od startu, `JOIN_GRACE`) i nie odbił się od jego ściany;
-2. **kontynuuje** własne sloty od przodu;
+2. **kontynuuje** własne sloty od przodu. Po każdym kawałku ścieżka najpierw otwiera nieotwarty slot tej samej grupy
+   polityki, zamiast brać kolejny kawałek: oracle wylicza WLO w pierwszych minutach, zamiast po WEL, więc jego ściana
+   jest znana od razu i inni mogą w tym czasie szukać do niego wyjść;
 3. **pomaga** od tyłu: najpierw w wydziałach, które preferuje, potem tam, gdzie zostało najwięcej;
 4. **szuka wyjść w puli** (`hunt`), gdy wydziału, który zostaje, nie przejdzie z własnego adresu żaden włączony runner
    (zob. niżej „Wyjścia przez pulę”).
@@ -302,6 +304,7 @@ kosztować podwójne sprawdzenie, nigdy zgubione.
 | zawieszona ścieżka żywego runnera | dokument runnera niesie postęp każdej ścieżki; ścieżka bez postępu przez 10 min traci kawałek |
 | zawieszone wyliczanie wydziału | lider, którego ścieżka wylicza slot bez postępu przez 4 min (`LISTING_STALE`), traci go: slot otwiera inny runner |
 | magazyn nie przyjmuje wyniku kawałka (przegrane wyścigi) | zamiana jest ponawiana do 5 razy z rosnącą przerwą (`SETTLE_TRIES`); ścieżka, która mimo to kończy się z zajętym kawałkiem, oddaje go na stos (`_release`) |
+| przegrany wyścig w magazynie | przerwa przed ponowieniem nie trzyma blokady magazynu, więc pozostałe ścieżki runnera i jego bicie serca idą dalej |
 | anulowane zadanie | crawl i jego tymczasowy egress działają we własnej grupie procesów, którą krok kończy razem z zadaniem |
 | kawałek przejęty od wolnego runnera | przed każdą grupą sprawdza, czy kawałek wciąż jest jego; jeśli nie, przestaje, a to, co sprawdził, zostaje |
 | kawałek, który ciągle wywraca konwersję | po 2 próbach jest zamykany jako `failed` (przebieg zdegradowany), zamiast krążyć w nieskończoność |
@@ -339,13 +342,16 @@ wyjść, zawsze przez HTTPS i nigdy z adresu runnera.
 
 Znalezione wyjścia trafiają do slotu (`exits`, najwyżej 8), więc drugi runner sprawdza je własnym egressem (kilka zapytań
 zamiast polowania) i pomaga od tyłu. Trafiają tam tylko publiczne proxy: porty Tor (`tor:9050`, `127.0.0.1:…`) działają
-wyłącznie na maszynie, która je ma, a każdy runner i tak sprawdza własny Tor. Polowanie na jeden slot prowadzi naraz jeden runner (`hunting`); drugi czeka na wynik.
+wyłącznie na maszynie, która je ma, a każdy runner i tak sprawdza własny Tor. Polowanie na slot, do którego nikt jeszcze nie dociera, prowadzi naraz jeden runner (`hunting`); drugi czeka na wynik.
+Gdy runner crawluje już slot przez wyjścia (`via: pool`), nie liczy się jako docierający bezpośrednio: każdy wolny
+runner z egressem szuka wtedy własnych wyjść (zwykle własny Tor), o ile zostało co najmniej tyle grup co w największym
+kawałku (`MAX_CHUNK`, 24), i pomaga. Bez tego cztery runnery czekały 9–13 minut, aż oracle3 sam skończy WLO.
 Polowanie zwykle nie musi już szukać: **zwiad** egressu ([docs/EGRESS.md](EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść))
 na oracle i northflanku przez cały czas sprawdza nowe proxy z list na stronach wszystkich wydziałów i trzyma dla każdego
 wydziału najszybsze sprawdzone wyjścia, więc gdy plebanii brakuje, polowanie oddaje je od razu.
 Northflank nie ma egressu w kontenerze, więc uruchamia kod egressu na własnym loopbacku: w trakcie crawla tymczasowo, gdy
 polowanie jest potrzebne, a między przebiegami jako zwiad (crawl go zatrzymuje na swój czas, bo 512 MB nie mieści obu). WLO, WEL, WML, WTC i WCY bierze **wyłącznie** przez pulę (`pool`), a przy WCY
-pomaga oracle przez swoją pulę zawsze, gdy zostały co najmniej 2 wolne kawałki (`pool_help`). Gdy plebania jest włączona,
+pomaga oracle przez swoją pulę zawsze, gdy zostało co najmniej 24 wolnych grup (`pool_help`, `MAX_CHUNK`). Gdy plebania jest włączona,
 nikt nie poluje na jej wydziały. Ściana spotkana przez pulę nie liczy się do ścian własnego łącza runnera (czekanie,
 „chroniczna” ściana). Oracle potrzebuje przebudowanego egressu (`docker compose up -d --build egress` na VPS-ie):
 starszy odpowiada 404 i oracle po prostu nie poluje. Historia przebiegów pokazuje „przez proxy (pula) na northflank”.

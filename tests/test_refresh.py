@@ -3401,6 +3401,26 @@ class GitStoreTest(unittest.TestCase):
         local = subprocess.run(['git', '-C', str(self.repos[2]), 'for-each-ref'], capture_output=True, text=True)
         self.assertEqual(local.stdout, '')
 
+    def test_a_lost_race_backs_off_without_holding_the_store(self):
+        racer, store = board.GitStore(self.repos[1], '1761000000-42'), None
+        free = []
+
+        def other_lane():
+            got = store.lock.acquire(timeout=1)
+            free.append(got)
+            if got:
+                store.lock.release()
+
+        def sleep(seconds):  # the backoff: another lane (another thread) must get the store meanwhile
+            t = threading.Thread(target=other_lane)
+            t.start()
+            t.join()
+        store = board.GitStore(self.repos[0], '1761000000-42', sleep=sleep)
+        store.update('s/wml', lambda d: {'n': 0})
+        racer.update('s/wml', lambda d: {'n': 5})  # store's cached sha is now old: its next push loses once
+        self.assertEqual(store.update('s/wml', lambda d: dict(d, n=d['n'] + 1)), ({'n': 6}, True))
+        self.assertEqual(free, [True])
+
     def test_an_unreachable_store_raises(self):
         lost = board.GitStore(self.repos[0], '1-2', remote='nowhere')
         with self.assertRaises(board.StoreError):
@@ -3557,10 +3577,28 @@ class StackPolicy(unittest.TestCase):
     def test_pool_help_joins_a_slot_another_leads_while_much_is_left(self):
         pool = {'pool': {'wcy'}, 'pool_help': {'wcy'}, 'hunter': True, 'pool_of': {'northflank': {'wcy'}}}
         me = me_of('northflank', ['wcy'], ['oracle'], **pool)
-        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{}, {}, {}])}
+        many = [f'C{i}' for i in range(stack.MAX_CHUNK + 5)]
+        # one big free chunk (chunks are cut as they are taken): much is left
+        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{'state': 'held', 'by': 'oracle'}, {'codes': many}])}
         self.assertEqual(stack.choose(self.view(slots, oracle='live'), me, 'wcy'), ('hunt', 'wcy'))
-        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{'state': 'done'}, {'state': 'done'}, {}])}
+        slots = {'wcy': slot_doc('wcy', leader='oracle', chunks=[{'state': 'done'}, {'codes': many[:5]}])}
         self.assertEqual(stack.choose(self.view(slots, oracle='live'), me, 'wcy'), ('linger',))
+
+    def test_helpers_hunt_beside_a_runner_that_crawls_through_exits_while_much_is_left(self):
+        many = [f'C{i}' for i in range(stack.MAX_CHUNK + 5)]
+        cant = {'oracle2': {'cause': 'wall'}}
+        slots = {'wlo': dict(slot_doc('wlo', leader='oracle3', chunks=[{'state': 'held', 'by': 'oracle3'},
+                                                                        {'codes': many}], cant=cant),
+                             via={'oracle3': 'pool'})}  # oracle3 found Tor exits: its own, not shared on the slot
+        me = me_of('oracle2', ['wlo'], ['oracle3'], hunter=True)
+        me.cant['wlo'] = {'cause': 'wall', 'at': 0, 'tries': 1}
+        view = self.view(slots, oracle3='live')
+        self.assertEqual(stack.choose(view, me, 'wat-edge'), ('hunt', 'wlo'))
+        slots['wlo']['hunting'] = {'runner': 'northflank2'}  # another helper searching too: still worth its own
+        self.assertEqual(stack.choose(self.view(slots, oracle3='live', northflank2='live'), me, 'wat-edge'),
+                         ('hunt', 'wlo'))
+        slots['wlo']['chunks'][1]['codes'] = many[:5]  # little left: oracle3 finishes it sooner than a search
+        self.assertEqual(stack.choose(view, me, 'wat-edge'), ('linger',))
 
     def test_slot_status(self):
         able = ['plebania', 'oracle']
@@ -3773,6 +3811,18 @@ class StackSettle(unittest.TestCase):
         r.slots['wim'] = doc
         r._release('wim')
         self.assertEqual(self.chunks(store), {0: ('free', None), 1: ('free', None)})
+
+    def test_a_slot_of_the_same_group_still_to_open_goes_before_the_next_chunk(self):
+        quick_stack(self, MIN_CHUNK=3, MAX_CHUNK=3)
+        store = board.MemoryStore({}, threading.Lock())
+        store.shared['s/wel'] = (1, json.dumps(dict(slot_doc('wel', leader='other'), next=2, chunks=[
+            {'id': i, 'codes': [f'WEL{3 * i + j:03d}' for j in range(3)], 'state': 'free', 'by': None, 'fails': 0}
+            for i in range(2)])))
+        site = self.Counting('nf', {'wel': 6, 'wlo': 6}, [], threading.Lock())
+        r = stack.Runner(store, me_of('nf', ['wel', 'wlo'], ['other']), site, log=lambda m: None)
+        r._work('wat-edge', 'wel', False, 2)
+        self.assertEqual(site.crawls, 1)  # handed its chunk in to open WLO (and meet any wall there) first
+        self.assertEqual(stack.choose(r.view(), r.me, 'wat-edge'), ('open', 'wlo'))
 
     def test_a_listing_that_stands_still_is_opened_by_another_runner(self):
         clock = [0.0]

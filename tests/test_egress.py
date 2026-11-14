@@ -1,4 +1,5 @@
 """Offline tests for the egress rotator (tools/egress) and refresh retry/report logic."""
+import json
 import os
 import sys
 import tempfile
@@ -2928,6 +2929,19 @@ class EgressClient(unittest.TestCase):
         self.assertFalse(self.client._pid_alive(pid, b'tor'))
         self.assertEqual(tor.ensure(), urls)  # again, on the same ports (the pool's pinned entries stay)
         self.assertEqual(len(fetched), 1)  # the bundle is kept
+
+    def test_a_stray_tor_that_tor_json_lost_is_stopped_before_a_new_one(self):
+        home = Path(tempfile.mkdtemp()) / 'egress'
+        tor = self.tor(home, [])
+        self.addCleanup(tor.stop)
+        urls = tor.ensure()
+        stray = tor._read_state()['pid']
+        self.assertEqual(self.client._strays(home / 'torrc'), [stray])
+        # a job cut short: tor.json names a dead pid while the old tor still holds the data directory
+        tor.state_path.write_text(json.dumps({'pid': 2 ** 22 + 1, 'ports': []}), encoding='utf-8')
+        self.assertEqual(len(tor.ensure()), len(urls))
+        self.assertFalse(self.client._pid_alive(stray, b'tor'))
+        self.assertNotEqual(tor._read_state()['pid'], stray)
 
     def test_a_tor_bundle_that_does_not_match_its_hash_is_not_run(self):
         home = Path(tempfile.mkdtemp()) / 'egress'

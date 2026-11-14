@@ -186,6 +186,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Nikt nie stoi, gdy jeden runner crawluje wydział przez wyjścia** (`tools/refresh/stack.py`): runner na wyjściach
+  puli (`via: pool`) nie liczy się już jako docierający bezpośrednio, więc pozostałe runnery z egressem szukają własnych
+  wyjść (zwykle własnego Tora) i pomagają, dopóki zostało co najmniej 24 grup. Ścieżka po kawałku najpierw otwiera
+  nieotwarty slot swojej grupy polityki (WLO obok WEL), więc ściana WLO jest znana w pierwszych minutach, a nie po WEL.
+- **Ręczny przebieg może sprawdzić wszystkie grupy** (`refresh.yml`, `refresh-crawl.yml`, akcja `refresh`): opcja
+  `force` przekazuje `--force`, czyli sprawdza także grupy sprawdzone w ostatniej godzinie.
 - **Szybsze przebiegi odświeżania** (`tools/refresh/stack.py`, `refresh.py`, `egress.py`, `.github/actions/refresh`):
   - rozmiar kawałka na stosie nie jest już stały (8 grup), tylko zależy od pracy, która została, i liczby runnerów na
     chodzie: od 3 do 24 grup, duże na początku i małe na końcu;
@@ -250,6 +256,14 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Runner nie zamiera po przegranym wyścigu w magazynie** (`tools/refresh/board.py`): przerwa przed ponowieniem
+  zamiany trzymała blokadę wszystkich wywołań gita runnera, więc jedna ścieżka potrafiła na ok. 50 s zatrzymać pozostałe
+  i bicie serca.
+- **Tor na northflanku znów startuje** (`tools/refresh/egress.py`): Tor zgubiony przez `tor.json` (zadanie przerwane w
+  trakcie) trzymał katalog danych, więc każdy nowy kończył się od razu. Przed startem egress kończy każdy Tor ze swoim
+  `torrc`.
+- **Northflank znów pomaga przy WCY** (`pool_help`, `tools/refresh/stack.py`): warunek liczył wolne kawałki, a odkąd
+  kawałki są cięte przy braniu, otwarty slot ma zwykle jeden duży; liczy się teraz wolne grupy.
 - **Przebieg, który wisiał na jednym kawałku albo jednym wyliczaniu** (`tools/refresh/stack.py`, `board.py`,
   `.github/actions/refresh`):
   - wynik kawałka, którego magazyn nie przyjął po przegranych wyścigach, przepadał, a kawałek zostawał zajęty przez
