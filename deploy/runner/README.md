@@ -1,6 +1,6 @@
 # Runner projektu na VPS
 
-Własny runner `refresh.yml` (etykiety `planwat` i `planwat-oracle`) razem z proxy wyjściowym, na jednej maszynie z Dockerem.
+Własny runner `refresh.yml` (etykiety `planwat` i `planwat-oracle1`, runner `oracle1`) razem z proxy wyjściowym, na jednej maszynie z Dockerem.
 To wolniejszy, zawsze włączony runner projektu: każdy przebieg dzieli wydziały między niego a plebanię, gdy ta jest
 włączona ([docs/REFRESH.md](../../docs/REFRESH.md#runnery-i-podział-pracy), `tools/refresh/fleet.json`). Zasady są te
 same co w [docs/REFRESH.md](../../docs/REFRESH.md) („Własny runner”):

@@ -2648,17 +2648,17 @@ class FleetPlan(unittest.TestCase):
         runners = {r['name']: r for r in fleet.load_fleet()}
         self.assertEqual(runners['northflank1']['faculties'], ['ioe', 'wig', 'wim'])
         self.assertEqual(runners['plebania']['prefers'], ['wtc', 'wlo', 'wel'])
-        self.assertEqual(set(runners['oracle']['prefers']), {'wig', 'ioe'})
-        all_up = {'planwat', 'planwat-plebania', 'planwat-oracle', 'planwat-northflank1'}
+        self.assertEqual(set(runners['oracle1']['prefers']), {'wig', 'ioe'})
+        all_up = {'planwat', 'planwat-plebania', 'planwat-oracle1', 'planwat-northflank1'}
         result = fleet.plan(list(runners.values()), wanted, state, all_up)
         shares = {s['runner']: set(s['faculties'].split(',')) for s in result['shards']}
-        self.assertTrue({'wig', 'ioe'} <= shares['oracle'])  # preferences keep them off the others' share
+        self.assertTrue({'wig', 'ioe'} <= shares['oracle1'])  # preferences keep them off the others' share
         self.assertTrue({'wtc', 'wlo', 'wel'} <= shares['plebania'])  # only its clean direct line gets them
         self.assertEqual(shares['northflank1'], {'wim'})  # limited by fleet.json's faculties
         self.assertNotIn('wcy', shares['northflank1'])  # WCY needs the pool, which Northflank lacks
         self.assertEqual(set().union(*shares.values()), set(wanted))
         # With equal speeds the rest balances by load; nothing preferred is left to a walled line.
-        only_oracle = fleet.plan(list(runners.values()), wanted, state, {'planwat', 'planwat-oracle'})
+        only_oracle = fleet.plan(list(runners.values()), wanted, state, {'planwat', 'planwat-oracle1'})
         self.assertEqual(only_oracle['shards'][0]['faculties'].split(','), wanted)  # a preference never strands a faculty
 
     def test_the_real_fleet_has_one_speed_for_every_runner(self):
@@ -2713,7 +2713,7 @@ class FleetPlan(unittest.TestCase):
             tmp = Path(tmp)
             (tmp / 'state.json').write_text(json.dumps(self.STATE))
             (tmp / 'runners.json').write_text(json.dumps(
-                [{'name': 'x', 'status': 'online', 'labels': ['planwat', 'planwat-oracle']}]))
+                [{'name': 'x', 'status': 'online', 'labels': ['planwat', 'planwat-oracle1']}]))
             out = tmp / 'out'
             with unittest.mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(out), 'GITHUB_STEP_SUMMARY': ''}):
                 code = fleet.main(['plan', '--state', str(tmp / 'state.json'), '--runners', str(tmp / 'runners.json'),
@@ -2721,8 +2721,8 @@ class FleetPlan(unittest.TestCase):
             self.assertEqual(code, 0)
             values = dict(line.split('=', 1) for line in out.read_text().splitlines())
             self.assertEqual(json.loads(values['matrix']),
-                             [{'runner': 'oracle', 'label': 'planwat-oracle', 'faculties': 'wcy,wim', 'census': '',
-                               'expected': 'oracle', 'fallback': 'wcy,wim', 'pool': '', 'egress': 'remote'}])
+                             [{'runner': 'oracle1', 'label': 'planwat-oracle1', 'faculties': 'wcy,wim', 'census': '',
+                               'expected': 'oracle1', 'fallback': 'wcy,wim', 'pool': '', 'egress': 'remote'}])
             self.assertEqual(values['shards'], '1')
             self.assertEqual(fleet.main(['plan', '--state', str(tmp / 'state.json'), '--faculty', 'nope']), 2)
 
@@ -2733,12 +2733,12 @@ class FleetCatchup(unittest.TestCase):
 
     @staticmethod
     def fac(name, blocked=False, fresh=True):
-        return {'id': name, 'runner': 'oracle', 'fresh': fresh, 'blocked': blocked}
+        return {'id': name, 'runner': 'oracle1', 'fresh': fresh, 'blocked': blocked}
 
     def without_plebania(self, **over):
-        # the shape of pass #136: plebania off, oracle walled on WLO, WML and WTC, the rest done
+        # the shape of pass #136: plebania off, oracle1 walled on WLO, WML and WTC, the rest done
         run = {'offline': ['plebania'], 'unassigned': [],
-               'runners': [{'name': 'oracle', 'status': 'blocked', 'faculties': self.WANTED[:-1],
+               'runners': [{'name': 'oracle1', 'status': 'blocked', 'faculties': self.WANTED[:-1],
                             'blocked_on': ['wlo', 'wml', 'wtc']},
                            {'name': 'northflank', 'status': 'done', 'faculties': ['wim']}],
                'faculties': [self.fac(f, blocked=f in ('wlo', 'wml', 'wtc')) for f in self.WANTED]}
@@ -2747,7 +2747,7 @@ class FleetCatchup(unittest.TestCase):
 
     def with_plebania(self):
         return {'offline': [], 'unassigned': [],
-                'runners': [{'name': n, 'status': 'done'} for n in ('plebania', 'oracle', 'northflank')],
+                'runners': [{'name': n, 'status': 'done'} for n in ('plebania', 'oracle1', 'northflank')],
                 'faculties': [self.fac(f) for f in self.WANTED]}
 
     def owed(self, runner, runs, wanted=None):
@@ -2779,7 +2779,7 @@ class FleetCatchup(unittest.TestCase):
 
     def test_a_runner_owes_only_what_it_may_take(self):
         run = self.without_plebania(offline=['northflank1'],
-                                    runners=[{'name': 'oracle', 'status': 'blocked'}, {'name': 'plebania', 'status': 'done'}],
+                                    runners=[{'name': 'oracle1', 'status': 'blocked'}, {'name': 'plebania', 'status': 'done'}],
                                     faculties=[self.fac(f, blocked=f in ('wim', 'wml')) for f in self.WANTED])
         self.assertEqual(self.owed('northflank1', [run]), ['wim'])
 
@@ -2804,30 +2804,30 @@ class FleetCatchup(unittest.TestCase):
             return code, values
 
     def test_catchup_plans_only_what_is_owed_and_keeps_walled_helpers_out(self):
-        history = [self.without_plebania()] * 3  # oracle walled on wlo, wml, wtc three times running
-        code, values = self.plan(history, ['plebania', 'oracle', 'northflank1'])
+        history = [self.without_plebania()] * 3  # oracle1 walled on wlo, wml, wtc three times running
+        code, values = self.plan(history, ['plebania', 'oracle1', 'northflank1'])
         self.assertEqual(code, 0)
-        # oracle stays out (its wall); northflank1 helps through pool exits, should its hunt find any
+        # oracle1 stays out (its wall); northflank1 helps through pool exits, should its hunt find any
         self.assertEqual([(m['runner'], m['faculties'], m['pool']) for m in json.loads(values['matrix'])],
                          [('plebania', 'wlo,wml,wtc', ''), ('northflank1', 'wlo,wml,wtc', 'wlo,wml,wtc')])
         self.assertEqual(json.loads(values['asleep']), [{'runner': 'oracle2', 'label': 'planwat-oracle2'},
                                                         {'runner': 'northflank2', 'label': 'planwat-northflank2'}])
 
     def test_an_unwalled_helper_joins_the_catchup(self):
-        code, values = self.plan([self.without_plebania()], ['plebania', 'oracle'])
+        code, values = self.plan([self.without_plebania()], ['plebania', 'oracle1'])
         self.assertEqual([(m['runner'], m['faculties'], m['expected']) for m in json.loads(values['matrix'])],
-                         [('plebania', 'wlo,wml,wtc', 'plebania,oracle'), ('oracle', 'wlo,wml,wtc', 'plebania,oracle')])
+                         [('plebania', 'wlo,wml,wtc', 'plebania,oracle1'), ('oracle1', 'wlo,wml,wtc', 'plebania,oracle1')])
         self.assertEqual(json.loads(values['asleep']), [{'runner': 'oracle2', 'label': 'planwat-oracle2'},
                                                         {'runner': 'northflank1', 'label': 'planwat-northflank1'},
                                                         {'runner': 'northflank2', 'label': 'planwat-northflank2'}])
 
     def test_a_catchup_for_a_runner_off_again_or_owing_nothing_crawls_nothing(self):
-        code, values = self.plan([self.without_plebania()], ['oracle'])
+        code, values = self.plan([self.without_plebania()], ['oracle1'])
         self.assertEqual((code, values['shards'], values['matrix']), (0, '0', '[]'))
         self.assertIn({'runner': 'plebania', 'label': 'planwat-plebania'}, json.loads(values['asleep']))
-        code, values = self.plan([self.with_plebania()], ['plebania', 'oracle'])
+        code, values = self.plan([self.with_plebania()], ['plebania', 'oracle1'])
         self.assertEqual((code, values['shards']), (0, '0'))
-        self.assertEqual(self.plan([], ['oracle'], catchup='nobody')[0], 2)
+        self.assertEqual(self.plan([], ['oracle1'], catchup='nobody')[0], 2)
 
     def test_nothing_is_asleep_when_github_was_not_asked(self):
         code, values = self.plan([self.with_plebania()], None, catchup='')
@@ -2842,7 +2842,7 @@ class FleetCatchup(unittest.TestCase):
                 self.assertEqual(fleet.main(['owed', '--runner', 'plebania', '--runs', str(tmp / 'runs.json')]), 0)
                 self.assertEqual(out.read_text(), 'owed=wlo,wml,wtc\n')
                 out.unlink()
-                self.assertEqual(fleet.main(['owed', '--runner', 'oracle', '--runs', str(tmp / 'runs.json')]), 0)
+                self.assertEqual(fleet.main(['owed', '--runner', 'oracle1', '--runs', str(tmp / 'runs.json')]), 0)
                 self.assertEqual(out.read_text(), 'owed=\n')
                 self.assertEqual(fleet.main(['owed', '--runner', 'nobody', '--runs', str(tmp / 'runs.json')]), 2)
 
@@ -4051,17 +4051,17 @@ class FleetLimitedRunner(unittest.TestCase):
     def test_the_real_fleet_with_a_limited_runner(self):
         f = fleet.load_fleet()
         wanted = fleet.enabled_faculties()
-        jobs, result = fleet.matrix_of(f, wanted, {}, {'planwat-oracle', 'planwat-northflank1'})
+        jobs, result = fleet.matrix_of(f, wanted, {}, {'planwat-oracle1', 'planwat-northflank1'})
         by = {j['runner']: j for j in jobs}
         limited = [r for r in f if r['name'] == 'northflank1'][0]
         self.assertEqual(set(by['northflank1']['faculties'].split(',')),
                          (set(limited['faculties']) | set(limited['pool'])) & set(wanted))
         self.assertEqual(set(by['northflank1']['pool'].split(',')), set(limited['pool']) & set(wanted))
-        self.assertEqual((by['northflank1']['egress'], by['oracle']['egress'], by['oracle']['pool']),
+        self.assertEqual((by['northflank1']['egress'], by['oracle1']['egress'], by['oracle1']['pool']),
                          ('local', 'remote', ''))
-        self.assertEqual(by['oracle']['faculties'].split(','), wanted)
+        self.assertEqual(by['oracle1']['faculties'].split(','), wanted)
         self.assertTrue(set(by['northflank1']['fallback'].split(',')) <= set(limited['faculties']))
-        self.assertEqual(by['oracle']['expected'], 'oracle,northflank1')
+        self.assertEqual(by['oracle1']['expected'], 'oracle1,northflank1')
         self.assertEqual(result['unassigned'], [])
         nobody = fleet.matrix_of(f, wanted, {}, set())[0]
         self.assertEqual(nobody, [])

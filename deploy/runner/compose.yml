@@ -15,8 +15,8 @@ services:
     environment:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       RUNNER_NAME: ${RUNNER_NAME:-planwat-runner}
-      # planwat-oracle: this box's entry in tools/refresh/fleet.json (the split of each pass between runners).
-      RUNNER_LABELS: ${RUNNER_LABELS:-planwat,planwat-oracle}
+      # planwat-oracle1: this box's entry in tools/refresh/fleet.json (the split of each pass between runners).
+      RUNNER_LABELS: ${RUNNER_LABELS:-planwat,planwat-oracle1}
       RUNNER_REPO_URL: https://github.com/kilerdevs/PlanWAT
       HTTP_PROXY: http://egress:8888
       HTTPS_PROXY: http://egress:8888

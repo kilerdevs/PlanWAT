@@ -195,8 +195,8 @@ Projekt ma trzy runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh
 | Runner | Etykieta | `speed` | Charakter |
 |---|---|---|---|
 | plebania | `planwat-plebania` | 1 | prywatny serwer: szybki, ale często wyłączony |
-| oracle | `planwat-oracle` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
-| oracle2 | `planwat-oracle2` | 1 | drugi darmowy VPS Oracle (Ampere A1, aarch64, od 14.11.2026): ten sam zestaw co oracle (egress ze zwiadem i Tor), bez własnych preferencji i bez `always_on` |
+| oracle1 | `planwat-oracle1` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
+| oracle2 | `planwat-oracle2` | 1 | drugi darmowy VPS Oracle (Ampere A1, aarch64, od 14.11.2026): ten sam zestaw co oracle1 (egress ze zwiadem i Tor), bez własnych preferencji i bez `always_on` |
 | northflank1 | `planwat-northflank1` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): IOE, WIG, WIM (`faculties`); WLO, WML i WTC dostają z Cloudflare 403 (relay przechodzi tylko WEL i WIG, a WEL dzieli ścieżkę z WLO), WCY wymaga puli |
 | northflank2 | `planwat-northflank2` | 1 | druga darmowa usługa Northflank (od 14.11.2026): to samo co northflank1 |
 
@@ -369,7 +369,7 @@ w ostatniej godzinie są pomijane.
 
 Konfiguracja (jednorazowo):
 
-1. Etykiety: Settings → Actions → Runners → runner → Labels. Plebanii dodaj `planwat-plebania`, VPS-owi `planwat-oracle`
+1. Etykiety: Settings → Actions → Runners → runner → Labels. Plebanii dodaj `planwat-plebania`, VPS-om `planwat-oracle1` i `planwat-oracle2`
    (obaj zostają też przy `planwat`). Nowy runner z [deploy/runner/](../deploy/runner/README.md) dostaje je przy
    rejestracji z `RUNNER_LABELS`.
 2. Token do sprawdzania, kto jest włączony: fine-grained personal access token tylko do tego repozytorium z jednym

@@ -10,8 +10,8 @@
       "note": "The home server: fast, but often switched off. It pulls its work from the pass's work stack (stack.py) like the others, leading the faculties it prefers and helping with the rest. Takes the WIG census (the Joomla tree Incapsula keeps from the VPS's datacenter address), at most once a week and after its own crawl, so a new programme directory is crawled by whoever has WIG. Leads WTC, WLO and WEL whenever it is up (the others leave them to it, and only help from the back): WTC and WLO's plan pages answered the Cloudflare Worker with 403 from both AMS and FRA on 2026-10-29, so only this direct line gets them when it is clean; WEL shares WLO's policy lane. The relay covers WEL and WIG (docs/EGRESS.md); WLO, WML and WTC answered it with 403 on 2026-10-29. Its egress box (tools/egress/compose.fragment.yml) can hunt the pool for exits through a wall its line meets (stack.py)."
     },
     {
-      "name": "oracle",
-      "label": "planwat-oracle",
+      "name": "oracle1",
+      "label": "planwat-oracle1",
       "speed": 1,
       "always_on": true,
       "prefers": ["wig", "ioe"],
@@ -23,7 +23,7 @@
       "label": "planwat-oracle2",
       "speed": 1,
       "egress": "remote",
-      "note": "A second free Oracle VM (deploy/runner/, the same compose stack as oracle: runner, egress with its scout and the Tor container), added 2026-11-14 on the tenancy's Always Free Ampere A1 allowance (VM.Standard.A1.Flex, 1 OCPU, 6 GB, aarch64, Ubuntu 26.04), also in Frankfurt. Always up like oracle, but not always_on (when GitHub cannot be asked who is online, the pass stays with oracle alone), and with no faculty of its own to prefer: it balances by load and helps on the work stack, and takes the walls through its egress the way oracle does."
+      "note": "A second free Oracle VM (deploy/runner/, the same compose stack as oracle1: runner, egress with its scout and the Tor container), added 2026-11-14 on the tenancy's Always Free Ampere A1 allowance (VM.Standard.A1.Flex, 1 OCPU, 6 GB, aarch64, Ubuntu 26.04), also in Frankfurt. Always up like oracle1, but not always_on (when GitHub cannot be asked who is online, the pass stays with oracle1 alone), and with no faculty of its own to prefer: it balances by load and helps on the work stack, and takes the walls through its egress the way oracle1 does."
     },
     {
       "name": "northflank1",
