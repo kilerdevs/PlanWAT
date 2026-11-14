@@ -19,6 +19,13 @@
       "note": "The free Oracle VPS (deploy/runner/): slow and weak, but always up. Covers everything while plebania is off. Leads WIG and IOE, so the fast machine's lanes stay on the faculties only it gets through: WIG tested from both runners on 2026-10-26 (two passes each, 33/33 groups, identical calendars); IOE crawled clean from here in 9 of 9 passes. WLO/WEL, WML and WTC answer this address with their walls when fetched directly; with PLANWAT_RELAY_URL and PLANWAT_RELAY_TOKEN set (docs/EGRESS.md) WEL and WIG ride the Cloudflare Worker relay, while WLO, WML and WTC answer 403 from Cloudflare's egress too (checked 2026-10-29 from AMS and FRA), so they stay with plebania when its line is clean; WCY stays on the pool (EGRESS_FAIL_CLOSED). When nobody up gets through WLO, WML or WTC (plebania off), it has its egress hunt the pool's public proxies for exits that do (docs/EGRESS.md, \"Polowanie na wyjścia\") and crawls them through those, sharing the exits it found on the work stack. Its egress scouts all the time (EGRESS_SCOUT, docs/EGRESS.md \"Zwiad\"): every new public proxy with a sensible ping is tested on every faculty page, so the hunt usually hands over exits it already has."
     },
     {
+      "name": "oracle2",
+      "label": "planwat-oracle2",
+      "speed": 1,
+      "egress": "remote",
+      "note": "A second free Oracle VM (deploy/runner/, the same compose stack as oracle: runner, egress with its scout and the Tor container), added 2026-11-14 on the tenancy's Always Free Ampere A1 allowance (VM.Standard.A1.Flex, 1 OCPU, 6 GB, aarch64, Ubuntu 26.04), also in Frankfurt. Always up like oracle, but not always_on (when GitHub cannot be asked who is online, the pass stays with oracle alone), and with no faculty of its own to prefer: it balances by load and helps on the work stack, and takes the walls through its egress the way oracle does."
+    },
+    {
       "name": "northflank1",
       "label": "planwat-northflank1",
       "speed": 1,
