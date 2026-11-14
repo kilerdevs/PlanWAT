@@ -2773,6 +2773,12 @@ class EgressClient(unittest.TestCase):
         self.assertEqual(e.hunt('wtc.wat.edu.pl', ['8.8.8.8:3128']), ['http://8.8.4.4:3128'])
         self.assertEqual(e.hunt('wlo.wat.edu.pl'), [])
 
+    def test_a_hunt_no_longer_needed_ends_at_once(self):
+        self.works = {('http://8.8.4.4:3128', 'wtc.wat.edu.pl')}
+        asked = []
+        self.assertEqual(self.egress().hunt('wtc.wat.edu.pl', stop=lambda: asked.append(1) or True), [])
+        self.assertEqual(asked, [1])
+
     def test_an_egress_without_the_hunt_or_the_token_cannot_hunt(self):
         with self.assertRaises(self.client.Unavailable):
             self.egress(token='wrong').hunt('wml.wat.edu.pl')

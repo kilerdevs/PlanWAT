@@ -79,7 +79,9 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   `degraded=true`.
 - **Tempo i częstotliwość dostosowują się.** `--fresh-hours` (nadpisywalne dla wydziału, nigdy poniżej 1 h) zmniejsza się o
   połowę w sierpniu, styczniu i lutym, gdy wydziały publikują nadchodzący semestr. Przerwa między stronami skaluje się dla
-  każdej grupy polityki (AIMD: ×1,5 przy blokadzie do 3×, ×0,9 przy czystym wydziale do 1×).
+  każdej grupy polityki (AIMD: ×1,5 przy blokadzie do 3×, ×0,9 przy czystym wydziale do 1×). Crawl przez wyjścia puli
+  ma osobny mnożnik (`<grupa>@pool`, tylko w stanie łącza runnera): ściana trafiona przez cudze wyjście nie spowalnia
+  stron, które runner bierze ze swojego adresu.
 - **Ciche grupy wydłużają sobie przerwę, zmieniające wracają na pełne tempo.** Każde zakończone sprawdzenie, po którym plan
   wyszedł ten sam (również `304`), podwaja przerwę przed następnym sprawdzeniem tej grupy: 1 h, 2 h, 4 h… — do sufitu
   `--adaptive-hours` (w akcji 4 h; 0 wyłącza rozciąganie i przywraca sprawdzanie przy każdym przebiegu). Miesiące publikacji
@@ -252,11 +254,14 @@ i decyduje od nowa. Każdy runner ma też dokument z biciem serca (`r/<runner>`,
 `data`, ruch gita nie zjada limitu API, a referencje spoza `heads/` i `tags/` nie uruchamiają żadnego workflow.
 
 1. **Otwarcie.** Pierwszy runner, który zajmie slot (jego **lider**), wylicza grupy wydziału, odrzuca świeże i
-   niegotowe (te same reguły co zawsze) i tnie resztę, od najdawniej sprawdzonych, na **kawałki po 8 grup**. Rekord
+   niegotowe (te same reguły co zawsze) i kładzie resztę, od najdawniej sprawdzonych, na stos slotu. Rekord
    wydziału w `refresh-state.json` należy do lidera (`owned_faculties` → `fleet.py merge --owned`).
 2. **Branie.** Lider bierze kawałki od przodu, każdy inny runner (pomocnik) od tyłu, więc spotykają się w środku listy:
    to stos z dwoma końcami. Pomocnik najpierw sam wylicza wydział ze swojego adresu (potrzebuje adresów stron, a to
    też jego próba ściany) i dopiero potem cokolwiek bierze. Oddanie gotowego kawałka i wzięcie następnego to jedna zamiana.
+   Kawałek jest odcinany w chwili brania, a jego **rozmiar zależy od pracy**: połowa udziału w tym, co zostało wolne na
+   slocie, na runnera, który może go wziąć i jest na chodzie (`chunk_size`: od 3 do 24 grup). Na początku kawałki są duże
+   (mniej zamian na stosie), pod koniec małe, więc pomocnicy wciąż znajdują pracę i runnery kończą razem.
 3. **Jedno zapytanie naraz na politykę.** Runner ma po jednej ścieżce na grupę polityki Incapsula (WLO i WEL to
    `wat-edge`) i tylko ta ścieżka pyta tę politykę z tego adresu, razem z listami. Naraz crawluje najwyżej `--lanes`
    ścieżek (6); pierwszeństwo ma praca, której nikt inny nie może wziąć (np. WML na plebanii), potem własne wydziały,

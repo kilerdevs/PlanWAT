@@ -613,17 +613,20 @@ def todo_of(name, cfg, args, state, today, items, ahead=False, only=None):
 
 
 def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, clock=time.monotonic,
-                     progress=None, ahead=False, part=None, only=None, listed=None, settle=True, report_block=None):
+                     progress=None, ahead=False, part=None, only=None, listed=None, settle=True, report_block=None,
+                     pace_key=None):
     """refresh_faculty's body. A chunk of the work stack (stack.py) passes `only` (its codes), `listed` (the listing
     this runner made), `part` (asked before each group: False skips it, the chunk is no longer this runner's) and
     `settle` (False: a further chunk of a faculty this runner already crawled cleanly this pass, which does not ease
     the learned pacing again). `report_block` replaces the block report to the egress (a crawl through an egress's
-    hunt port tells that one)."""
+    hunt port tells that one). `pace_key` is the learned pacing's key, the policy group unless given (a crawl through
+    pool exits keeps its own: their walls say nothing of this runner's line)."""
     driver = load_driver(name, cfg, state, today)
     tid = core.term_id(today)
     out = Path(args.out)
     fac = state.faculties.setdefault(name, {})
     group = core.group_of(name)
+    pace_key = pace_key or group
     host = faculty_host(cfg)
 
     def block_report():
@@ -634,11 +637,22 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
     on_block = block_report if host or report_block is not None else None
     # AIMD pacing: the policy group's multiplier stretches the pause between pages. It grows on
     # every block verdict and decays on every clean faculty, persisting through state.save.
-    mult = state.data.get('pacing', {}).get(group, 1.0)
+    mult = state.data.get('pacing', {}).get(pace_key, 1.0)
 
     def pace(blocked):
         pacing = state.data.setdefault('pacing', {})
-        pacing[group] = min(3.0, mult * 1.5) if blocked else max(1.0, mult * 0.9)
+        pacing[pace_key] = min(3.0, mult * 1.5) if blocked else max(1.0, mult * 0.9)
+
+    def record(**kw):
+        """This pass's verdict on the faculty (the report reads fac['run']), over the shared defaults."""
+        fac['run'] = dict({'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0, 'changed': 0, 'skipped': 0,
+                           'not_ready': 0, 'blocked': False, 'ahead': ahead, 'cause': None, 'degraded': False}, **kw)
+        return fac['run']
+
+    def walled(cause, checked=0, changed=(), failed=0, not_ready=0, degraded=False):
+        fac['blocked_at'] = record(checked=checked, changed=len(changed), skipped=failed, not_ready=not_ready,
+                                   blocked=True, cause=cause, degraded=degraded)['at']
+        pace(True)
 
     try:
         items = listed if listed is not None else discover_with_retry(
@@ -646,10 +660,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             on_block=on_block)
     except core.Blocked as err:
         log(f'[{name}] BLOCKED while listing groups: {err}')
-        fac['blocked_at'] = core.now_utc().isoformat()
-        fac['run'] = {'at': fac['blocked_at'], 'checked': 0, 'changed': 0, 'skipped': 0,
-                      'not_ready': 0, 'blocked': True, 'ahead': ahead, 'cause': 'wall', 'degraded': False}
-        pace(True)
+        walled('wall')
         return [], True, False
     except core.Gone as err:
         if ahead:
@@ -657,17 +668,13 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             log(f'[{name}] the coming semester is not published yet ({err})')
             return [], False, True
         log(f'[{name}] cannot list groups, the listing page is gone: {err}; the faculty moved its timetable?')
-        fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0, 'changed': 0,
-                      'skipped': 0, 'not_ready': 0, 'blocked': False, 'ahead': ahead,
-                      'cause': 'listing', 'degraded': True}
+        record(cause='listing', degraded=True)
         return [], False, False
     except Exception as err:
         log(f'[{name}] cannot list groups: {err}')
         # The report reads fac['run']: leaving the previous entry here would resend the last
         # run's numbers (and its degraded flag) as if they were this run's verdict.
-        fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0, 'changed': 0,
-                      'skipped': 0, 'not_ready': 0, 'blocked': False, 'ahead': ahead,
-                      'cause': 'listing', 'degraded': True}
+        record(cause='listing', degraded=True)
         return [], False, False
     # The ahead pass must not clear a degraded flag the main pass already raised.
     degraded = fac.get('run', {}).get('degraded', False) if ahead else False
@@ -681,9 +688,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
     if not items:
         log(f'[{name}] no groups listed; leaving the faculty untouched')
         if degraded:
-            fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': 0, 'changed': 0,
-                          'skipped': 0, 'not_ready': 0, 'blocked': False, 'ahead': ahead,
-                          'cause': None, 'degraded': True}
+            record(degraded=True)
         return [], False, False
     if not robots_allows(session, items[0].url, state):
         log(f'[{name}] robots.txt disallows the timetable pages; skipping the faculty')
@@ -736,19 +741,11 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
                     sleep(random.uniform(2.0, 4.0) * attempt)
                     continue
                 log(f'[{name}] BLOCKED on {item.code}: {err}')
-                fac['blocked_at'] = core.now_utc().isoformat()
-                fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
-                              'changed': len(changed), 'skipped': failed, 'not_ready': not_ready,
-                              'blocked': True, 'ahead': ahead, 'cause': 'wall', 'degraded': degraded}
-                pace(True)
+                walled('wall', checked, changed, failed, not_ready, degraded)
                 return changed, True, False
             except Exception as err:
                 log(f'[{name}] flaky fetch on {item.code}, {checked} responses in: {err}')
-                fac['blocked_at'] = core.now_utc().isoformat()
-                fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
-                              'changed': len(changed), 'skipped': failed, 'not_ready': not_ready,
-                              'blocked': True, 'ahead': ahead, 'cause': 'flaky', 'degraded': degraded}
-                pace(True)
+                walled('flaky', checked, changed, failed, not_ready, degraded)
                 return changed, True, False
             if r.status_code in (304, 404):
                 break
@@ -758,11 +755,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             block_report()
             if attempt >= attempts:
                 log(f'[{name}] BLOCKED on {item.code} (HTTP {r.status_code}) after {n - 1} pages')
-                fac['blocked_at'] = core.now_utc().isoformat()
-                fac['run'] = {'at': fac['blocked_at'], 'term': tid, 'checked': checked,
-                              'changed': len(changed), 'skipped': failed, 'not_ready': not_ready,
-                              'blocked': True, 'ahead': ahead, 'cause': 'wall', 'degraded': degraded}
-                pace(True)
+                walled('wall', checked, changed, failed, not_ready, degraded)
                 return changed, True, False
             log(f'[{name}] {item.code}: block response (HTTP {r.status_code}); '
                 f'riding a fresh connection ({attempt + 1}/{attempts})')
@@ -871,9 +864,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
         fac['last_ok'] = core.now_utc().isoformat()
         fac['blocked_at'] = None
         fac.pop('wall', None)  # the wall this runner met here is down (run_lane: chronic walls)
-    fac['run'] = {'at': core.now_utc().isoformat(), 'term': tid, 'checked': checked,
-                  'changed': len(changed), 'skipped': failed, 'not_ready': not_ready,
-                  'blocked': False, 'ahead': ahead, 'cause': None, 'degraded': degraded}
+    record(checked=checked, changed=len(changed), skipped=failed, not_ready=not_ready, degraded=degraded)
     log(f'[{name}] done: {len(changed)} changed, {failed} skipped'
         + (f', {not_ready} not ready' if not_ready else ''))
     return changed, False, True
@@ -1249,7 +1240,8 @@ class FleetOps(stack.Ops):
         done, blocked, complete = _refresh_faculty(name, cfg, self.args, self.state, day, self.session(slot),
                                                    self.sleep, self.clock, self.progress, ahead, part=part,
                                                    only=codes, listed=items, settle=settle,
-                                                   report_block=self.reporter(slot, faculty_host(cfg)))
+                                                   report_block=self.reporter(slot, faculty_host(cfg)),
+                                                   pace_key=f'{core.group_of(name)}@pool' if pooled else None)
         run = fac.get('run')
         since = getattr(self.args, 'started', None)
         if (isinstance(before, dict) and isinstance(run, dict) and since and str(before.get('at') or '') >= since
@@ -1310,7 +1302,7 @@ class FleetOps(stack.Ops):
         return recovered
 
 
-    def hunt(self, slot, exits):
+    def hunt(self, slot, exits, stop=None):
         """Exits through the faculty's wall, from this runner's egress (egress.py): from then on the slot's pages
         ride them. Raises when there is no egress that can hunt."""
         if self.egress is None:
@@ -1318,7 +1310,7 @@ class FleetOps(stack.Ops):
         host = faculty_host(self.sources[stack.faculty_of(slot)])
         if not host:
             return []
-        found = self.egress.hunt(host, exits)
+        found = self.egress.hunt(host, exits, stop=stop)
         if found:
             with self.lock:
                 self.routes[slot] = 'pool'

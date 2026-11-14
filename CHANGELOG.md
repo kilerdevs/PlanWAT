@@ -186,6 +186,13 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Szybsze przebiegi odświeżania** (`tools/refresh/stack.py`, `refresh.py`, `egress.py`, `.github/actions/refresh`):
+  - rozmiar kawałka na stosie nie jest już stały (8 grup), tylko zależy od pracy, która została, i liczby runnerów na
+    chodzie: od 3 do 24 grup, duże na początku i małe na końcu;
+  - polowanie na wyjścia kończy się, gdy slot skończył już inny runner. Wcześniej trwało do 8 minut po zakończeniu pracy
+    i przedłużało przebieg;
+  - ściany trafione przez wyjścia puli mają osobny mnożnik tempa i nie spowalniają już crawla z własnego adresu runnera;
+  - środowisko Pythona crawla jest budowane raz na runnera i wersję zależności (w tool cache), a nie w każdym zadaniu.
 - **Nowy podział pracy między serwerami: wspólny stos pracy** (`tools/refresh/stack.py`, `board.py`). Plan niczego już
   nie przydziela: każdy włączony runner bierze pracę ze wspólnego stosu przebiegu (jeden dokument na wydział na
   referencji gita, zmieniany atomowo przez compare-and-swap). Lider wydziału wylicza go i tnie na kawałki po 8 grup,

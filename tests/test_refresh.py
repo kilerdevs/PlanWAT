@@ -419,6 +419,18 @@ class Run(unittest.TestCase):
         state = core.State(self.tmp / core.STATE_FILE)
         self.assertEqual(state.faculties['wlo']['run']['cause'], 'wall')
 
+    def test_a_wall_met_through_pool_exits_slows_only_the_pool(self):
+        routes = dict(self.routes)
+        routes['https://example.test/plan/zima/WLO26AX1S1.htm'] = Resp(200, self.BLOCK_PAGE)
+        args = refresh.parse(['--out', str(self.tmp), '--force'])
+        state = core.State(self.tmp / core.STATE_FILE)
+        group = core.group_of('wlo')
+        state.data['pacing'] = {group: 1.0}
+        _, blocked, _ = refresh._refresh_faculty('wlo', WLO_CFG, args, state, TODAY, SequenceSession(routes),
+                                                 sleep=lambda s: None, pace_key=f'{group}@pool')
+        self.assertTrue(blocked)
+        self.assertEqual(state.data['pacing'], {group: 1.0, f'{group}@pool': 1.5})
+
     def test_block_retries_can_be_switched_off(self):
         routes = dict(self.routes)
         routes['https://example.test/plan/zima/WLO26AX1S1.htm'] = Resp(200, self.BLOCK_PAGE)
@@ -3313,7 +3325,7 @@ class WaitStops(unittest.TestCase):
 def quick_stack(test, **over):
     """Stack timings in milliseconds for the length of a test."""
     values = dict(POLL=0.02, HEARTBEAT=0.05, STALE=0.4, JOIN_GRACE=0.5, LANE_STALE=1.5, STORE_DOWN=0.8,
-                  RETRY_ERROR=0.2, CHUNK=4)
+                  RETRY_ERROR=0.2, MAX_CHUNK=4, MIN_CHUNK=1)
     values.update(over)
     for name, value in values.items():
         orig = getattr(stack, name)
@@ -3578,7 +3590,7 @@ class FakeSite(stack.Ops):
         self.exits_dead = set(exits_dead)  # found, but gone before the listing (the hunt port then answers 403)
         self.routes, self.hunts, self.route_probes = set(), [], 0
 
-    def hunt(self, slot, exits):
+    def hunt(self, slot, exits, stop=None):
         f = stack.faculty_of(slot)
         with self.lock:
             self.hunts.append((slot, tuple(exits)))
@@ -3677,6 +3689,27 @@ def run_pass(test, spec, sizes=SIZES, absent=(), crash=None, outage=None, reject
     test.sites = {n: r.ops for n, r in runners.items()}
     summary = stack.summarize(docs, [{'runner': n, 'faculties': ','.join(sizes)} for n in spec], allow)
     return fetched, reports, summary, time.monotonic() - t0
+
+
+class StackChunks(unittest.TestCase):
+    """Chunks are cut as they are taken, sized by the work left and the runners up to share it."""
+
+    def test_the_size_follows_the_work_left_and_the_runners(self):
+        self.assertEqual(stack.chunk_size(160, 1), stack.MAX_CHUNK)
+        self.assertEqual(stack.chunk_size(160, 4), 20)
+        self.assertEqual(stack.chunk_size(30, 2), 8)
+        self.assertEqual(stack.chunk_size(4, 3), stack.MIN_CHUNK)
+
+    def test_the_leader_cuts_from_the_front_a_helper_from_the_back(self):
+        d = {'slot': 'wml', 'next': 1, 'chunks': [{'id': 0, 'codes': list('abcdefgh'), 'state': 'free', 'by': None,
+                                                    'fails': 1}]}
+        at = stack.split(d, 0, True, 3)
+        self.assertEqual((d['chunks'][at]['codes'], d['chunks'][at]['id'], d['chunks'][at]['fails']),
+                         (list('abc'), 1, 1))
+        at = stack.split(d, 1, False, 2)
+        self.assertEqual((d['chunks'][at]['codes'], d['chunks'][at]['id']), (list('gh'), 2))
+        self.assertEqual([c['codes'] for c in d['chunks']], [list('abc'), list('def'), list('gh')])
+        self.assertEqual((stack.split(d, 1, True, 5), d['next']), (1, 3))  # small enough: taken whole
 
 
 class StackChaos(unittest.TestCase):
@@ -3796,7 +3829,9 @@ class StackChaos(unittest.TestCase):
         sizes = {'ioe': 15, 'wig': 30}
         fetched, _, summary, _ = run_pass(self, spec, sizes=sizes)
         status = self.check(fetched, summary, sizes=sizes, lost={'ioe'}, dup_ok=True)
-        self.assertEqual((status['ioe'], summary['faculties']['ioe']['failed']), ('failed', 4))
+        self.assertEqual(status['ioe'], 'failed')
+        # closed with at most the chunk the page sat in (a chunk cut smaller after the first crash closes fewer)
+        self.assertIn(summary['faculties']['ioe']['failed'], range(1, 5))
         self.assertEqual(len({c for _, s, c in fetched if s == 'ioe'}), 14)  # all but the page that crashes it
 
     def test_a_store_that_goes_away_and_comes_back(self):
@@ -3839,7 +3874,7 @@ class StackReplay(unittest.TestCase):
     PER = {'wel': 8.4, 'wlo': 8.3, 'wml': 8.9, 'wcy': 8.0, 'ioe': 3.7, 'wig': 2.6, 'wim': 1.6, 'wtc': 6.5}
 
     def replay(self, spec, sizes):
-        quick_stack(self, CHUNK=8, POLL=0.01, HEARTBEAT=0.03, STALE=0.3, JOIN_GRACE=0.3)
+        quick_stack(self, MAX_CHUNK=8, MIN_CHUNK=8, POLL=0.01, HEARTBEAT=0.03, STALE=0.3, JOIN_GRACE=0.3)
         per, scale = self.PER, 0.001
         spans = {}
 

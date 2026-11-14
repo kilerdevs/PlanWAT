@@ -266,7 +266,8 @@ Egress robi to na żądanie, poza zwykłym odświeżaniem puli, także dla host�
   proxy z opóźnieniem Round 1 najwyżej `EGRESS_HUNT_MAX_MS` (domyślnie 2500 ms), od najszybszego, przechodzi Round 2
   dla każdego hosta, który nie ma jeszcze 4 wyjść: ta sama strona listy, znacznik treści i weto stron blokady co zwykle.
   Proxy, które przeszło jeden wydział, jest więc od razu próbowane na pozostałych. Najwyżej 4 sondy naraz (wydziały widzą
-  strumyczek, nie skan), najwyżej 5 minut. Host sprawdzany w ostatnich 30 minutach ma tylko powtórnie sprawdzane znane
+  strumyczek, nie skan), najwyżej 5 minut. Runner przestaje czekać na wynik, gdy slot skończył już ktoś inny
+  (`stop` w `Egress.hunt`); egress może dokończyć polowanie w tle i zapamiętuje wynik. Host sprawdzany w ostatnich 30 minutach ma tylko powtórnie sprawdzane znane
   wyjścia, a proxy, które niedawno go nie przeszło, nie jest pytane znowu.
 - `GET /api/hunt` pokazuje stan każdego hosta (`running`, `done`, `error`), liczbę wyjść i prób oraz znalezione wyjścia.
 - `POST /api/exits {"host": ..., "exits": [...]}` sprawdza wyjścia, które znalazł inny runner (najwyżej 8, każde przez

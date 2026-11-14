@@ -121,12 +121,26 @@ runs:
         if [ -f "$RUNNER_TOOL_CACHE/planwat/egress/daemon.json" ]; then
           python3 "$GITHUB_WORKSPACE/$SOURCE/tools/refresh/egress.py" stop || true
         fi
-        # Dependencies go into a throwaway venv on writable scratch: the self-hosted runner's baked
-        # /opt/venv is read-only at job time (container hardening), so `pip install` there fails
-        # with EROFS. $RUNNER_TEMP is writable on both hosted and self-hosted runners.
-        python -m venv "$RUNNER_TEMP/planwat-venv"
-        "$RUNNER_TEMP/planwat-venv/bin/python" -m pip install --disable-pip-version-check curl_cffi==0.13.0 pymupdf==1.28.2
-        echo "PLANWAT_PY=$RUNNER_TEMP/planwat-venv/bin/python" >> "$GITHUB_ENV"
+        # Dependencies go into a venv of their own: the self-hosted runner's baked /opt/venv is read-only at job time
+        # (container hardening), so `pip install` there fails with EROFS. It is kept in the tool cache, which the
+        # project's runners keep between jobs, named by the Python and the pins: built once per runner and version,
+        # in a scratch dir moved into place only once it imports, so a half-built one is never reused.
+        pins='curl_cffi==0.13.0 pymupdf==1.28.2'
+        tag="$(python -c 'import sys; print("%d.%d" % sys.version_info[:2])')-$(printf '%s' "$pins" | sha256sum | cut -c1-12)"
+        venv="$RUNNER_TOOL_CACHE/planwat/crawl-venv-$tag"
+        if "$venv/bin/python" -c 'import curl_cffi, fitz' 2>/dev/null; then
+          echo "crawl venv reused ($tag)"
+        else
+          mkdir -p "$RUNNER_TOOL_CACHE/planwat"
+          rm -rf "$venv" "$venv.new"
+          python -m venv "$venv.new"
+          # shellcheck disable=SC2086 # the pins are words
+          "$venv.new/bin/python" -m pip install --disable-pip-version-check $pins
+          "$venv.new/bin/python" -c 'import curl_cffi, fitz'
+          # only bin/python is used, which finds its venv from wherever it sits (pip's script shebangs would not)
+          mv "$venv.new" "$venv"
+        fi
+        echo "PLANWAT_PY=$venv/bin/python" >> "$GITHUB_ENV"
     - id: run
       shell: bash
       env:

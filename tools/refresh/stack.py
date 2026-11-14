@@ -6,9 +6,11 @@ coming one, its pass over that (slot "wml~2027-28-zima"). Each slot is one docum
 changed only by compare-and-swap:
 
   open     The first runner to claim a slot (its leader) lists the faculty, leaves out what is fresh or not ready, and
-           cuts the rest, stalest first, into chunks of CHUNK groups: a stack with two ends.
+           puts the rest, stalest first, on the slot: a stack with two ends.
   claim    The leader takes chunks from the front, every other runner (a helper) from the back, so they meet in the
-           middle of the faculty's list. Finishing a chunk and taking the next is one swap; a helper first lists the
+           middle of the faculty's list. A chunk is cut off as it is taken, sized by the work left and the runners up
+           to share it (chunk_size): big while much is left, small at the end, so the runners finish together.
+           Finishing a chunk and taking the next is one swap; a helper first lists the
            faculty from its own address (the pages' links, and its wall probe), and only then takes anything.
   choose   Which slot a runner's lane turns to next is one pure function of what the store says (choose()): a runner
            opens the slots it prefers (fleet.json `prefers`) first, and the others leave those to it while it is up;
@@ -56,7 +58,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import board  # noqa: E402
 
-CHUNK = 8               # groups per chunk
+MIN_CHUNK = 3           # groups per chunk at the end of a slot (each chunk costs a swap on the store)
+MAX_CHUNK = 24          # ... and at most, while much is left (well inside LANE_STALE at the slowest pacing)
 HEARTBEAT = 30          # a runner's doc is pushed at least this often
 STALE = 150             # a runner whose doc stood still this long is gone (by the reader's own clock)
 JOIN_GRACE = 180        # an expected runner that has not shown up this long after we started is not waited for
@@ -122,9 +125,25 @@ class StoreUnavailable(Exception):
 # -- the documents ---------------------------------------------------------------------------------------------------
 
 
-def chunks_of(codes, size=CHUNK):
-    return [{'id': i, 'codes': codes[i * size:(i + 1) * size], 'state': 'free', 'by': None, 'fails': 0}
-            for i in range((len(codes) + size - 1) // size)]
+def chunk_size(free, workers):
+    """Groups to take at once: a share of what is free, halved so the last runners to finish still find work."""
+    return max(MIN_CHUNK, min(MAX_CHUNK, -(-free // (2 * max(1, workers)))))
+
+
+def split(d, at, front, n):
+    """Cut `n` codes off chunk `at` (its front for the leader, its back for a helper) as a chunk of their own, the rest
+    staying free where it is; the index of the chunk to take."""
+    c = d['chunks'][at]
+    if len(c['codes']) <= n:
+        return at
+    piece, rest = (c['codes'][:n], c['codes'][n:]) if front else (c['codes'][-n:], c['codes'][:-n])
+    c.update(codes=rest, state='free', by=None)
+    # both halves keep the failures counted: a page that crashes the crawl still closes its chunk after MAX_FAILS
+    new = {'id': d.get('next', len(d['chunks'])), 'codes': piece, 'state': 'free', 'by': None,
+           'fails': c.get('fails', 0)}
+    d['next'] = new['id'] + 1
+    d['chunks'].insert(at if front else at + 1, new)
+    return at if front else at + 1
 
 
 def remaining(doc):
@@ -482,9 +501,10 @@ class Ops:
         """Wait a wall out; True when it is down."""
         return False
 
-    def hunt(self, slot, exits):
+    def hunt(self, slot, exits, stop=None):
         """Find proxy exits that get through to the slot's faculty, the shared `exits` checked first: the ones that
-        work (from then on this runner reaches the slot through them), [] for none. May raise."""
+        work (from then on this runner reaches the slot through them), [] for none (or once stop() is true). May
+        raise."""
         return []
 
 
@@ -493,7 +513,7 @@ class Runner:
 
     def __init__(self, store, me, ops, lanes=6, deadline=None, clock=time.monotonic, sleep=time.sleep, log=print,
                  poll=None, heartbeat=None, stale=None, join_grace=None, lane_stale=None, store_down=None,
-                 retry_error=None, chunk=None):
+                 retry_error=None):
         # the module's timings unless given (read now, so a test may shorten them for a whole run)
         poll = POLL if poll is None else poll
         heartbeat = HEARTBEAT if heartbeat is None else heartbeat
@@ -502,12 +522,10 @@ class Runner:
         lane_stale = LANE_STALE if lane_stale is None else lane_stale
         store_down = STORE_DOWN if store_down is None else store_down
         retry_error = RETRY_ERROR if retry_error is None else retry_error
-        chunk = CHUNK if chunk is None else chunk
         self.store, self.me, self.ops, self.log = store, me, ops, log
         self.clock, self.sleep = clock, sleep
         self.deadline = deadline
         self.poll, self.heartbeat, self.store_down, self.retry_error = poll, heartbeat, store_down, retry_error
-        self.chunk = chunk
         self.gate = Gate(lanes)
         self.peers = Peers(me.name, clock, stale=stale, lane_stale=lane_stale, join_grace=join_grace)
         self.lock = threading.RLock()
@@ -784,7 +802,8 @@ class Runner:
         except Exception as err:
             self._cant(slot, 'error', err)
             return True
-        chunks = chunks_of(list(codes), self.chunk)
+        codes = list(codes)
+        chunks = [{'id': 0, 'codes': codes, 'state': 'free', 'by': None, 'fails': 0}] if codes else []
 
         def publish(d):
             if d is None or d.get('leader') != me or d.get('state') != 'listing':
@@ -800,15 +819,20 @@ class Runner:
             with self.lock:
                 self.led.add(slot)
             if chunks:
-                self.log(f'[{slot}] leading it: {len(codes)} groups in {len(chunks)} chunks')
+                self.log(f'[{slot}] leading it: {len(codes)} groups')
         return True
 
     def _pick(self, d, front, view):
+        """The chunk to take (free, or held by a runner gone), cut to chunk_size; its index, None for none."""
         free = [i for i, c in enumerate(d.get('chunks', []))
                 if c.get('state') == 'free' or (c.get('state') == 'held' and view.holder_dead(c, d['slot']))]
         if not free:
             return None
-        return free[0] if front else free[-1]
+        slot = d['slot']
+        workers = 1 + sum(1 for r in self.me.expected if self.me.may(r, slot) and r not in (d.get('cant') or {})
+                          and not view.gone(r))
+        left = sum(len(d['chunks'][i]['codes']) for i in free)
+        return split(d, free[0] if front else free[-1], front, chunk_size(left, workers))
 
     def _settle(self, d, chunk_id, result, me):
         """Fold a chunk's result into the doc: done, its rest back on the stack, or a failure counted."""
@@ -991,7 +1015,9 @@ class Runner:
         self.log(f'[{slot}] {why}; '
                  + (f'checking the {len(exits)} exits found for it' if exits else 'hunting the pool for exits to it'))
         try:
-            found = [e for e in self.ops.hunt(slot, exits) or [] if isinstance(e, str)]
+            # a search may take minutes: it ends once the slot is done (by others) or the pass's time is up
+            stop = lambda: self._late() or not remaining(self.view().slots.get(slot))  # noqa: E731
+            found = [e for e in self.ops.hunt(slot, exits, stop=stop) or [] if isinstance(e, str)]
             outcome = 'found' if found else 'none'
         except Exception as err:
             self.log(f'[{slot}] the hunt failed ({err!r})')

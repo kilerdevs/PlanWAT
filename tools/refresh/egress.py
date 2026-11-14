@@ -104,9 +104,10 @@ class Egress:
         """Have the egress up before it is needed (a remote one is somebody else's to run)."""
         return True
 
-    def hunt(self, host, exits=(), wait=HUNT_WAIT):
+    def hunt(self, host, exits=(), wait=HUNT_WAIT, stop=None):
         """Exits that get through to `host`: the shared `exits` checked first, then a search of the pool if none
-        of those works. [] when nothing gets through; Unavailable when this egress cannot hunt."""
+        of those works. [] when nothing gets through, or once stop() is true (the egress may finish the search on
+        its own and keeps what it found); Unavailable when this egress cannot hunt."""
         if not self.available():
             raise Unavailable(self.api)
         exits = [e for e in exits or () if isinstance(e, str)][:8]
@@ -123,6 +124,9 @@ class Egress:
         begun, until, cap = None, self.clock() + wait, self.clock() + 2 * wait
         while True:
             self.sleep(POLL)
+            if stop is not None and stop():
+                self.log(f'egress: no need to hunt {host} any more; leaving the search')
+                return []
             code, got = self._call('/api/hunt', timeout=15)
             state = ((got.get('hosts') or {}).get(host) or {}) if code == 200 else {}
             if begun is None and state.get('state') != 'queued':
