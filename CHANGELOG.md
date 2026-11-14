@@ -17,8 +17,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ### Dodano
 - **Czwarty runner `northflank2`** (`tools/refresh/fleet.json`, `deploy/runner/README.md`): druga darmowa usługa
-  Northflank z tym samym obrazem i tymi samymi zasadami co `northflank`, więc przebieg ma o jedną parę rąk więcej na stosie
-  pracy.
+  Northflank z tym samym obrazem i tymi samymi zasadami co pierwsza, więc przebieg ma o jedną parę rąk więcej na stosie
+  pracy. Pierwszy runner Northflank nazywa się odtąd `northflank1` (etykieta `planwat-northflank1`).
 - **Pełny przebieg bez prywatnych serwerów** (od 13 listopada 2026): wszystkie osiem wydziałów sprawdzają same serwery w
   chmurze (oracle i northflank), a domowy serwer tylko pomaga, gdy jest włączony. Mówią o tym README i `/stan/`.
 - **Nowa strona `/stan/`** (`build.py`, `src/stan.html`, `tools/refresh/runs.py`, `tools/refresh/stack.py`): kto co

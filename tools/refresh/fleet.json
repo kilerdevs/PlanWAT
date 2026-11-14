@@ -19,8 +19,8 @@
       "note": "The free Oracle VPS (deploy/runner/): slow and weak, but always up. Covers everything while plebania is off. Leads WIG and IOE, so the fast machine's lanes stay on the faculties only it gets through: WIG tested from both runners on 2026-10-26 (two passes each, 33/33 groups, identical calendars); IOE crawled clean from here in 9 of 9 passes. WLO/WEL, WML and WTC answer this address with their walls when fetched directly; with PLANWAT_RELAY_URL and PLANWAT_RELAY_TOKEN set (docs/EGRESS.md) WEL and WIG ride the Cloudflare Worker relay, while WLO, WML and WTC answer 403 from Cloudflare's egress too (checked 2026-10-29 from AMS and FRA), so they stay with plebania when its line is clean; WCY stays on the pool (EGRESS_FAIL_CLOSED). When nobody up gets through WLO, WML or WTC (plebania off), it has its egress hunt the pool's public proxies for exits that do (docs/EGRESS.md, \"Polowanie na wyjścia\") and crawls them through those, sharing the exits it found on the work stack. Its egress scouts all the time (EGRESS_SCOUT, docs/EGRESS.md \"Zwiad\"): every new public proxy with a sensible ping is tested on every faculty page, so the hunt usually hands over exits it already has."
     },
     {
-      "name": "northflank",
-      "label": "planwat-northflank",
+      "name": "northflank1",
+      "label": "planwat-northflank1",
       "speed": 1,
       "faculties": ["ioe", "wig", "wim"],
       "egress": "local",
@@ -36,7 +36,7 @@
       "egress": "local",
       "pool": ["wlo", "wel", "wml", "wtc", "wcy"],
       "pool_help": ["wcy"],
-      "note": "The second free Northflank service (planwat-crawler-2, the Developer Sandbox's other free service), added 2026-11-14: the same image as northflank (deployed from planwat-crawler's latest build, so it updates with it), the same limits and the same share rules, one more pair of hands on the work stack. Its address is Northflank's like northflank's, so it gets through the same walls: IOE, WIG and WIM directly, the rest through its own egress (Tor and the pool)."
+      "note": "The second free Northflank service (planwat-crawler-2, the Developer Sandbox's other free service), added 2026-11-14: the same image as northflank1 (deployed from planwat-crawler's latest build, so it updates with it), the same limits and the same share rules, one more pair of hands on the work stack. Its address is Northflank's like northflank1's, so it gets through the same walls: IOE, WIG and WIM directly, the rest through its own egress (Tor and the pool)."
     }
   ]
 }

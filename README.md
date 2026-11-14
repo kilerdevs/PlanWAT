@@ -292,7 +292,7 @@ grupy i linkiem do oficjalnego planu.
   kalendarze na gałąź `data`. Pages nakłada je na strony przed budową, więc **żaden commit na `master` ani `dev` nie jest
   potrzebny**.
 - **Od 13 listopada 2026 pełny przebieg nie zależy od prywatnych serwerów.** Wszystkie wydziały sprawdzają same serwery
-  w chmurze (oracle i northflank), także te, których strony wpuszczają tylko polskie adresy: przechodzą przez Tor z
+  w chmurze (oracle, northflank1 i northflank2), także te, których strony wpuszczają tylko polskie adresy: przechodzą przez Tor z
   polskimi wyjściami i pulę proxy ([docs/EGRESS.md](docs/EGRESS.md)). Domowy serwer tylko pomaga, gdy jest włączony.
 - Crawler jest uprzejmy: jedno żądanie naraz, losowe przerwy, `robots.txt`, warunkowe pobieranie (`304`), ominięcie grup
   sprawdzonych niedawno. Po napotkaniu blokady wydział jest odkładany, a nie obchodzony.

@@ -51,11 +51,11 @@ tam całego `workers.dev`. WCY nadal idzie przez pulę (`EGRESS_FAIL_CLOSED`), b
 
 ## Northflank
 
-Ten sam obraz działa też jako darmowy kontener Northflank (runner `northflank` w
+Ten sam obraz działa też jako darmowy kontener Northflank (runner `northflank1` w
 [`fleet.json`](../../tools/refresh/fleet.json)), bez egress: usługa budowana z repozytorium, Dockerfile
 `/deploy/runner/Dockerfile.runner`, kontekst `/deploy/runner`, gałąź `master`, reguła ścieżek **Allow** `deploy/runner/**`
-(inne pushe nie restartują runnera), bez portów. Zmienne środowiskowe (runtime): `RUNNER_REPO_URL`, `RUNNER_NAME=northflank`,
-`RUNNER_LABELS=planwat,planwat-northflank` i `RUNNER_TOKEN` (sekret, ważny godzinę), bez `HTTP(S)_PROXY`. Opcjonalnie
+(inne pushe nie restartują runnera), bez portów. Zmienne środowiskowe (runtime): `RUNNER_REPO_URL`, `RUNNER_NAME=northflank1`,
+`RUNNER_LABELS=planwat,planwat-northflank1` i `RUNNER_TOKEN` (sekret, ważny godzinę), bez `HTTP(S)_PROXY`. Opcjonalnie
 `PLANWAT_RELAY_URL` i `PLANWAT_RELAY_TOKEN` (oraz `PLANWAT_RELAY_HOSTS`), jeśli kontener ma używać Workera. Kontener nie ma
 wolumenu, więc rejestrację trzyma zmienna `RUNNER_STATE` (sekret): pliki rejestracji jako base64 z tar.gz, które
 entrypoint odtwarza przy starcie, gdy ich brak, zamiast rejestrować runner od nowa. Po pierwszej rejestracji zapisz je
@@ -65,7 +65,7 @@ stara wartość przestaje działać: wpisz świeży `RUNNER_TOKEN`, a po starcie
 tylko przez ściany IOE, WIG i WIM (próba 27.10.2026); relay Cloudflare daje mu jeszcze WEL i WIG, ale WLO, WML i WTC
 odpowiadają z zachodnich wyjść Workera 403 (sprawdzone 29.10.2026 z AMS i FRA), a WEL dzieli ścieżkę polityki z WLO.
 Dlatego `faculties` w `fleet.json` obejmują tylko IOE, WIG i WIM: te trzy działają także bez relaya. WLO, WEL, WML, WTC
-i WCY northflank bierze wyłącznie przez publiczne proxy (`pool` w `fleet.json`): crawl uruchamia kod egressu na
+i WCY northflank1 bierze wyłącznie przez publiczne proxy (`pool` w `fleet.json`): crawl uruchamia kod egressu na
 loopbacku kontenera z kopii w `$RUNNER_TOOL_CACHE` i z własnym venv tam (`tools/refresh/egress.py`, bez zmian w obrazie ani
 zmiennych) między przebiegami, żeby zwiad szukał wyjść
 ([docs/EGRESS.md](../../docs/EGRESS.md#zwiad-ciągłe-szukanie-szybszych-wyjść)); zadanie zatrzymuje go na swój czas (512 MB

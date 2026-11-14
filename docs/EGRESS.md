@@ -204,7 +204,7 @@ Gdzie działa:
 
 - **oracle** (`deploy/runner/compose.yml`): `EGRESS_SCOUT=on`, `EGRESS_SCOUT_R1=24`, `EGRESS_FACULTY_PROBES=8` (wątki liczą
   się do `pids_limit`, dlatego 384; odstęp 2 s nadal trzyma najwyżej jedną sondę zwiadu na wydział co 2 s). Wdrożenie: `docker compose up -d --build egress`.
-- **northflank**: zwiad działa **między przebiegami**. Koniec crawla uruchamia egress z kopii kodu w
+- **northflank1 i northflank2**: zwiad działa **między przebiegami**. Koniec crawla uruchamia egress z kopii kodu w
   `$RUNNER_TOOL_CACHE/planwat/egress/code/` i z własnym venv w `$RUNNER_TOOL_CACHE/planwat/egress-venv` (budowany raz),
   z `RUNNER_TRACKING_ID=0`, więc sprzątanie procesów po zadaniu go nie zabija, i ze skromnymi ustawieniami (TCP 48, Round 1
   6, sondy stron 2, partia 600, przerwa 120 s, `EGRESS_NICE=10`); stan, porty i token są w `daemon.json` (`0600`).
@@ -242,7 +242,7 @@ cztery porty to cztery wyjścia. Innym runnerom ich nie podajemy: adres `tor:905
 - **oracle** (`deploy/runner/compose.yml`): kontener `tor` (`tools/egress/Dockerfile.tor`, Alpine + `tor`, konfiguracja
   `tools/egress/torrc`) w sieci `outside`, porty 9050–9053 tylko dla sieci compose (`SocksPolicy`), bez portów na hoście;
   runner (sieć `inner`) go nie widzi. Wdrożenie: `docker compose up -d --build tor egress`. Pusty `EGRESS_TOR` wyłącza.
-- **northflank**: `tools/refresh/egress.py` (`LocalTor`) uruchamia Tor obok lokalnego egressu, z paczki Tor Expert Bundle
+- **northflank1 i northflank2**: `tools/refresh/egress.py` (`LocalTor`) uruchamia Tor obok lokalnego egressu, z paczki Tor Expert Bundle
   pobranej raz do `$RUNNER_TOOL_CACHE/planwat/tor-<wersja>/` i sprawdzonej przypiętym sha256 (`TOR_SHA256`; podpis paczki
   i listy sum sprawdzony kluczem Tor Browser Developers `EF6E 286D DA85 EA2A 4BA7 DE68 4E2C 6E87 9329 8290`). Rozpakowuje
   tylko `tor`, jego biblioteki i bazy GeoIP (bez nich `{pl}` nic nie znaczy). Tor żyje razem z egressem: startuje z nim

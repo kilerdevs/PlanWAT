@@ -196,7 +196,8 @@ Projekt ma trzy runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh
 |---|---|---|---|
 | plebania | `planwat-plebania` | 1 | prywatny serwer: szybki, ale często wyłączony |
 | oracle | `planwat-oracle` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
-| northflank | `planwat-northflank` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): IOE, WIG, WIM (`faculties`); WLO, WML i WTC dostają z Cloudflare 403 (relay przechodzi tylko WEL i WIG, a WEL dzieli ścieżkę z WLO), WCY wymaga puli |
+| northflank1 | `planwat-northflank1` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): IOE, WIG, WIM (`faculties`); WLO, WML i WTC dostają z Cloudflare 403 (relay przechodzi tylko WEL i WIG, a WEL dzieli ścieżkę z WLO), WCY wymaga puli |
+| northflank2 | `planwat-northflank2` | 1 | druga darmowa usługa Northflank (od 14.11.2026): to samo co northflank1 |
 
 Nikt nie dostaje pracy z góry: runnery jednego przebiegu biorą ją ze wspólnego **stosu pracy**
 ([`stack.py`](../tools/refresh/stack.py), niżej), więc szybszy i wcześniej wolny runner po prostu bierze więcej.
