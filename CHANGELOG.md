@@ -16,6 +16,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Pełny przebieg bez prywatnych serwerów** (od 13 listopada 2026): wszystkie osiem wydziałów sprawdzają same serwery w
+  chmurze (oracle i northflank), a domowy serwer tylko pomaga, gdy jest włączony. Mówią o tym README i `/stan/`.
 - **Nowa strona `/stan/`** (`build.py`, `src/stan.html`, `tools/refresh/runs.py`, `tools/refresh/stack.py`): kto co
   sprawdził w przebiegu widać jako graf, z serwerami po lewej i wydziałami po prawej. Linia ciągła oznacza, że serwer prowadził
   wydział, przerywana, że pomagał; niebieska to przejście przez publiczne proxy, fioletowa przez Tor, czerwone kropki to
