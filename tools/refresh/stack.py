@@ -43,6 +43,7 @@ Nothing here touches a faculty site: refresh.py hands in what crawls (Ops). Unit
 """
 import argparse
 import copy
+import ipaddress
 import json
 import re
 import sys
@@ -68,6 +69,21 @@ MAX_EXITS = 8           # proxy exits kept on a slot for the other runners
 START_TRIES = 4         # attempts to reach the store at the start before falling back
 SHY_PASSES = 3          # passes in a row a runner could not list a faculty before it turns there last
 WALL = 'wall'
+
+
+
+def tor_only(exits):
+    """Whether every exit is a Tor port (EGRESS_TOR): those are the only ones named by a host name or a loopback or
+    private address, as the egress takes list proxies by public address only (tools/egress/pool.py parse_proxy_url)."""
+    def tor(url):
+        host = str(url).rpartition('@')[2].split('://')[-1].rsplit(':', 1)[0].strip('[]')
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return True
+        return not ip.is_global
+    return bool(exits) and all(tor(e) for e in exits)
+
 
 SLOT_RE = re.compile(r'^([a-z]{2,8})(~\d{4}-\d{2}-(?:zima|lato))?$')
 STATES = ('listing', 'open', 'closed', 'unlisted')
@@ -989,6 +1005,8 @@ class Runner:
             d.setdefault('hunted', {})[me] = outcome
             if found:
                 d.setdefault('via', {})[me] = 'pool'
+                tor = [r for r in d.get('via_tor') or () if r != me]
+                d['via_tor'] = tor + [me] if tor_only(found) else tor  # /stan/ tells Tor from proxies
                 d['exits'] = list(dict.fromkeys(list(d.get('exits') or []) + found))[:MAX_EXITS]
                 d.get('cant', {}).pop(me, None)
             elif faculty_of(slot) in self.me.pool and me not in d.get('cant', {}):
@@ -1082,6 +1100,7 @@ def summarize(docs, matrix, allow):
                        'note': (d or {}).get('note'), 'not_ready': (d or {}).get('not_ready'),
                        'via_pool': sorted(r for r, v in ((d or {}).get('via') or {}).items()
                                           if v in ('pool', 'lost') and by.get(r))}
+        slots[slot]['via_tor'] = sorted(r for r in (d or {}).get('via_tor') or () if r in slots[slot]['via_pool'])
     rank = {'blocked': 0, 'unfinished': 1, 'absent': 1, 'failed': 2, 'done': 3, 'empty': 3}
     faculties = {}
     for f in wanted:
@@ -1100,7 +1119,8 @@ def summarize(docs, matrix, allow):
                         'changed': sum(n for v in mine.values() for n in v['changed_by'].values()),
                         'cant': {r: c for v in mine.values() for r, c in v['cant'].items()},
                         'failed': sum(v['failed'] for v in mine.values()),
-                        'via_pool': sorted({r for v in mine.values() for r in v.get('via_pool', ())})}
+                        'via_pool': sorted({r for v in mine.values() for r in v.get('via_pool', ())}),
+                        'via_tor': sorted({r for v in mine.values() for r in v.get('via_tor', ())})}
     return {'slots': slots, 'faculties': faculties}
 
 

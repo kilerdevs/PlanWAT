@@ -161,8 +161,13 @@ test('the refresh history is linked from the footer, names each pass\'s servers 
   // a row opens in place: the servers' shares, every faculty and the link to the run on GitHub
   const more = runs.nth(1).locator('.more');
   await expect(more).toBeHidden();
-  await runs.nth(1).locator('summary').click();
+  await runs.nth(1).locator(':scope > details > summary').click();
   await expect(more).toBeVisible();
+  // who crawled what as a graph; the servers' own list opens in a fold of its own
+  await expect(more.locator('.graph')).toBeVisible();
+  await expect(more.locator('.graph .srvn.off')).toContainText('wyłączony');
+  await more.locator('.tview > summary').click();
+  await expect(more.locator('.parts li.off')).toBeVisible();
   await expect(more.locator('.parts li.off')).toContainText('wyłączony');
   await expect(more.locator('.facs li')).toHaveCount(7);
   await expect(more.locator('.runlink a')).toHaveAttribute('href', /^https:\/\/github\.com\/kilerdevs\/PlanWAT\/actions\/runs\/\d+$/);
