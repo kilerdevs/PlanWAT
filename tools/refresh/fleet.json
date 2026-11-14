@@ -26,6 +26,13 @@
       "note": "A second free Oracle VM (deploy/runner/, the same compose stack as oracle1: runner, egress with its scout and the Tor container), added 2026-11-14 on the tenancy's Always Free Ampere A1 allowance (VM.Standard.A1.Flex, 1 OCPU, 6 GB, aarch64, Ubuntu 26.04), also in Frankfurt. Always up like oracle1, but not always_on (when GitHub cannot be asked who is online, the pass stays with oracle1 alone), and with no faculty of its own to prefer: it balances by load and helps on the work stack, and takes the walls through its egress the way oracle1 does."
     },
     {
+      "name": "oracle3",
+      "label": "planwat-oracle3",
+      "speed": 1,
+      "egress": "remote",
+      "note": "A third free Oracle VM, added 2026-11-14: the twin of oracle2 (Ampere A1, 1 OCPU, 6 GB, aarch64, Ubuntu 26.04, Frankfurt AD-1, the same compose stack) on the rest of the tenancy's Always Free Arm allowance. Not always_on and with no faculty of its own to prefer: it balances by load and helps on the work stack, and takes the walls through its own egress and Tor."
+    },
+    {
       "name": "northflank1",
       "label": "planwat-northflank1",
       "speed": 1,

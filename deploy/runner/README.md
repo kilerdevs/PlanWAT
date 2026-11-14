@@ -34,7 +34,8 @@ Na maszynie potrzebny jest Docker z Compose i ok. 1 GB RAM (przy 1 GB dodaj swap
 
 Drugi VPS Oracle (runner `oracle2`, etykieta `planwat-oracle2`, od 14.11.2026) to ta sama instalacja na maszynie
 Ampere A1 (aarch64, Ubuntu 26.04, darmowy przydział Always Free): obrazy budują się na Armie bez zmian. Jego `.env` różni
-się tylko `RUNNER_NAME=oracle2`, `RUNNER_LABELS=planwat,planwat-oracle2` i własnym `EGRESS_API_TOKEN`.
+się tylko `RUNNER_NAME=oracle2`, `RUNNER_LABELS=planwat,planwat-oracle2` i własnym `EGRESS_API_TOKEN`. Tak samo działa
+`oracle3` (etykieta `planwat-oracle3`), druga maszyna A1: razem wykorzystują cały darmowy przydział Arm (2 OCPU, 12 GB).
 
 GUI egressu: `ssh -L 18080:127.0.0.1:18080 <host>`, potem <http://localhost:18080> (zaloguj się tokenem z `.env`).
 

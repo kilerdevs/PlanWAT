@@ -16,8 +16,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
-- **Runner `oracle2`** (`tools/refresh/fleet.json`, `deploy/runner/README.md`): drugi darmowy VPS Oracle (Ampere A1,
-  aarch64) z tym samym zestawem co oracle (runner, egress ze zwiadem, Tor), który pomaga na stosie pracy.
+- **Runnery `oracle2` i `oracle3`** (`tools/refresh/fleet.json`, `deploy/runner/README.md`): drugi i trzeci darmowy VPS
+  Oracle (Ampere A1, aarch64) z tym samym zestawem co oracle1 (runner, egress ze zwiadem, Tor), które pomagają na stosie
+  pracy.
 - **Czwarty runner `northflank2`** (`tools/refresh/fleet.json`, `deploy/runner/README.md`): druga darmowa usługa
   Northflank z tym samym obrazem i tymi samymi zasadami co pierwsza, więc przebieg ma o jedną parę rąk więcej na stosie
   pracy. Pierwszy runner Northflank nazywa się odtąd `northflank1` (etykieta `planwat-northflank1`), a pierwszy VPS

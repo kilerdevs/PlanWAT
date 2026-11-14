@@ -197,6 +197,7 @@ Projekt ma trzy runnery, opisane w [`tools/refresh/fleet.json`](../tools/refresh
 | plebania | `planwat-plebania` | 1 | prywatny serwer: szybki, ale często wyłączony |
 | oracle1 | `planwat-oracle1` | 1 | darmowy VPS ([deploy/runner/](../deploy/runner/README.md)): wolny i słaby, ale zawsze włączony (`always_on`) |
 | oracle2 | `planwat-oracle2` | 1 | drugi darmowy VPS Oracle (Ampere A1, aarch64, od 14.11.2026): ten sam zestaw co oracle1 (egress ze zwiadem i Tor), bez własnych preferencji i bez `always_on` |
+| oracle3 | `planwat-oracle3` | 1 | trzeci darmowy VPS Oracle (Ampere A1, od 14.11.2026): bliźniak oracle2 |
 | northflank1 | `planwat-northflank1` | 1 | darmowy kontener Northflank (ten sam obraz, bez egress): IOE, WIG, WIM (`faculties`); WLO, WML i WTC dostają z Cloudflare 403 (relay przechodzi tylko WEL i WIG, a WEL dzieli ścieżkę z WLO), WCY wymaga puli |
 | northflank2 | `planwat-northflank2` | 1 | druga darmowa usługa Northflank (od 14.11.2026): to samo co northflank1 |
 
