@@ -262,6 +262,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Tor na northflanku znów startuje** (`tools/refresh/egress.py`): Tor zgubiony przez `tor.json` (zadanie przerwane w
   trakcie) trzymał katalog danych, więc każdy nowy kończył się od razu. Przed startem egress kończy każdy Tor ze swoim
   `torrc`.
+- **Wyjście, przez które idzie dobra strona WLO, nie jest już odrzucane** (`tools/egress/pool.py`): sprawdzenie wyjścia
+  uznawało za stronę blokady każdą stronę ze słowem „incapsula”, a dobre strony wydziałów niosą skrypt czujnika Incapsuli
+  (`_Incapsula_Resource`). Liczą się teraz tylko słowa samej strony blokady (numer incydentu), jak w crawlerze.
 - **Northflank znów pomaga przy WCY** (`pool_help`, `tools/refresh/stack.py`): warunek liczył wolne kawałki, a odkąd
   kawałki są cięte przy braniu, otwarty slot ma zwykle jeden duży; liczy się teraz wolne grupy.
 - **Przebieg, który wisiał na jednym kawałku albo jednym wyliczaniu** (`tools/refresh/stack.py`, `board.py`,

@@ -400,6 +400,11 @@ class PoolPick(unittest.TestCase):
         for body, expected in (
             (marker + b'<plan/>' * 200, 40),
             (b'<html>' + b'x' * 800 + b'Access Denied', None),
+            # a real page carries Incapsula's sensor script; its block page names an incident
+            (marker + b'<script src="/_Incapsula_Resource?SWJIYLWA=719d34d31c8e3a6e"></script>' + b'<plan/>' * 200, 40),
+            (b'<html>' + b'x' * 800 + b'<iframe id="main-iframe" src="/_Incapsula_Resource?CWUDNSAI=9&incident_id=1-2">',
+             None),
+            (b'<html>' + b'x' * 800 + b'Request unsuccessful. Incapsula incident ID: 1-2', None),
             (b'<html>' + b'x' * 800, None),  # 200, no marker: not the real index
             (marker + b'<plan/>', None),     # too small to be an index
         ):

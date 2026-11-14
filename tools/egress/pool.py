@@ -162,8 +162,10 @@ LEGACY_TARGETS = {'wlo.wat.edu.pl': 'https://wlo.wat.edu.pl/planyzajec/zima/inde
 
 # WAF/captive-portal bodies can be HTTP 200 with plenty of bytes. A probe that lands on
 # one must not count as "this proxy reaches the faculty".
+# Good pages behind Incapsula carry its sensor script (`_Incapsula_Resource?...`), so the bare name is no block sign:
+# only its block page's own words are (as core.is_blocked has it).
 BLOCK_MARKERS = (
-    b'incapsula', b'request unsuccessful', b'access denied',
+    b'incapsula incident id', b'incident_id=', b'request unsuccessful', b'access denied',
     b'attention required! | cloudflare', b'cf-error-details',
     b'cloudflare ray id', b'cf-browser-verification', b'__cf_chl',
     b'captcha-delivery', b'are you a robot', b'zablokowan',
