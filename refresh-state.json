@@ -1,8 +1,8 @@
 {
  "blocks": {
   "wat-edge": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-11-14T15:42:35",
+   "cause": "wall",
    "durations": [
     {
      "at_iso": "2026-10-16T15:35:04",
@@ -84,7 +84,7 @@
    ]
   },
   "wml": {
-   "blocked_at": "2026-11-14T15:15:06",
+   "blocked_at": "2026-11-14T15:42:42",
    "cause": "wall",
    "durations": [
     {
@@ -105,7 +105,7 @@
    ]
   },
   "wtc": {
-   "blocked_at": "2026-11-14T15:15:06",
+   "blocked_at": "2026-11-14T15:42:42",
    "cause": "wall",
    "durations": []
   }
@@ -114,10 +114,10 @@
   "ioe": {
    "blocked_at": null,
    "last_count": 15,
-   "last_ok": "2026-11-14T15:14:52",
+   "last_ok": "2026-11-14T15:42:30",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T15:14:52",
+    "at": "2026-11-14T15:42:30",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -131,14 +131,14 @@
   "wcy": {
    "blocked_at": null,
    "last_count": 186,
-   "last_ok": "2026-11-14T15:16:41",
+   "last_ok": "2026-11-14T15:42:47",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T15:16:41",
+    "at": "2026-11-14T15:42:47",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 14,
+    "checked": 1,
     "degraded": false,
     "not_ready": 51,
     "skipped": 1,
@@ -171,10 +171,10 @@
   "wig": {
    "blocked_at": null,
    "last_count": 33,
-   "last_ok": "2026-11-14T15:15:37",
+   "last_ok": "2026-11-14T15:43:12",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T15:15:37",
+    "at": "2026-11-14T15:43:12",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -205,10 +205,10 @@
   "wlo": {
    "blocked_at": null,
    "last_count": 131,
-   "last_ok": "2026-11-14T15:16:01",
+   "last_ok": "2026-11-14T15:43:28",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T15:16:01",
+    "at": "2026-11-14T15:43:28",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -217,15 +217,22 @@
     "not_ready": 0,
     "skipped": 1,
     "term": "2026-27-zima"
-   }
+   },
+   "wait": {
+    "chronic": true,
+    "probes": 0,
+    "recovered": false,
+    "waited": 0
+   },
+   "walled_at": "2026-11-14T15:42:35"
   },
   "wml": {
    "blocked_at": null,
    "last_count": 162,
-   "last_ok": "2026-11-14T15:17:15",
+   "last_ok": "2026-11-14T15:43:08",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T15:17:15",
+    "at": "2026-11-14T15:43:08",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -240,15 +247,15 @@
     "recovered": false,
     "waited": 0
    },
-   "walled_at": "2026-11-14T15:15:06"
+   "walled_at": "2026-11-14T15:42:42"
   },
   "wtc": {
    "blocked_at": null,
    "last_count": 23,
-   "last_ok": "2026-11-14T15:18:45",
+   "last_ok": "2026-11-14T15:43:14",
    "run": {
     "ahead": false,
-    "at": "2026-11-14T15:18:45",
+    "at": "2026-11-14T15:43:14",
     "blocked": false,
     "cause": null,
     "changed": 0,
@@ -263,7 +270,7 @@
     "recovered": false,
     "waited": 0
    },
-   "walled_at": "2026-11-14T15:15:06"
+   "walled_at": "2026-11-14T15:42:42"
   }
  },
  "found": {
@@ -7220,8 +7227,8 @@
  },
  "pacing": {
   "ioe": 1.0,
-  "wat-edge": 1.5943230000000004,
-  "wcy": 1.4528268337500005,
+  "wat-edge": 2.7,
+  "wcy": 1.3075441503750005,
   "wig": 1.0,
   "wim": 1.0,
   "wml": 2.7,
