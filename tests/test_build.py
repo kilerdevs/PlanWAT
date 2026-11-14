@@ -118,6 +118,14 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(label(result='changed', changed=1), 'Zmiana w 1 planie')
         self.assertEqual(label(result='changed', changed=12), 'Zmiany w 12 planach')
         self.assertEqual(label(result='idle'), 'Serwery wyłączone')
+        # worded like its colour: rejected pages or a takeover that got everything done read as what the plans got
+        whole = [{'id': 'wel', 'fresh': True, 'degraded': True}, {'id': 'wcy', 'fresh': True}]
+        self.assertEqual(label(result='degraded', changed=13, faculties=whole), 'Zmiany w 13 planach')
+        self.assertEqual(label(result='blocked', faculties=whole), 'Bez zmian')
+        self.assertEqual(label(result='blocked', faculties=whole + [{'id': 'wlo', 'fresh': False}]),
+                         'Sprawdzono 2 z 3 wydziałów')
+        self.assertEqual(label(result='blocked', faculties=[{'id': 'wlo', 'fresh': False}, {'id': 'wcy', 'fresh': True}]
+                               + [{'id': 'wml', 'fresh': True, 'blocked': True}]), 'Zablokowany')
         self.assertEqual([build.latest_label(n) for n in (1, 3, 10, 22)],
                          ['Ostatni przebieg', 'Ostatnie 3 przebiegi', 'Ostatnie 10 przebiegów', 'Ostatnie 22 przebiegi'])
 
@@ -167,10 +175,68 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(build.runner_state({'status': 'skipped'}), 'nie zaczął na czas')
         self.assertEqual(build.runner_state({'status': 'missing', 'minutes': None}), 'brak raportu')
 
+    def test_the_graph_draws_who_crawled_what(self):
+        run = self.run_record(
+            offline=['plebania'],
+            runners=[{'name': 'oracle', 'faculties': ['wcy', 'ioe'], 'status': 'done', 'minutes': 21,
+                      'cant': {'wlo': 'wall'}, 'blocked_on': ['wlo'], 'via_pool': ['wcy']},
+                     {'name': 'northflank', 'faculties': ['wlo'], 'status': 'done', 'minutes': 20,
+                      'helped': {'ioe': 'oracle'}, 'via_pool': ['wlo'], 'via_tor': ['wlo']}],
+            faculties=[{'id': 'wcy', 'runner': 'oracle', 'fresh': True, 'degraded': True},
+                       {'id': 'ioe', 'runner': 'oracle', 'fresh': True},
+                       {'id': 'wlo', 'runner': 'northflank', 'fresh': True, 'via_pool': ['northflank'],
+                        'via_tor': ['northflank']}])
+        e = lambda v: build.html.escape(str(v), quote=True)  # noqa: E731
+        graph = build._status_graph(run, e)
+        # 3 servers need 6 rows (12 half-rows), the 3 faculties spread over them too; each server's own next to it
+        self.assertIn('viewBox="0 0 100 12"', graph)
+        self.assertIn('<path class="led proxy" d="M0 2 C50 2 50 6 100 6"><title>oracle: WCY przez proxy</title>', graph)
+        self.assertIn('<path class="wall" d="M0 2 C50 2 50 10 100 10"><title>oracle: WLO – blokada</title>', graph)
+        self.assertIn('<path class="help" d="M0 6 C50 6 50 2 100 2"><title>northflank: IOE (pomoc dla oracle)</title>',
+                      graph)
+        # Tor (the egress's own ports) is told apart from the pool's public proxies
+        self.assertIn('<path class="led tor" d="M0 6 C50 6 50 10 100 10"><title>northflank: WLO przez Tor</title>', graph)
+        self.assertEqual(build.faculty_notes(run['faculties'][2]), ['przez Tor na northflank'])
+        self.assertIn('<span class="gn srvn off"><span class="gname">plebania', graph)  # off, but still there
+        self.assertIn('<span class="dot warn" aria-hidden="true"></span><span class="gname">WCY</span>'
+                      '<span class="gtag odrzucone">odrzucone</span>', graph)
+        self.assertIn('<span class="gname">WLO</span><span class="gtag tor">tor</span>', graph)
+        self.assertNotIn('style=', graph)
+        latest, rows = build.render_status_runs([run])
+        self.assertIn('Kto co sprawdził', latest)
+        self.assertIn('<details class="tview"><summary>Szczegóły</summary>', latest)  # every word of the old list
+        self.assertIn('<div class="graph sm"', rows)
+
+    def test_a_pass_is_coloured_by_what_the_plans_got(self):
+        facs = lambda *fresh: [{'id': str(i), 'fresh': f} for i, f in enumerate(fresh)]  # noqa: E731
+        tone = lambda result, f=(): build.run_tone(self.run_record(result=result, faculties=f))  # noqa: E731
+        self.assertEqual([tone('ok'), tone('degraded'), tone('idle')], ['ok', 'ok', 'off'])
+        self.assertEqual(tone('blocked', facs(True, True)), 'ok')
+        self.assertEqual(tone('incomplete', facs(True, False)), 'warn')
+        self.assertEqual(tone('blocked', facs(True, False, False)), 'bad')
+
+    def test_coverage_is_charted_over_time_and_ends_on_the_tile(self):
+        runs = [self.run_record(ended='2026-10-25T12:00:00')]
+        current = {'WCY26KY3S1': None, 'WCY26KY1S1': None}
+        refreshed = {'WCY26KY3S1': {'checked': '2026-10-25T11:00:00'}, 'WCY26KY1S1': {'checked': '2026-10-24T06:00:00'}}
+        stats = build.plan_stats(current, refreshed, runs)
+        path = self.write_runs({'version': 1, 'runs': [], 'coverage': [
+            ['2026-10-25T08:00:00', 1, 4], ['2026-10-25T10:00:00', 4, 4], ['bad', 1, 2], ['2026-10-25T09:00:00', 5, 4],
+            ['2026-10-01T10:00:00', 1, 1], ['2026-10-25T11:58:00', 0, 2]]})
+        coverage = build.load_coverage(path)
+        self.assertEqual(len(coverage), 4)  # the unreadable time and more checked than there are plans are dropped
+        page = build.render_plan_stats(stats, coverage)
+        # more than 14 days back and the one at the tile's own moment give way; the tile's 1 of 2 ends the line
+        self.assertIn('<polyline class="line" points="0.00,75.00 50.00,0.00 100.00,50.00"/>', page)
+        self.assertIn('<title>25 paź · 13:00: 50% (1 z 2)</title>', page)
+        self.assertNotIn('style=', page)
+        self.assertIn('Wykres pojawi się', build.render_plan_stats(stats, []))
+        self.assertEqual(build.load_coverage(self.write_runs({'version': 1, 'runs': []})), [])
+
     def test_each_result_is_explained_in_plain_words(self):
         facs = [{'id': 'wel', 'fresh': True, 'degraded': True, 'skipped': 3, 'checked': 6},
                 {'id': 'wtc', 'fresh': False}]
-        said = {r: build.run_explanation(self.run_record(result=r, changed=2, faculties=facs))
+        said = {r: build.run_explanation(self.run_record(result=r, changed=0 if r == 'ok' else 2, faculties=facs))
                 for r in build.RUN_RESULTS}
         self.assertEqual(said['changed'], 'Pobrano nowe wersje 2 planów.')
         self.assertIn('(WEL)', said['degraded'])

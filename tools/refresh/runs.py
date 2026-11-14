@@ -24,6 +24,9 @@ import fleet  # noqa: E402
 import build  # noqa: E402  (fleet's core put the repository root on the path; the site words a run the same way)
 
 KEEP = 10
+# /stan/'s "Pokrycie w czasie": one point per pass, [ended, fresh, total], kept this long
+COVERAGE_DAYS = 14
+COVERAGE_HOURS = 6  # "fresh" as the page's "Sprawdzone w ostatnich 6 h" tile counts it
 # A faculty's `run` stamped this long before the plan still belongs to the pass (clocks of two machines).
 SLACK = dt.timedelta(minutes=2)
 # GitHub Actions names the repository; elsewhere the README links nowhere rather than to a guess.
@@ -130,6 +133,9 @@ def faculty_entry(name, runner, state, since, handed=None, helpers=(), seen=None
         via_pool = [r for r in seen.get('via_pool') or () if isinstance(r, str)]
         if via_pool:
             entry['via_pool'] = via_pool
+        via_tor = [r for r in seen.get('via_tor') or () if isinstance(r, str) and r in via_pool]
+        if via_tor:
+            entry['via_tor'] = via_tor  # of those, the runners whose exits were all Tor ports
     return entry
 
 
@@ -169,6 +175,9 @@ def build_run(*, run_id, number, attempt, event, url, planned, ended, matrix, ou
         helped = list((info or {}).get('helpers') or {}) or helpers.get(f, [])
         faculties.append(faculty_entry(f, leader, state, planned, None, helped, info))
     for r in runners:
+        tor = [f['id'] for f in faculties if r['name'] in f.get('via_tor', ()) and f['id'] in r.get('via_pool', ())]
+        if tor:
+            r['via_tor'] = tor
         degraded_on = [f['id'] for f in faculties if f.get('degraded') and f['runner'] == r['name']]
         if degraded_on and r['status'] == 'degraded':
             r['degraded_on'] = degraded_on
@@ -214,6 +223,29 @@ def shows_new(runs, run):
         return False
     i = ids.index(run['id'])
     return i + 1 == len(runs) or outcome_key(runs[i + 1]) != outcome_key(run)
+
+
+def coverage_point(state, at):
+    """[at, fresh, total] for the plans on record in refresh-state.json: those with a check or a "no plan yet" mark,
+    and of them the ones checked in the COVERAGE_HOURS before `at`."""
+    groups = state.get('groups') if isinstance(state.get('groups'), dict) else {}
+    since = at - dt.timedelta(hours=COVERAGE_HOURS)
+    total = fresh = 0
+    for g in groups.values():
+        if not isinstance(g, dict) or not (g.get('checked') or g.get('not_ready')):
+            continue
+        total += 1
+        checked = build.utc_moment(g['checked']) if g.get('checked') else None
+        fresh += checked is not None and since <= checked <= at + SLACK
+    return [_iso(at), fresh, total]
+
+
+def add_coverage(points, point, days=COVERAGE_DAYS):
+    """`point` added to the series (in place of one at the same moment), oldest first, the last `days` only."""
+    rest = {p[0]: p for p in points if isinstance(p, list) and len(p) == 3 and isinstance(p[0], str)}
+    rest[point[0]] = point
+    cut = _iso(build.utc_moment(point[0]) - dt.timedelta(days=days))
+    return [rest[k] for k in sorted(rest) if k >= cut]
 
 
 def add_run(runs, run, keep=KEEP):
@@ -337,7 +369,11 @@ def cmd_record(args):
                     outcomes=outcomes, plan_info=plan_info, state=fleet.load_json(args.state, {}),
                     summary=fleet.load_json(args.stack, None) if args.stack else None, catchup=args.catchup)
     runs = add_run(load_runs(args.runs), run)
-    _write(args.runs, json.dumps({'version': 1, 'runs': runs}, ensure_ascii=False, indent=1) + '\n')
+    state = fleet.load_json(args.state, {})
+    coverage = add_coverage(build.load_coverage(args.runs), coverage_point(state if isinstance(state, dict) else {},
+                                                                           build.utc_moment(run['ended'])))
+    _write(args.runs, json.dumps({'version': 1, 'runs': runs, 'coverage': coverage}, ensure_ascii=False, indent=1)
+           + '\n')
     text = markdown(runs, args.site_url, args.repo_url)
     if args.readme:
         _write(args.readme, text)

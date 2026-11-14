@@ -3189,6 +3189,20 @@ class RunHistory(unittest.TestCase):
         self.assertEqual(len(history), 10)
         self.assertEqual(history[3]['attempt'], 2)
 
+    def test_coverage_counts_the_plans_checked_in_the_last_six_hours_and_keeps_two_weeks(self):
+        at = dt.datetime(2026, 11, 14, 12, 0, tzinfo=dt.timezone.utc)
+        state = {'groups': {'A': {'checked': '2026-11-14T11:00:00'}, 'B': {'checked': '2026-11-14T05:00:00'},
+                            'C': {'not_ready': {'term': 'x'}}, 'D': {}, 'E': 'junk'}}
+        self.assertEqual(runs.coverage_point(state, at), ['2026-11-14T12:00:00', 1, 3])  # D was never on record
+        self.assertEqual(runs.coverage_point({}, at), ['2026-11-14T12:00:00', 0, 0])
+        series = []
+        for day in range(20):
+            series = runs.add_coverage(series, runs.coverage_point(state, at + dt.timedelta(days=day)))
+        series = runs.add_coverage(series + ['junk'], [series[-1][0], 2, 3])  # the same moment again replaces it
+        self.assertEqual(len(series), runs.COVERAGE_DAYS + 1)
+        self.assertEqual(series[-1][1:], [2, 3])
+        self.assertEqual(series, sorted(series))
+
     def test_a_pass_is_new_for_the_site_when_its_result_or_servers_differ(self):
         def quiet(i, **kw):
             kw.setdefault('outcomes', [self.shard('plebania'), self.shard('oracle')])
@@ -3253,6 +3267,7 @@ class RunHistory(unittest.TestCase):
             saved = json.loads((tmp / 'refresh-runs.json').read_text())
             self.assertEqual([r['id'] for r in saved['runs']], [8, 7])
             self.assertEqual(saved['runs'][0]['offline'], [])
+            self.assertTrue(saved['coverage'] and all(len(p) == 3 for p in saved['coverage']))  # /stan/'s chart
             readme = (tmp / 'README.md').read_text()
             self.assertTrue(readme.startswith('# Odświeżanie planów'))
             out = io.StringIO()
@@ -3879,6 +3894,17 @@ class StackSummary(unittest.TestCase):
                          ('done', 'plebania', {'oracle': 1}, 2, 1))
         self.assertEqual(out['faculties']['wtc']['status'], 'blocked')
         self.assertEqual(out['faculties']['ioe']['status'], 'unfinished')  # nobody opened it
+
+    def test_tor_is_told_apart_from_the_pools_proxies(self):
+        self.assertTrue(stack.tor_only(['socks5://tor:9050', 'socks5://127.0.0.1:9151']))  # the egress's own ports
+        self.assertFalse(stack.tor_only(['socks5://tor:9050', 'http://8.8.8.8:3128']))
+        self.assertFalse(stack.tor_only([]))
+        chunks = [{'state': 'done', 'done_by': 'oracle'}, {'state': 'done', 'done_by': 'northflank'}]
+        docs = {'s/wml': dict(slot_doc('wml', 'closed', 'oracle', chunks), via={'oracle': 'pool', 'northflank': 'pool'},
+                              via_tor=['oracle', 'plebania'])}
+        out = stack.summarize(docs, [{'runner': 'oracle', 'faculties': 'wml'}], {'oracle': None})
+        self.assertEqual((out['faculties']['wml']['via_pool'], out['faculties']['wml']['via_tor']),
+                         (['northflank', 'oracle'], ['oracle']))  # plebania never crawled it through the pool
 
     def test_cli_reads_the_store_through_git(self):
         if not shutil.which('git'):

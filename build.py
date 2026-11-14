@@ -1223,6 +1223,21 @@ def load_runs(path):
     return [r for r in runs if _valid_run(r)] if isinstance(runs, list) else []
 
 
+def load_coverage(path):
+    """The "Sprawdzone w ostatnich 6 h" series next to the passes (tools/refresh/runs.py: [ended, fresh, total] per
+    pass, oldest first); [] without one, damaged points dropped."""
+    try:
+        data = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    points = data.get('coverage') if isinstance(data, dict) and data.get('version') == 1 else None
+    if not isinstance(points, list):
+        return []
+    return [p for p in points if isinstance(p, list) and len(p) == 3 and isinstance(p[0], str)
+            and utc_moment(p[0]) is not None and count(p[1]) == p[1] and count(p[2]) >= p[1] and p[2] > 0
+            and not isinstance(p[1], bool)]
+
+
 def run_when(iso, year=False):
     """'25 paź · 19:23' in Warsaw time ('… UTC' without a tz database), '?' for no time."""
     moment = utc_moment(iso)
@@ -1245,16 +1260,28 @@ def minutes_label(minutes):
     return '<1 min' if minutes == 0 else f'{minutes} min'
 
 
+def _changes_label(n):
+    return 'Bez zmian' if not n else 'Zmiana w 1 planie' if n == 1 else f'Zmiany w {n} planach'
+
+
+def _faculties_done(run):
+    """(faculties this pass has data for and did not end blocked, all its faculties)"""
+    facs = [f for f in run.get('faculties', []) if isinstance(f, dict)]
+    return sum(1 for f in facs if f.get('fresh') and not f.get('blocked')), len(facs)
+
+
 def run_result_label(run):
-    n = count(run.get('changed'))
-    return {
-        'ok': 'Bez zmian',
-        'changed': 'Zmiana w 1 planie' if n == 1 else f'Zmiany w {n} planach',
-        'degraded': 'Część stron odrzucona',
-        'incomplete': 'Niedokończony',
-        'blocked': 'Zablokowany',
-        'idle': 'Serwery wyłączone',
-    }[run['result']]
+    """A pass's title, worded like its colour (run_tone): a green one says what the plans got, a yellow one how much
+    of the work got done, only a red one names what went wrong."""
+    if run['result'] == 'idle':
+        return 'Serwery wyłączone'
+    tone = run_tone(run)
+    if tone == 'ok':
+        return _changes_label(count(run.get('changed')))
+    if tone == 'warn':
+        done, total = _faculties_done(run)
+        return f'Sprawdzono {done} z {total} wydziałów'
+    return 'Zablokowany' if run['result'] == 'blocked' else 'Niedokończony'
 
 
 def _facs(run, keep):
@@ -1265,14 +1292,17 @@ def _facs(run, keep):
 def run_explanation(run):
     """One plain sentence under a pass's verdict: what it means for the plans people see."""
     result, n = run['result'], count(run.get('changed'))
-    if result == 'ok':
-        return 'Sprawdzono wszystkie wydziały, żaden plan się nie zmienił.'
-    if result == 'changed':
-        return 'Pobrano nową wersję 1 planu.' if n == 1 else f'Pobrano nowe wersje {n} planów.'
+    got = ('Sprawdzono wszystkie wydziały, żaden plan się nie zmienił.' if not n else
+           'Pobrano nową wersję 1 planu.' if n == 1 else f'Pobrano nowe wersje {n} planów.')
+    if result in ('ok', 'changed'):
+        return got
     if result == 'degraded':
         where = _facs(run, lambda f: f.get('fresh') and f.get('degraded'))
-        return (f"Część stron{' (' + where + ')' if where else ''} nie przeszła kontroli, "
-                'więc zostają dla nich poprzednie plany.')
+        return (f"{got} Część stron{' (' + where + ')' if where else ''} nie przeszła kontroli, "
+                'więc dla nich zostają poprzednie wersje.')
+    if result != 'idle' and run_tone(run) == 'ok':
+        # blocked or unfinished somewhere, yet every faculty got this pass's data (another server took over)
+        return f'{got} Nie wszystko udało się za pierwszym podejściem, ale każdy wydział ma dane z tego przebiegu.'
     if result == 'incomplete':
         where = _facs(run, lambda f: not f.get('fresh') or f.get('cause') == 'listing')
         return (f"Nie wszystko zostało sprawdzone{' (' + where + ')' if where else ''}. Zostają poprzednie plany, "
@@ -1313,6 +1343,10 @@ def runner_share(r):
     return ', '.join(label for _, label in share_parts(r))
 
 
+def _strs(value):
+    return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+
+
 def share_parts(r):
     """runner_share's pieces, per faculty: [(faculty, label)]."""
     took = r.get('from') if isinstance(r.get('from'), dict) else {}
@@ -1324,9 +1358,10 @@ def share_parts(r):
     own = [f for f in r.get('faculties', []) if isinstance(f, str)]
     helped = r.get('helped') if isinstance(r.get('helped'), dict) else {}
     pooled = {f for f in r.get('via_pool', []) if isinstance(f, str)} if isinstance(r.get('via_pool'), list) else set()
+    tor = set(_strs(r.get('via_tor')))
 
     def via(f):
-        return ' przez proxy' if f in pooled else ''
+        return ' przez Tor' if f in pooled and f in tor else ' przez proxy' if f in pooled else ''
     return ([(f, f.upper() + note(f) + via(f)) for f in own]
             + [(f, f'{f.upper()} (pomoc dla {who}{via(f)})') for f, who in helped.items()
                if isinstance(f, str) and isinstance(who, str) and f not in own])
@@ -1361,9 +1396,13 @@ def faculty_notes(f):
     walled = [r for r, c in cant.items() if isinstance(r, str) and c == 'wall']
     unlisted = [r for r, c in cant.items() if isinstance(r, str) and c != 'wall']
     pooled = [r for r in f.get('via_pool', []) if isinstance(r, str)] if isinstance(f.get('via_pool'), list) else []
-    if pooled:
+    tor = [r for r in pooled if r in _strs(f.get('via_tor'))]
+    proxied = [r for r in pooled if r not in tor]
+    if proxied:
         # the hunt (docs/EGRESS.md): public proxies that got through the wall the servers' own lines met
-        notes.append(f"przez proxy (pula) na {', '.join(pooled)}")
+        notes.append(f"przez proxy (pula) na {', '.join(proxied)}")
+    if tor:
+        notes.append(f"przez Tor na {', '.join(tor)}")  # the egress's own Tor ports, Polish exits
     if walled and not f.get('blocked'):
         notes.append(f"blokada dla {', '.join(walled)}")
     if unlisted:
@@ -1385,9 +1424,134 @@ def faculty_notes(f):
     return notes
 
 
-RUN_TONE = {'ok': 'ok', 'changed': 'ok', 'degraded': 'warn', 'incomplete': 'warn', 'blocked': 'bad', 'idle': 'off'}
 CHEVRON = ('<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" '
            'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+
+SERVER_TONE = {'done': 'ok', 'degraded': 'warn', 'incomplete': 'warn', 'blocked': 'bad'}
+TONE_RANK = ('ok', 'warn', 'bad', 'off')
+
+
+def run_tone(run):
+    """A pass's colour (the strip, its row, the latest card), by what the plans got out of it."""
+    if run['result'] == 'idle':
+        return 'off'
+    if run['result'] in ('ok', 'changed', 'degraded'):
+        return 'ok'
+    facs = [f for f in run.get('faculties', []) if isinstance(f, dict)]
+    done = sum(1 for f in facs if f.get('fresh') and not f.get('blocked'))
+    if facs and done == len(facs):
+        return 'ok'
+    return 'warn' if facs and 2 * done >= len(facs) else 'bad'
+
+
+def _fac_node(f):
+    """A faculty in the graph: its tone and one short tag."""
+    if not f.get('fresh'):
+        return 'off', 'bez danych'
+    if f.get('blocked'):
+        return 'bad', 'blokada'
+    if f.get('degraded'):
+        return 'warn', 'odrzucone'
+    pooled = _strs(f.get('via_pool'))
+    if pooled and set(pooled) <= set(_strs(f.get('via_tor'))):
+        return 'ok', 'tor'
+    return 'ok', 'proxy' if pooled else ''
+
+
+def _status_graph(run, e, small=False):
+    """Who crawled what, as a graph: the servers on the left, the faculties on the right, a line per share (solid: led,
+    dashed: helped, blue: through the proxy pool, red dots: the faculty's wall stopped that server). Pure HTML and SVG:
+    both columns are grids of 22 px half-rows, so the SVG between them knows every node's height without measuring."""
+    runners = [r for r in run['runners']]
+    names = run_servers(run)
+    offline = [n for n in run.get('offline', []) if isinstance(n, str) and n not in names]
+    facs = [f for f in run.get('faculties', []) if isinstance(f, dict) and isinstance(f.get('id'), str)]
+    ids = [f['id'] for f in facs]
+    for r in runners:  # a share the faculty list does not name (an older record) still gets its node
+        ids += [f for f, _ in share_parts(r) if f not in ids]
+    lead = {f['id']: f.get('runner') for f in facs}
+    order = {n: i for i, n in enumerate(names)}
+    # each server's own faculties next to it: fewer crossing lines
+    ids.sort(key=lambda f: (order.get(lead.get(f), len(names)), f))
+    by_id = {f['id']: f for f in facs}
+    nodes = names + offline
+    # a server's name and state need two rows (its state wraps); a faculty one
+    rows = max(len(ids), 2 * len(nodes), 1)
+
+    def spread(items):
+        """Each item's centre, in half-rows, spread evenly over `rows` (item j spans rows a..b: centre a + b)."""
+        k = len(items)
+        return {x: round(j * rows / k) + round((j + 1) * rows / k) for j, x in enumerate(items)}
+
+    def column(centres, render):
+        out, at = [], 0
+        for x, c in centres.items():  # a node spans two half-rows around its centre; spacers fill the gaps
+            out.append('<span class="gsp" aria-hidden="true"></span>' * (c - 1 - at))
+            out.append(render(x))
+            at = c + 1
+        # down to the last half-row, so both columns are exactly as tall as the SVG's viewBox
+        return ''.join(out) + '<span class="gsp" aria-hidden="true"></span>' * (2 * rows - at)
+    centre, fy = spread(nodes), spread(ids)
+
+    def server(n):
+        mine = [r for r in runners if r['name'] == n]
+        if not mine:
+            return (f'<span class="gn srvn off"><span class="gname">{e(n)}<span class="dot off" aria-hidden="true">'
+                    '</span></span><span class="gstate">wyłączony</span></span>')
+        tone = max((SERVER_TONE.get(r.get('status'), 'off') for r in mine), key=TONE_RANK.index)
+        said = ' · '.join((f'{runner_role(r)}: ' if runner_role(r) else '') + runner_state(r) for r in mine)
+        return (f'<span class="gn srvn"><span class="gname">{e(n)}<span class="dot {tone}" aria-hidden="true">'
+                f'</span></span><span class="gstate">{e(said)}</span></span>')
+
+    def faculty(f):
+        tone, tag = _fac_node(by_id.get(f, {'fresh': True}))
+        notes = ' · '.join(faculty_notes(by_id[f])) if f in by_id else ''
+        hint = f' title="{e(notes)}"' if notes else ''
+        return (f'<span class="gn facn"{hint}>'
+                f'<span class="dot {tone}" aria-hidden="true"></span><span class="gname">{e(f.upper())}</span>'
+                + (f'<span class="gtag {e(tag)}">{e(tag)}</span>' if tag else '') + '</span>')
+    left, right = column(centre, server), column(fy, faculty)
+
+    edges, drawn = [], set()
+
+    def edge(name, f, cls, title):
+        y0, y1 = centre[name], fy[f]
+        edges.append(f'<path class="{cls}" d="M0 {y0} C50 {y0} 50 {y1} 100 {y1}">'
+                     f'<title>{e(title)}</title></path>')
+    for r in runners:
+        name = r['name']
+        own = [f for f in r.get('faculties', []) if isinstance(f, str)]
+        pooled = set(_strs(r.get('via_pool')))
+        tor = set(_strs(r.get('via_tor'))) & pooled
+        walled = {f for f in r.get('blocked_on', []) if isinstance(f, str)}
+        cant = r.get('cant') if isinstance(r.get('cant'), dict) else {}
+        walled |= {f for f, c in cant.items() if isinstance(f, str) and c == 'wall'}
+        for f, label in share_parts(r):
+            if f not in fy or (name, f) in drawn:
+                continue
+            drawn.add((name, f))
+            cls = (('led' if f in own else 'help') + (' tor' if f in tor else ' proxy' if f in pooled else '')
+                   + (' wall' if f in walled else ''))
+            edge(name, f, cls, f'{name}: {label}' + (' · zablokowany' if f in walled else ''))
+        for f in sorted(walled):
+            if f in fy and (name, f) not in drawn:
+                drawn.add((name, f))
+                edge(name, f, 'wall', f'{name}: {f.upper()} – blokada')
+    summary = '; '.join(f"{r['name']}: {runner_share(r) or '–'}" for r in runners) or 'brak serwerów'
+    return (f'<div class="graph{" sm" if small else ""}" role="img" aria-label="Kto co sprawdził. {e(summary)}">'
+            f'<div class="gcol gleft">{left}</div>'
+            f'<div class="gmid"><svg viewBox="0 0 100 {2 * rows}" preserveAspectRatio="none" aria-hidden="true">'
+            + ''.join(edges) + '</svg></div>'
+            f'<div class="gcol gright">{right}</div></div>')
+
+
+GRAPH_LEGEND = ('<ul class="legendrow glegend" aria-hidden="true"><li><svg class="ek" viewBox="0 0 20 4"><path class="led" '
+                'd="M0 2H20"/></svg>prowadził</li><li><svg class="ek" viewBox="0 0 20 4"><path class="help" d="M0 2H20"/>'
+                '</svg>pomagał</li><li><svg class="ek" viewBox="0 0 20 4"><path class="led proxy" d="M0 2H20"/></svg>'
+                'przez proxy</li><li><svg class="ek" viewBox="0 0 20 4"><path class="led tor" d="M0 2H20"/></svg>przez Tor'
+                '</li><li><svg class="ek" viewBox="0 0 20 4"><path class="wall" d="M0 2H20"/></svg>blokada'
+                '</li></ul>')
 
 
 def _status_servers(run, e):
@@ -1457,24 +1621,27 @@ def render_status_runs(runs):
     stats = [('Sprawdzone plany', count_up(last.get('checked'))), ('Zmienione plany', count_up(last.get('changed'))),
              ('Czas', took)]
     # a hover title for the pointer, the same words for a screen reader; the label says which end is newest
-    strip = ''.join(f'<li class="{RUN_TONE[r["result"]]}" title="{e(run_when(r["planned"]))}: {e(run_result_label(r))}">'
+    strip = ''.join(f'<li class="{run_tone(r)}" title="{e(run_when(r["planned"]))}: {e(run_result_label(r))}">'
                     f'<span class="vh">{e(run_when(r["planned"]))}: {e(run_result_label(r))}</span></li>'
                     for r in reversed(runs))
     latest = (
         '<section class="latest" aria-labelledby="latestTitle">'
-        f'<p class="lstatus"><span class="dot {RUN_TONE[last["result"]]}" aria-hidden="true"></span>'
+        f'<p class="lstatus"><span class="dot {run_tone(last)}" aria-hidden="true"></span>'
         f'Ostatni przebieg · {e(run_when(last["planned"]))}</p>'
         f'<h2 class="verdict" id="latestTitle">{e(run_result_label(last))}</h2>'
         f'<p class="lead2">{e(run_explanation(last))}</p>'
         '<dl class="stats">' + ''.join(f'<div><dt>{k}</dt><dd>{v}</dd></div>' for k, v in stats) + '</dl>'
-        + _status_parts(last, e)
+        '<h3 class="sub">Kto co sprawdził</h3>' + _status_graph(last, e) + GRAPH_LEGEND
+        + '<details class="tview"><summary>Szczegóły</summary>'
+        + _status_section('Serwery', _status_parts(last, e)) + _status_section('Wydziały', _status_faculties(last, e))
+        + '</details>'
         + f'<div class="striprow"><span class="striplabel">{e(latest_label(len(runs)))}'
         + (', najnowszy z prawej' if len(runs) > 1 else '') + '</span>'
         f'<ol class="strip" aria-label="Wyniki od najstarszego">{strip}</ol></div>'
         + '</section>')
     rows = []
     for run in runs:
-        tone = RUN_TONE[run['result']]
+        tone = run_tone(run)
         rows.append(
             '<li class="run"><details><summary>'
             f'<span class="dot {tone}" aria-hidden="true"></span>'
@@ -1483,7 +1650,10 @@ def render_status_runs(runs):
             f'<span class="rsrv">{_status_servers(run, e)}</span>'
             '</summary><div class="more">'
             f'<p class="why">{e(run_explanation(run))}</p>'
-            + _status_section('Serwery', _status_parts(run, e)) + _status_section('Wydziały', _status_faculties(run, e))
+            + _status_graph(run, e, small=True)
+            + _status_section('Wydziały', _status_faculties(run, e))
+            + '<details class="tview"><summary>Serwery w szczegółach</summary>'
+            + _status_section('Serwery', _status_parts(run, e)) + '</details>'
             + _status_link(run, e)
             + '</div></details></li>')
     return latest, '<ol class="runs">' + ''.join(rows) + '</ol>'
@@ -1592,7 +1762,50 @@ def _group_list(items, e, what):
     return f'<ol class="glist">{rows}</ol>'
 
 
-def render_plan_stats(stats):
+COVERAGE_DAYS = 14
+
+
+def _coverage_chart(stats, coverage, e):
+    """"Sprawdzone w ostatnich 6 h" over the last COVERAGE_DAYS: a line over 0–100 %, the last point the tile's own."""
+    ref = stats['ref']
+    since = ref - dt.timedelta(days=COVERAGE_DAYS)
+    points = {utc_moment(t): (fresh, total) for t, fresh, total in coverage}
+    points = {t: v for t, v in points.items() if since <= t < ref - dt.timedelta(minutes=5)}
+    points[ref] = (stats['fresh'], stats['total'])
+    series = sorted(points.items())
+    if len(series) < 2:
+        return ('<h3 class="sub">Pokrycie w czasie</h3><p class="quietnote">Wykres pojawi się po kolejnych '
+                'przebiegach.</p>')
+    t0, span = series[0][0], max((ref - series[0][0]).total_seconds(), 1)
+    xy = [(100 * (t - t0).total_seconds() / span, 100 - 100 * f / n, t, f, n) for t, (f, n) in series]
+    line = ' '.join(f'{x:.2f},{y:.2f}' for x, y, *_ in xy)
+    hits = []
+    for i, (x, _, t, f, n) in enumerate(xy):
+        a = (xy[i - 1][0] + x) / 2 if i else 0
+        b = (x + xy[i + 1][0]) / 2 if i + 1 < len(xy) else 100
+        hits.append(f'<rect class="hit" x="{a:.2f}" y="0" width="{max(b - a, 0.2):.2f}" height="100">'
+                    f'<title>{e(run_when(t.isoformat()))}: {round(100 * f / n)}% ({f} z {n})</title></rect>')
+    low = min(xy, key=lambda p: p[3] / p[4])
+    label = (f'Plany sprawdzone w ostatnich 6 h, od {_day_label(_local(t0).date())} do {_day_label(_local(ref).date())}: '
+             f'teraz {round(100 * stats["fresh"] / stats["total"])}%, najmniej {round(100 * low[3] / low[4])}% '
+             f'({run_when(low[2].isoformat())}).')
+    table = ('<details class="tview"><summary>Liczby w tabeli</summary><table><thead><tr><th>Przebieg</th>'
+             '<th>Sprawdzone</th><th>Udział</th></tr></thead><tbody>'
+             + ''.join(f'<tr><th scope="row">{e(run_when(t.isoformat()))}</th><td>{f} z {n}</td>'
+                       f'<td>{round(100 * f / n)}%</td></tr>' for _, _, t, f, n in reversed(xy))
+             + '</tbody></table></details>')
+    return ('<h3 class="sub">Pokrycie w czasie</h3>'
+            '<p class="axisnote">Jaka część planów była sprawdzona w ostatnich 6 h, po każdym przebiegu.</p>'
+            '<div class="cov"><div class="covy" aria-hidden="true"><span>100%</span><span>50%</span><span>0%</span></div>'
+            f'<svg class="covc" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="{e(label)}">'
+            '<line class="grid" x1="0" x2="100" y1="0.5" y2="0.5"/><line class="grid" x1="0" x2="100" y1="50" y2="50"/>'
+            f'<polygon class="area" points="0,100 {line} 100,100"/><polyline class="line" points="{line}"/>'
+            + ''.join(hits) + '</svg>'
+            f'<div class="haxis cova"><span>{_day_label(_local(t0).date())}</span><span>{_day_label(_local(ref).date())}</span></div>'
+            '</div>' + table)
+
+
+def render_plan_stats(stats, coverage=()):
     """The /stan/ cards about the published plans (see plan_stats); '' without any."""
     if not stats:
         return ''
@@ -1649,6 +1862,7 @@ def render_plan_stats(stats):
         f'<p class="asof">Stan na koniec ostatniego przebiegu: {e(run_when(ref.isoformat()))}.</p>'
         '<div class="card">'
         '<dl class="stats">' + ''.join(f'<div><dt>{k}</dt><dd>{v}</dd></div>' for k, v in tiles) + '</dl>'
+        + _coverage_chart(stats, coverage, e) +
         '<h3 class="sub">Kiedy plany sprawdzono ostatnio</h3>'
         f'<ul class="legendrow" aria-hidden="true">{legend}</ul>'
         f'<ul class="fresh">{"".join(rows)}</ul>'
@@ -1688,10 +1902,10 @@ def latest_label(n):
     return 'Ostatni przebieg' if n == 1 else f"Ostatnie {n} {plural(n, '', 'przebiegi', 'przebiegów')}"
 
 
-def render_status(template, runs, site_url='', assets=None, current=None, refreshed=None):
+def render_status(template, runs, site_url='', assets=None, current=None, refreshed=None, coverage=()):
     # like the privacy notice: no script at all, the theme follows the system through CSS; rows open with <details>
     latest, rows = render_status_runs(runs)
-    template = template.replace('@@PLANS@@', render_plan_stats(plan_stats(current or {}, refreshed or {}, runs)))
+    template = template.replace('@@PLANS@@', render_plan_stats(plan_stats(current or {}, refreshed or {}, runs), coverage))
     page = template.replace('@@SEO@@', seo_head(site_url, f'{STATUS_DIR}/', STATUS_TITLE, STATUS_DESCRIPTION))
     page = page.replace('@@TITLE@@', html.escape(STATUS_TITLE)).replace('@@DESCRIPTION@@', html.escape(STATUS_DESCRIPTION, quote=True))
     # the data branch's README.md is written together with the first pass on record; before that, the runs list
@@ -1986,7 +2200,8 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
             raise BuildError(f'src/{name} must not contain "@@"')
 
     refreshed = load_refresh_state(state_path or ROOT / 'refresh-state.json')
-    runs = load_runs(runs_path or Path(state_path or ROOT / 'refresh-state.json').with_name(RUNS_FILE))
+    runs_path = runs_path or Path(state_path or ROOT / 'refresh-state.json').with_name(RUNS_FILE)
+    runs, coverage = load_runs(runs_path), load_coverage(runs_path)
     site_url = site_url.rstrip('/')
     if site_url and not re.match(r'^https?://[^/\s]+(/[^\s]*)?$', site_url):
         raise BuildError(f'--site-url must be an absolute http(s) URL, not "{site_url}"')
@@ -2022,7 +2237,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets, site_url=site_url))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8'), site_url, assets))
     write(f'{STATUS_DIR}/index.html', render_status((SRC / 'stan.html').read_text(encoding='utf-8'), runs, site_url, assets,
-                                                    current, refreshed))
+                                                    current, refreshed, coverage))
     (out / 'robots.txt').write_text(robots_txt(base_path, noindex, site_url), encoding='utf-8')
     if site_url and not noindex:
         (out / 'sitemap.xml').write_text(sitemap_xml(site_url, current, refreshed), encoding='utf-8')

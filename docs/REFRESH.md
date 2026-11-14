@@ -403,7 +403,11 @@ grupy jeszcze nie sprawdził. Wykresy są
 w SVG bez skryptu, z tabelą liczb pod każdym.
 
 Zapisuje je zadanie **report** (`tools/refresh/runs.py record`): dopisuje przebieg do `refresh-runs.json` na `data` (od
-najnowszego, ponowna próba zastępuje pierwszą, najwyżej 10) i przepisuje z niego `README.md` gałęzi. Push ma tę samą pętlę
+najnowszego, ponowna próba zastępuje pierwszą, najwyżej 10) i przepisuje z niego `README.md` gałęzi. Obok przebiegów
+trzyma `coverage`: po jednym punkcie `[koniec, sprawdzone, wszystkie]` na przebieg z ostatnich 14 dni (plany w
+`refresh-state.json` sprawdzone w 6 h przed końcem przebiegu), z którego `/stan/` rysuje „Pokrycie w czasie”; ostatni punkt
+wykresu to zawsze kafelek „Sprawdzone w ostatnich 6 h”. Wydział przebiegu ma obok `via_pool` także `via_tor`: runnery,
+których wszystkie wyjścia z polowania były portami Tor egressu (`stack.py tor_only`), a nie publicznymi proxy. Push ma tę samą pętlę
 co runnery (najnowszy commit gałęzi, do pięciu prób), a błąd tutaj nigdy nie psuje raportu. `pages.yml` kopiuje plik obok
 `refresh-state.json`, a `build.py` renderuje z niego `/stan/` (lokalnie: `python3 build.py --runs <plik>`; bez pliku strona
 mówi, że historii jeszcze nie ma, a link prowadzi do listy przebiegów workflow). Strona odświeża się razem z witryną.

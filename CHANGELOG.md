@@ -16,6 +16,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Nowa strona `/stan/`** (`build.py`, `src/stan.html`, `tools/refresh/runs.py`, `tools/refresh/stack.py`): kto co
+  sprawdził w przebiegu widać jako graf, z serwerami po lewej i wydziałami po prawej. Linia ciągła oznacza, że serwer prowadził
+  wydział, przerywana, że pomagał; niebieska to przejście przez publiczne proxy, fioletowa przez Tor, czerwone kropki to
+  blokada. Ten sam graf jest w każdym rozwiniętym przebiegu, a pełne listy serwerów i wydziałów zostają w „Szczegółach”.
+  Nowy wykres „Pokrycie w czasie” pokazuje udział planów sprawdzonych w ostatnich 6 h po każdym przebiegu z 14 dni
+  (`coverage` w `refresh-runs.json`). Strona nadal działa bez skryptu.
 - **Tor z polskimi wyjściami w puli egressu** (`tools/egress/pool.py`, `server.py`, `Dockerfile.tor`, `torrc`,
   `deploy/runner/compose.yml`, `tools/refresh/egress.py`): ściany WLO, WML, WTC i WCY przepuszczają tylko adresy z Polski, a
   publiczne listy nie mają żywych polskich proxy. Klient Tor z `ExitNodes {pl}` przechodzi wszystkie cztery. Egress trzyma

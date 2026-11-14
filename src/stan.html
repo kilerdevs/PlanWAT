@@ -37,6 +37,7 @@
     --frx: #8e8e93;
     --frn: #48484a;
     --bar: #3987e5;
+    --tor: #bf5af2;  /* through Tor, in the graph: purple next to the pool's blue */
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
     color-scheme: dark;
   }
@@ -141,6 +142,54 @@
   .more { padding: 2px 16px 16px 38px; }
   .facs { margin: 0; padding: 0; list-style: none; }
 
+  /* who crawled what (build._status_graph): servers left, faculties right, a line per share. Both columns are grids of
+     22 px half-rows, a node spans two, so the stretched SVG between them puts every line's ends on the nodes */
+  .graph { display: grid; grid-template-columns: minmax(6rem, 10rem) minmax(36px, 1fr) max-content; margin-top: 10px; }
+  .gcol { display: grid; grid-auto-rows: 22px; }
+  .gn { grid-row: span 2; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .gname { font-weight: 600; }
+  /* the name and its dot sit on the lines' start, the state hangs under them (a server has rows to spare) */
+  .srvn { position: relative; justify-content: flex-end; padding-right: 2px; text-align: right; }
+  .srvn .gname { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9375rem; line-height: 1.2; }
+  .gstate { position: absolute; top: calc(50% + 10px); right: 2px; left: 0; color: var(--t2); font-size: 0.75rem; line-height: 1.3; font-variant-numeric: tabular-nums; }
+  .srvn.off .gname { color: var(--t3); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .srvn.off .gstate { color: var(--t3); }
+  .facn { padding-left: 2px; font-size: 0.875rem; cursor: default; }
+  .gtag { padding: 1px 7px; border-radius: 999px; background: var(--s3); color: var(--t2); font-size: 0.6875rem; font-weight: 600; line-height: 1.5; }
+  .gmid { position: relative; }
+  /* 7 px past each side: a line ends in the centre of the node's dot (2 px padding + a 5 px radius), under it */
+  .gmid svg { position: absolute; top: 0; bottom: 0; left: -7px; width: calc(100% + 14px); height: 100%; overflow: visible; }
+  .graph .dot { position: relative; z-index: 1; box-shadow: 0 0 0 2px var(--s2); }
+  .graph path, .ek path { fill: none; stroke: var(--t3); stroke-width: 2px; vector-effect: non-scaling-stroke; stroke-linecap: round; transition: stroke-width var(--dur-fast); }
+  .graph path:hover { stroke-width: 3.5px; }
+  .graph .led, .ek .led { stroke: var(--t2); }
+  .graph .help, .ek .help { stroke-dasharray: 5 5; }
+  .graph .proxy, .ek .proxy { stroke: var(--accent); }
+  .graph .tor, .ek .tor { stroke: var(--tor); }
+  .gtag.tor { background: color-mix(in srgb, var(--tor) 18%, transparent); color: var(--tor); }
+  .graph .wall, .ek .wall { stroke: var(--busy); stroke-dasharray: 1 5; }
+  .ek { width: 20px; height: 4px; flex: none; overflow: visible; }
+  .glegend { margin-top: 12px; }
+  .graph.sm { margin: 10px 0 2px; }
+  .graph.sm .gcol { grid-auto-rows: 18px; }
+  .graph.sm .srvn .gname { font-size: 0.8125rem; }
+  .graph.sm .gstate { font-size: 0.6875rem; }
+  .graph.sm .facn { font-size: 0.8125rem; }
+  .latest .tview { margin-top: 10px; }
+  .latest .tview .sub:first-of-type { margin-top: 10px; }
+  .tview .parts, .tview .facs { margin-top: 2px; }
+
+  /* coverage over time (build._coverage_chart): one line over 0–100 %, a hover slab per pass */
+  .cov { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; margin-top: 12px; }
+  .covy { display: flex; flex-direction: column; justify-content: space-between; height: 120px; color: var(--t3); font-size: 0.6875rem; line-height: 1; text-align: right; font-variant-numeric: tabular-nums; }
+  .covc { display: block; width: 100%; height: 120px; overflow: visible; border-bottom: 1px solid var(--line); }
+  .covc .grid { stroke: var(--line); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+  .covc .line { fill: none; stroke: var(--bar); stroke-width: 2px; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .covc .area { fill: var(--bar); opacity: 0.16; }
+  .covc .hit { fill: transparent; transition: fill var(--dur-fast); }
+  .covc .hit:hover { fill: var(--line); }
+  .cova { grid-column: 2; }
+
   /* the published plans: freshness per faculty, the day plans last changed, the extremes */
   .stack .card + .card { margin-top: 12px; }
   .card { padding: 18px 20px 20px; border-radius: 20px; background: var(--s2); box-shadow: var(--edge); }
@@ -190,12 +239,12 @@
   /* an opened pass: a small title over the servers and another over the faculties, with air between the two */
   .sub { margin: 20px 0 2px; color: var(--t3); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .why + .sub { margin-top: 12px; }
-  .facs li { display: grid; grid-template-columns: 3rem 5.5rem minmax(0, 1fr); gap: 2px 12px; padding: 8px 0; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+  .facs li { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
   .facs li + li { border-top: 1px solid var(--line); }
   .fcode { font-weight: 600; }
   .fsrv { color: var(--t2); }
   .fnum { color: var(--t2); text-align: right; }
-  .fnote { grid-column: 2 / -1; color: var(--t3); font-size: 0.8125rem; }
+  .fnote { grid-column: 1 / -1; color: var(--t3); font-size: 0.8125rem; }
   .why { margin: 0 0 4px; color: var(--t2); font-size: 0.875rem; line-height: 1.5; }
   .runlink { margin: 12px 0 0; color: var(--t3); font-size: 0.8125rem; }
   .legend { display: grid; gap: 8px; margin: 18px 4px 0; font-size: 0.8125rem; line-height: 1.5; }
@@ -210,7 +259,17 @@
     .facs li { grid-template-columns: 3rem minmax(0, 1fr); }
     .fsrv { display: none; }
     .fnum { text-align: left; }
-    .fnote { grid-column: 2; }
+    /* a phone: the lines get the width the labels would take; a faculty's tag goes under its code, the server's
+       state wraps under its name (a server has the room of several faculty rows), the rows breathe a little more */
+    .graph { grid-template-columns: minmax(4.5rem, 6.5rem) minmax(56px, 1fr) minmax(5.25rem, max-content); }
+    .gcol { grid-auto-rows: 25px; }
+    .graph.sm .gcol { grid-auto-rows: 21px; }
+    .srvn .gname { font-size: 0.875rem; }
+    .gstate { font-size: 0.6875rem; }
+    /* the dot and the code stay on the line's end, the tag hangs under the code */
+    .facn { position: relative; gap: 7px; }
+    .facn .gtag { position: absolute; left: 17px; top: calc(50% + 9px); padding: 0 6px; font-size: 0.625rem; }
+    .graph.sm .facn .gtag { top: calc(50% + 7px); }
   }
   /* motion, the project's own (group.html, index.html): one page-load entrance with a 60 ms stagger (a softer rise with
      a blur on a desktop pointer), the rows of the list a beat later, charts that grow from their baseline, details that
@@ -222,6 +281,9 @@
     @keyframes open { from { opacity: 0; transform: translateY(-4px); } }
     @keyframes grow-x { from { transform: scaleX(0); } }
     @keyframes grow-y { from { transform: scaleY(0); } }
+    @keyframes fade { from { opacity: 0; } }
+    /* the graph's lines and the coverage line fade in once their card has risen */
+    .gmid svg, .covc { animation: fade var(--dur-slow) var(--ease-out) 320ms backwards; }
     .enter { animation: rise var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(var(--d, 0) * 60ms); }
     .d1 { --d: 1; } .d2 { --d: 2; } .d3 { --d: 3; } .d4 { --d: 4; } .d5 { --d: 5; }
     details[open] .more, .tview[open] table { animation: open var(--dur-base) var(--ease-out); }
