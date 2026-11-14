@@ -1289,6 +1289,7 @@ class ProxyPool:
         hosts = [h for h in dict.fromkeys(hosts) if h in self.round2]
         found = {h: [] for h in hosts}
         tried = {h: 0 for h in hosts}
+        fresh = {h: 0 for h in hosts}  # handed out as just verified, without a probe of this hunt's own
         now = time.time()
         recent = {h for h in hosts
                   if self.hunts.get(h, {}).get('state') == 'done' and now - self.hunts[h].get('at', 0) < HUNT_CACHE_S}
@@ -1305,6 +1306,7 @@ class ProxyPool:
                     break
                 if now - (c['checked'] or 0) <= HUNT_TRUST_S:
                     found[h].append(c['url'])
+                    fresh[h] += 1
                     continue
                 tried[h] += 1
                 if probe(c['url'], h):
@@ -1380,8 +1382,8 @@ class ProxyPool:
         out = {}
         for h in hosts:
             exits = list(dict.fromkeys(found[h]))
-            out[h] = {'state': 'done', 'verified': len(exits), 'tried': tried[h], 'exits': exits[:ADOPT_CAP],
-                      'at': done, 'error': None}
+            out[h] = {'state': 'done', 'verified': len(exits), 'tried': tried[h], 'fresh': fresh[h],
+                      'exits': exits[:ADOPT_CAP], 'at': done, 'error': None}
         with self._hunt_lock:
             self.hunts.update(out)
         self._save_throttled(force=True)

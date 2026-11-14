@@ -17,6 +17,9 @@ inputs:
   force:
     description: true rechecks every group, also those checked within --fresh-hours.
     default: 'false'
+  dash-key:
+    description: The operator's dashboard key (64 hex digits); the runner's heartbeat then carries its telemetry, sealed with it (docs/DASHBOARD.md). Empty = none.
+    default: ''
   census:
     description: Comma-separated faculties whose site census to take after the crawl (at most once a week; project mode only).
     default: ''
@@ -128,10 +131,10 @@ runs:
         # (container hardening), so `pip install` there fails with EROFS. It is kept in the tool cache, which the
         # project's runners keep between jobs, named by the Python and the pins: built once per runner and version,
         # in a scratch dir moved into place only once it imports, so a half-built one is never reused.
-        pins='curl_cffi==0.13.0 pymupdf==1.28.2'
+        pins='curl_cffi==0.13.0 pymupdf==1.28.2 cryptography==50.0.0'
         tag="$(python -c 'import sys; print("%d.%d" % sys.version_info[:2])')-$(printf '%s' "$pins" | sha256sum | cut -c1-12)"
         venv="$RUNNER_TOOL_CACHE/planwat/crawl-venv-$tag"
-        if "$venv/bin/python" -c 'import curl_cffi, fitz' 2>/dev/null; then
+        if "$venv/bin/python" -c 'import curl_cffi, fitz, cryptography' 2>/dev/null; then
           echo "crawl venv reused ($tag)"
         else
           mkdir -p "$RUNNER_TOOL_CACHE/planwat"
@@ -139,7 +142,7 @@ runs:
           python -m venv "$venv.new"
           # shellcheck disable=SC2086 # the pins are words
           "$venv.new/bin/python" -m pip install --disable-pip-version-check $pins
-          "$venv.new/bin/python" -c 'import curl_cffi, fitz'
+          "$venv.new/bin/python" -c 'import curl_cffi, fitz, cryptography'
           # only bin/python is used, which finds its venv from wherever it sits (pip's script shebangs would not)
           mv "$venv.new" "$venv"
         fi
@@ -170,6 +173,8 @@ runs:
         # The crawler also streams coarse live progress here (run/faculty/tick/done/wait, ticks
         # throttled) for the egress GUI's crawl card. Also best effort.
         PLANWAT_EGRESS_PROGRESS: http://egress:8080/api/progress
+        # Seals the runner's telemetry on its heartbeat for the operator's dashboard (tools/refresh/telemetry.py).
+        PLANWAT_DASH_KEY: ${{ inputs.dash-key }}
       run: |
         # Exit 3 (blocked) and 4 (incomplete) are results, not failures: they are reported through the outputs.
         set +e

@@ -44,6 +44,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -56,6 +57,7 @@ import fleet  # noqa: E402
 import egress as egress_client  # noqa: E402
 import relay  # noqa: E402
 import stack  # noqa: E402
+import telemetry  # noqa: E402
 
 # A census (take_census) at most this often: weekly, half a day early so a weekly pass never slips. It only finds new
 # programme directories, which come a few times a year, and its Joomla pages are the heaviest load this crawler puts on
@@ -71,6 +73,7 @@ PROFILES = {'hosted': (4.0, 9.0), 'selfhosted': (1.5, 4.0), 'volunteer': (4.0, 9
 
 def log(msg):
     print(msg, flush=True)
+    telemetry.TEL.event(msg)  # the operator's dashboard gets the line too (sealed, docs/DASHBOARD.md)
 
 
 def egress_headers():
@@ -100,12 +103,17 @@ def get_with_retry(session, url, timeout, headers, retries=3, backoff=2.0, sleep
     attempt fails, so the caller can tell a wall from a wobble.
     """
     last = None
+    host = urlsplit(url).hostname or ''
+    route = getattr(session, 'planwat_route', None) or ('relay' if relay.host_relayed(host) else 'direct')
     for attempt in range(retries + 1):
+        began = time.monotonic()
         try:
             r = session.get(url, timeout=timeout, headers=headers)
         except Exception as err:
+            telemetry.TEL.request(host, route, 0, (time.monotonic() - began) * 1000, 0)
             last = err
         else:
+            telemetry.TEL.request(host, route, r.status_code, (time.monotonic() - began) * 1000, len(r.content or b''))
             if r.status_code in (200, 304, 404):
                 if r.status_code == 200 and not r.content:
                     last = core.Blocked('HTTP 200 with an empty body')
@@ -392,6 +400,7 @@ def new_session(proxy=None):
     # (chrome131 was kept long after Chrome moved on) is itself a bot signal to Incapsula.
     if proxy:
         s = cr.Session(impersonate='chrome', proxies={'http': proxy, 'https': proxy})
+        s.planwat_route = 'pool'  # for the dashboard's counts (get_with_retry)
     else:
         s = cr.Session(impersonate='chrome')
     s.headers['Accept-Language'] = 'pl-PL,pl;q=0.9'

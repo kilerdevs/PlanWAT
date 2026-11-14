@@ -3447,6 +3447,26 @@ class GitStoreTest(unittest.TestCase):
         self.assertGreaterEqual(len(gone), 2)
         self.assertEqual(self.refs(), [f'refs/planwat/pass/{keep}/r/oracle'])
 
+    def test_the_archive_keeps_a_passes_last_docs_on_one_ref_and_drops_old_ones(self):
+        now = 1_761_000_000
+        store = board.GitStore(self.repos[0], f'{now - 600}-42')
+        store.put('r/oracle', {'beat': 3, 'tel': 'sealed'})
+        store.update('s/wcy', lambda d: {'state': 'closed', 'chunks': []})
+        board.GitStore(self.repos[0], f'{now - 600}-43').put('r/oracle', {'beat': 1})  # another pass: not this one's
+        old = f'{now - 40 * 86400}-7'
+        sha = subprocess.run(['git', 'ls-remote', str(self.remote), f'refs/planwat/pass/{now - 600}-43/r/oracle'],
+                             capture_output=True, text=True).stdout.split()[0]
+        subprocess.run(['git', '-C', str(self.repos[0]), 'push', '-q', 'origin', f'{sha}:refs/planwat/archive/{old}'],
+                       check=True)
+        made, dropped = board.archive(self.repos[1], '42', now=now)
+        self.assertEqual(made, f'refs/planwat/archive/{now - 600}-42')
+        self.assertEqual(dropped, [f'refs/planwat/archive/{old}'])
+        subprocess.run(['git', '-C', str(self.repos[2]), 'fetch', '-q', 'origin', f'{made}:refs/a'], check=True)
+        kept = json.loads(subprocess.run(['git', '-C', str(self.repos[2]), 'cat-file', 'blob', 'refs/a:pass.json'],
+                                         capture_output=True, text=True, check=True).stdout)
+        self.assertEqual(kept, {'r/oracle': {'beat': 3, 'tel': 'sealed'}, 's/wcy': {'state': 'closed', 'chunks': []}})
+        self.assertEqual(board.archive(self.repos[1], '99', now=now), (None, []))  # no docs: nothing made
+
 
 def me_of(name, slots, expected=(), prefers=(), allow=None, prefers_of=None, costs=None, chronic=(), shy=(), **pool):
     groups = {s: core.group_of(stack.faculty_of(s)) for s in slots}

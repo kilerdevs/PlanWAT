@@ -142,6 +142,8 @@ jobs:
       fallback: ${{ matrix.fallback || '' }}
       planned: ${{ needs.plan.outputs.planned }}
       force: ${{ inputs.force || false }}
+    secrets:
+      PLANWAT_DASH_KEY: ${{ secrets.PLANWAT_DASH_KEY }}
 
   report:
     needs: [plan, crawl]
@@ -245,6 +247,12 @@ jobs:
       # is recorded, a stale or empty one too; a glitch here never fails the report.
       # The runners shared refs/planwat/pass/<planned>-<run id>/ while they crawled (tools/refresh/board.py): gone
       # with the pass, as are any a pass cut short left behind.
+      # Its last docs first, on one ref for a month: the operator's dashboard reads passes it was not open for from
+      # there (docs/DASHBOARD.md; each runner's telemetry stays sealed).
+      - name: Archive the pass's work board
+        if: steps.history.outcome == 'success'
+        continue-on-error: true
+        run: python3 src/tools/refresh/board.py archive --repo data --run-id "$GITHUB_RUN_ID"
       - name: Clear the pass's work board
         if: steps.history.outcome == 'success'
         continue-on-error: true

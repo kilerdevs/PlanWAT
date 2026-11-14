@@ -57,10 +57,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import board  # noqa: E402
+import telemetry  # noqa: E402
 
 MIN_CHUNK = 3           # groups per chunk at the end of a slot (each chunk costs a swap on the store)
 MAX_CHUNK = 24          # ... and at most, while much is left (well inside LANE_STALE at the slowest pacing)
-HEARTBEAT = 30          # a runner's doc is pushed at least this often
+HEARTBEAT = 15          # a runner's doc is pushed at least this often (it carries the dashboard's telemetry)
 STALE = 150             # a runner whose doc stood still this long is gone (by the reader's own clock)
 JOIN_GRACE = 180        # an expected runner that has not shown up this long after we started is not waited for
 LANE_STALE = 600        # a lane holding a chunk without a page checked this long is stuck
@@ -563,8 +564,12 @@ class Runner:
     def _doc(self, mode='run'):
         with self.lock:
             self.beat += 1
-            return {'runner': self.me.name, 'nonce': self.nonce, 'beat': self.beat, 'mode': mode,
-                    'lanes': copy.deepcopy(self.lanes)}
+            doc = {'runner': self.me.name, 'nonce': self.nonce, 'beat': self.beat, 'mode': mode,
+                   'lanes': copy.deepcopy(self.lanes)}
+        tel = telemetry.sealed()  # only the operator's key opens it (docs/DASHBOARD.md); none without the key
+        if tel:
+            doc['tel'] = tel
+        return doc
 
     def _read(self):
         docs = self.store.read()

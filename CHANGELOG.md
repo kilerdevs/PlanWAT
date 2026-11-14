@@ -16,6 +16,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Panel floty** (`tools/dash/`, `tools/refresh/telemetry.py`, [`docs/DASHBOARD.md`](docs/DASHBOARD.md)): lokalna
+  aplikacja tylko na komputerze operatora (`127.0.0.1:8765`), która na żywo pokazuje przebieg: wydziały z kawałkami w
+  kolorach runnerów, drogi (własny adres, Tor, wyjścia z puli, ściany, polowania), runnery z obciążeniem, odpowiedziami
+  według dróg, Torem i polowaniami, oś czasu pasów i zdarzenia z filtrami. Do tego historię: czas przebiegów,
+  wykorzystanie i udział runnerów, drogi do wydziałów i kolejkę GitHuba. Telemetria jedzie na biciu serca runnera,
+  zaszyfrowana kluczem `PLANWAT_DASH_KEY`, więc w publicznym repozytorium nikt poza operatorem jej nie odczyta.
 - **Runnery `oracle2` i `oracle3`** (`tools/refresh/fleet.json`, `deploy/runner/README.md`): drugi i trzeci darmowy VPS
   Oracle (Ampere A1, aarch64) z tym samym zestawem co oracle1 (runner, egress ze zwiadem, Tor), które pomagają na stosie
   pracy.
@@ -186,6 +192,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Bicie serca runnera co 15 s zamiast 30 s** (`tools/refresh/stack.py`), żeby panel floty był świeży. Raport
+  przebiegu zachowuje ostatnie dokumenty stosu na `refs/planwat/archive/` przez 30 dni (`board.py archive`), zanim go
+  usunie.
 - **Nikt nie stoi, gdy jeden runner crawluje wydział przez wyjścia** (`tools/refresh/stack.py`): runner na wyjściach
   puli (`via: pool`) nie liczy się już jako docierający bezpośrednio, więc pozostałe runnery z egressem szukają własnych
   wyjść (zwykle własnego Tora) i pomagają, dopóki zostało co najmniej 24 grup. Ścieżka po kawałku najpierw otwiera
@@ -256,6 +265,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Czytelna linia polowania** (`tools/egress/pool.py`, `tools/refresh/egress.py`): zamiast mylącego „0 tried” log
+  mówi, ile wyjść było świeżo sprawdzonych i ile prób wykonało samo polowanie.
 - **Runner nie zamiera po przegranym wyścigu w magazynie** (`tools/refresh/board.py`): przerwa przed ponowieniem
   zamiany trzymała blokadę wszystkich wywołań gita runnera, więc jedna ścieżka potrafiła na ok. 50 s zatrzymać pozostałe
   i bicie serca.

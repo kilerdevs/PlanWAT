@@ -37,6 +37,9 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import telemetry  # noqa: E402
+
 SERVER = HERE.parent / 'egress' / 'server.py'
 HUNT_WAIT = 480  # the egress hunts for up to 5 minutes, after fetching the lists and Round-1 probing if it must
 POLL = 5
@@ -134,7 +137,11 @@ class Egress:
                 until = min(cap, begun + wait)
             if state.get('state') == 'done':
                 found = [e for e in state.get('exits') or [] if isinstance(e, str)]
-                self.log(f"egress: hunted {host}: {len(found)} exits through, {state.get('tried', 0)} tried")
+                known = f", {state['fresh']} of them just verified" if state.get('fresh') else ''  # older egresses: none
+                self.log(f"egress: hunted {host}: {len(found)} exits through{known}, {state.get('tried', 0)} probed")
+                telemetry.TEL.gauge(f'hunt:{host}', {'found': len(found), 'fresh': state.get('fresh', 0),
+                                                     'probed': state.get('tried', 0), 'at': round(time.time()),
+                                                     'secs': round(self.clock() - begun) if begun else None})
                 return found
             if state.get('state') == 'error':
                 raise RuntimeError(f"the hunt for {host} failed: {state.get('error')}")
@@ -314,16 +321,20 @@ class LocalTor:
             return []
         self.home.mkdir(parents=True, exist_ok=True)
         self.state_path.write_text(json.dumps({'pid': proc.pid, 'ports': ports}), encoding='utf-8')
-        until = self.clock() + TOR_WAIT
+        began = self.clock()
+        until = began + TOR_WAIT
         while self.clock() < until and proc.poll() is None:
             try:
                 if 'Bootstrapped 100%' in log.read_text(encoding='utf-8', errors='replace'):
+                    telemetry.TEL.gauge('tor', {'up': True, 'circuits': len(ports), 'boot_s': round(self.clock() - began),
+                                                'at': round(time.time())})
                     self.log(f'egress: Tor up (pid {proc.pid}, Polish exits, {len(ports)} circuits)')
                     return self.urls(ports)
             except OSError:
                 pass
             self.sleep(1)
         if proc.poll() is not None:
+            telemetry.TEL.gauge('tor', {'up': False, 'at': round(time.time())})
             self.log('egress: Tor did not start')
             return []
         self.log(f'egress: Tor still bootstrapping after {TOR_WAIT} s; the pool retries its ports every cycle')

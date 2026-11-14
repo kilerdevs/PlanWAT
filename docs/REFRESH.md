@@ -237,8 +237,9 @@ Każdy przebieg `refresh.yml` ma trzy etapy (część jednego runnera to wspóln
    albo zamyka zgłoszenia o blokadzie i degradacji. Gdy stosu nie da się odczytać, liczy to, co runnery widziały na
    koniec (`done_faculties`, `blocked_faculties`, `incomplete_faculties`): wydział jest zrobiony, gdy którykolwiek runner
    widział go zrobionego. Przebieg, w którym jakiegoś wydziału nikt nie skończył, jest niepełny i niczego nie zamyka;
-   przebieg starszy niż 3 h zostawia zgłoszenia nowszym. Na koniec usuwa stos (`board.py sweep`) i zapisuje przebieg w
-   [historii przebiegów](#historia-przebiegów).
+   przebieg starszy niż 3 h zostawia zgłoszenia nowszym. Na koniec zachowuje ostatnie dokumenty stosu jako jeden plik na
+   `refs/planwat/archive/<plan>-<przebieg>` (`board.py archive`, przez 30 dni, dla [panelu floty](DASHBOARD.md)), usuwa
+   stos (`board.py sweep`) i zapisuje przebieg w [historii przebiegów](#historia-przebiegów).
 
 Dawnego etapu **handoff/takeover** (druga fala zadań dla tego, co ktoś zostawił) już nie ma: to, czego jeden runner nie
 zrobił, od razu wraca na stos i bierze to inny, jeszcze w tym samym przebiegu.
@@ -250,7 +251,8 @@ następny, przez nadchodzący (`wml~2027-28-zima`). Każdy slot to jeden mały d
 repozytorium, `refs/planwat/pass/<plan>-<przebieg>/s/<slot>` ([`board.py`](../tools/refresh/board.py)), zmieniany
 wyłącznie przez **compare-and-swap**: nowy commit idzie z `git push --force-with-lease=<ref>:<sha, które czytał>`, a
 serwer sprawdza to atomowo. Dwa runnery biorące ten sam kawałek naraz nie mogą wygrać obu; przegrany czyta jeszcze raz
-i decyduje od nowa. Każdy runner ma też dokument z biciem serca (`r/<runner>`, co 30 s). Uprawnienia daje checkout
+i decyduje od nowa. Każdy runner ma też dokument z biciem serca (`r/<runner>`, co 15 s), który niesie też jego
+zaszyfrowaną telemetrię dla [panelu floty](DASHBOARD.md) (`tel`, tylko z kluczem `PLANWAT_DASH_KEY`). Uprawnienia daje checkout
 `data`, ruch gita nie zjada limitu API, a referencje spoza `heads/` i `tags/` nie uruchamiają żadnego workflow.
 
 1. **Otwarcie.** Pierwszy runner, który zajmie slot (jego **lider**), wylicza grupy wydziału, odrzuca świeże i

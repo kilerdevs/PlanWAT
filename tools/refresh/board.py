@@ -12,7 +12,9 @@ remote checks atomically against the ref as it stands. Two runners claiming the 
 both win: the loser reads the ref again and decides anew. A read is one `git ls-remote` (which docs changed) and a fetch
 of only the changed ones. Git traffic does not count against the REST API's rate limit, the runners already hold push
 credentials in their data checkout (.github/actions/refresh), and refs outside heads/ and tags/ trigger no workflow.
-The report job sweeps a pass's refs when it ends (`board.py sweep`), and any left over from a pass cut short.
+The report job sweeps a pass's refs when it ends (`board.py sweep`), and any left over from a pass cut short. Just
+before, it keeps the pass's last docs as one file on refs/planwat/archive/<planned>-<run id> (`board.py archive`, for
+the operator's dashboard, docs/DASHBOARD.md), for ARCHIVE_DAYS.
 
 Nothing here decides anything; MemoryStore is the same store in memory for the tests, with failures on demand.
 """
@@ -29,6 +31,8 @@ import time
 import uuid
 
 REF_ROOT = 'refs/planwat/pass/'
+ARCHIVE_ROOT = 'refs/planwat/archive/'
+ARCHIVE_DAYS = 30
 # where a runner's checkout keeps what it fetched of the store (GitStore.forget drops it)
 LOCAL = 'refs/planwat-seen/'
 # <planned Unix seconds>-<run id>
@@ -278,6 +282,34 @@ def sweep(repo, run_id='', hours=SWEEP_HOURS, remote='origin', now=None, run=sub
     return doomed
 
 
+def archive(repo, run_id, days=ARCHIVE_DAYS, remote='origin', now=None, run=subprocess.run):
+    """Keep run `run_id`'s last docs as pass.json ({name: doc}) on ARCHIVE_ROOT<key>, and drop archives planned over
+    `days` ago. Returns (the archive's ref or None when the pass left no docs, the refs dropped)."""
+    now = time.time() if now is None else now
+    probe = GitStore(repo, '0-0', remote, run=run)
+    keys = {m.group(1) for m in re.finditer(rf'\t{re.escape(REF_ROOT)}(\d{{1,12}}-{re.escape(str(run_id))})/',
+                                             probe._git('ls-remote', remote, f'{REF_ROOT}*'))}
+    made = None
+    for key in sorted(keys)[-1:]:
+        docs = GitStore(repo, key, remote, run=run).read()
+        if docs:
+            body = (json.dumps(docs, ensure_ascii=False, sort_keys=True) + '\n').encode('utf-8')
+            blob = probe._git('hash-object', '-w', '--stdin', data=body).strip()
+            tree = probe._git('mktree', data=f'100644 blob {blob}\tpass.json\n'.encode()).strip()
+            commit = probe._git('commit-tree', tree, '-m', f'archive {key}').strip()
+            made = f'{ARCHIVE_ROOT}{key}'
+            probe._git('push', '-q', '--force', remote, f'{commit}:{made}')
+    old = []
+    for line in probe._git('ls-remote', remote, f'{ARCHIVE_ROOT}*').splitlines():
+        ref = line.partition('\t')[2]
+        key = re.match(r'^(\d{1,12})-\d{1,20}$', ref[len(ARCHIVE_ROOT):])
+        if key and float(key.group(1)) < now - days * 86400:
+            old.append(ref)
+    for i in range(0, len(old), 50):
+        probe._git('push', '-q', remote, '--delete', *old[i:i + 50])
+    return made, old
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -285,11 +317,19 @@ def main(argv=None):
     p.add_argument('--repo', required=True, help='a checkout of this repository with push credentials')
     p.add_argument('--run-id', default='', help='the run (pass) that just ended')
     p.add_argument('--hours', type=float, default=SWEEP_HOURS)
+    p = sub.add_parser('archive', help="keep a finished pass's last docs on one ref (the operator's dashboard)")
+    p.add_argument('--repo', required=True, help='a checkout of this repository with push credentials')
+    p.add_argument('--run-id', required=True, help='the run (pass) that just ended')
+    p.add_argument('--days', type=float, default=ARCHIVE_DAYS)
     args = ap.parse_args(argv)
     try:
+        if args.cmd == 'archive':
+            made, old = archive(args.repo, args.run_id, args.days)
+            print(f'board: archived to {made or "nothing (no docs)"}; {len(old)} old archives dropped')
+            return 0
         gone = sweep(args.repo, args.run_id, args.hours)
     except StoreError as err:
-        print(f'store not swept: {err}')
+        print(f'store not {"archived" if args.cmd == "archive" else "swept"}: {err}')
         return 1
     print(f'board: {len(gone)} refs deleted')
     return 0

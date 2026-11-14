@@ -2276,6 +2276,7 @@ class PoolHunt(unittest.TestCase):
         out = p.hunt(['wml.wat.edu.pl'], want=1)
         self.assertEqual(self.probes, [])
         self.assertEqual(out['wml.wat.edu.pl']['exits'], ['http://8.8.2.1:8080'])
+        self.assertEqual((out['wml.wat.edu.pl']['fresh'], out['wml.wat.edu.pl']['tried']), (1, 0))
 
     def test_a_scouted_pool_that_every_wall_refused_still_discovers(self):
         p = self.make(self.alive(50), lambda u, h: False)
