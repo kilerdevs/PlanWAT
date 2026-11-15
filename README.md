@@ -1,13 +1,14 @@
 # Odświeżanie planów: ostatnie przebiegi
 
 > [!TIP]
-> **Ostatni przebieg: bez zmian.** 14 lis 2026 · 21:48 · **oracle1** · **oracle2** · **oracle3** · **northflank1** · **northflank2** · ~~plebania~~ · 3 min · [przebieg #166](https://github.com/kilerdevs/PlanWAT/actions/runs/43639445895)
+> **Ostatni przebieg: bez zmian.** 15 lis 2026 · 03:00 · **oracle1** · **oracle2** · **oracle3** · **northflank1** · **northflank2** · ~~plebania~~ · 9 min · [przebieg #167](https://github.com/kilerdevs/PlanWAT/actions/runs/43665663889)
 > Sprawdzono wszystkie wydziały, żaden plan się nie zmienił.
 
 Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
 
 | Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |
 |---|---|---|--:|--:|---|
+| 15 lis · 03:00 | Bez zmian | **oracle1** (IOE, WIG, WCY (pomoc dla oracle3), WIM (pomoc dla oracle3), WEL (pomoc dla oracle3), WML (pomoc dla oracle2 przez Tor)) · **oracle2** (WML przez Tor, WEL (pomoc dla oracle3), WIM (pomoc dla oracle3), WCY (pomoc dla oracle3), IOE (pomoc dla oracle1)) · **oracle3** (WCY, WEL, WIM, IOE (pomoc dla oracle1), WML (pomoc dla oracle2 przez Tor), WIG (pomoc dla oracle1)) · **northflank1** (WTC przez Tor, WIM (pomoc dla oracle3), IOE (pomoc dla oracle1), WCY (pomoc dla oracle3 przez Tor), WML (pomoc dla oracle2 przez Tor), WIG (pomoc dla oracle1), WLO (pomoc dla northflank2 przez proxy)) · **northflank2** (WLO przez proxy, WIM (pomoc dla oracle3), IOE (pomoc dla oracle1), WCY (pomoc dla oracle3 przez Tor), WML (pomoc dla oracle2 przez Tor), WIG (pomoc dla oracle1)) · ~~plebania~~ | 747 | 9 min | [#167](https://github.com/kilerdevs/PlanWAT/actions/runs/43665663889) |
 | 14 lis · 21:48 | Bez zmian | **oracle1** (IOE, WIG, WML) · **oracle2** (WCY, WEL, WIM) · **oracle3** (WLO przez Tor, WTC) · **northflank1** · **northflank2** · ~~plebania~~ | 5 | 3 min | [#166](https://github.com/kilerdevs/PlanWAT/actions/runs/43639445895) |
 | 14 lis · 20:10 | Bez zmian | **oracle1** (IOE, WIG, WCY (pomoc dla oracle3), WEL (pomoc dla oracle2), WTC (pomoc dla northflank2 przez Tor), WML (pomoc dla oracle3 przez proxy)) · **oracle2** (WEL, WIM, WCY (pomoc dla oracle3), IOE (pomoc dla oracle1), WML (pomoc dla oracle3 przez proxy), WIG (pomoc dla oracle1)) · **oracle3** (WCY, WML przez proxy, WIM (pomoc dla oracle2), WEL (pomoc dla oracle2), IOE (pomoc dla oracle1), WIG (pomoc dla oracle1)) · **northflank1** (WLO przez Tor, WIM (pomoc dla oracle2), WCY (pomoc dla oracle3 przez Tor), WML (pomoc dla oracle3 przez proxy)) · **northflank2** (WTC przez Tor, WIM (pomoc dla oracle2), WCY (pomoc dla oracle3 przez proxy), IOE (pomoc dla oracle1), WML (pomoc dla oracle3 przez proxy), WIG (pomoc dla oracle1), WLO (pomoc dla northflank1 przez Tor)) · ~~plebania~~ | 798 | 9 min | [#165](https://github.com/kilerdevs/PlanWAT/actions/runs/43630644565) |
 | 14 lis · 19:22 | Bez zmian | **oracle1** (IOE, WIG, WML przez Tor, WTC przez Tor, WEL (pomoc dla oracle2), WCY (pomoc dla oracle2)) · **oracle2** (WCY, WEL, WIM, IOE (pomoc dla oracle1), WIG (pomoc dla oracle1), WML (pomoc dla oracle1 przez Tor)) · **oracle3** (WIM (pomoc dla oracle2), WEL (pomoc dla oracle2), WCY (pomoc dla oracle2), IOE (pomoc dla oracle1), WML (pomoc dla oracle1 przez Tor), WIG (pomoc dla oracle1)) · **northflank1** (WIM (pomoc dla oracle2), IOE (pomoc dla oracle1), WCY (pomoc dla oracle2 przez Tor), WLO (pomoc dla northflank2 przez Tor), WML (pomoc dla oracle1 przez Tor)) · **northflank2** (WLO przez Tor, WIM (pomoc dla oracle2), IOE (pomoc dla oracle1), WCY (pomoc dla oracle2 przez Tor), WML (pomoc dla oracle1 przez Tor)) · ~~plebania~~ | 798 | 9 min | [#164](https://github.com/kilerdevs/PlanWAT/actions/runs/43626260505) |
@@ -17,9 +18,35 @@ Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w cza
 | 14 lis · 16:13 | Bez zmian | **oracle** (IOE, WCY, WEL, WIG, WML, WTC) · **northflank** (WIM, WLO przez Tor) · ~~plebania~~ | 18 | 6 min | [#159](https://github.com/kilerdevs/PlanWAT/actions/runs/43608984312) |
 | 14 lis · 12:57 | Bez zmian | **oracle** (IOE, WCY, WEL, WIG, WTC przez Tor, WIM (pomoc dla northflank), WML (pomoc dla northflank przez Tor)) · **northflank** (WIM, WLO przez Tor, WML przez Tor, IOE (pomoc dla oracle), WCY (pomoc dla oracle przez Tor), WIG (pomoc dla oracle)) · ~~plebania~~ | 747 | 22 min | [#158](https://github.com/kilerdevs/PlanWAT/actions/runs/43592467848) |
 | 14 lis · 07:47 | Zmiany w 13 planach | **oracle** (IOE, WCY, WEL, WIG, WML przez proxy, WTC przez proxy, WIM (pomoc dla northflank)) · **northflank** (WIM, WLO przez proxy, IOE (pomoc dla oracle), WCY (pomoc dla oracle przez proxy), WTC (pomoc dla oracle przez proxy), WML (pomoc dla oracle przez proxy), WIG (pomoc dla oracle)) · ~~plebania~~ | 798 | 22 min | [#157](https://github.com/kilerdevs/PlanWAT/actions/runs/43567992348) |
-| 14 lis · 00:43 | Bez zmian | **oracle** (IOE, WCY, WEL, WIG, WIM, WML, WTC przez proxy) · **northflank** (WLO przez proxy, WTC (pomoc dla oracle przez proxy)) · ~~plebania~~ | 40 | 6 min | [#156](https://github.com/kilerdevs/PlanWAT/actions/runs/43529250060) |
 
 ## Szczegóły
+
+<details>
+<summary><b>15 lis · 03:00</b> · Bez zmian · oracle1 · oracle2 · oracle3 · northflank1 · northflank2</summary>
+
+Sprawdzono wszystkie wydziały, żaden plan się nie zmienił. Przebieg automatyczny [#167](https://github.com/kilerdevs/PlanWAT/actions/runs/43665663889), od planu do raportu 9 min.
+
+| Serwer | Wydziały | Zmienione | Stan |
+|---|---|--:|---|
+| **oracle1** | IOE, WIG, WCY (pomoc dla oracle3), WIM (pomoc dla oracle3), WEL (pomoc dla oracle3), WML (pomoc dla oracle2 przez Tor) | 0 | 8 min, zablokowany na WLO, WTC |
+| **oracle2** | WML przez Tor, WEL (pomoc dla oracle3), WIM (pomoc dla oracle3), WCY (pomoc dla oracle3), IOE (pomoc dla oracle1) | 0 | 8 min, zablokowany na WLO, WTC |
+| **oracle3** | WCY, WEL, WIM, IOE (pomoc dla oracle1), WML (pomoc dla oracle2 przez Tor), WIG (pomoc dla oracle1) | 0 | 8 min, zablokowany na WTC, WLO |
+| **northflank1** | WTC przez Tor, WIM (pomoc dla oracle3), IOE (pomoc dla oracle1), WCY (pomoc dla oracle3 przez Tor), WML (pomoc dla oracle2 przez Tor), WIG (pomoc dla oracle1), WLO (pomoc dla northflank2 przez proxy) | 0 | 8 min |
+| **northflank2** | WLO przez proxy, WIM (pomoc dla oracle3), IOE (pomoc dla oracle1), WCY (pomoc dla oracle3 przez Tor), WML (pomoc dla oracle2 przez Tor), WIG (pomoc dla oracle1) | 0 | 8 min |
+| plebania | | | wyłączony |
+
+| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
+|---|---|--:|--:|---|
+| WLO | northflank2 | 131 | 0 | z pomocą northflank1, przez proxy (pula) na northflank1, northflank2, blokada dla oracle1, oracle2, oracle3, odrzucone strony: 1 |
+| WEL | oracle3 | 160 | 0 | z pomocą oracle2, oracle1, odrzucone strony: 3 |
+| WIM | oracle3 | 88 | 0 | z pomocą northflank2, northflank1, oracle1, oracle2 |
+| IOE | oracle1 | 15 | 0 | z pomocą oracle2, northflank2, oracle3, northflank1 |
+| WCY | oracle3 | 135 | 0 | z pomocą northflank2, northflank1, oracle1, oracle2, przez Tor na northflank1, northflank2, odrzucone strony: 1, bez planu na ten semestr: 51 |
+| WML | oracle2 | 162 | 0 | z pomocą oracle3, northflank1, northflank2, oracle1, przez Tor na northflank1, northflank2, oracle1, oracle2, oracle3 |
+| WTC | northflank1 | 23 | 0 | przez Tor na northflank1, blokada dla oracle1, oracle2, oracle3 |
+| WIG | oracle1 | 33 | 0 | z pomocą oracle3, northflank2, northflank1 |
+
+</details>
 
 <details>
 <summary><b>14 lis · 21:48</b> · Bez zmian · oracle1 · oracle2 · oracle3 · northflank1 · northflank2</summary>
@@ -251,29 +278,5 @@ Pobrano nowe wersje 13 planów. Część stron (WEL) nie przeszła kontroli, wi�
 | WML | oracle | 162 | 0 | z pomocą northflank, przez proxy (pula) na northflank, oracle |
 | WTC | oracle | 23 | 0 | z pomocą northflank, przez proxy (pula) na northflank, oracle |
 | WIG | oracle | 33 | 0 | z pomocą northflank |
-
-</details>
-
-<details>
-<summary><b>14 lis · 00:43</b> · Bez zmian · oracle · northflank</summary>
-
-Sprawdzono wszystkie wydziały, żaden plan się nie zmienił. Część stron (WEL) nie przeszła kontroli, więc dla nich zostają poprzednie wersje. Przebieg automatyczny [#156](https://github.com/kilerdevs/PlanWAT/actions/runs/43529250060), od planu do raportu 6 min.
-
-| Serwer | Wydziały | Zmienione | Stan |
-|---|---|--:|---|
-| **oracle** | IOE, WCY, WEL, WIG, WIM, WML, WTC przez proxy | 0 | 5 min, zablokowany na WLO |
-| **northflank** | WLO przez proxy, WTC (pomoc dla oracle przez proxy) | 0 | 6 min |
-| plebania | | | wyłączony |
-
-| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
-|---|---|--:|--:|---|
-| WLO | northflank | 1 | 0 | przez proxy (pula) na northflank, blokada dla oracle, odrzucone strony: 1 |
-| WEL | oracle | 27 | 0 | odrzucone strony: 3 z 27 |
-| WIM | oracle | 0 | 0 |  |
-| IOE | oracle | 0 | 0 |  |
-| WCY | oracle | 1 | 0 | odrzucone strony: 1, bez planu na ten semestr: 51 |
-| WML | oracle | 0 | 0 |  |
-| WTC | oracle | 11 | 0 | z pomocą northflank, przez proxy (pula) na northflank, oracle |
-| WIG | oracle | 0 | 0 |  |
 
 </details>
