@@ -2,6 +2,299 @@
  "version": 1,
  "runs": [
   {
+   "id": 43740217532,
+   "number": 169,
+   "attempt": 1,
+   "event": "schedule",
+   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/43740217532",
+   "planned": "2026-11-15T17:17:07",
+   "ended": "2026-11-15T17:30:03",
+   "result": "ok",
+   "changed": 0,
+   "checked": 747,
+   "not_ready": 51,
+   "runners": [
+    {
+     "name": "oracle1",
+     "faculties": [
+      "ioe",
+      "wig",
+      "wml"
+     ],
+     "status": "done",
+     "minutes": 11,
+     "changed": 0,
+     "wave": 1,
+     "helped": {
+      "wel": "oracle3",
+      "wim": "oracle3",
+      "wcy": "oracle3",
+      "wlo": "northflank2"
+     },
+     "via_pool": [
+      "wlo",
+      "wml"
+     ],
+     "cant": {
+      "wtc": "wall"
+     },
+     "blocked_on": [
+      "wtc"
+     ],
+     "via_tor": [
+      "wlo",
+      "wml"
+     ]
+    },
+    {
+     "name": "oracle2",
+     "faculties": [
+      "wtc"
+     ],
+     "status": "done",
+     "minutes": 11,
+     "changed": 0,
+     "wave": 1,
+     "helped": {
+      "wim": "oracle3",
+      "wel": "oracle3",
+      "wcy": "oracle3",
+      "ioe": "oracle1",
+      "wml": "oracle1",
+      "wlo": "northflank2"
+     },
+     "via_pool": [
+      "wlo",
+      "wml",
+      "wtc"
+     ],
+     "via_tor": [
+      "wlo",
+      "wml",
+      "wtc"
+     ]
+    },
+    {
+     "name": "oracle3",
+     "faculties": [
+      "wcy",
+      "wel",
+      "wim"
+     ],
+     "status": "done",
+     "minutes": 11,
+     "changed": 0,
+     "wave": 1,
+     "helped": {
+      "ioe": "oracle1",
+      "wig": "oracle1",
+      "wml": "oracle1",
+      "wlo": "northflank2"
+     },
+     "via_pool": [
+      "wlo",
+      "wml"
+     ],
+     "cant": {
+      "wtc": "wall"
+     },
+     "blocked_on": [
+      "wtc"
+     ],
+     "via_tor": [
+      "wlo",
+      "wml"
+     ]
+    },
+    {
+     "name": "northflank1",
+     "faculties": [],
+     "status": "done",
+     "minutes": 12,
+     "changed": 0,
+     "wave": 1
+    },
+    {
+     "name": "northflank2",
+     "faculties": [
+      "wlo"
+     ],
+     "status": "done",
+     "minutes": 11,
+     "changed": 0,
+     "wave": 1,
+     "via_pool": [
+      "wlo"
+     ],
+     "via_tor": [
+      "wlo"
+     ]
+    }
+   ],
+   "offline": [
+    "plebania"
+   ],
+   "unassigned": [],
+   "faculties": [
+    {
+     "id": "wlo",
+     "runner": "northflank2",
+     "helpers": [
+      "oracle1",
+      "oracle3",
+      "oracle2"
+     ],
+     "fresh": true,
+     "checked": 131,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 1,
+     "blocked": false,
+     "degraded": false,
+     "cause": null,
+     "via_pool": [
+      "northflank2",
+      "oracle1",
+      "oracle2",
+      "oracle3"
+     ],
+     "via_tor": [
+      "northflank2",
+      "oracle1",
+      "oracle2",
+      "oracle3"
+     ]
+    },
+    {
+     "id": "wel",
+     "runner": "oracle3",
+     "helpers": [
+      "oracle2",
+      "oracle1"
+     ],
+     "fresh": true,
+     "checked": 160,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 3,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wim",
+     "runner": "oracle3",
+     "helpers": [
+      "oracle1",
+      "oracle2"
+     ],
+     "fresh": true,
+     "checked": 88,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "ioe",
+     "runner": "oracle1",
+     "helpers": [
+      "oracle2",
+      "oracle3"
+     ],
+     "fresh": true,
+     "checked": 15,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wcy",
+     "runner": "oracle3",
+     "helpers": [
+      "oracle1",
+      "oracle2"
+     ],
+     "fresh": true,
+     "checked": 135,
+     "changed": 0,
+     "not_ready": 51,
+     "skipped": 1,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    },
+    {
+     "id": "wml",
+     "runner": "oracle1",
+     "helpers": [
+      "oracle2",
+      "oracle3"
+     ],
+     "fresh": true,
+     "checked": 162,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null,
+     "via_pool": [
+      "oracle1",
+      "oracle2",
+      "oracle3"
+     ],
+     "via_tor": [
+      "oracle1",
+      "oracle2",
+      "oracle3"
+     ]
+    },
+    {
+     "id": "wtc",
+     "runner": "oracle2",
+     "fresh": true,
+     "checked": 23,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null,
+     "cant": {
+      "oracle1": "wall",
+      "oracle3": "wall"
+     },
+     "via_pool": [
+      "oracle2"
+     ],
+     "via_tor": [
+      "oracle2"
+     ]
+    },
+    {
+     "id": "wig",
+     "runner": "oracle1",
+     "helpers": [
+      "oracle3"
+     ],
+     "fresh": true,
+     "checked": 33,
+     "changed": 0,
+     "not_ready": 0,
+     "skipped": 0,
+     "blocked": false,
+     "degraded": false,
+     "cause": null
+    }
+   ]
+  },
+  {
    "id": 43700204620,
    "number": 168,
    "attempt": 1,
@@ -2524,242 +2817,9 @@
      "cause": null
     }
    ]
-  },
-  {
-   "id": 43592467848,
-   "number": 158,
-   "attempt": 1,
-   "event": "workflow_dispatch",
-   "url": "https://github.com/kilerdevs/PlanWAT/actions/runs/43592467848",
-   "planned": "2026-11-14T11:57:58",
-   "ended": "2026-11-14T12:19:56",
-   "result": "degraded",
-   "changed": 0,
-   "checked": 747,
-   "not_ready": 51,
-   "runners": [
-    {
-     "name": "oracle",
-     "faculties": [
-      "ioe",
-      "wcy",
-      "wel",
-      "wig",
-      "wtc"
-     ],
-     "status": "degraded",
-     "minutes": 21,
-     "changed": 0,
-     "wave": 1,
-     "helped": {
-      "wim": "northflank",
-      "wml": "northflank"
-     },
-     "via_pool": [
-      "wml",
-      "wtc"
-     ],
-     "cant": {
-      "wlo": "wall"
-     },
-     "blocked_on": [
-      "wlo"
-     ],
-     "via_tor": [
-      "wml",
-      "wtc"
-     ],
-     "degraded_on": [
-      "wel"
-     ]
-    },
-    {
-     "name": "northflank",
-     "faculties": [
-      "wim",
-      "wlo",
-      "wml"
-     ],
-     "status": "done",
-     "minutes": 21,
-     "changed": 0,
-     "wave": 1,
-     "helped": {
-      "ioe": "oracle",
-      "wcy": "oracle",
-      "wig": "oracle"
-     },
-     "via_pool": [
-      "wcy",
-      "wlo",
-      "wml"
-     ],
-     "via_tor": [
-      "wlo",
-      "wcy",
-      "wml"
-     ]
-    }
-   ],
-   "offline": [
-    "plebania"
-   ],
-   "unassigned": [],
-   "faculties": [
-    {
-     "id": "wlo",
-     "runner": "northflank",
-     "fresh": true,
-     "checked": 131,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 1,
-     "blocked": false,
-     "degraded": false,
-     "cause": null,
-     "cant": {
-      "oracle": "wall"
-     },
-     "via_pool": [
-      "northflank"
-     ],
-     "via_tor": [
-      "northflank"
-     ]
-    },
-    {
-     "id": "wel",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 160,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 3,
-     "blocked": false,
-     "degraded": true,
-     "cause": null
-    },
-    {
-     "id": "wim",
-     "runner": "northflank",
-     "helpers": [
-      "oracle"
-     ],
-     "fresh": true,
-     "checked": 88,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "ioe",
-     "runner": "oracle",
-     "helpers": [
-      "northflank"
-     ],
-     "fresh": true,
-     "checked": 15,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    },
-    {
-     "id": "wcy",
-     "runner": "oracle",
-     "helpers": [
-      "northflank"
-     ],
-     "fresh": true,
-     "checked": 135,
-     "changed": 0,
-     "not_ready": 51,
-     "skipped": 1,
-     "blocked": false,
-     "degraded": false,
-     "cause": null,
-     "via_pool": [
-      "northflank"
-     ],
-     "via_tor": [
-      "northflank"
-     ]
-    },
-    {
-     "id": "wml",
-     "runner": "northflank",
-     "helpers": [
-      "oracle"
-     ],
-     "fresh": true,
-     "checked": 162,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null,
-     "via_pool": [
-      "northflank",
-      "oracle"
-     ],
-     "via_tor": [
-      "northflank",
-      "oracle"
-     ]
-    },
-    {
-     "id": "wtc",
-     "runner": "oracle",
-     "fresh": true,
-     "checked": 23,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null,
-     "via_pool": [
-      "oracle"
-     ],
-     "via_tor": [
-      "oracle"
-     ]
-    },
-    {
-     "id": "wig",
-     "runner": "oracle",
-     "helpers": [
-      "northflank"
-     ],
-     "fresh": true,
-     "checked": 33,
-     "changed": 0,
-     "not_ready": 0,
-     "skipped": 0,
-     "blocked": false,
-     "degraded": false,
-     "cause": null
-    }
-   ]
   }
  ],
  "coverage": [
-  [
-   "2026-11-01T13:39:55",
-   738,
-   833
-  ],
-  [
-   "2026-11-01T15:22:29",
-   738,
-   833
-  ],
   [
    "2026-11-01T21:26:34",
    738,
@@ -3067,6 +3127,11 @@
   ],
   [
    "2026-11-15T09:47:42",
+   742,
+   837
+  ],
+  [
+   "2026-11-15T17:30:03",
    742,
    837
   ]
