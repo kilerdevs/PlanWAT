@@ -65,6 +65,8 @@ const COOKIE_TTL_S = 600;
 // these retries; each starts without the cached cookies that may belong to the egress that
 // just answered with the block.
 const WALL_RETRIES = 2;
+// The largest body relayed: a timetable page or PDF is well under 1 MB, so anything near this is not one.
+const MAX_BODY_BYTES = 10 * 1024 * 1024;
 
 class RelayError extends Error {
   constructor(status, message) {
@@ -215,6 +217,17 @@ function responseHeaders(upstream) {
   return headers;
 }
 
+function capped(body, limit = MAX_BODY_BYTES) {
+  let seen = 0;
+  return body.pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      seen += chunk.byteLength;
+      if (seen > limit) controller.error(new Error('response too large'));
+      else controller.enqueue(chunk);
+    },
+  }));
+}
+
 async function fetchAllowed(
   target, request, hosts, redirects = MAX_REDIRECTS, seen = new Set(), jar = new Map()) {
   const host = target.hostname.toLowerCase().replace(/\.$/, '');
@@ -298,7 +311,12 @@ export default {
         || upstream.status === 204
         || upstream.status === 205
         || upstream.status === 304;
-      return new Response(noBody ? null : upstream.body, {
+      if (Number(upstream.headers.get('Content-Length')) > MAX_BODY_BYTES) {
+        await discard(upstream);
+        return textResponse(502, 'response too large');
+      }
+      // A body without a declared length is cut off past the cap, so the relay never streams an unbounded reply.
+      return new Response(noBody || !upstream.body ? null : capped(upstream.body), {
         status: upstream.status,
         headers: responseHeaders(upstream),
       });

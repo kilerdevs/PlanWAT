@@ -33,6 +33,7 @@ this proxy never fetches an arbitrary host on a job's behalf — routing above i
 the whole policy, CONNECT is limited to port 443, plain HTTP to port 80.
 """
 import hmac
+import ipaddress
 import itertools
 import json
 import os
@@ -296,6 +297,21 @@ def _recv_exact(sock, n, timeout=10):
 
 class BadTarget(OSError):
     """The destination itself is unusable; raised before any proxy is contacted."""
+
+
+def connect_public(host, port, timeout=None):
+    """create_connection for a direct route, to public addresses only: whatever a direct name resolves to (a
+    misconfigured EGRESS_DIRECT_HOSTS, a rebinding answer), it never leads into this box's own networks."""
+    last = BadTarget(f'{host}: no public address')
+    for _, _, _, _, addr in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
+        ip = ipaddress.ip_address(addr[0].split('%', 1)[0])
+        if not ip.is_global or ip.is_multicast:
+            continue
+        try:
+            return socket.create_connection((addr[0], port), timeout=timeout)
+        except OSError as err:
+            last = err
+    raise last
 
 
 def chain_connect(proxy_url, host, port, timeout=CONNECT_TIMEOUT):
@@ -898,7 +914,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             raise OSError('deny')
         if policy == 'direct':
             start = _time.monotonic()
-            sock = socket.create_connection((host, port), timeout=CONNECT_TIMEOUT)
+            sock = connect_public(host, port, timeout=CONNECT_TIMEOUT)
             return sock, 'direct', int((_time.monotonic() - start) * 1000)
         try:
             if hasattr(self.server.pool, 'pick_many'):
@@ -1785,17 +1801,51 @@ def api_token():
     return env('EGRESS_API_TOKEN', '').strip()
 
 
+def admin_token():
+    """EGRESS_ADMIN_TOKEN: the panel's own secret (sign-in, POST /api/refresh), which the crawler never holds. Unset,
+    the panel falls back to EGRESS_API_TOKEN, as before the split (a warning at start says so)."""
+    return env('EGRESS_ADMIN_TOKEN', '').strip() or api_token()
+
+
 def _wants_auth():
     return bool(api_token())
 
 
 GUI_COOKIE = 'egress_session'
 LOGIN_BODY_CAP = 4096
+SESSION_S = 12 * 3600  # a panel sign-in lasts half a day
+LOGIN_FAILS, LOGIN_WINDOW_S, LOGIN_LOCK_S = 10, 60, 300  # 10 wrong tokens a minute lock sign-in for 5 min
+_login_fails, _login_lock = [], [0.0]
+_login_guard = threading.Lock()
 
 
-def gui_session(token):
-    """The panel's browser cookie for `token`: derived, so the cookie never holds the API secret."""
-    return hmac.new(token.encode('utf-8', 'replace'), b'planwat-egress-gui', 'sha256').hexdigest()
+def gui_session(token, issued=None):
+    """The panel's browser cookie for `token`: `<issued>.<hmac>`, derived (never the secret itself) and dated, so a
+    copied cookie stops working after SESSION_S."""
+    issued = int(time.time() if issued is None else issued)
+    mac = hmac.new(token.encode('utf-8', 'replace'), f'planwat-egress-gui:{issued}'.encode(), 'sha256').hexdigest()
+    return f'{issued}.{mac}'
+
+
+def gui_session_ok(token, value, now=None):
+    issued, _, _ = value.partition('.')
+    if not issued.isdigit():
+        return False
+    age = (time.time() if now is None else now) - int(issued)
+    return -60 <= age < SESSION_S and hmac.compare_digest(value.encode('utf-8', 'replace'),
+                                                          gui_session(token, int(issued)).encode('ascii'))
+
+
+def login_locked(now=None, failed=False):
+    """Whether sign-in is locked out; with `failed`, count one more wrong token first."""
+    now = time.monotonic() if now is None else now
+    with _login_guard:
+        if failed:
+            _login_fails.append(now)
+        _login_fails[:] = [t for t in _login_fails if now - t < LOGIN_WINDOW_S]
+        if len(_login_fails) >= LOGIN_FAILS:
+            _login_lock[0], _login_fails[:] = now + LOGIN_LOCK_S, []
+        return now < _login_lock[0]
 
 
 LOGIN_PAGE = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
@@ -1804,7 +1854,7 @@ LOGIN_PAGE = '''<!doctype html><html lang="pl"><head><meta charset="utf-8">
 <style>body{font:16px/1.5 system-ui,sans-serif;max-width:22rem;margin:15vh auto;padding:0 16px}
 input,button{font:inherit;padding:8px 12px;margin-top:8px;width:100%;box-sizing:border-box}
 .err{color:#d2453d}</style></head><body>
-<h1>PlanWAT egress</h1><p>Panel wymaga tokenu API (<code>EGRESS_API_TOKEN</code>).</p>%ERROR%
+<h1>PlanWAT egress</h1><p>Panel wymaga tokenu panelu (<code>EGRESS_ADMIN_TOKEN</code>).</p>%ERROR%
 <form method="post" action="/login"><input type="password" name="token" aria-label="token API"
 autocomplete="current-password" required autofocus><button type="submit">Wejdź</button></form>
 </body></html>'''
@@ -1835,14 +1885,15 @@ class GuiHandler(BaseHTTPRequestHandler):
         except OSError:
             pass
 
-    def _check_token(self, cookie=False):
-        """Accept `X-Token: <token>` or `Authorization: Bearer <token>` (constant time).
+    def _check_token(self, cookie=False, admin=False):
+        """Accept `X-Token: <token>` or `Authorization: Bearer <token>` (constant time): the crawler's
+        EGRESS_API_TOKEN or the panel's EGRESS_ADMIN_TOKEN, or with `admin` only the latter.
 
         With `cookie`, a browser that signed in (POST /login) also passes on its session
         cookie — for reads only: the POST API never takes a cookie, so no other page can
         ride a signed-in browser into it.
         """
-        want = api_token()
+        want, boss = api_token(), admin_token()
         if not want:
             return True
         got = self.headers.get('X-Token') or ''
@@ -1850,7 +1901,9 @@ class GuiHandler(BaseHTTPRequestHandler):
         if auth[:7].lower() == 'bearer ':
             got = auth[7:].strip()
         # Compare bytes: a non-ASCII header value must read as "wrong token", not raise.
-        if hmac.compare_digest(got.encode('utf-8', 'replace'), want.encode('utf-8', 'replace')):
+        got = got.encode('utf-8', 'replace')
+        if hmac.compare_digest(got, boss.encode('utf-8', 'replace')) or (
+                not admin and hmac.compare_digest(got, want.encode('utf-8', 'replace'))):
             return True
         if not cookie:
             return False
@@ -1860,18 +1913,20 @@ class GuiHandler(BaseHTTPRequestHandler):
         except CookieError:
             return False
         morsel = jar.get(GUI_COOKIE)
-        return morsel is not None and hmac.compare_digest(
-            morsel.value.encode('utf-8', 'replace'), gui_session(want).encode('ascii'))
+        return morsel is not None and gui_session_ok(boss, morsel.value)
 
     def _login_page(self, error='', code=200):
         note = f'<p class="err">{error}</p>' if error else ''
         return self._send(LOGIN_PAGE.replace('%ERROR%', note), 'text/html', code=code, csp=LOGIN_CSP)
 
     def _login(self):
-        """Browser sign-in for the panel: the token in a form body, a derived session cookie back."""
-        want = api_token()
+        """Browser sign-in for the panel: the token in a form body, a derived, dated session cookie back."""
+        want = admin_token()
         if not want:
             return self._send(b'', 'text/plain', code=303, extra={'Location': '/'})
+        if login_locked():
+            self.close_connection = True
+            return self._login_page('Za dużo prób. Spróbuj za kilka minut.', code=429)
         try:
             length = int(self.headers.get('Content-Length') or 0)
         except ValueError:
@@ -1886,8 +1941,11 @@ class GuiHandler(BaseHTTPRequestHandler):
             return self._send('{"error":"bad length"}', code=400)
         got = (urllib.parse.parse_qs(body.decode('utf-8', 'replace')).get('token') or [''])[0].strip()
         if not hmac.compare_digest(got.encode('utf-8', 'replace'), want.encode('utf-8', 'replace')):
+            login_locked(failed=True)
+            time.sleep(1)  # one guess a second per connection, on top of the lockout
             return self._login_page('Zły token.', code=401)
-        cookie = f'{GUI_COOKIE}={gui_session(want)}; Path=/; HttpOnly; SameSite=Strict'
+        # no Secure flag: the panel is reached over plain HTTP through `ssh -L`
+        cookie = f'{GUI_COOKIE}={gui_session(want)}; Path=/; Max-Age={SESSION_S}; HttpOnly; SameSite=Strict'
         return self._send(b'', 'text/plain', code=303, extra={'Location': '/', 'Set-Cookie': cookie})
 
     def _read_body(self):
@@ -2005,7 +2063,7 @@ class GuiHandler(BaseHTTPRequestHandler):
                 return self._send('{"error":"unknown host"}', code=400)
             return self._send(json.dumps({h: pool.exits(h) for h in wanted}))
         if self.path in ('/', '/index.html'):
-            if not authed:
+            if not self._check_token(cookie=True, admin=True):  # the panel is the operator's, not the crawler's
                 return self._login_page()
             nonce = secrets.token_urlsafe(18)
             csp = ("default-src 'none'; script-src 'nonce-{n}'; "
@@ -2024,7 +2082,7 @@ class GuiHandler(BaseHTTPRequestHandler):
             return self._send('{"error":"not found"}', code=404)
         # Authenticate before reading a single body byte: an unauthenticated client
         # must not be able to make the GUI allocate or wait on its payload.
-        if not self._check_token():
+        if not self._check_token(admin=self.path == '/api/refresh'):  # the crawler never needs a pool refresh
             self.close_connection = True
             return self._send('{"error":"unauthorized"}', code=401)
         try:
@@ -2226,6 +2284,10 @@ def scout(pool, config, pause=SCOUT_PAUSE_S):
 
 
 def main():
+    if not api_token() and not POOL_OFF:
+        # an operator's egress: its API demotes exits and starts hunts, and the runner reaches it over the inner
+        # network whatever the host port's binding, so it never runs open (a volunteer's, pool off, may)
+        raise SystemExit('egress: EGRESS_API_TOKEN is empty; set one (openssl rand -hex 24) in .env and start again')
     nice = env_int('EGRESS_NICE', 0, 0)
     if nice:
         try:
@@ -2257,8 +2319,10 @@ def main():
     hunt_server = ProxyServer((bind, hunt_port), pool, pool_only=True) if HUNT_ON else None
     gui.hunt_server, gui.hunt_port = hunt_server, hunt_port if HUNT_ON else None
     if not api_token():
-        print(f'WARNING: EGRESS_API_TOKEN is empty: the GUI API on :{gui_port} is open to anyone '
-              f'who reaches it; fine only while its host port is bound to localhost', flush=True)
+        print(f'WARNING: EGRESS_API_TOKEN is empty: the GUI API on :{gui_port} is open to anything on the inner '
+              f'network (a volunteer box: only its own crawler)', flush=True)
+    elif admin_token() == api_token():
+        print('WARNING: EGRESS_ADMIN_TOKEN is not set: the panel takes the crawler\'s EGRESS_API_TOKEN', flush=True)
     gui.pool, gui.runs, gui.proxy_server, gui.proxy_port = pool, runs, proxy_server, proxy_port
     gui.live = LiveRun()
     if SCOUT_ON:

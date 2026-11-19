@@ -31,6 +31,9 @@ services:
       # in at /login, healthchecks still get a bare 200 from /api/status). Set the same value on the
       # runner's refresh action (or its compose env). Empty = no auth: keep the port on localhost then.
       EGRESS_API_TOKEN: "${EGRESS_API_TOKEN:-}"
+      # The panel's own sign-in and POST /api/refresh (docs/EGRESS.md); never set it on the runner.
+      # Empty = the panel takes EGRESS_API_TOKEN.
+      EGRESS_ADMIN_TOKEN: "${EGRESS_ADMIN_TOKEN:-}"
       # Fall back to direct egress when the pool is empty (fail-open, operator choice).
       # Set to 0 for DeadDropMGMT-style fail-closed (crawl stops instead).
       PLANWAT_EGRESS_DIRECT_FALLBACK: "1"

@@ -44,7 +44,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -90,6 +90,50 @@ def egress_headers():
     return headers
 
 
+class OffSite(ValueError):
+    """A URL (or a redirect hop) outside the faculty sites: never fetched."""
+
+
+def faculty_url_ok(url):
+    """True only for https on wat.edu.pl or one of its subdomains: the one place a crawler request may go. A link
+    scraped from a faculty page (or a redirect) could point anywhere, metadata addresses included, and the Northflank
+    runners have no egress proxy to stop it."""
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except (TypeError, ValueError):
+        return False
+    host = (parts.hostname or '').rstrip('.')
+    return (parts.scheme == 'https' and port in (None, 443) and not parts.username and not parts.password
+            and (host == 'wat.edu.pl' or host.endswith('.wat.edu.pl')))
+
+
+REDIRECTS = {301, 302, 303, 307, 308}
+MAX_HOPS = 5
+
+
+class FacultyOnly:
+    """Wraps a session so every GET, and every redirect hop, is checked with faculty_url_ok before it is sent."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def get(self, url, **kwargs):
+        kwargs['allow_redirects'] = False  # followed here, one checked hop at a time
+        for _ in range(MAX_HOPS + 1):
+            if not faculty_url_ok(url):
+                raise OffSite(f'not a faculty URL: {url[:200]}')
+            r = self._session.get(url, **kwargs)
+            location = r.headers.get('location') if r.status_code in REDIRECTS else None
+            if not location:
+                return r
+            url = urljoin(url, location)
+        raise OffSite(f'more than {MAX_HOPS} redirects')
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+
 # Statuses worth one more try: the host is wobbling, not walling us out.
 TRANSIENT_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
 
@@ -109,6 +153,8 @@ def get_with_retry(session, url, timeout, headers, retries=3, backoff=2.0, sleep
         began = time.monotonic()
         try:
             r = session.get(url, timeout=timeout, headers=headers)
+        except OffSite:
+            raise  # a verdict on the URL, not a wobble
         except Exception as err:
             telemetry.TEL.request(host, route, 0, (time.monotonic() - began) * 1000, 0)
             last = err
@@ -404,7 +450,7 @@ def new_session(proxy=None):
     else:
         s = cr.Session(impersonate='chrome')
     s.headers['Accept-Language'] = 'pl-PL,pl;q=0.9'
-    return s if proxy else relay.wrap(s)
+    return FacultyOnly(s if proxy else relay.wrap(s))
 
 
 def conditional_headers(entry):
@@ -858,6 +904,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
         log(f'[{name}] {item.code}: {"new" if old is None else "changed"}')
         if not args.dry_run:
             path.parent.mkdir(parents=True, exist_ok=True)
+            path.unlink(missing_ok=True)  # a symlink is replaced, never written through
             path.write_bytes(ics.encode('utf-8'))
             note_outcome(args, item.code, tid, 'changed')
     # Skips (unreadable pages, failed conversions, rejected calendars) against responses

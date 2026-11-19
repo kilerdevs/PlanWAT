@@ -980,6 +980,54 @@ WIG_ROUTES = {
 }
 
 
+class FacultyOnlyFetches(unittest.TestCase):
+    """A link scraped from a faculty page, or a redirect, never takes the crawler off the faculty sites."""
+
+    def test_only_https_on_wat_edu_pl(self):
+        ok = refresh.faculty_url_ok
+        self.assertTrue(ok('https://wml.wat.edu.pl/x/index.xml'))
+        self.assertTrue(ok('https://www.wig.wat.edu.pl:443/cpp/a.pdf'))
+        for bad in ('http://wml.wat.edu.pl/', 'http://169.254.169.254/latest/meta-data/index.xml',
+                    'https://evil.example/wat.edu.pl/index.xml', 'https://wat.edu.pl.evil.example/',
+                    'https://user@wml.wat.edu.pl/', 'https://wml.wat.edu.pl:8443/', 'file:///etc/passwd', ''):
+            self.assertFalse(ok(bad), bad)
+
+    def test_every_redirect_hop_is_checked(self):
+        class Hops(FakeSession):
+            def get(self, url, timeout=0, headers=None, allow_redirects=True):
+                self.seen.append((url, allow_redirects))
+                return self.routes.get(url, Resp(404))
+        start = 'https://wml.wat.edu.pl/a'
+        inner = Hops({start: Resp(302, b'', {'location': '/b'}),
+                      'https://wml.wat.edu.pl/b': Resp(301, b'', {'location': 'http://169.254.169.254/'}),
+                      'https://wml.wat.edu.pl/c': Resp(200, b'ok')})
+        with self.assertRaises(refresh.OffSite):
+            refresh.FacultyOnly(inner).get(start, timeout=5)
+        self.assertEqual(inner.seen, [(start, False), ('https://wml.wat.edu.pl/b', False)])  # the metadata hop: never
+        inner.routes['https://wml.wat.edu.pl/b'] = Resp(307, b'', {'location': '/c'})
+        self.assertEqual(refresh.FacultyOnly(inner).get(start).content, b'ok')
+        with self.assertRaises(refresh.OffSite):
+            refresh.get_with_retry(refresh.FacultyOnly(inner), '//evil.example/x', 5, {}, sleep=lambda s: None)
+
+    def test_wml_ignores_index_links_off_its_own_site(self):
+        landing = ('<a href="http://169.254.169.254/2026_sem_zima/index.xml">x</a>'
+                   '<a href="//evil.example/2026_sem_zima_9/index.xml">y</a>'
+                   f'<a href="{WmlDiscovery.INDEX}">z</a>')
+        driver = wml.Driver('wml', WML_CFG, TODAY)
+        session = FakeSession({WmlDiscovery.LANDING: Resp(200, landing.encode()),
+                               WmlDiscovery.INDEX: Resp(200, WML_INDEX.encode())})
+        driver.discover(session)
+        self.assertEqual(session.seen, [WmlDiscovery.LANDING, WmlDiscovery.INDEX])
+
+    def test_wig_ignores_pdfs_linked_off_the_listing(self):
+        routes = dict(WIG_ROUTES)
+        routes[WIG_BASE + 'budownictwo/drugistopien/'] = Resp(200, apache_listing(
+            '/cpp/phocadownloadpap/budownictwo/drugistopien',
+            ['https://evil.example/WIG26ZZ1S1.pdf', '//evil.example/WIG26ZY1S1.pdf']))
+        items = wig.Driver('wig', WIG_CFG, TODAY, sleep=lambda s: None).discover(FakeSession(routes))
+        self.assertEqual([i.code for i in items], ['WIG26BX1N1', 'WIG26AX1S0'])
+
+
 class WigDiscovery(unittest.TestCase):
     def discover(self, routes):
         pauses = []

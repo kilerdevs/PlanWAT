@@ -22,6 +22,12 @@ Zastępuje rolę tinyproxy:
 | wydziały (`*.wat.edu.pl`) | przez rotującą pulę publicznych proxy, inny adres wyjściowy na każde połączenie; hosty z listy `EGRESS_DIRECT_FACULTY` idą jednak bezpośrednio, bo to wyjścia puli dostają od nich blokady, a linia domowa zwykle je serwuje |
 | cokolwiek innego | 403 (ta sama domyślna odmowa co w tinyproxy) |
 
+Wyjście bezpośrednie łączy się tylko z adresem publicznym: nazwa, która rozwiązuje się na adres prywatny, CGNAT
+(`100.64.0.0/10`, Tailscale), link-local (`169.254.169.254`) czy pętli zwrotnej, dostaje odmowę. Tak samo pula nie przyjmuje
+proxy spod takiego adresu. Infrastruktura jest wpuszczana po sufiksie (`*.blob.core.windows.net`, `*.githubusercontent.com`):
+runner GitHuba potrzebuje kont magazynu i hostów Actions, których nazw nie da się wymienić z góry. To świadomie przyjęte
+ryzyko: zadanie z tokenem i tak może pisać do GitHuba, więc węższa lista nie zamknęłaby drogi wyprowadzenia danych.
+
 <img src="diagrams/proxy-egress.svg" alt="Runner wysyła ruch przez proxy egress: infrastruktura bezpośrednio, strony wydziałów przez pulę proxy, reszta dostaje 403. Panel monitoringu w LAN odbiera raporty." width="760">
 
 Dlaczego pula mieszka tutaj, a nie w `refresh.py`: kontener runnera nie ma bezpośredniej trasy na zewnątrz, wszystko przechodzi
@@ -74,9 +80,13 @@ dotyczyła — a to wycofuje wyjście z ostatniego tunelu do tego hosta. Bez teg
   przeglądarki). Żądania przyjmują `X-Token` albo `Authorization: Bearer $EGRESS_API_TOKEN` (crawler wysyła oba; spacje wokół
   wartości w `.env` się nie liczą). Z ustawionym tokenem chronione są też odczyty: panel, `GET /api/progress` i pełny
   `GET /api/status` (bez tokenu ten ostatni odpowiada tylko `{"ok":true,"auth":"required"}`, więc sondy i healthchecki działają
-  dalej). Przeglądarka loguje się formularzem panelu i dostaje ciasteczko sesji (pochodne tokenu, `HttpOnly`,
-  `SameSite=Strict`), które otwiera tylko odczyty — API POST zawsze wymaga tokenu w nagłówku. Bez tokenu API jest otwarte
-  (egress ostrzega o tym w logu przy starcie), więc port GUI musi wtedy zostać na `localhost`. Token jest sprawdzany przed
+  dalej). Panel ma własny token, `EGRESS_ADMIN_TOKEN`, którego crawler nigdy nie dostaje: tylko nim przeglądarka się loguje
+  i tylko on wymusza `POST /api/refresh` (bez niego panel przyjmuje `EGRESS_API_TOKEN`, a egress ostrzega o tym przy starcie).
+  Przeglądarka dostaje ciasteczko sesji (pochodne tokenu panelu, z datą wydania, ważne 12 h, `HttpOnly`, `SameSite=Strict`, bez
+  `Secure`, bo panel idzie zwykłym HTTP przez `ssh -L`), które otwiera tylko odczyty — API POST zawsze wymaga tokenu w
+  nagłówku. Zły token przy logowaniu kosztuje sekundę, a 10 złych w minutę blokuje logowanie na 5 minut. Egress z pulą nie
+  wystartuje bez `EGRESS_API_TOKEN`: runner sięga GUI przez sieć wewnętrzną bez względu na bind portu na hoście. Otwarte API
+  zostaje tylko wolontariuszom (`EGRESS_POOL=off`), gdzie GUI widzi wyłącznie ich własny crawler. Token jest sprawdzany przed
   odczytem ciała, ciało ma sufit 256 KiB, a liczba połączeń jest ograniczona (proxy: `EGRESS_MAX_CONNECTIONS`, domyślnie 96;
   GUI: stałe 32). Tunel kończy się po 120 s ciszy (i najpóźniej po 600 s w ogóle) i zachowuje półzamknięcie, więc klient,
   który skończył wysyłać, wciąż odbiera całą odpowiedź.
@@ -144,6 +154,12 @@ Konfiguracja:
 | `PLANWAT_RELAY_TOKEN` | runner + sekret Workera | token bearer; ten sam po obu stronach |
 | `PLANWAT_RELAY_HOSTS` | runner (opcjonalnie) | hosty relayowane, rozdzielone przecinkami/spacjami; puste = domyślna lista hostów z `relay.py`, `off` = wyłącz relay bez zmiany URL |
 | `EGRESS_DIRECT_HOSTS` | egress | dokładny hostname Workera (bez `https://`), żeby egress przepuścił go bezpośrednio; nie wpisuj całego `workers.dev`, chyba że świadomie |
+
+Worker przekazuje odpowiedź do 10 MB (plan to ułamek tego): większą deklarowaną odrzuca z 502, a strumień bez
+długości ucina po przekroczeniu. Limitu żądań nie ma: Worker wymaga tokenu bearer i sięga tylko sześciu hostów WAT, więc
+wyciek tokenu oznacza tyle, że trzeba go wymienić (`wrangler secret put PLANWAT_RELAY_TOKEN` i sekret runnerów). Słoik
+ciasteczek jest wspólny dla przekierowań między hostami WAT celowo: WLO i WEL dzielą politykę Incapsuli z ciasteczkami dla
+`.wat.edu.pl`.
 
 Relay zastępuje żądanie bezpośrednie, nie jest fallbackiem: host z listy zawsze idzie przez Workera. Plebania, której linia
 domowa przechodzi WLO, WML i WTC, powinna więc ustawić `PLANWAT_RELAY_HOSTS=wel,wig` (albo nie włączać relaya), bo
@@ -295,7 +311,7 @@ runner wtedy nie poluje i zachowuje się jak dawniej. Na oracle wystarczy `docke
 
 Domyślnie tylko z maszyny: `compose.fragment.yml` wiąże port z `127.0.0.1:18080` (kontener `:8080`), więc z innego komputera
 otwórz tunel `ssh -L 18080:127.0.0.1:18080 <host>` i wejdź na `http://localhost:18080/`. Żeby otworzyć panel w LAN, zwiąż adres
-LAN (`"<ip-lan>:18080:8080"`) i najpierw ustaw `EGRESS_API_TOKEN`; panel poprosi wtedy o token. Runner rozmawia z GUI przez sieć
+LAN (`"<ip-lan>:18080:8080"`) i ustaw `EGRESS_ADMIN_TOKEN`; panel poprosi o token panelu. Runner rozmawia z GUI przez sieć
 wewnętrzną, której ten bind nie dotyczy.
 Panel jest zbudowany w stylu resztę serwisu (te same tokeny motywu, ciemny oraz jasny z przełącznikiem Auto / Ciemny / Jasny
 zapisywanym w przeglądarce) i odświeża się bez przeładowania co 4 s z `GET /api/status`. Pokazuje:

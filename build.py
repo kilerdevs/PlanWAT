@@ -340,6 +340,18 @@ def read_calendar(path):
             raise BuildError(f'{path}: a LOCATION names a person (a title such as "dr inż." or an alias such as "AKowalski"): calendars must not name staff')
         if (key in TEXT_PROPS or stack == ['VCALENDAR']) and _TITLED.search(value):
             raise BuildError(f'{path}: a {key} names a person (a title such as "dr inż." before a name): calendars must not name staff')
+        # An allowlist, not a denylist: the files go to every subscriber's calendar app nearly verbatim, so a property
+        # PlanWAT does not write (URL, ATTACH, an alarm, a link in the text) never gets through.
+        where = stack[-1] if stack else None
+        if key == 'BEGIN':
+            if value.upper() not in COMPONENTS.get(where, ()):
+                raise BuildError(f'{path}: BEGIN:{value} is not allowed {f"in {where}" if where else "here"} (docs/ICS-FORMAT.md)')
+        elif key != 'END' and key not in PROPERTIES.get(where, ()) and not (where == 'VCALENDAR' and key.startswith('X-PLAN-')):
+            raise BuildError(f'{path}: {key} is not allowed in {where} (docs/ICS-FORMAT.md lists what is)')
+        if len(_unescape(value)) > CAPS.get(key, 2000):
+            raise BuildError(f'{path}: a {key} is longer than {CAPS.get(key, 2000)} characters')
+        if _LINK.search(value):
+            raise BuildError(f'{path}: a {key} holds a link: calendars carry no links')
         if key == 'BEGIN':
             stack.append(value.upper())
             if value.upper() == 'VEVENT':
@@ -358,6 +370,8 @@ def read_calendar(path):
                                      f'an "Uwaga: ..." note and "Grupy: <codes>": calendars must not name staff')
                 event = None
         elif stack and stack[-1] == 'VEVENT':
+            if key == 'DESCRIPTION' and key in event:
+                event[key] += '\\n' + value  # every DESCRIPTION is checked, not only the first
             event.setdefault(key, value)
             if key == 'DTSTART' and _ymd(value):
                 dates.append(_ymd(value))
@@ -368,6 +382,23 @@ def read_calendar(path):
     return props, dates
 
 
+# What a calendar may hold, per component (docs/ICS-FORMAT.md): what the converters write, plus what that page documents.
+# VCALENDAR also takes any X-PLAN-* property.
+COMPONENTS = {None: {'VCALENDAR'}, 'VCALENDAR': {'VTIMEZONE', 'VEVENT'}, 'VTIMEZONE': {'STANDARD', 'DAYLIGHT'}}
+_ZONE = {'TZOFFSETFROM', 'TZOFFSETTO', 'TZNAME', 'DTSTART', 'RRULE'}
+PROPERTIES = {
+    'VCALENDAR': {'VERSION', 'PRODID', 'CALSCALE', 'METHOD', 'X-WR-CALNAME', 'X-WR-CALDESC', 'X-WR-TIMEZONE',
+                  'REFRESH-INTERVAL', 'X-PUBLISHED-TTL'},
+    'VTIMEZONE': {'TZID', 'X-LIC-LOCATION'},
+    'STANDARD': _ZONE,
+    'DAYLIGHT': _ZONE,
+    'VEVENT': {'UID', 'DTSTAMP', 'DTSTART', 'DTEND', 'DURATION', 'SUMMARY', 'LOCATION', 'DESCRIPTION', 'CATEGORIES',
+               'STATUS', 'RRULE', 'EXDATE', 'X-PLAN-COLOR'},
+}
+# Longest value (unescaped) per property; anything else gets 2000. Longest seen on 2026-11-19: SUMMARY 118, LOCATION 387
+# (a joint class lists every group), CATEGORIES 27, DESCRIPTION 405.
+CAPS = {'SUMMARY': 300, 'LOCATION': 1000, 'CATEGORIES': 100}
+_LINK = re.compile(r'://|\bwww\.', re.I)
 # Properties that name a person by definition: refused wherever they appear.
 STAFF_PROPS = {'CONTACT', 'ORGANIZER', 'ATTENDEE'}
 # Free text a calendar app shows, checked for a title before a name wherever it appears (every calendar-level
@@ -394,6 +425,8 @@ def description_line_ok(line, kinds):
 
 def load_term(path):
     term_id, group = path.parent.name, path.stem
+    if path.is_symlink() or path.parent.is_symlink() or not path.is_file():
+        raise BuildError(f'{path}: not a regular file (a symlink?): calendars are plain files')
     if not TERM_RE.match(term_id):
         raise BuildError(f'{path}: term folder "{term_id}" must be lowercase letters, digits and dashes')
     if not GROUP_RE.match(group):
@@ -1902,10 +1935,25 @@ def latest_label(n):
     return 'Ostatni przebieg' if n == 1 else f"Ostatnie {n} {plural(n, '', 'przebiegi', 'przebiegów')}"
 
 
-def render_status(template, runs, site_url='', assets=None, current=None, refreshed=None, coverage=()):
+def render_skipped(skipped):
+    """The refreshed calendars the build left out (overlay), so a bad file shows instead of silently going stale."""
+    if not skipped:
+        return ''
+    e = html.escape
+    rows = ''
+    for s in skipped:
+        name = f'<a href="../{e(s["group"])}/">{e(s["group"])}</a>' if s['kept'] else e(s['group'])
+        fate = 'zostaje poprzednia wersja' if s['kept'] else 'grupa bez planu'
+        rows += f'<li>{name}<span>{e(s["term"])}: {e(s["why"][:200])} · {fate}</span></li>'
+    return ('<h3 class="sub">Pominięte kalendarze</h3><p class="quietnote">Odświeżony plan nie przeszedł sprawdzenia, więc '
+            f'nie został opublikowany.</p><ol class="glist">{rows}</ol>')
+
+
+def render_status(template, runs, site_url='', assets=None, current=None, refreshed=None, coverage=(), skipped=()):
     # like the privacy notice: no script at all, the theme follows the system through CSS; rows open with <details>
     latest, rows = render_status_runs(runs)
-    template = template.replace('@@PLANS@@', render_plan_stats(plan_stats(current or {}, refreshed or {}, runs), coverage))
+    template = template.replace('@@PLANS@@', render_plan_stats(plan_stats(current or {}, refreshed or {}, runs), coverage)
+                                + render_skipped(skipped))
     page = template.replace('@@SEO@@', seo_head(site_url, f'{STATUS_DIR}/', STATUS_TITLE, STATUS_DESCRIPTION))
     page = page.replace('@@TITLE@@', html.escape(STATUS_TITLE)).replace('@@DESCRIPTION@@', html.escape(STATUS_DESCRIPTION, quote=True))
     # the data branch's README.md is written together with the first pass on record; before that, the runs list
@@ -2175,8 +2223,34 @@ def update_nginx(conf_path, scripts, styles):
     conf_path.write_text(conf)
 
 
+def reserved_names():
+    return (DATA_DIR, MAP_DIR, ICONS_DIR, PRIVACY_DIR, STATUS_DIR, ASSETS_DIR)
+
+
+def overlay(src, timetables):
+    """Lay the refreshed calendars of `src` (the data branch's timetables/) over `timetables`, one checked file at a
+    time. A file the build would refuse (or a symlink, or a reserved name) is skipped: the tree keeps its own copy of
+    that group, if it has one, and every other plan still goes live. Returns the skipped ones for /stan/."""
+    skipped = []
+    for path in sorted(Path(src).glob('*/*.ics')):
+        target = Path(timetables) / path.parent.name / path.name
+        try:
+            if path.stem.lower() in reserved_names():
+                raise BuildError(f'{path}: group code "{path.stem}" is reserved for the site\'s own pages')
+            load_term(path)
+        except (BuildError, OSError) as err:
+            why = str(err).removeprefix(f'{path}: ')
+            skipped.append({'group': path.stem, 'term': path.parent.name, 'why': why, 'kept': target.is_file()})
+            print(f'overlay: skipped {path.parent.name}/{path.name}: {why}', file=sys.stderr)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.unlink(missing_ok=True)  # replace, never write through whatever stands there
+        shutil.copyfile(path, target)
+    return skipped
+
+
 def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None, noindex=False, site_url='',
-          runs_path=None):
+          runs_path=None, skipped=()):
     files = sorted(Path(timetables).glob('*/*.ics'))
     if not files:
         raise BuildError(f'no calendars found in {timetables}/<term>/<GROUP>.ics')
@@ -2184,7 +2258,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     for path in files:
         group, term = load_term(path)
         by_group.setdefault(group, []).append(term)
-    clash = [g for g in by_group if g.lower() in (DATA_DIR, MAP_DIR, ICONS_DIR, PRIVACY_DIR, STATUS_DIR, ASSETS_DIR)]
+    clash = [g for g in by_group if g.lower() in reserved_names()]
     if clash:
         raise BuildError(f'group code "{clash[0]}" is reserved for the site\'s own pages and data files')
     fix_semester_bounds(by_group)
@@ -2237,7 +2311,7 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets, site_url=site_url))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8'), site_url, assets))
     write(f'{STATUS_DIR}/index.html', render_status((SRC / 'stan.html').read_text(encoding='utf-8'), runs, site_url, assets,
-                                                    current, refreshed, coverage))
+                                                    current, refreshed, coverage, skipped))
     (out / 'robots.txt').write_text(robots_txt(base_path, noindex, site_url), encoding='utf-8')
     if site_url and not noindex:
         (out / 'sitemap.xml').write_text(sitemap_xml(site_url, current, refreshed), encoding='utf-8')
@@ -2279,10 +2353,13 @@ def main(argv=None):
     ap.add_argument('--noindex', action='store_true', help='ask search engines to skip the whole site (the dev preview)')
     ap.add_argument('--site-url', default='', help='absolute address of the site, e.g. https://kilerdevs.github.io/PlanWAT '
                     '(canonical URLs, social cards and sitemap.xml)')
+    ap.add_argument('--overlay', type=Path, help="lay this directory's <term>/<GROUP>.ics over --timetables first, "
+                    'skipping (and listing on /stan/) any the build would refuse')
     args = ap.parse_args(argv)
     try:
+        skipped = overlay(args.overlay, args.timetables) if args.overlay else ()
         picked = build(args.timetables, args.out, args.today or _today_in_warsaw(), args.base_path, args.nginx, args.state, args.noindex,
-                       args.site_url, args.runs)
+                       args.site_url, args.runs, skipped)
     except BuildError as err:
         print(f'build failed: {err}', file=sys.stderr)
         return 1

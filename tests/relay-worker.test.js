@@ -380,3 +380,30 @@ test('a conditional 304 keeps its validator and has no body', async () => {
     stub.restore();
   }
 });
+
+test('a response past the size cap is refused, declared or streamed', async () => {
+  const handler = (await worker()).default;
+  const big = 10 * 1024 * 1024 + 1;
+  let stub = stubFetch(() => new Response('x', { status: 200, headers: { 'Content-Length': String(big) } }));
+  try {
+    const response = await handler.fetch(relayRequest('https://wtc.wat.edu.pl/Plany/a.pdf'), ENV);
+    assert.equal(response.status, 502);
+    assert.equal(await response.text(), 'response too large\n');
+  } finally {
+    stub.restore();
+  }
+  const chunk = new Uint8Array(1024 * 1024);
+  stub = stubFetch(() => new Response(new ReadableStream({
+    start(controller) {
+      for (let i = 0; i < 11; i += 1) controller.enqueue(chunk);
+      controller.close();
+    },
+  }), { status: 200 }));
+  try {
+    const response = await handler.fetch(relayRequest('https://wtc.wat.edu.pl/Plany/b.pdf'), ENV);
+    assert.equal(response.status, 200);
+    await assert.rejects(response.arrayBuffer(), /response too large/);
+  } finally {
+    stub.restore();
+  }
+});

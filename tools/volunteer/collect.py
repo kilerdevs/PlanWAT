@@ -545,6 +545,7 @@ def tally(state, registry, data, offered, now, dry_run=False):
             prior = blob_of(data, rel)
             if not dry_run:
                 (Path(data) / rel).parent.mkdir(parents=True, exist_ok=True)
+                (Path(data) / rel).unlink(missing_ok=True)  # a symlink is replaced, never written through
                 (Path(data) / rel).write_bytes(ics.encode('utf-8'))
             entry['changed'] = iso(now)
             state['log'].append({'key': key, 'plan': plan, 'by': voters, 'at': iso(now), 'prior': prior})
@@ -770,6 +771,7 @@ def revert(state_path, data, login, since, now):
         code, tid = KEY_RE.match(entry['key']).groups()
         path = Path(data) / 'timetables' / tid / f'{code}.ics'
         if entry.get('prior'):
+            path.unlink(missing_ok=True)  # a symlink is replaced, never written through
             path.write_bytes(priors[entry['prior']])
         elif path.is_file():
             path.unlink()
