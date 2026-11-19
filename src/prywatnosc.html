@@ -124,23 +124,23 @@
 
   <section class="sec">
     <h2>Dlaczego bez logowania</h2>
-    <p>Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to oferują konto (na przykład przez kod wysyłany na adres studencki). Samo logowanie bywa opcjonalne, ale ta droga ma kilka słabych punktów, których u nas po prostu nie ma:</p>
+    <p>Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to chowają pełne nazwy przedmiotów i sale za logowaniem (kodem wysyłanym na adres uczelniany). Ta droga ma kilka słabych punktów, których u nas po prostu nie ma:</p>
     <p class="cmp-hint">Przesuń tabelę w bok, aby zobaczyć wszystkie kolumny.</p>
     <div class="cmp-wrap" tabindex="0" role="region" aria-label="Porównanie PlanWAT z serwisem z logowaniem kodem">
       <table class="cmp">
         <thead>
-          <tr><th scope="col"><span class="vh">Cecha</span></th><th scope="col">PlanWAT</th><th scope="col">Serwis z opcjonalnym logowaniem kodem na adres studencki</th></tr>
+          <tr><th scope="col"><span class="vh">Cecha</span></th><th scope="col">PlanWAT</th><th scope="col">Serwis z logowaniem kodem na adres uczelniany</th></tr>
         </thead>
         <tbody>
-          <tr><th scope="row">Logowanie</th><td><strong>Nie ma i nie będzie</strong></td><td>Opcjonalne, ale po co, skoro plan jest publiczny</td></tr>
-          <tr><th scope="row">Co o Tobie wiemy</th><td><strong>Nic: ani adresu, ani konta</strong></td><td>Po zalogowaniu zweryfikowany adres e-mail powiązany z Twoją tożsamością, grupą i datami wizyt</td></tr>
-          <tr><th scope="row">Co wycieknie przy włamaniu</th><td><strong>Nie ma czego wykradać</strong></td><td>Lista adresów zalogowanych studentów z przypisanymi grupami</td></tr>
+          <tr><th scope="row">Logowanie</th><td><strong>Nie ma i nie będzie</strong></td><td>Bez niego tylko godziny i skróty przedmiotów; pełne nazwy i sale dopiero po zalogowaniu, choć plan jest publiczny</td></tr>
+          <tr><th scope="row">Co o Tobie wiemy</th><td><strong>Nic: ani adresu, ani konta</strong></td><td>Adres uczelniany, stały identyfikator przeglądarki, daty ostatniego logowania i aktywności, przy każdym pobraniu planu grupa, adres IP i godzina, a przy zakupie imię, nazwisko i adres</td></tr>
+          <tr><th scope="row">Co wycieknie przy włamaniu</th><td><strong>Nie ma czego wykradać</strong></td><td>Adresy uczelniane z datami aktywności i historią płatności oraz rejestr pobrań planów z grupami i adresami IP z ostatnich 90 dni</td></tr>
           <tr><th scope="row">Phishing</th><td><strong>Nikt nie prosi Cię o kod, więc nie ma czego podrobić</strong></td><td>Przyzwyczaja do wpisywania kodów z poczty uczelnianej na stronie osoby trzeciej, czyli dokładnie tak, jak działają wyłudzacze</td></tr>
           <tr><th scope="row">Obowiązki wobec RODO</th><td><strong>Żadne: nie zbieramy danych osobowych</strong></td><td>Zgody, polityka przetwarzania, obsługa próśb o wgląd i usunięcie danych</td></tr>
-          <tr><th scope="row">Eksport i subskrypcja kalendarza (<code>.ics</code>)</th><td><strong>Za darmo, dla każdego</strong></td><td>W części za abonamentem</td></tr>
-          <tr><th scope="row">Reklamy, śledzenie, cookies</th><td><strong>Brak</strong></td><td>Różnie</td></tr>
-          <tr><th scope="row">Cena</th><td><strong>0 zł, na zawsze</strong></td><td>Do ustalenia przy płatności</td></tr>
-          <tr><th scope="row">Kod źródłowy</th><td><strong>Otwarty, na licencji MIT</strong></td><td>Jak to działa i co dzieje się z danymi, trzeba przyjąć na słowo (trust me bro)</td></tr>
+          <tr><th scope="row">Eksport i subskrypcja kalendarza (<code>.ics</code>)</th><td><strong>Za darmo, dla każdego</strong></td><td>Tylko w płatnym Premium (eksportu nie ma nawet w 7-dniowym okresie próbnym)</td></tr>
+          <tr><th scope="row">Reklamy, śledzenie, cookies</th><td><strong>Brak</strong></td><td>Analityka zachowania po zgodzie w banerze, zdarzenia z pseudonimizowanym IP trzymane 365 dni</td></tr>
+          <tr><th scope="row">Cena</th><td><strong>0 zł, na zawsze</strong></td><td>Premium 14,99 zł za rok, kartą odnawiane automatycznie</td></tr>
+          <tr><th scope="row">Kod źródłowy</th><td><strong>Otwarty, na licencji MIT</strong></td><td>Zamknięty: opis z polityki prywatności trzeba przyjąć na słowo (trust me bro)</td></tr>
         </tbody>
       </table>
     </div>
@@ -192,7 +192,7 @@
     <h2>Kontakt i bezpieczeństwo</h2>
     <p>Błąd w planie lub w serwisie zgłoś w <a href="https://github.com/kilerdevs/PlanWAT/issues">zgłoszeniach na GitHubie</a>. Lukę bezpieczeństwa zgłoś prywatnie przez <a href="https://github.com/kilerdevs/PlanWAT/security/advisories/new">GitHub Security Advisories</a> (szczegóły w <a href="../.well-known/security.txt">security.txt</a>).</p>
 
-    <p class="updated">Ostatnia zmiana: 20 października 2026</p>
+    <p class="updated">Ostatnia zmiana: 19 listopada 2026</p>
   </section>
 </main>
 </body>
