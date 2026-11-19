@@ -117,21 +117,21 @@ Interfejs jest po polsku. Kod i nazwy techniczne są angielskie, dokumentacja w 
 
 ## Dlaczego PlanWAT
 
-Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to oferują konto (na przykład przez
-kod wysyłany na adres studencki). Samo logowanie bywa opcjonalne, ale ta droga ma kilka słabych punktów, których u nas po
-prostu nie ma:
+Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to chowają pełne nazwy przedmiotów
+i sale za logowaniem (kodem wysyłanym na adres uczelniany). Ta droga ma kilka słabych punktów, których u nas po prostu nie
+ma:
 
-| | **PlanWAT** | **Serwis z opcjonalnym logowaniem kodem na adres studencki** |
+| | **PlanWAT** | **Serwis z logowaniem kodem na adres uczelniany** |
 |---|---|---|
-| Logowanie | **Nie ma i nie będzie** | Opcjonalne, ale po co, skoro plan jest publiczny |
-| Co o Tobie wiemy | **Nic: ani adresu, ani konta** | Po zalogowaniu zweryfikowany adres e-mail powiązany z Twoją tożsamością, grupą i datami wizyt |
-| Co wycieknie przy włamaniu | **Nie ma czego wykradać** | Lista adresów zalogowanych studentów z przypisanymi grupami |
+| Logowanie | **Nie ma i nie będzie** | Bez niego tylko godziny i skróty przedmiotów; pełne nazwy i sale dopiero po zalogowaniu, choć plan jest publiczny |
+| Co o Tobie wiemy | **Nic: ani adresu, ani konta** | Adres uczelniany, stały identyfikator przeglądarki, daty ostatniego logowania i aktywności, przy każdym pobraniu planu grupa, adres IP i godzina, a przy zakupie imię, nazwisko i adres |
+| Co wycieknie przy włamaniu | **Nie ma czego wykradać** | Adresy uczelniane z datami aktywności i historią płatności oraz rejestr pobrań planów z grupami i adresami IP z ostatnich 90 dni |
 | Phishing | **Nikt nie prosi Cię o kod, więc nie ma czego podrobić** | Przyzwyczaja do wpisywania kodów z poczty uczelnianej na stronie osoby trzeciej, czyli dokładnie tak, jak działają wyłudzacze |
 | Obowiązki wobec RODO | **Żadne: nie zbieramy danych osobowych** | Zgody, polityka przetwarzania, obsługa próśb o wgląd i usunięcie danych |
-| Eksport i subskrypcja kalendarza (`.ics`) | **Za darmo, dla każdego** | W części za abonamentem |
-| Reklamy, śledzenie, cookies | **Brak** | Różnie |
-| Cena | **0 zł, na zawsze** | Do ustalenia przy płatności |
-| Kod źródłowy | **Otwarty, na licencji MIT** | Jak to działa i co dzieje się z danymi, trzeba przyjąć na słowo (trust me bro) |
+| Eksport i subskrypcja kalendarza (`.ics`) | **Za darmo, dla każdego** | Tylko w płatnym Premium (eksportu nie ma nawet w 7-dniowym okresie próbnym) |
+| Reklamy, śledzenie, cookies | **Brak** | Analityka zachowania po zgodzie w banerze, zdarzenia z pseudonimizowanym IP trzymane 365 dni |
+| Cena | **0 zł, na zawsze** | Premium 14,99 zł za rok, kartą odnawiane automatycznie |
+| Kod źródłowy | **Otwarty, na licencji MIT** | Zamknięty: opis z polityki prywatności trzeba przyjąć na słowo (trust me bro) |
 
 > [!IMPORTANT]
 > **PlanWAT nigdy nie poprosi Cię o adres e-mail**: ani studencki, ani prywatny, ani żaden inny, a także o hasło czy kod.

@@ -192,6 +192,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Tabela porównawcza (README i `/prywatnosc/`) zgodna z aktualną polityką serwisu z logowaniem kodem:** pełne nazwy
+  i sale tylko po zalogowaniu, rejestr pobrań z grupą i adresem IP, `.ics` tylko w Premium (14,99 zł za rok), analityka
+  po zgodzie.
 - **Bicie serca runnera co 15 s zamiast 30 s** (`tools/refresh/stack.py`), żeby panel floty był świeży. Raport
   przebiegu zachowuje ostatnie dokumenty stosu na `refs/planwat/archive/` przez 30 dni (`board.py archive`), zanim go
   usunie.
