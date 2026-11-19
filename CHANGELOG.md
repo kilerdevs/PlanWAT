@@ -268,6 +268,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Obraz Docker na nginx 1.30.7** (`Dockerfile`): ostatni etap to `alpine:3.24` z nginx Alpine zamiast
+  `nginx-unprivileged:stable-alpine`, którego obraz wciąż ma nginx 1.30.6 z krytycznymi CVE (Grype zatrzymywał CI).
 - **Crawler sięga tylko stron wydziałów** (`tools/refresh/refresh.py`, `drivers/wml.py`, `drivers/wig.py`): każde
   żądanie i każde przekierowanie musi iść po `https` do `*.wat.edu.pl`, inaczej nie zostaje wysłane. WML bierze tylko
   odnośniki z własnej strony, a WIG tylko pliki z przeglądanego katalogu; wcześniej odnośnik ze strony wydziału mógł

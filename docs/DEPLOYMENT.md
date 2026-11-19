@@ -122,10 +122,11 @@ docker compose up -d --build
 
 [`Dockerfile`](../Dockerfile) buduje w dwóch etapach:
 
-1. `python:3.13-alpine` uruchamia `build.py`, który zapisuje `site/` i wpisuje hashe CSP każdej strony (razem ze
+1. `python:3.15-alpine` uruchamia `build.py`, który zapisuje `site/` i wpisuje hashe CSP każdej strony (razem ze
    źródłami wspólnych plików `assets/`) do kopii [`deploy/nginx.conf`](../deploy/nginx.conf) (CSP w nagłówku, razem
    z `frame-ancestors`).
-2. `nginx-unprivileged` (przypięty digestem, po `apk upgrade`) serwuje wyłącznie te pliki.
+2. `alpine:3.24` (przypięty digestem, po `apk upgrade`) z pakietem `nginx` Alpine, uruchomionym jako użytkownik `nginx`,
+   serwuje wyłącznie te pliki. Pakiet Alpine dostaje wydania bezpieczeństwa nginx szybciej niż obrazy nginx.org.
 
 [`docker-compose.yml`](../docker-compose.yml) uruchamia go tylko do odczytu, jako użytkownik inny niż root, z odebranymi
 wszystkimi uprawnieniami (capabilities), `no-new-privileges`, limitami pamięci, CPU i procesów oraz portem związanym wyłącznie
