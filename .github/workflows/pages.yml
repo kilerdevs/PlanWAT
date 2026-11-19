@@ -143,7 +143,8 @@ jobs:
       # Our branches never hold a symlink; one that got there anyway (a bad push) must not lead a copy outside them.
       - name: Drop symlinks from the data branch checkout
         if: steps.data.outcome == 'success'
-        run: find data -type l -print -delete | sed 's/^/::warning::symlink dropped: /'
+        run: |
+          find data -type l -print -delete | sed 's/^/::warning::symlink dropped: /'
       - name: Scrub staff names from the refreshed timetables
         if: steps.data.outcome == 'success'
         run: python3 devsrc/tools/scrub_staff.py --apply data
@@ -173,7 +174,8 @@ jobs:
           path: mapbranch
       - name: Drop symlinks from the map branch checkout
         if: steps.map.outcome == 'success'
-        run: find mapbranch -type l -print -delete | sed 's/^/::warning::symlink dropped: /'
+        run: |
+          find mapbranch -type l -print -delete | sed 's/^/::warning::symlink dropped: /'
       - name: Overlay the updated campus map
         if: steps.map.outcome == 'success'
         run: |
