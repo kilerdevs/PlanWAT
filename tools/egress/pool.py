@@ -206,8 +206,7 @@ def parse_proxy_url(raw):
         return None
     try:
         ip = ipaddress.ip_address(parts.hostname)
-        if (ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_multicast
-                or ip.is_link_local or ip.is_unspecified):
+        if not ip.is_global or ip.is_multicast:  # is_private misses CGNAT (100.64/10, Tailscale)
             return None
     except ValueError:
         return None  # a hostname, not an IP: free lists are IP-based, skip DNS games

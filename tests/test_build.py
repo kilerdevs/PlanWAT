@@ -959,6 +959,32 @@ class BuildManyGroupsTest(unittest.TestCase):
         (self.tt / term).mkdir(parents=True, exist_ok=True)
         (self.tt / term / f'{group}.ics').write_text(text, encoding='utf-8', newline='')
 
+    def test_a_bad_refreshed_calendar_is_skipped_and_shown_while_the_rest_go_live(self):
+        good = calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05')
+        self.add('2026-27-zima', 'WCY26KY3S1', good)  # committed: the last good copy
+        data = self.tmp / 'data'
+        for group, text in (('WCY26KY3S1', good.replace('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nURL:https://x.example')),
+                            ('WCY25IY1S1', calendar('WCY25IY1S1', '2026-09-28', '2027-02-22', '2026-10-06')),
+                            ('WCY24AA1S1', 'not a calendar')):
+            (data / '2026-27-zima').mkdir(parents=True, exist_ok=True)
+            (data / '2026-27-zima' / f'{group}.ics').write_text(text, encoding='utf-8', newline='')
+        (data / '2026-27-zima' / 'WCY23LN1S1.ics').symlink_to(self.tt / '2026-27-zima' / 'WCY26KY3S1.ics')
+        out = self.tmp / 'site'
+        self.assertEqual(build.main(['--timetables', str(self.tt), '--out', str(out), '--overlay', str(data),
+                                     '--today', '2026-10-14', '--state', str(self.tmp / 'none.json')]), 0)
+        self.assertEqual((self.tt / '2026-27-zima' / 'WCY26KY3S1.ics').read_bytes(), good.encode())
+        self.assertTrue((out / 'WCY25IY1S1' / 'index.html').is_file())  # the good refreshed one went live
+        self.assertFalse((self.tt / '2026-27-zima' / 'WCY23LN1S1.ics').exists())
+        stan = (out / 'stan' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('Pominięte kalendarze', stan)
+        self.assertIn('<a href="../WCY26KY3S1/">WCY26KY3S1</a><span>2026-27-zima: URL is not allowed', stan)
+        self.assertIn('WCY24AA1S1<span>2026-27-zima: must start with BEGIN:VCALENDAR', stan)
+        self.assertIn('WCY23LN1S1<span>2026-27-zima: not a regular file', stan)
+        # a bad calendar committed to the tree itself is a developer's mistake: that still fails the build
+        self.add('2026-27-zima', 'WCY22ZZ1S1', 'not a calendar')
+        self.assertEqual(build.main(['--timetables', str(self.tt), '--out', str(out), '--today', '2026-10-14',
+                                     '--state', str(self.tmp / 'none.json')]), 1)
+
     def test_a_group_with_two_terms_gets_a_switcher_and_the_other_terms_calendar(self):
         self.add('2026-27-zima', 'WCY26KY3S1', calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05'))
         self.add('2026-27-lato', 'WCY26KY3S1', calendar('WCY26KY3S1', '2027-03-01', '2027-06-21', '2027-03-02'))
@@ -1056,9 +1082,7 @@ class BuildManyGroupsTest(unittest.TestCase):
         for old, new in (('VERSION:2.0', 'VERSION:2.0\r\nCONTACT:Jan Kowalski'),
                          ('VERSION:2.0', 'VERSION:2.0\r\nX-WR-CALDESC:Plan grupy\\nProwadzący: Jan Kowalski'),
                          ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nORGANIZER;CN=Jan Kowalski:mailto:jk@example.com'),
-                         ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nATTENDEE;CN=Jan Kowalski:mailto:jk@example.com'),
-                         ('END:VEVENT', 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT5M\r\n'
-                                        'DESCRIPTION:Prowadzący: Jan Kowalski\r\nEND:VALARM\r\nEND:VEVENT')):
+                         ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nATTENDEE;CN=Jan Kowalski:mailto:jk@example.com')):
             with self.subTest(new=new):
                 self.assert_refused(old, new)
 
@@ -1067,11 +1091,27 @@ class BuildManyGroupsTest(unittest.TestCase):
                          ('SUMMARY:Matematyka', 'SUMMARY:dr Jan Kowalski'),
                          ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nCATEGORIES:Wykład - mgr inż. Kowalski'),
                          ('VERSION:2.0', 'VERSION:2.0\r\nX-WR-CALNAME:Plan prof. Kowalskiego'),
-                         ('X-PLAN-FACULTY:Cybernetyki', 'X-PLAN-FACULTY:Cybernetyki (dziekan dr hab. Kowalski)'),
-                         ('END:VEVENT', 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT5M\r\n'
-                                        'DESCRIPTION:Matematyka\\, dr Kowalski\r\nEND:VALARM\r\nEND:VEVENT')):
+                         ('X-PLAN-FACULTY:Cybernetyki', 'X-PLAN-FACULTY:Cybernetyki (dziekan dr hab. Kowalski)')):
             with self.subTest(new=new):
                 self.assert_refused(old, new, 'names a person')
+
+    def test_only_what_planwat_writes_gets_through(self):
+        # the files reach every subscriber's calendar app nearly verbatim: no link, attachment or alarm of anyone's
+        for old, new, message in (
+                ('END:VEVENT', 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT5M\r\nDESCRIPTION:Zaloguj się\r\n'
+                               'END:VALARM\r\nEND:VEVENT', 'VALARM is not allowed'),
+                ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nURL:https://evil.example/login', 'URL is not allowed'),
+                ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nATTACH:https://evil.example/a.pdf', 'ATTACH is not allowed'),
+                ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nX-ALT-DESC:x', 'X-ALT-DESC is not allowed'),
+                ('VERSION:2.0', 'VERSION:2.0\r\nX-WR-RELCALID:x', 'X-WR-RELCALID is not allowed'),
+                ('END:VCALENDAR', 'BEGIN:VTODO\r\nSUMMARY:x\r\nEND:VTODO\r\nEND:VCALENDAR', 'VTODO is not allowed'),
+                ('SUMMARY:Matematyka', 'SUMMARY:Matematyka – zaloguj się na www.evil.example', 'holds a link'),
+                ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nLOCATION:https://evil.example', 'holds a link'),
+                ('SUMMARY:Matematyka', 'SUMMARY:' + 'M' * 301, 'longer than 300'),
+                ('SUMMARY:Matematyka', 'SUMMARY:Matematyka\r\nCATEGORIES:Wykład\r\nDESCRIPTION:Wykład\r\n'
+                                       'DESCRIPTION:Jan Kowalski', 'must not name staff')):  # a second DESCRIPTION too
+            with self.subTest(new=new[:60]):
+                self.assert_refused(old, new, message)
 
     def test_a_description_holds_only_the_type_a_note_and_the_groups(self):
         # a bare name has no title to catch: whatever is not an "Uwaga:" note or the "Grupy:" list must be a category
@@ -1436,7 +1476,6 @@ class ScrubStaffTest(unittest.TestCase):
                   'SUMMARY:Podstawy toksykologii plk dr Wachna Piotr\r\nCATEGORIES:Wykład\r\n'
                   'ORGANIZER;CN=Jan Kowalski:mailto:jk@example.com\r\n'
                   'DESCRIPTION:Wykład\\nJan Kowalski\\nUwaga: mgr Kowalski\\nGrupy: WLO1\\, WLO2\r\n'
-                  'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT5M\r\nDESCRIPTION:Matematyka\r\nEND:VALARM\r\n'
                   'END:VEVENT\r\nEND:VCALENDAR\r\n')
         after, removed = scrub_staff.scrub_text(before)
         self.assertTrue(removed)
@@ -1446,7 +1485,6 @@ class ScrubStaffTest(unittest.TestCase):
         self.assertIn('\r\nX-WR-CALDESC:Plan grupy WLO1\r\n', after)
         self.assertIn('\r\nSUMMARY:Podstawy toksykologii\r\n', after)
         self.assertIn('\r\nDESCRIPTION:Wykład\\nGrupy: WLO1\\, WLO2\r\n', after)
-        self.assertIn('\r\nDESCRIPTION:Matematyka\r\n', after)  # an alarm's text is not an event's DESCRIPTION
         ok, why = scrub_staff.verify('probe', before, after)
         self.assertTrue(ok, why)
 

@@ -378,10 +378,12 @@ Zacznij od `planwat-crawler doctor`: przy każdym ✗ jest podpowiedź. Najczęs
 - **Każdy kalendarz przechodzi pełną walidację serwisu.** Musi:
   - zbudować się w `build.load_term`;
   - nosić własny kod grupy i nie stracić ponad 40% zajęć;
-  - mieścić się w semestrze i nie zawierać nazwisk kadry.
+  - mieścić się w semestrze i nie zawierać nazwisk kadry;
+  - mieć tylko właściwości, które pisze PlanWAT: bez odnośników, załączników i alarmów, z limitami długości
+    ([ICS-FORMAT.md](ICS-FORMAT.md#tylko-to-co-wyżej)), bo plik trafia prosto do kalendarzy subskrybentów.
 
-  Strony są escapowane i chronione CSP przypiętym hashami, więc najgorszy możliwy skutek to błędne godziny zajęć, z
-  podpisem, kto je dostarczył, i do cofnięcia jednym poleceniem.
+  Strony są escapowane i chronione CSP przypiętym hashami, a kalendarz nie przeniesie odnośnika ani alarmu, więc najgorszy
+  możliwy skutek to błędne godziny albo nazwy zajęć, z podpisem, kto je dostarczył, i do cofnięcia jednym poleceniem.
 - **Stare głosy nie nadpisują nowszego planu.** Głos oddany przed ostatnim zaufanym sprawdzeniem grupy (domowego
   runnera albo przyjętego kworum) jest pomijany, więc wolne kworum nie cofnie świeższego kalendarza.
 - **Uczciwe niezgodności nie są karane.** Przegrany głos to „niezgodność” tylko wtedy, gdy oddano go, kiedy zwycięski

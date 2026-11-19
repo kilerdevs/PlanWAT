@@ -181,7 +181,8 @@ def verify(path, before, after):
 
 
 def files_in(tree):
-    return sorted(Path(tree).glob('timetables/*/*.ics'))
+    # never a symlink: --apply would write through it, to wherever it points
+    return sorted(p for p in Path(tree).glob('timetables/*/*.ics') if not p.is_symlink() and not p.parent.is_symlink())
 
 
 def main(argv=None):
@@ -229,7 +230,8 @@ def main(argv=None):
         print(f'{hits} of {len(files)} calendars name staff')
         return 1 if hits else 0
     print(f'rewrote {rewritten} of {len(files)} calendars, {failed} refused')
-    return 1 if failed else 0
+    # a refused calendar is left as it was: build.py --overlay skips it (and lists it on /stan/), so it stops nothing
+    return 0
 
 
 if __name__ == '__main__':

@@ -26,7 +26,8 @@ class ProxyUrl(unittest.TestCase):
         self.assertEqual(pool.parse_proxy_url(' 1.2.3.4:8080 '), 'http://1.2.3.4:8080')
 
     def test_private_and_loopback_never_chain(self):
-        for raw in ('10.0.0.5:3128', '192.168.1.7:8080', '127.0.0.1:8888', 'localhost:8080'):
+        for raw in ('10.0.0.5:3128', '192.168.1.7:8080', '127.0.0.1:8888', 'localhost:8080', '100.64.0.1:8080',
+                    '169.254.169.254:80', '[fd00::1]:3128'):
             self.assertIsNone(pool.parse_proxy_url(raw), raw)
 
     def test_garbage_and_bad_ports_rejected(self):
@@ -2004,6 +2005,19 @@ class HostHygiene(unittest.TestCase):
         self.assertFalse(p.heal_event.is_set())
         self.assertEqual(p.pick('example.test'), 'http://a:1')
 
+    def test_a_direct_route_connects_to_public_addresses_only(self):
+        answers = {'evil.blob.core.windows.net': ['169.254.169.254', '10.0.0.5', '100.64.0.1'],
+                   'mixed.github.com': ['127.0.0.1', '140.82.121.4']}
+        resolve = lambda host, port, type=0: [(2, 1, 6, '', (ip, port)) for ip in answers[host]]
+        dialled = []
+        with unittest.mock.patch.object(server.socket, 'getaddrinfo', resolve), \
+                unittest.mock.patch.object(server.socket, 'create_connection',
+                                           lambda addr, timeout=None: dialled.append(addr) or 'sock'):
+            with self.assertRaises(server.BadTarget):
+                server.connect_public('evil.blob.core.windows.net', 443)
+            self.assertEqual(server.connect_public('mixed.github.com', 443), 'sock')
+        self.assertEqual(dialled, [('140.82.121.4', 443)])
+
     def test_a_name_that_fails_locally_is_not_blamed_on_the_exit(self):
         p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2_WLO)
         p.entries = {'http://a:1': {'status': 'ok', 'latency_ms': 10, 'fails': 0,
@@ -2132,6 +2146,57 @@ class GuiAuth(unittest.TestCase):
                 self.assertEqual(resp.status, 401)  # the POST API takes the token, not a cookie
             finally:
                 gui.shutdown()
+
+    def test_the_panel_has_its_own_token_the_crawlers_cannot_open(self):
+        import http.client
+        p = pool.ProxyPool(Path(tempfile.mkdtemp()) / 'pool.json', R2)
+        with TokenEnv('crawler'), unittest.mock.patch.dict(os.environ, {'EGRESS_ADMIN_TOKEN': 'boss'}):
+            gui, _ = start_gui(p)
+            host, port = gui.server_address
+            try:
+                def call(method, path, body=None, headers=None):
+                    conn = http.client.HTTPConnection(host, port, timeout=5)
+                    conn.request(method, path, body=body, headers=headers or {})
+                    resp = conn.getresponse()
+                    data = resp.read()
+                    conn.close()
+                    return resp, data
+                form = {'Content-Type': 'application/x-www-form-urlencoded'}
+                with unittest.mock.patch.object(server.time, 'sleep'):
+                    self.assertEqual(call('POST', '/login', 'token=crawler', form)[0].status, 401)
+                self.assertNotIn(b'mode-pill', call('GET', '/', headers={'X-Token': 'crawler'})[1])
+                self.assertIn(b'pool', call('GET', '/api/status', headers={'X-Token': 'crawler'})[1])
+                self.assertEqual(call('POST', '/api/refresh', '', {'X-Token': 'crawler'})[0].status, 401)
+                self.assertEqual(call('POST', '/api/refresh', '', {'X-Token': 'boss'})[0].status, 202)
+                resp, _ = call('POST', '/login', 'token=boss', form)
+                cookie = resp.getheader('Set-Cookie')
+                self.assertIn(f'Max-Age={server.SESSION_S}', cookie)
+                self.assertIn(b'mode-pill', call('GET', '/', headers={'Cookie': cookie.split(';', 1)[0]})[1])
+            finally:
+                gui.shutdown()
+
+    def test_a_session_cookie_expires_and_cannot_be_forged(self):
+        now = 1_800_000_000
+        value = server.gui_session('boss', now)
+        self.assertTrue(server.gui_session_ok('boss', value, now + 60))
+        self.assertFalse(server.gui_session_ok('boss', value, now + server.SESSION_S))
+        self.assertFalse(server.gui_session_ok('other', value, now + 60))
+        self.assertFalse(server.gui_session_ok('boss', f'{now + 3600}.{value.split(".")[1]}', now + 3600))
+        self.assertFalse(server.gui_session_ok('boss', 'x.y', now))
+
+    def test_ten_wrong_tokens_a_minute_lock_sign_in(self):
+        with unittest.mock.patch.object(server, '_login_fails', []), \
+                unittest.mock.patch.object(server, '_login_lock', [0.0]):
+            for i in range(9):
+                self.assertFalse(server.login_locked(100 + i, failed=True))
+            self.assertTrue(server.login_locked(110, failed=True))
+            self.assertTrue(server.login_locked(110 + server.LOGIN_LOCK_S - 1))
+            self.assertFalse(server.login_locked(110 + server.LOGIN_LOCK_S))
+
+    def test_an_operators_egress_never_starts_open(self):
+        with TokenEnv(None), unittest.mock.patch.object(server, 'POOL_OFF', False):
+            with self.assertRaises(SystemExit):
+                server.main()
 
     def test_no_token_keeps_the_lan_behaviour(self):
         import json

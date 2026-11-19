@@ -268,6 +268,26 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Obraz Docker na nginx 1.30.7** (`Dockerfile`): ostatni etap to `alpine:3.24` z nginx Alpine zamiast
+  `nginx-unprivileged:stable-alpine`, którego obraz wciąż ma nginx 1.30.6 z krytycznymi CVE (Grype zatrzymywał CI).
+- **Crawler sięga tylko stron wydziałów** (`tools/refresh/refresh.py`, `drivers/wml.py`, `drivers/wig.py`): każde
+  żądanie i każde przekierowanie musi iść po `https` do `*.wat.edu.pl`, inaczej nie zostaje wysłane. WML bierze tylko
+  odnośniki z własnej strony, a WIG tylko pliki z przeglądanego katalogu; wcześniej odnośnik ze strony wydziału mógł
+  poprowadzić crawler dokądkolwiek, także na runnerach Northflank, które nie mają egressu.
+- **Kalendarz przepuszcza tylko to, co pisze PlanWAT** (`build.py`): lista dozwolonych właściwości dla każdego
+  komponentu zamiast listy zakazanych, bez odnośników w tekście, z limitami długości i sprawdzeniem każdego
+  `DESCRIPTION`, nie tylko pierwszego ([ICS-FORMAT.md](docs/ICS-FORMAT.md#tylko-to-co-wyżej)). `URL`, `ATTACH` i `VALARM`
+  nie trafią już do kalendarzy subskrybentów.
+- **Jeden zły kalendarz nie zatrzymuje strony** (`build.py --overlay`, `.github/workflows/pages.yml`): odświeżone plany
+  są nakładane po jednym; plik, którego budowa nie przyjmie, jest pomijany, grupa zostaje przy wersji z repozytorium, a
+  `/stan/` pokazuje go w „Pominiętych kalendarzach”. `scrub_staff.py` nie przerywa już kroku. Dowiązania symboliczne
+  z gałęzi `data` i `map` są usuwane przed użyciem, budowa ich nie czyta, a crawler, kolektor i `scrub_staff.py` nigdy
+  przez nie nie piszą.
+- **Egress** (`tools/egress/server.py`, `pool.py`): egress z pulą nie wystartuje bez `EGRESS_API_TOKEN`; panel ma
+  własny `EGRESS_ADMIN_TOKEN`, którego crawler nie zna, ciasteczko sesji wygasa po 12 h, a 10 złych tokenów w minutę
+  blokuje logowanie na 5 minut. Wyjście bezpośrednie łączy się tylko z adresami publicznymi, a pula nie przyjmuje proxy z
+  adresów CGNAT (`100.64.0.0/10`).
+- **Relay Cloudflare przekazuje najwyżej 10 MB** (`tools/egress/cloudflare/worker.js`).
 - **Czytelna linia polowania** (`tools/egress/pool.py`, `tools/refresh/egress.py`): zamiast mylącego „0 tried” log
   mówi, ile wyjść było świeżo sprawdzonych i ile prób wykonało samo polowanie.
 - **Runner nie zamiera po przegranym wyścigu w magazynie** (`tools/refresh/board.py`): przerwa przed ponowieniem

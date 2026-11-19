@@ -58,7 +58,20 @@ e-dziekanatu.
 
 Wartości tekstowe używają escapowania iCalendar (`\,` `\;` `\\` `\n`).
 
-Alarmy (`VALARM`) wewnątrz zdarzenia są ignorowane przez stronę. Budowa publikuje każdy kalendarz dwa razy: `plan.ics` oraz
+## Tylko to, co wyżej
+
+Pliki trafiają do aplikacji kalendarza subskrybentów prawie bez zmian, więc budowa przepuszcza **tylko** właściwości z tabel
+powyżej (w nagłówku także każdą `X-PLAN-*`), plus `VERSION`, `PRODID`, `CALSCALE`, `METHOD`, `DTSTAMP` oraz strefę czasową
+(`VTIMEZONE` z `STANDARD` i `DAYLIGHT`). Wszystko inne odrzuca: `URL`, `ATTACH`, alarmy (`VALARM`), inne komponenty
+(`VTODO`) i nieznane `X-…`. Żaden tekst nie może zawierać odnośnika (`://` ani `www.`). Limity długości po rozwinięciu
+escapowania: `SUMMARY` 300 znaków, `LOCATION` 1000 (zajęcia wspólne wymieniają w niej wszystkie grupy), `CATEGORIES` 100,
+każda inna wartość 2000. Każdy `DESCRIPTION` zdarzenia przechodzi tę samą listę dozwolonych linii, nie tylko pierwszy.
+
+Odświeżony plan z gałęzi `data`, którego budowa nie przyjmie, nie zatrzymuje strony: `build.py --overlay` go pomija, grupa
+zostaje przy wersji z repozytorium (albo bez planu, jeśli jej tam nie ma), a `/stan/` pokazuje go w „Pominiętych
+kalendarzach” z powodem. Dowiązanie symboliczne nigdy nie jest kalendarzem.
+
+Budowa publikuje każdy kalendarz dwa razy: `plan.ics` oraz
 `plan-przypomnienia.ics` z alarmem `DISPLAY` 15 minut przed każdym zdarzeniem, które go nie ma (zakończenia linii CRLF, linie
 składane ponownie po 75 oktetach, `X-WR-CALNAME` z dopiskiem „ (przypomnienia)”).
 

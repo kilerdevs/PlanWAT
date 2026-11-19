@@ -68,6 +68,8 @@ services:
     environment:
       EGRESS_DATA: /data
       EGRESS_API_TOKEN: ${EGRESS_API_TOKEN:-}
+      # the panel's own token: on the egress only, never on the runner above
+      EGRESS_ADMIN_TOKEN: ${EGRESS_ADMIN_TOKEN:-}
       PLANWAT_EGRESS_DIRECT_FALLBACK: "1"
       # Same split as on the home runner (tools/egress/compose.fragment.yml): WCY blocks this box's own
       # address, so it only ever goes through the pool; the other faculties answer it directly.

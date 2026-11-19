@@ -357,7 +357,7 @@ class Driver:
                 self.sleep(random.uniform(1.0, 2.0))
             n += 1
             subdirs, found = listing(self._get(session, url, 'file listing'), url)
-            pdfs += found
+            pdfs += [pdf for pdf in found if pdf.startswith(url)]  # a listing's own files, never a link off it
             if depth < 1:
                 queue += [(d, depth + 1) for d in subdirs if d.startswith(url)]
         items, seen = [], set()

@@ -7,7 +7,7 @@ it crawls, the newest revision of it, then crawls it like any other Plansoft fac
 with wlo2ics (lecturer aliases resolve data-driven; no staff names are emitted).
 """
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import core
 from drivers import plansoft
@@ -29,6 +29,8 @@ class Driver(plansoft.Driver):
         core.check_listing(r.status_code, text, 'landing page')
         links = list(dict.fromkeys(urljoin(landing, u) for u in
                                    re.findall(r'<(?:iframe|a)\b[^>]*?\b(?:src|href)="([^"]+/index\.xml)"', text)))
+        home = urlsplit(landing)
+        links = [u for u in links if urlsplit(u)[:2] == home[:2]]  # only the landing page's own site, never a link off it
         index = self.pick(links)
         r = session.get(index, timeout=30)
         text = plansoft.decode(r.content)
