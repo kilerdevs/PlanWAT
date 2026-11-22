@@ -510,6 +510,76 @@ class ClipTest(unittest.TestCase):
         self.assertEqual(core.clip_to_term(self.cal('20270310', '20261005'), '2026-27-lato').count('BEGIN:VEVENT'), 1)
 
 
+class PublicNoteTest(unittest.TestCase):
+    def test_a_note_is_cut_before_the_person_it_names(self):
+        # WLO24FP1S1 and WLO25FW1S0/FW2S0 were refused in every pass from 2026-10-29 for these notes
+        self.assertEqual(wlo2ics.public_note('podgrupa z dr inż. Szachogłuchowicz Ireneusz'), 'podgrupa')
+        self.assertEqual(wlo2ics.public_note('tylko podgrupa p. dr Garbat'), 'tylko podgrupa')
+        self.assertEqual(wlo2ics.public_note('dr Kowalski'), '')
+
+    def test_a_note_naming_no_one_is_kept(self):
+        for note in ('50%', 'Podgrupa 1', 'T4W', 'zajęcia w drugiej połowie semestru'):
+            self.assertEqual(wlo2ics.public_note(note), note)
+
+
+class SubjectHeadTest(unittest.TestCase):
+    def test_the_type_is_the_last_bracket(self):
+        # WIM's 'Ppu.(Rp)(w)' was published with the type 'Rp)(w'
+        self.assertEqual(wlo2ics.SUBJECT_HEAD_RE.match('Ppu.(Rp)(w)').groups(), ('Ppu.(Rp)', 'w'))
+        self.assertEqual(wlo2ics.SUBJECT_HEAD_RE.match('Mt 1(w)').groups(), ('Mt 1', 'w'))
+        self.assertEqual(wlo2ics.SUBJECT_HEAD_RE.match('GMiB(Rep)').groups(), ('GMiB', 'Rep'))
+        self.assertEqual(wlo2ics.SUBJECT_HEAD_RE.match('Owp(Zp.(Ćw./Proj.))').groups(), ('Owp', 'Zp.(Ćw./Proj.)'))
+        self.assertEqual(wlo2ics.SUBJECT_HEAD_RE.match('X(a)b)').groups(), ('X', 'a)b'))  # unbalanced: as before
+        self.assertIsNone(wlo2ics.SUBJECT_HEAD_RE.match('2.42/ 54A'))
+
+
+class EmptyPlanTest(unittest.TestCase):
+    EMPTY = ('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//PlanWAT//test//PL\r\nX-PLAN-GROUP:WEL24EX1S0\r\n'
+             'END:VCALENDAR\r\n')
+
+    def test_an_empty_page_is_filed_with_the_term_window(self):
+        # WEL24EX1S0: the faculty cleared the plan, and the old lessons stayed on the site for a month
+        ics = core.dated_if_empty(self.EMPTY, '2026-27-zima')
+        self.assertIn('X-PLAN-SEMESTER-START:', ics)
+        self.assertEqual(core.validate(ics, 'WEL24EX1S0', '2026-27-zima'), (True, ''))
+
+    def test_a_plan_cut_to_nothing_still_waits_for_the_shrink_guard(self):
+        ics = core.dated_if_empty(self.EMPTY, '2026-27-zima')
+        old = '\r\n'.join(['BEGIN:VCALENDAR'] + ['BEGIN:VEVENT\r\nEND:VEVENT'] * 5 + ['END:VCALENDAR'])
+        ok, why = core.validate(ics, 'WEL24EX1S0', '2026-27-zima', old)
+        self.assertFalse(ok)
+        self.assertIn('lost too many events', why)
+
+    def test_a_calendar_with_lessons_is_left_alone(self):
+        cal = self.EMPTY.replace('END:VCALENDAR', 'BEGIN:VEVENT\r\nEND:VEVENT\r\nEND:VCALENDAR')
+        self.assertEqual(core.dated_if_empty(cal, '2026-27-zima'), cal)
+
+
+class UnlistedGroupsTest(unittest.TestCase):
+    class State:
+        def __init__(self, groups):
+            self.groups = groups
+
+    def test_this_terms_groups_the_index_dropped_are_asked_at_their_old_address(self):
+        driver = plansoft.Driver('wel', {'base': 'https://example.test/{season}/', 'groups_re': '^(?!IOE|WME)'}, TODAY)
+        items = [Item('WEL24EX1S0', 'https://example.test/zima/WEL24EX1S0.htm', 'WEL24EX1S0')]
+        state = self.State({
+            'WEL24EX4S0': {'term': '2026-27-zima', 'checked': '2026-10-13T20:17:52'},   # dropped from the index
+            'WEL24EX5S0': {'term': '2026-27-zima', 'gone': {'at': 'x', 'term': '2026-27-zima'}},  # 404 before
+            'WEL23XX1S0': {'term': '2025-26-lato'},                                      # another term
+            'WMT24AW1S0': {'term': '2026-27-zima'},                                      # another faculty
+            'WEL24EX1S0': {'term': '2026-27-zima'},                                      # still listed
+        })
+        out = refresh.with_unlisted(driver, items, state, '2026-27-zima')
+        self.assertEqual([(i.code, i.url) for i in out],
+                         [('WEL24EX1S0', 'https://example.test/zima/WEL24EX1S0.htm'),
+                          ('WEL24EX4S0', 'https://example.test/zima/WEL24EX4S0.htm')])
+
+    def test_a_driver_without_item_for_keeps_its_listing(self):
+        items = [Item('WCY25IY6S1', 'u', 'p')]
+        self.assertEqual(refresh.with_unlisted(object(), items, self.State({'WCY25IY1S1': {'term': 't'}}), 't'), items)
+
+
 class PublicRoomTest(unittest.TestCase):
     def test_a_person_in_the_room_text_is_dropped_and_the_room_kept(self):
         self.assertEqual(wlo2ics.public_room('dr inż. Kowalski Jan, 255 S'), '255 S')
@@ -763,9 +833,15 @@ class WmlDiscovery(unittest.TestCase):
                          'https://example.test/plany/2026_sem_zima_2/WMT26AX1S1.htm')
         self.assertEqual(items[0].page, 'WMT26AX1S1')
 
-    def test_a_page_linking_no_index_is_gone_not_a_wall(self):
-        with self.assertRaises(core.Gone):
-            self.discover(b'<html><body>no timetables here</body></html>')
+    def test_the_faculty_site_linking_no_index_is_gone_not_a_wall(self):
+        with self.assertRaises(core.Gone) as caught:
+            self.discover(b'<html><link href="https://example.test/wp-content/x.css"><body>no timetables</body></html>')
+        self.assertNotIsInstance(caught.exception, core.Blocked)
+
+    def test_a_page_that_is_not_the_faculty_site_is_a_wall(self):
+        # pass #182: a block page none of core.is_blocked's markers knew was read as "the timetable moved"
+        with self.assertRaises(core.Blocked):
+            self.discover(b'<html><body>Please wait while we check your browser</body></html>')
 
     def test_a_landing_page_that_is_gone_is_not_a_wall(self):
         # 2026-10-27: WML removed /rozklady-zajec/; the crawler read the 404 as a wall and stopped waiting for it
@@ -3260,6 +3336,8 @@ class RunHistory(unittest.TestCase):
                             'C': {'not_ready': {'term': 'x'}}, 'D': {}, 'E': 'junk'}}
         self.assertEqual(runs.coverage_point(state, at), ['2026-11-14T12:00:00', 1, 3])  # D was never on record
         self.assertEqual(runs.coverage_point({}, at), ['2026-11-14T12:00:00', 0, 0])
+        gone = {'groups': dict(state['groups'], F={'checked': '2026-10-13T20:00:00', 'gone': {'term': 'x'}})}
+        self.assertEqual(runs.coverage_point(gone, at)[2], 3)  # a page the faculty took down is no plan on record
         series = []
         for day in range(20):
             series = runs.add_coverage(series, runs.coverage_point(state, at + dt.timedelta(days=day)))

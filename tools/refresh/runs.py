@@ -232,8 +232,8 @@ def coverage_point(state, at):
     since = at - dt.timedelta(hours=COVERAGE_HOURS)
     total = fresh = 0
     for g in groups.values():
-        if not isinstance(g, dict) or not (g.get('checked') or g.get('not_ready')):
-            continue
+        if not isinstance(g, dict) or not (g.get('checked') or g.get('not_ready')) or isinstance(g.get('gone'), dict):
+            continue  # a group the faculty took down is no plan on record any more
         total += 1
         checked = build.utc_moment(g['checked']) if g.get('checked') else None
         fresh += checked is not None and since <= checked <= at + SLACK

@@ -108,6 +108,12 @@ TYPE_LABELS = {
     "w/s": "w/s",
     "Wiz.Stud.": "Wiz.Stud.",
     "i": "Zaj\u0119cia informacyjne",
+    "Zp": "Zp",
+    "Zp.S": "Zp.S",
+    "Zp.Pr": "Zp.Pr",
+    "Zp (II)": "Zp (II)",
+    "z. popr. lab.": "z. popr. lab.",
+    "wyk zal": "wyk zal",
 }
 
 # leading tokens stripped as academic titles / ranks / affiliations
@@ -215,7 +221,33 @@ SETTLEMENT_RE = re.compile(
     r"^([A-Za-z\u0100-\u017f\ufffd./]+)\s+(\d+)\s*$")
 MULTI_SETTLEMENT_RE = re.compile(
     r"^(.+?)\s+(\d+)\s*$")
-SUBJECT_HEAD_RE = re.compile(r"^([^(]*)\((.*)\)\s*$")
+class _Head(tuple):
+    def group(self, n):
+        return self[n - 1]
+
+    def groups(self):
+        return tuple(self)
+
+
+class _SubjectHead:
+    """SUBJECT(type), matched like a regex (.match -> .group(1), .group(2)). The type is the cell's LAST bracket, which
+    may hold brackets of its own ('Owp(Zp.(Ćw./Proj.))' is Owp, Zp.(Ćw./Proj.)), after a subject that may carry its own
+    ('Ppu.(Rp)(w)' is Ppu.(Rp), a lecture; it was published with the type 'Rp)(w'). A regex cannot balance brackets;
+    an unbalanced cell falls back to the old first-bracket split."""
+    FALLBACK = re.compile(r"^([^(]*)\((.*)\)\s*$")
+
+    def match(self, text):
+        t = text.rstrip()
+        depth = 0
+        for i in range(len(t) - 1, -1, -1) if t.endswith(")") else ():
+            depth += {")": 1, "(": -1}.get(t[i], 0)
+            if depth == 0:
+                return _Head((t[:i], t[i + 1:-1]))
+        m = self.FALLBACK.match(text)
+        return _Head(m.groups()) if m else None
+
+
+SUBJECT_HEAD_RE = _SubjectHead()
 DATE_RE = re.compile(r"^(\d\d?)\s+([XVI]+)$")
 SLOT_RE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
 DAY_RE = re.compile(r"^(pon|wt|(\ufffd|\u015b)r|czw|pt|sob|niedz)\.$", re.I)
@@ -420,6 +452,20 @@ def public_room(room):
     return ";".join(p for p in parts if p and not names_person(p))
 
 
+# A title (or a run of them) followed by a capitalised name anywhere in a note: the same rule as build.py's _TITLED.
+NOTE_TITLED = re.compile(r"(?<!\w)(?:(?i:" + "|".join(sorted(ROOM_TITLES, key=len, reverse=True)) + r")[\s.()]+)+"
+                         rf"(?=[{_UP}])")
+
+
+def public_note(note):
+    """A note that may be published: cut where it starts naming a person ('podgrupa z dr inż. Kowalski Jan' ->
+    'podgrupa'), with the dangling 'z' / 'p.' / 'u' / 'dla' trimmed; '' when nothing is left."""
+    m = NOTE_TITLED.search(note or "")
+    if not m:
+        return note
+    return re.sub(r"(?:[\s,;:(\-]+|(?<!\w)(?:z|u|p\.|dla)(?!\w))+$", "", note[:m.start()]).strip()
+
+
 def build_tables(legends):
     """Legends -> subject full names + (subject, type) -> [lecturers].
 
@@ -526,9 +572,6 @@ def learn_shorts(week_rows, subj_type_lect, resolve):
             continue
         if len(cands) == 1:
             short_map[next(iter(cands))] = subj_type_lect[key]
-        else:
-            warn("shorts %s for %s %s ambiguous; using settlement lecturer"
-                 % (sorted(cands), key[0], key[1]))
     return short_map
 
 
@@ -560,7 +603,6 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
     lessons = []
     type_warned = set()
     subj_warned = set()
-    short_warned = set()
     for bi, slot, cells in week_rows:
         if slot not in SLOT_TIMES:
             warn("no time mapping for slot %s; row skipped" % slot)
@@ -741,11 +783,6 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
                         return out, None
                     if settle:
                         return settle, None
-                    for p in parts:
-                        if p not in short_warned:
-                            warn("unresolved lecturer short %r for %s (%s)"
-                                 % (p, subj, dt.isoformat()))
-                            short_warned.add(p)
                     return parts, None
                 if not positional and (
                         len(slot_text) > 12
@@ -757,10 +794,6 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
                     return settle, slot_text
                 if settle:
                     return settle, None
-                if slot_text not in short_warned:
-                    warn("unresolved lecturer short %r for %s (%s)"
-                         % (slot_text, subj, dt.isoformat()))
-                    short_warned.add(slot_text)
                 return [slot_text], None
 
             lects = []
@@ -770,10 +803,6 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
                 lects = settle
             elif wml and lect_slot:
                 lects = match_alias(lect_slot, lect_alias)
-                if not lects and lect_slot not in short_warned:
-                    warn("unresolved lecturer alias %r for %s (%s)"
-                         % (lect_slot, subj, dt.isoformat()))
-                    short_warned.add(lect_slot)
             elif lect_slot is None:
                 lects = settle
             else:
@@ -845,8 +874,9 @@ def build_ics(lessons, group, period, updated, generated, faculty="wlo"):
         if room:
             lines.append("LOCATION:%s" % esc(room))
         desc = lesson["type"]
-        if lesson.get("shares"):
-            desc += "\nUwaga: %s" % " ".join(lesson["shares"])
+        shares = [n for n in map(public_note, lesson.get("shares") or []) if n]
+        if shares:
+            desc += "\nUwaga: %s" % " ".join(shares)
         if len(lesson["groups"]) > 1:
             desc += "\nGrupy: %s" % ", ".join(lesson["groups"])
         lines.append("DESCRIPTION:%s" % esc(desc))

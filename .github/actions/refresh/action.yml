@@ -134,7 +134,7 @@ runs:
         pins='curl_cffi==0.13.0 pymupdf==1.28.2 cryptography==50.0.0'
         tag="$(python -c 'import sys; print("%d.%d" % sys.version_info[:2])')-$(printf '%s' "$pins" | sha256sum | cut -c1-12)"
         venv="$RUNNER_TOOL_CACHE/planwat/crawl-venv-$tag"
-        if "$venv/bin/python" -c 'import curl_cffi, fitz, cryptography' 2>/dev/null; then
+        if "$venv/bin/python" -c 'import curl_cffi, pymupdf, cryptography' 2>/dev/null; then
           echo "crawl venv reused ($tag)"
         else
           mkdir -p "$RUNNER_TOOL_CACHE/planwat"
@@ -142,7 +142,7 @@ runs:
           python -m venv "$venv.new"
           # shellcheck disable=SC2086 # the pins are words
           "$venv.new/bin/python" -m pip install --disable-pip-version-check $pins
-          "$venv.new/bin/python" -c 'import curl_cffi, fitz, cryptography'
+          "$venv.new/bin/python" -c 'import curl_cffi, pymupdf, cryptography'
           # only bin/python is used, which finds its venv from wherever it sits (pip's script shebangs would not)
           mv "$venv.new" "$venv"
         fi
@@ -178,6 +178,10 @@ runs:
       run: |
         # Exit 3 (blocked) and 4 (incomplete) are results, not failures: they are reported through the outputs.
         set +e
+        # No egress box beside this runner (northflank: its egress is in-process, on loopback): no reports to one.
+        if ! getent hosts egress > /dev/null 2>&1; then
+          export PLANWAT_EGRESS_BLOCK= PLANWAT_EGRESS_PROGRESS= PLANWAT_EGRESS_STATUS=
+        fi
         args=(--out data --profile "$PROFILE" --max-minutes "$MAX_MINUTES" --adaptive-hours "$ADAPTIVE_HOURS"
               --max-block-wait-minutes "$BLOCK_WAIT")
         if [ -n "$FACULTY" ]; then args+=(--faculty "$FACULTY"); fi

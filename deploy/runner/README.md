@@ -84,6 +84,27 @@ Darmowy projekt Northflank mieści dwie usługi, więc ten sam obraz działa te�
 build `planwat-crawler` (bez własnego budowania), z tymi samymi zmiennymi poza `RUNNER_NAME`, `RUNNER_LABELS`, własnym
 `RUNNER_TOKEN` i własnym `RUNNER_STATE`.
 
+## Zegar (ticker)
+
+Harmonogram GitHuba (`schedule:`) uruchamia przebiegi z wielogodzinnym opóźnieniem albo wcale: w listopadzie 2026
+`refresh.yml` ruszał 3 razy na dobę zamiast 12, a zbieranie wolontariuszy 5 razy zamiast 48. Dlatego przebiegi
+uruchamia też każdy stale włączony serwer: usługa `ticker` (`tools/refresh/ticker.py`) o każdej porze z harmonogramu
+odczekuje `PLANWAT_TICKER_DELAY` minut, sprawdza w API, czy przebieg tej pory już ruszył, i uruchamia go, jeśli nie.
+Wystarczy jeden włączony serwer; cron GitHuba zostaje ostatnią rezerwą, a zadanie `plan` w `refresh.yml` puszcza tylko
+najwcześniejszy pełny przebieg danej pory. Northflank zegara nie ma: tam token leżałby w kontenerze runnera, a więc
+w zasięgu zadań.
+
+1. Raz: token *fine-grained* (Settings → Developer settings → Personal access tokens) tylko dla repozytorium PlanWAT,
+   uprawnienie **Actions: Read and write**, nic więcej. Jeden token na wszystkie serwery; po wygaśnięciu podmień go
+   w `.env` każdego z nich.
+2. Na każdym serwerze w `.env`: `COMPOSE_PROFILES=ticker`, `PLANWAT_TICKER_TOKEN=<token>`, `PLANWAT_TICKER_DELAY`:
+   oracle1 `0`, oracle2 `4`, oracle3 `8`, plebania `12`.
+3. `git pull && docker compose up -d`. Na plebanii najpierw skopiuj `tools/refresh/ticker.py` do katalogu runnera obok
+   `compose.yml` (usługa jest we fragmencie `tools/egress/compose.fragment.yml`).
+4. `docker compose logs -f ticker`: pierwszy serwer pisze `started`, kolejne `slot taken by #N`.
+
+Token ma tylko kontener zegara, z samą siecią zewnętrzną; runner i jego zadania go nie widzą.
+
 ## Utrzymanie
 
 - Aktualizacja egressu albo obrazu runnera: podmień pliki, `docker compose up -d --build`. Sam runner aktualizuje się

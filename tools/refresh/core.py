@@ -281,6 +281,16 @@ def event_count(ics):
     return ics.count('BEGIN:VEVENT')
 
 
+def dated_if_empty(ics, tid):
+    """An empty calendar (the faculty page holds no lessons) gets the term's window as its semester, which the build
+    needs to file it: the faculty cleared the plan, so the calendar must say so, not keep the old lessons. A shrink
+    from a real plan to nothing still has to repeat (validate's shrink guard, refresh.steady_shrink)."""
+    window = build.window_dates(tid)
+    if event_count(ics) or not window or re.search(r'^X-PLAN-SEMESTER-START', ics, re.M):
+        return ics
+    return build.with_semester(ics.encode('utf-8'), *window).decode('utf-8')
+
+
 def validate(ics, code, tid, previous=None, max_loss=0.4):
     """(ok, reason). The calendar must build, carry its own code, and not shrink suspiciously."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -291,8 +301,6 @@ def validate(ics, code, tid, previous=None, max_loss=0.4):
             build.load_term(path)
         except build.BuildError as err:
             return False, str(err).replace(str(path), f'{tid}/{code}.ics')
-    if not event_count(ics):
-        return False, 'no events'
     first, last = term_window(tid)
     starts = re.findall(r'BEGIN:VEVENT.*?DTSTART[^:\r\n]*:(\d{8})', ics, re.S)
     inside = sum(first <= d <= last for d in starts)

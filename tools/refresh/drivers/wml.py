@@ -31,6 +31,10 @@ class Driver(plansoft.Driver):
                                    re.findall(r'<(?:iframe|a)\b[^>]*?\b(?:src|href)="([^"]+/index\.xml)"', text)))
         home = urlsplit(landing)
         links = [u for u in links if urlsplit(u)[:2] == home[:2]]  # only the landing page's own site, never a link off it
+        if not links and f'{home.netloc}/wp-content' not in text:
+            # Not the faculty's WordPress at all: a block page the markers in core.is_blocked do not know. A wall to
+            # wait out, not a timetable that moved (pass #182 gave up on WML for reading one as "gone").
+            raise core.Blocked('the landing page is not the faculty site (a block page?)')
         index = self.pick(links)
         r = session.get(index, timeout=30)
         text = plansoft.decode(r.content)

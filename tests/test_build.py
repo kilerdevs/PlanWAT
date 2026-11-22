@@ -959,6 +959,24 @@ class BuildManyGroupsTest(unittest.TestCase):
         (self.tt / term).mkdir(parents=True, exist_ok=True)
         (self.tt / term / f'{group}.ics').write_text(text, encoding='utf-8', newline='')
 
+    def test_the_crawlers_rejections_and_gone_groups_show_on_stan(self):
+        self.add('2026-27-zima', 'WLO24FP1S1', calendar('WLO24FP1S1', '2026-09-28', '2027-02-22', '2026-10-05'))
+        self.add('2026-27-zima', 'WMT24AW1S0', calendar('WMT24AW1S0', '2026-09-28', '2027-02-22', '2026-10-06'))
+        state = self.tmp / 'refresh-state.json'
+        state.write_text(json.dumps({'version': 1, 'groups': {
+            'WLO24FP1S1': {'checked': '2026-10-13T10:00:00', 'term': '2026-27-zima',
+                           'rejected': {'at': 'x', 'term': '2026-27-zima', 'why': 'a DESCRIPTION names a person'}},
+            'WMT24AW1S0': {'checked': '2026-10-13T10:00:00', 'gone': {'at': 'x', 'term': '2026-27-zima'}},
+            'WELIOE23HX1S0': {'gone': {'at': 'x', 'term': '2026-27-zima'}},  # never published: not listed
+        }}), encoding='utf-8')
+        out = self.tmp / 'site'
+        self.assertEqual(build.main(['--timetables', str(self.tt), '--out', str(out), '--today', '2026-10-14',
+                                     '--state', str(state)]), 0)
+        stan = (out / 'stan' / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('<a href="../WLO24FP1S1/">WLO24FP1S1</a><span>2026-27-zima: a DESCRIPTION names a person', stan)
+        self.assertIn('<a href="../WMT24AW1S0/">WMT24AW1S0</a><span>2026-27-zima: wydział już nie publikuje', stan)
+        self.assertNotIn('WELIOE23HX1S0', stan)
+
     def test_a_bad_refreshed_calendar_is_skipped_and_shown_while_the_rest_go_live(self):
         good = calendar('WCY26KY3S1', '2026-09-28', '2027-02-22', '2026-10-05')
         self.add('2026-27-zima', 'WCY26KY3S1', good)  # committed: the last good copy

@@ -71,6 +71,16 @@ jobs:
           PLANNED: ${{ inputs.planned }}
         run: |
           echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+          # A runner-local egress scouting between passes (tools/refresh/egress.py, northflank) stops before the
+          # checkouts, not after them: on a 512 MB container the two together took the checkout 22 minutes (pass
+          # #188). Only that daemon (its cmdline names server.py); the action's own `egress.py stop` stays.
+          st="$RUNNER_TOOL_CACHE/planwat/egress/daemon.json"
+          if [ -f "$st" ]; then
+            pid=$(python3 -c 'import json,sys; print(int(json.load(open(sys.argv[1]))["pid"]))' "$st" 2>/dev/null || true)
+            if [ -n "$pid" ] && grep -qa server.py "/proc/$pid/cmdline" 2>/dev/null; then
+              kill "$pid" && echo "stopped the scouting egress (pid $pid) before the checkouts" || true
+            fi
+          fi
           age=$(( $(date +%s) - PLANNED ))
           if [ "$age" -gt 1800 ]; then
             echo "::notice::planned $((age / 60)) minutes ago; leaving it to a newer pass"

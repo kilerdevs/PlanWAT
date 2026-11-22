@@ -21,11 +21,23 @@ Workflow Pages nakłada te kalendarze na strony przy każdej budowie.
 
 ```
 refresh.yml   co 2 godziny (`23 */2 * * *`), na własnych runnerach (wydziały dzielone między włączone): crawl → konwersja → walidacja → push na `data`
+ticker        tools/refresh/ticker.py na oracle1–3 i plebanii: uruchamia te same pory, gdy cron GitHuba się spóźnia albo je gubi
 gałąź data    timetables/<semestr>/<GRUPA>.ics oraz refresh-state.json
 pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomieniem build.py
 ```
 
 <img src="diagrams/przebieg-odswiezania.svg" alt="Los jednej grupy: kolejka, pobieranie, konwersja, walidacja i publikacja. Brak zmian, blokada z odczekaniem oraz błąd walidacji kończą się bez nowego commita." width="760">
+
+## Kto uruchamia przebiegi
+
+Sam `schedule:` GitHuba nie wystarcza: w listopadzie 2026 uruchamiał `refresh.yml` około 3 razy na dobę zamiast 12,
+`collect.yml` około 5 razy zamiast 48, a codzienną budowę Pages z ośmiogodzinnym opóźnieniem. Te same pory uruchamia
+więc zegar (`tools/refresh/ticker.py`) na każdym stale włączonym serwerze: oracle1, oracle2 i oracle3 oraz plebania,
+każdy o kilka minut po poprzednim (`PLANWAT_TICKER_DELAY`: 0, 4, 8, 12), i tylko wtedy, gdy przebieg tej pory jeszcze nie
+ruszył. Wystarczy jeden włączony serwer, a cron GitHuba zostaje ostatnią rezerwą. Pierwszy krok zadania `plan` w
+`refresh.yml` puszcza tylko najwcześniejszy pełny przebieg z ostatnich 90 minut (tytuł `Refresh timetables`); późniejszy
+kończy się od razu i oddaje pracę tamtemu. Przebiegi ręczne i doganiające nie są wstrzymywane. Zegar ma własny kontener
+z tokenem *Actions: read and write*, którego runner ani jego zadania nie widzą (`deploy/runner/README.md`, „Zegar”).
 
 ## Jak zachowuje się przebieg
 
@@ -99,7 +111,17 @@ pages.yml     pobiera `data` i nakłada jej plany na prod/ i dev/ przed uruchomi
   wydział, który naprawdę obciął plan (WCY25IX4S0: 157 zajęć zimą → 46), inaczej zostawiałby na stronie zajęcia, których
   już nie ma. Część sali, która wygląda na osobę (tytuł przed nazwiskiem albo alias prowadzącego, ta sama reguła co w
   walidacji, `core.public_room`), jest w kalendarzu WTC usuwana, zamiast odrzucać cały plan (WTC22CO1S0 był odrzucany w
-  każdym przebiegu).
+  każdym przebiegu). Tak samo uwaga wydziału przy zajęciach („podgrupa z dr inż. …”) jest ucinana przed tytułem
+  (`wlo2ics.public_note`): trzy grupy WLO były przez to odrzucane w każdym przebiegu od 29.10.2026.
+- Grupa, której nowy kalendarz odrzucono, dostaje w `refresh-state.json` znacznik `rejected` (kiedy, semestr, powód),
+  a `/stan/` wymienia ją w „Pominięte kalendarze”; znacznik znika z pierwszym przyjętym kalendarzem.
+- Strona wydziału bez żadnych zajęć (wydział wyczyścił plan) daje pusty kalendarz z oknem semestru
+  (`core.dated_if_empty`), zamiast zostawiać stare zajęcia na zawsze; spadek z prawdziwego planu do zera przechodzi tę
+  samą bramkę co każde duże cięcie (3 przebiegi w 12 h).
+- Grupa, której wydział nie wymienia już w indeksie, jest nadal sprawdzana pod swoim dawnym adresem (`item_for`
+  sterownika Plansoft i WML): strona zwykle wciąż odpowiada (WMT24AW*, WEL24EX4S0–EY7S0 w listopadzie 2026). Odpowiedź
+  `404` oznacza grupę znacznikiem `gone`: nie jest już pytana, nie obniża pokrycia na `/stan/`, a jej ostatni kalendarz
+  zostaje opublikowany (subskrypcje nie dostają błędu) z adnotacją w „Pominięte kalendarze”.
 - Kalendarz jest nadpisywany tylko wtedy, gdy plan się zmienił (data wygenerowania jest ignorowana), więc historia `data`
   pokazuje prawdziwe zmiany planu.
 
