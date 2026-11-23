@@ -16,6 +16,11 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 ## [Unreleased]
 
 ### Dodano
+- **Zegar poza GitHubem** (`tools/refresh/ticker.py`, usługa `ticker` w `deploy/runner/compose.yml` i we fragmencie
+  plebanii, [`deploy/runner/README.md`](deploy/runner/README.md) „Zegar”): harmonogram GitHuba uruchamiał przebiegi
+  około 3 razy na dobę zamiast 12, więc te same pory uruchamiają też oracle1, oracle2, oracle3 i plebania, każdy kilka
+  minut po poprzednim i tylko wtedy, gdy przebieg tej pory jeszcze nie ruszył. Cron GitHuba zostaje rezerwą, a
+  `refresh.yml` puszcza tylko najwcześniejszy pełny przebieg danej pory. Token zegara ma tylko jego własny kontener.
 - **Panel floty** (`tools/dash/`, `tools/refresh/telemetry.py`, [`docs/DASHBOARD.md`](docs/DASHBOARD.md)): lokalna
   aplikacja tylko na komputerze operatora (`127.0.0.1:8765`), która na żywo pokazuje przebieg: wydziały z kawałkami w
   kolorach runnerów, drogi (własny adres, Tor, wyjścia z puli, ściany, polowania), runnery z obciążeniem, odpowiedziami
@@ -268,6 +273,20 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Kalendarze, które przestały się odświeżać**:
+  - trzy grupy WLO były odrzucane w każdym przebiegu od 29 października, bo uwaga wydziału przy zajęciach wymieniała
+    prowadzącego; konwerter ucina ją teraz przed tytułem (`wlo2ics.public_note`);
+  - strona grupy bez żadnych zajęć daje pusty kalendarz zamiast zostawiać stare zajęcia (WEL24EX1S0–EX3S0);
+  - grupy, które wydział usunął z indeksu, są dalej sprawdzane pod dawnym adresem (WMT24AW*, WEL24EX4S0–EY7S0 stały
+    od października); strona `404` oznacza grupę jako zdjętą, która nie obniża już pokrycia na `/stan/`;
+  - `/stan/` wymienia w „Pominięte kalendarze” grupy, których nowy kalendarz odrzucono, i grupy zdjęte przez wydział.
+- **Strona blokady WML brana za przeniesiony plan**: strona startowa, która nie jest witryną wydziału, jest teraz ścianą
+  do przeczekania, a nie „zniknięciem”, po którym przebieg się poddawał.
+- **Typ zajęć `Rp)(w`** w kalendarzach WIM: typ to teraz ostatni nawias w komórce, więc „Ppu.(Rp)(w)” daje wykład.
+- **Northflank**: zwiad egressu zatrzymuje się przed pobraniem repozytorium, a nie po nim (checkout trwał 22 minuty), a
+  raporty do nieistniejącego tam hosta `egress` nie są już wysyłane.
+- **Mniej szumu w logach przebiegu**: bez ostrzeżeń o prowadzących (i tak nigdy niepublikowanych), znane kody zajęć
+  wydziałów bez ostrzeżeń, `pymupdf` zamiast przestarzałego `fitz`.
 - **Obraz Docker na nginx 1.30.7** (`Dockerfile`): ostatni etap to `alpine:3.24` z nginx Alpine zamiast
   `nginx-unprivileged:stable-alpine`, którego obraz wciąż ma nginx 1.30.6 z krytycznymi CVE (Grype zatrzymywał CI).
 - **Crawler sięga tylko stron wydziałów** (`tools/refresh/refresh.py`, `drivers/wml.py`, `drivers/wig.py`): każde

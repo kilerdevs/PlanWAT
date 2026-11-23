@@ -1,4 +1,6 @@
 name: Refresh timetables
+# A full pass keeps the plain title: the guard below and tools/refresh/ticker.py count only those as "this slot's pass".
+run-name: ${{ inputs.catchup && format('Refresh catch-up ({0})', inputs.catchup) || inputs.faculty && format('Refresh timetables ({0})', inputs.faculty) || 'Refresh timetables' }}
 
 # Re-crawls the faculty timetable pages, converts what changed and pushes the calendars to the `data` branch;
 # pages.yml overlays that branch over the repository's timetables/ on every deploy. See docs/REFRESH.md.
@@ -14,6 +16,9 @@ name: Refresh timetables
 # For each runner that was off it also queues a catch-up waiting for that machine (refresh-wake.yml): once it is back,
 # a pass of just what the passes it missed left undone for it starts at once (input `catchup`).
 on:
+  # GitHub starts scheduled runs hours late or not at all, so the always-up servers start the same slots themselves
+  # (tools/refresh/ticker.py, input `tick`) and this cron is only the last fallback; the plan job's first step lets only
+  # the earliest full pass of a slot crawl.
   # Every two hours, round the clock: a pass over every group takes well under an hour (all policy
   # groups crawl side by side, one request at a time per host) and most pages answer 304, so a quiet
   # pass is cheap. A group checked within the last hour is skipped, so a run that overlaps a slow
@@ -34,6 +39,10 @@ on:
         description: 'Recheck every group, also those checked within the last hour (--force)'
         type: boolean
         default: false
+      tick:
+        description: 'The slot a ticker (tools/refresh/ticker.py) starts this pass for; set by the tickers, not by hand'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -54,14 +63,43 @@ jobs:
       shards: ${{ steps.plan.outputs.shards }}
       planned: ${{ steps.plan.outputs.planned }}
       fleet: ${{ steps.plan.outputs.fleet }}
+      skip: ${{ steps.guard.outputs.skip }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Several clocks start passes (GitHub's cron, often hours late or not at all, and a ticker on each of the
+      # always-up servers, tools/refresh/ticker.py): the earliest full pass of the last 90 minutes is the slot's, and
+      # a later one leaves it the work. Manual runs and catch-ups are never held back.
+      - name: Is this slot's pass already under way?
+        id: guard
+        if: github.event_name == 'schedule' || inputs.tick != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          earlier=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow refresh.yml --limit 20 \
+              --json databaseId,createdAt,displayTitle \
+              --jq "[.[] | select(.displayTitle == \"Refresh timetables\" and .databaseId < $GITHUB_RUN_ID
+                                   and (.createdAt | fromdateiso8601) > (now - 5400))][0].databaseId // empty") \
+            || earlier=''
+          if [ -n "$earlier" ]; then
+            echo "::notice::run $earlier already took this slot; leaving the work to it"
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+            echo '{"pushed": "false", "changed": "0"}' > refresh-outcome.json
+          fi
+      # pages.yml reads every pass's outcome: one that left the slot to another pushed nothing, so no rebuild.
+      - if: steps.guard.outputs.skip == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: refresh-outcome
+          path: refresh-outcome.json
+          retention-days: 2
+      - if: steps.guard.outputs.skip != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: src
           persist-credentials: false
       # The fallback split (crawled alone should the stack be out of reach) weighs each faculty by what it listed last
       # time and its learned pacing; the run history says which runner a faculty's wall kept out lately.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: steps.guard.outputs.skip != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: data
           path: data
@@ -71,6 +109,7 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Ask GitHub which runners are online
+        if: steps.guard.outputs.skip != 'true'
         env:
           # A fine-grained token for this repository with "Administration: Read-only" and nothing else: listing
           # self-hosted runners needs it, GITHUB_TOKEN cannot. Without it the always-on runner takes everything.
@@ -88,6 +127,7 @@ jobs:
             echo '::warning::could not list the self-hosted runners; the always-on runner takes everything'
           fi
       - id: plan
+        if: steps.guard.outputs.skip != 'true'
         env:
           FACULTY: ${{ inputs.faculty }}
           CATCHUP: ${{ inputs.catchup }}
@@ -100,7 +140,7 @@ jobs:
       # most). One per runner: a waiter younger than 20 hours is left alone, an older one replaced (its concurrency
       # group cancels it) before GitHub fails it.
       - name: Wait for the servers that are off
-        if: steps.plan.outputs.asleep != '' && steps.plan.outputs.asleep != '[]'
+        if: steps.guard.outputs.skip != 'true' && steps.plan.outputs.asleep != '' && steps.plan.outputs.asleep != '[]'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -125,7 +165,7 @@ jobs:
   crawl:
     name: crawl (${{ matrix.runner }})
     needs: plan
-    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.plan.outputs.shards != '0'
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.plan.outputs.skip != 'true' && needs.plan.outputs.shards != '0'
     strategy:
       fail-fast: false
       matrix:
@@ -150,7 +190,7 @@ jobs:
     # Also after a failed or skipped crawl: the outcome must be written either way (a pass with no runner online
     # included). A cancelled run has no outcome, so it must not claim a blocked one. A catch-up that found nothing to
     # do (its runner went off again, or the others got it all done meanwhile) is no pass worth recording.
-    if: ${{ !cancelled() && needs.plan.result == 'success' && (!inputs.catchup || needs.plan.outputs.shards != '0') }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.skip != 'true' && (!inputs.catchup || needs.plan.outputs.shards != '0') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

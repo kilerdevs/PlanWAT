@@ -116,6 +116,14 @@ class Driver:
                 items.append(Item(code, self.base + href, stem))
         return items
 
+    def item_for(self, code):
+        """A group's page by its code, for a group the listing stopped linking (its page often still answers); None
+        when the code cannot be one of this listing's pages or the listing is not read yet."""
+        groups_re = self.cfg.get('groups_re')
+        if not self.base or (groups_re and not re.search(groups_re, code, re.IGNORECASE)):
+            return None
+        return Item(code, self.base + code + '.htm', code)
+
     def page_ok(self, text):
         return 'mergeWith' in text and 'Plansoft' in text
 

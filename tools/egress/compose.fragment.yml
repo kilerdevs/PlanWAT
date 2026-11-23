@@ -80,6 +80,38 @@ services:
         ipv4_address: <egress-ip>
       egress: {}
 
+  # The crawl's clock (tools/refresh/ticker.py): GitHub's own cron starts the passes hours late or not at all, so
+  # each always-up server starts them itself, a few minutes after the one before it (PLANWAT_TICKER_DELAY), unless
+  # that slot's run has already started. Its token (Actions read/write) stays in this container, never the runner's.
+  # On only with COMPOSE_PROFILES=ticker in .env. scp tools/refresh/ticker.py to <runner dir>/ticker.py on deploy.
+  ticker:
+    image: python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
+    profiles: [ticker]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "65534:65534"
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 64m
+    pids_limit: 16
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "2"
+    environment:
+      PLANWAT_TICKER_TOKEN: ${PLANWAT_TICKER_TOKEN:-}
+      PLANWAT_TICKER_DELAY: ${PLANWAT_TICKER_DELAY:-0}
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ./ticker.py:/ticker.py:ro
+    command: ["python", "-u", "/ticker.py"]
+    dns:
+      - 1.1.1.1
+      - 9.9.9.9
+    networks: [egress]
+
 volumes:
   egress-data:
 

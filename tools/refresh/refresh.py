@@ -360,6 +360,31 @@ def chronic(state, name, runner=''):
     return isinstance(failed, int) and not isinstance(failed, bool) and failed >= 1
 
 
+def rejected(entry, tid, why):
+    """Note on the group why its new calendar was not published: the site lists it under /stan/ (build.py)."""
+    entry['rejected'] = {'at': core.now_utc().isoformat(), 'term': tid, 'why': str(why)[:300]}
+
+
+def with_unlisted(driver, items, state, tid):
+    """The listing plus this term's groups it no longer links, at their old address (driver.item_for). A faculty that
+    drops a group from its index often still serves the page, and a calendar nobody checks again would stay on the site
+    unchanged forever; a 404 there marks the group gone (refresh_faculty), and gone groups are not asked again."""
+    item_for = getattr(driver, 'item_for', None)
+    if item_for is None or not items:
+        return items
+    listed = {i.code for i in items}
+    prefixes = {code[:3] for code in listed}
+    extra = []
+    for code, entry in sorted(state.groups.items()):
+        if (code in listed or code[:3] not in prefixes or not isinstance(entry, dict) or entry.get('gone')
+                or entry.get('term') != tid):
+            continue
+        item = item_for(code)
+        if item is not None:
+            extra.append(item)
+    return items + extra
+
+
 def discover_with_retry(driver, session, retries=2, backoff=2.0, sleep=time.sleep,
                         block_retries=0, on_block=None):
     """List the groups, riding out flaky transports, then a single flagged exit.
@@ -713,6 +738,8 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
         items = listed if listed is not None else discover_with_retry(
             driver, session, args.retries, args.retry_backoff, sleep, block_retries=args.block_retries,
             on_block=on_block)
+        if listed is None and not ahead:
+            items = with_unlisted(driver, items, state, tid)
     except core.Blocked as err:
         log(f'[{name}] BLOCKED while listing groups: {err}')
         walled('wall')
@@ -820,6 +847,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             remember_validators(entry, r)
             entry['checked'] = core.now_utc().isoformat()
             entry.pop('not_ready', None)
+            entry.pop('gone', None)
             noted_quiet(entry)
             note_outcome(args, item.code, tid, 'unchanged')
             continue
@@ -827,6 +855,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
         text = raw.decode('utf-8', errors='replace')
         if r.status_code == 404:
             log(f'[{name}] {item.code}: gone (404), keeping the old calendar')
+            entry['gone'] = {'at': core.now_utc().isoformat(), 'term': tid}
             note_outcome(args, item.code, tid, 'gone')
             continue
         if not driver.page_ok(text):
@@ -842,6 +871,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             continue
         remember_validators(entry, r)
         entry.pop('not_ready', None)  # the page reads as a timetable of this semester
+        entry.pop('gone', None)
         digest = core.sha256(raw)
         path = out / 'timetables' / tid / f'{item.code}.ics'
         old = path.read_text(encoding='utf-8') if path.is_file() else None
@@ -860,6 +890,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
             continue
         except Exception as err:
             log(f'[{name}] {item.code}: conversion failed ({err!r}), keeping the old calendar')
+            rejected(entry, tid, f'conversion failed: {err}')
             failed += 1
             continue
         except SystemExit as err:  # the converters exit on a page they cannot read
@@ -870,6 +901,7 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
         if clipped != ics:
             log(f'[{name}] {item.code}: dropped lessons of another semester (the page shows two)')
             ics = clipped
+        ics = core.dated_if_empty(ics, tid)
         ics, bounds_patched = core.reconcile_term_bounds(ics, old, tid)
         if bounds_patched:
             log(f'[{name}] {item.code}: faculty term label left the filed term; '
@@ -890,9 +922,11 @@ def _refresh_faculty(name, cfg, args, state, today, session, sleep=time.sleep, c
                 why += f', seen {entry["shrink"]["seen"]} of {SHRINK_PASSES} times'
         if not ok:
             log(f'[{name}] {item.code}: rejected ({why}), keeping the old calendar')
+            rejected(entry, tid, why)
             failed += 1
             continue
         entry.pop('shrink', None)
+        entry.pop('rejected', None)
         entry.update(hash=digest, checked=core.now_utc().isoformat(), term=tid)
         if core.same_plan(old, ics):
             noted_quiet(entry)
@@ -1248,7 +1282,7 @@ class FleetOps(stack.Ops):
             raise stack.Unlisted(str(err)) from err
         with self.lock:
             self.listed.add(slot)
-        return items
+        return items if ahead else with_unlisted(driver, items, self.state, core.term_id(day))
 
     def todo(self, slot, items):
         name = stack.faculty_of(slot)

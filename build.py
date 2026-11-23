@@ -1730,6 +1730,8 @@ def plan_stats(current, refreshed, runs):
     stamps, noplan = {}, set()
     for g in sorted(current):
         entry = refreshed.get(g) if isinstance(refreshed.get(g), dict) else {}
+        if isinstance(entry.get('gone'), dict):
+            continue  # the faculty took the page down: no check can make it fresh again
         stamps[g] = (utc_moment(entry.get('checked')) if entry.get('checked') else None,
                      utc_moment(entry.get('changed')) if entry.get('changed') else None)
         mark, term = entry.get('not_ready'), getattr(current[g], 'term_id', None)
@@ -1935,6 +1937,27 @@ def latest_label(n):
     return 'Ostatni przebieg' if n == 1 else f"Ostatnie {n} {plural(n, '', 'przebiegi', 'przebiegów')}"
 
 
+def crawl_skipped(refreshed, current):
+    """The groups the crawler kept on an older calendar (tools/refresh marks them in refresh-state.json): a new one it
+    refused, or a page the faculty took down. In the shape overlay() reports, for render_skipped."""
+    out = []
+    for group, entry in sorted(refreshed.items()):
+        if not isinstance(entry, dict):
+            continue
+        term = getattr(current.get(group), 'term_id', None)
+        for mark, why in (('rejected', None), ('gone', 'wydział już nie publikuje tej grupy (strona zwraca 404)')):
+            m = entry.get(mark)
+            if not isinstance(m, dict):
+                continue
+            if group in current and m.get('term') not in (None, term):
+                continue  # a mark from another term than the one published
+            if group not in current and mark == 'gone':
+                continue  # never published: nothing kept, nothing to tell
+            out.append({'group': group, 'term': str(m.get('term') or term or ''),
+                        'why': why or str(m.get('why') or ''), 'kept': group in current})
+    return out
+
+
 def render_skipped(skipped):
     """The refreshed calendars the build left out (overlay), so a bad file shows instead of silently going stale."""
     if not skipped:
@@ -1945,8 +1968,8 @@ def render_skipped(skipped):
         name = f'<a href="../{e(s["group"])}/">{e(s["group"])}</a>' if s['kept'] else e(s['group'])
         fate = 'zostaje poprzednia wersja' if s['kept'] else 'grupa bez planu'
         rows += f'<li>{name}<span>{e(s["term"])}: {e(s["why"][:200])} · {fate}</span></li>'
-    return ('<h3 class="sub">Pominięte kalendarze</h3><p class="quietnote">Odświeżony plan nie przeszedł sprawdzenia, więc '
-            f'nie został opublikowany.</p><ol class="glist">{rows}</ol>')
+    return ('<h3 class="sub">Pominięte kalendarze</h3><p class="quietnote">Odświeżony plan nie przeszedł sprawdzenia '
+            f'albo wydział zdjął stronę grupy, więc nowej wersji nie opublikowano.</p><ol class="glist">{rows}</ol>')
 
 
 def render_status(template, runs, site_url='', assets=None, current=None, refreshed=None, coverage=(), skipped=()):
@@ -2311,7 +2334,8 @@ def build(timetables, out, today, base_path='', nginx_conf=None, state_path=None
     write(f'{MAP_DIR}/index.html', render_map((SRC / 'mapa.html').read_text(encoding='utf-8'), ics_js, campus_js, places_js, assets=assets, site_url=site_url))
     write(f'{PRIVACY_DIR}/index.html', render_privacy((SRC / 'prywatnosc.html').read_text(encoding='utf-8'), site_url, assets))
     write(f'{STATUS_DIR}/index.html', render_status((SRC / 'stan.html').read_text(encoding='utf-8'), runs, site_url, assets,
-                                                    current, refreshed, coverage, skipped))
+                                                    current, refreshed, coverage,
+                                                    list(skipped) + crawl_skipped(refreshed, current)))
     (out / 'robots.txt').write_text(robots_txt(base_path, noindex, site_url), encoding='utf-8')
     if site_url and not noindex:
         (out / 'sitemap.xml').write_text(sitemap_xml(site_url, current, refreshed), encoding='utf-8')
