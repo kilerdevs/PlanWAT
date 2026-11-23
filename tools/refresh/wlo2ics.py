@@ -463,7 +463,20 @@ def public_note(note):
     m = NOTE_TITLED.search(note or "")
     if not m:
         return note
-    return re.sub(r"(?:[\s,;:(\-]+|(?<!\w)(?:z|u|p\.|dla)(?!\w))+$", "", note[:m.start()]).strip()
+    # Plain trimming, no regex: a quantified alternation anchored at the end backtracks exponentially (CodeQL py/redos).
+    head = note[:m.start()].rstrip(NOTE_TRIM)
+    while True:
+        for word in NOTE_LINKS:
+            cut = len(head) - len(word)
+            if head.endswith(word) and (cut == 0 or not head[cut - 1].isalnum()):
+                head = head[:cut].rstrip(NOTE_TRIM)
+                break
+        else:
+            return head.strip()
+
+
+NOTE_TRIM = " \t\r\n\f\v ,;:(-"
+NOTE_LINKS = ("dla", "p.", "z", "u")  # the word left dangling before the cut name: 'z dr …', 'p. dr …'
 
 
 def build_tables(legends):
