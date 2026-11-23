@@ -55,9 +55,6 @@ inputs:
       project (the home runner: push the data branch, file issues) or volunteer (crawl this login's share of
       the upstream project and push a bundle to the crawl branch of this repository, a fork; see docs/WOLONTARIUSZE.md).
     default: project
-  upstream:
-    description: Volunteer mode only, the project whose data branch and registry are read.
-    default: kilerdevs/PlanWAT
   registry-editors:
     description: Volunteer mode only, the logins whose verified commits may set the registry.
     default: kilerdevs
@@ -108,8 +105,9 @@ runs:
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        # A volunteer reads the project's own data (public), never its fork's copy.
-        repository: ${{ inputs.mode == 'volunteer' && inputs.upstream || github.repository }}
+        # A volunteer reads the project's own data (public), never its fork's copy. Written out, not an input: a
+        # checkout whose repository a caller can set is one CodeQL (rightly) cannot vouch for.
+        repository: ${{ inputs.mode == 'volunteer' && 'kilerdevs/PlanWAT' || github.repository }}
         ref: data
         path: data
         token: ${{ inputs.token }}
@@ -163,7 +161,7 @@ runs:
         ADAPTIVE_HOURS: ${{ inputs.adaptive-hours }}
         SOURCE: ${{ inputs.source }}
         MODE: ${{ inputs.mode }}
-        UPSTREAM: ${{ inputs.upstream }}
+        UPSTREAM: kilerdevs/PlanWAT
         EDITORS: ${{ inputs.registry-editors }}
         GH_TOKEN: ${{ inputs.token }}
         # The crawler posts a block notice here whenever a faculty answered a block page via a

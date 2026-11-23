@@ -260,7 +260,7 @@ class LocalTor:
             out = tmp / 'x'
             with tarfile.open(tgz) as tar:
                 tar.extractall(out, members=[tar.getmember(n) for n in TOR_FILES], filter='data')
-            os.chmod(out / 'tor' / 'tor', 0o755)
+            os.chmod(out / 'tor' / 'tor', 0o700)  # run by this runner's user only
             shutil.rmtree(self.bundle, ignore_errors=True)
             self.bundle.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(out), str(self.bundle))
