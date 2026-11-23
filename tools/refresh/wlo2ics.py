@@ -207,7 +207,9 @@ def fold_line(line):
     return "\r\n ".join(out)
 
 
-TD_RE = re.compile(r"<td((?:\"[^\"]*\"|[^>])*)>(.*?)</td>", re.I | re.S)
+# Attributes unrolled ([^>"]* then "quoted" runs): a quote that both branches of an alternation could take made
+# the old pattern backtrack exponentially on a run of "" (CodeQL py/redos).
+TD_RE = re.compile(r"<td([^>\"]*(?:\"[^\"]*\"[^>\"]*)*)>(.*?)</td>", re.I | re.S)
 
 
 def split_cells(row):

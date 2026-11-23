@@ -83,7 +83,7 @@ def _split_line_abbr(L, abbrs):
             if w in abbrs:
                 cands.append((w, ws[:j], ws[j + 1:]))
         for a, before, after in cands:
-            if before and all(re.fullmatch(r'[0-9KkSs\d\s/;.,() -]+', b) for b in before):
+            if before and all(re.fullmatch(r'[KkSs\d\s/;.,() -]+', b) for b in before):
                 return a, after + L[i + 1:], ' '.join(before)
     return None
 
@@ -113,7 +113,7 @@ def parse_cell(lines, subs):
         subj, rest = L[0], L[1:]
     elif len(L) == 1 and L[0] in ROMANS:
         return {'skip': 'roman-debris'}
-    elif len(L) == 1 and re.fullmatch(r'[0-9KkSs\d\s/;.,() -]+', L[0]):
+    elif len(L) == 1 and re.fullmatch(r'[KkSs\d\s/;.,() -]+', L[0]):
         return {'skip': 'room-frag'}
     elif re.match(r'^(w|ć|L|S|s|i|E|e|Ep|P|B|r|Rep|lab|ć/wyj|lab/wyj)\b[\s.]', L[0]) and L[0] not in abbrs:
         return {'skip': 'type-frag'}

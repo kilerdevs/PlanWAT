@@ -864,7 +864,7 @@ def _sha(text):
 
 
 def inline_hashes(page):
-    scripts = [_sha(s) for s in re.findall(r'<script>(.*?)</script>', page, re.S)]
+    scripts = [_sha(s) for s in re.findall(r'<script>(.*?)</script>', page, re.S | re.I)]
     styles = [_sha(s) for s in re.findall(r'<style>(.*?)</style>', page, re.S)]
     return scripts, styles
 

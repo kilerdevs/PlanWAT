@@ -1,0 +1,6 @@
+# CodeQL scans everything except tests/fixtures/: those are frozen copies of pages and data as they once were
+# (v1-page.html is the first PlanWAT page, kept as the input of tools/export_ics.py and PRODUCT.md's reference),
+# never served or run, so their old scripts are evidence to keep unchanged, not code to fix.
+name: PlanWAT CodeQL
+paths-ignore:
+  - tests/fixtures
