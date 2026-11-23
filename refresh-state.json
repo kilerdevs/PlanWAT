@@ -89,7 +89,7 @@
    ]
   },
   "wml": {
-   "blocked_at": "2026-11-23T12:24:42",
+   "blocked_at": "2026-11-23T14:24:20",
    "cause": "wall",
    "durations": [
     {
@@ -227,15 +227,15 @@
   "wml": {
    "blocked_at": null,
    "last_count": 180,
-   "last_ok": "2026-11-23T12:26:42",
+   "last_ok": "2026-11-23T14:26:10",
    "run": {
     "ahead": false,
-    "at": "2026-11-23T12:26:42",
+    "at": "2026-11-23T14:26:10",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 27,
-    "degraded": true,
+    "checked": 18,
+    "degraded": false,
     "not_ready": 0,
     "skipped": 18,
     "term": "2026-27-zima"
@@ -243,9 +243,9 @@
    "wait": {
     "probes": 0,
     "recovered": false,
-    "waited": 30
+    "waited": 0
    },
-   "walled_at": "2026-11-23T12:24:42"
+   "walled_at": "2026-11-23T14:24:20"
   },
   "wtc": {
    "blocked_at": null,
@@ -2395,56 +2395,56 @@
   },
   "WEL24EY2S0": {
    "changed": "2026-10-13T20:18:15",
-   "checked": "2026-11-23T10:26:26",
+   "checked": "2026-11-23T14:24:26",
    "etag": "\"197f0-65db84a77e140\"",
-   "hash": "b71cba50de48956110f9e610b394d3ea0d59f39217566dbcb4930461cadeec83",
+   "hash": "9b133949ac154f77f4da8bf1bb1c98e8a6e9fcc14bc0741848c1c3d2081da55e",
    "modified": "Thu, 15 Oct 2026 13:51:25 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WEL24EY3S0": {
    "changed": "2026-10-13T20:18:20",
-   "checked": "2026-11-23T10:26:34",
+   "checked": "2026-11-23T14:24:32",
    "etag": "\"197f0-65db84a77e140\"",
-   "hash": "cbff30702a79acb5a4edf1ec6d1a5fd7e1982a9cea27eb4b5a4b5b6d258862ed",
+   "hash": "07ac71ef20f89b23c83928a31ac1f5df20820c221c7c87f53d4558480266d078",
    "modified": "Thu, 15 Oct 2026 13:51:25 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WEL24EY4S0": {
    "changed": "2026-10-13T20:18:23",
-   "checked": "2026-11-23T10:26:44",
+   "checked": "2026-11-23T14:24:37",
    "etag": "\"197f0-65db84a872380\"",
-   "hash": "103b562c8dfbec1e7fb28dd1fec4e338504ebffb897cc8668abec458f7278a15",
+   "hash": "a83a47e5a19cd3e5db3bea382b760d37ff6bb5a72fe040f0fb2fac37892586a4",
    "modified": "Thu, 15 Oct 2026 13:51:25 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WEL24EY5S0": {
    "changed": "2026-10-13T20:18:27",
-   "checked": "2026-11-23T10:26:56",
+   "checked": "2026-11-23T14:24:07",
    "etag": "\"197f0-65db84a872380\"",
-   "hash": "3b18196a8ef80ab5cf1d6280241ac0d488792392366ebc65deb106e84a4e6424",
+   "hash": "2127c423d19935dd9c82db9f20c2b9001372582592c1758f089f154c37619400",
    "modified": "Thu, 15 Oct 2026 13:51:25 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WEL24EY6S0": {
    "changed": "2026-10-13T20:18:33",
-   "checked": "2026-11-23T10:27:16",
+   "checked": "2026-11-23T14:24:14",
    "etag": "\"197f0-65db84a872380\"",
-   "hash": "0edb4fbaafdc610c77bcb3dd0976ddcab471de83dc8a7ec6f1e1732aff7ed38c",
+   "hash": "09984521e1232daa9162a4794d18f29b9a1197ebb1d9b19471be0a8dc4a339b7",
    "modified": "Thu, 15 Oct 2026 13:51:26 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WEL24EY7S0": {
    "changed": "2026-10-13T20:18:38",
-   "checked": "2026-11-23T10:27:26",
+   "checked": "2026-11-23T14:24:25",
    "etag": "\"197f0-65db84a872380\"",
-   "hash": "bcba981502575b12a9532079fa51c405913306a96cac4d34ee4eccbc9702fd5c",
+   "hash": "cb412ffd476e9a2ee4ade66747f51cffd124438e96339d779d0afd15b615536b",
    "modified": "Thu, 15 Oct 2026 13:51:26 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WEL24EZ1N1": {
@@ -6230,14 +6230,14 @@
    "hash": "dbced1aea8f7b39b4bc4ca17af1ca8ef9ac4ce85692a9db6dd05b228db9628ce",
    "modified": "Tue, 20 Oct 2026 12:01:10 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:22",
+    "at": "2026-11-23T14:25:17",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:26",
     "hash": "c53d794b53dd03e98e2ed68b271c46614d6d300cf57db35b62545429d27956c4",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6248,14 +6248,14 @@
    "hash": "565540775cdad1cf3e8f31c07b4f3321187aa7fda908e1c9a33b0b3920cd706d",
    "modified": "Tue, 20 Oct 2026 12:01:10 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:26",
+    "at": "2026-11-23T14:25:19",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:30",
     "hash": "b41478e7d78fe330af7e9d73bbfc8f981bf171039faef21c6db9da0085a2dac3",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6266,14 +6266,14 @@
    "hash": "8c2d70be15ea1e542b003c59a7d31894c7d5775a9a2ab8e48f43e178d9366cfe",
    "modified": "Tue, 20 Oct 2026 12:01:10 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:29",
+    "at": "2026-11-23T14:25:23",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:35",
     "hash": "57467543fac52f0f9a2d3215fbbda0d52fc3aac0700d4aff8c02331c648800ea",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6284,14 +6284,14 @@
    "hash": "53f837482616856090367de193c154c39a8ca27ca4cf4caf71d836356d319ff4",
    "modified": "Tue, 20 Oct 2026 12:01:10 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:32",
+    "at": "2026-11-23T14:25:26",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:37",
     "hash": "b275719667a375ac012ea0f07feb6a8f2452f5227bc9278d428dcd77fcfe9230",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6302,14 +6302,14 @@
    "hash": "37c820048668b37873772fa2064d60f3caeb06244c19c620131522a766bd6db3",
    "modified": "Tue, 20 Oct 2026 12:01:11 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:36",
+    "at": "2026-11-23T14:25:29",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:39",
     "hash": "2672d28361971ab41a9a85d386d9d8fb8e8758edf50f825507326c19ea2714b0",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6320,14 +6320,14 @@
    "hash": "d3a58428acdf192b395f9918ea92d3f49a18f39826acebc5380010dac17b7af1",
    "modified": "Tue, 20 Oct 2026 12:01:11 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:38",
+    "at": "2026-11-23T14:25:33",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:42",
     "hash": "e4b3a816a7202bf08b9bcda8673c817f8f0a4903a2edc0627c3d34ecd038b207",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6338,14 +6338,14 @@
    "hash": "ffaebb9285b5bf39dced2c42e3905d204ffc4c7f370dc72aba5a460fdc136a54",
    "modified": "Tue, 20 Oct 2026 12:01:11 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:41",
+    "at": "2026-11-23T14:25:35",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:44",
     "hash": "86cac99d1fd492d61a6e1000d7d82a09119876bd6fde4000d4bb3a52bfa546ff",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6356,14 +6356,14 @@
    "hash": "9aa71cce5434b62ef2637130191fad96fd11a0b197027dfbead0fb320fbcaff9",
    "modified": "Tue, 20 Oct 2026 12:01:11 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:43",
+    "at": "2026-11-23T14:25:39",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:47",
     "hash": "0a0741398da72bd0c8aa94ef601a3af70276fde9900734a67ccaaa051e7e2e90",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6374,14 +6374,14 @@
    "hash": "9dc138b6e0ff594922ade07eb36868198168a450e90ee245a8b5c3721ecc5639",
    "modified": "Tue, 20 Oct 2026 12:01:11 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:48",
+    "at": "2026-11-23T14:25:43",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:50",
     "hash": "38476ac26ea252d84593cb4cd49c8f988bf73d689e89d2336cf4b762cc18cb5a",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6496,14 +6496,14 @@
    "hash": "ddbdb62b0e0a9df3887af708216885bd4ec83c412a3e5c8f5e5bd748c4792efb",
    "modified": "Tue, 20 Oct 2026 12:01:22 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:50",
+    "at": "2026-11-23T14:25:45",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:52",
     "hash": "e487e0fa42a9eb05b291bf049cd9e56ddf44819c908be1b708a4e9b6f55c60d6",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6514,14 +6514,14 @@
    "hash": "dea9b36dc990a35408cea5c118d3340c93a4a631b33be7371e48d90649e20382",
    "modified": "Tue, 20 Oct 2026 12:01:23 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:52",
+    "at": "2026-11-23T14:25:49",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:56",
     "hash": "f1dadab3905af349c4f894dbd9af197fcf24b034ac1d108f2a5a19f202586f4a",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6532,14 +6532,14 @@
    "hash": "ae6ccb606b69888d365b44adcda9b892113ae24eb3af2bd80535628f8fafad3b",
    "modified": "Tue, 20 Oct 2026 12:01:23 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:54",
+    "at": "2026-11-23T14:25:53",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:25:58",
     "hash": "301e3a3dc80e43874aa1bfb09a8f661d6245829760b7eca48e5d40c6f267f233",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6550,14 +6550,14 @@
    "hash": "582ce84c841934e51699f3e6319be63d3417cdb46a360a2cb7d769ed483419f1",
    "modified": "Tue, 20 Oct 2026 12:01:23 GMT",
    "rejected": {
-    "at": "2026-11-23T12:25:56",
+    "at": "2026-11-23T14:25:55",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:26:01",
     "hash": "de87d00e7016dcd45c62d68adff832a67c678d13653465c2567b7ad7e268cc80",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6568,14 +6568,14 @@
    "hash": "20e2111aee5f3ed710feb84b987021413a61b1dafbfbd4a3fa0a875b289c4bf0",
    "modified": "Tue, 20 Oct 2026 12:01:24 GMT",
    "rejected": {
-    "at": "2026-11-23T12:26:00",
+    "at": "2026-11-23T14:25:58",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:26:03",
     "hash": "4c9fcbe3f6bc1678153a380c3b918293cbfbdc4be6726b5a215452a499359310",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6586,14 +6586,14 @@
    "hash": "4d08137224bcd2eb677799641e38c0e0e3b845250fc07b04c8f0e511b1a402cd",
    "modified": "Tue, 20 Oct 2026 12:01:24 GMT",
    "rejected": {
-    "at": "2026-11-23T12:26:02",
+    "at": "2026-11-23T14:26:01",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:26:06",
     "hash": "c5155ae76743aab2eb14d53083fd46c8551d763e4ab617e43933e6557671b70b",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6604,14 +6604,14 @@
    "hash": "46764090ea1c2c2245c59a531a977ab2a9f756ee042a24134fa33fccd171ec20",
    "modified": "Tue, 20 Oct 2026 12:01:24 GMT",
    "rejected": {
-    "at": "2026-11-23T12:26:04",
+    "at": "2026-11-23T14:26:03",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:26:09",
     "hash": "e9d3ae7cc71275a89a6d33d6de5a278e364cc6a3ac3b85a76d041b3bcaf329a8",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6622,14 +6622,14 @@
    "hash": "008d2308391d1a4c275551eb635af191a17cae4e13967baa61a53fca9137933a",
    "modified": "Tue, 20 Oct 2026 12:01:25 GMT",
    "rejected": {
-    "at": "2026-11-23T12:26:08",
+    "at": "2026-11-23T14:26:08",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:26:13",
     "hash": "65ad042812576a65993227f285481a925b4c455c8037fbc2c5c5383d36d414c0",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
@@ -6640,14 +6640,14 @@
    "hash": "16ca8360ba56b37bd00121a0be3af35a9c24e996fb652abfe1fa9d2f2b8ffbcf",
    "modified": "Tue, 20 Oct 2026 12:01:25 GMT",
    "rejected": {
-    "at": "2026-11-23T12:26:10",
+    "at": "2026-11-23T14:26:10",
     "term": "2026-27-zima",
-    "why": "lost too many events (5 -> 0), seen 2 of 3 times"
+    "why": "lost too many events (5 -> 0), seen 3 of 3 times"
    },
    "shrink": {
     "first": "2026-11-23T10:26:16",
     "hash": "6a0112814f8f6709460b11962cf81f4e8fcc6f1b027cec0447ec4d71decfa265",
-    "seen": 2
+    "seen": 3
    },
    "streak": 2,
    "term": "2026-27-zima"
