@@ -10,6 +10,7 @@ import re
 import shutil
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -150,6 +151,9 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn('<h3 class="sub">Wydziały</h3><ul class="facs"', rows)
         self.assertIn('<a href="https://github.com/kilerdevs/PlanWAT/actions/runs/7">Przebieg #512 na GitHubie</a>', rows)
         self.assertIn('class="dot bad"', rows)
+        # the verdict, its numbers and the strip of the last passes come before the tall graph
+        at = [latest.index(m) for m in ('<div class="lsum">', 'class="strip"', '<div class="lmap">', 'class="graph')]
+        self.assertEqual(at, sorted(at))
 
     def test_a_takeover_shows_whose_faculty_each_server_took(self):
         run = self.run_record(
@@ -254,7 +258,8 @@ class StatusPageTest(unittest.TestCase):
         }
         current = dict.fromkeys(refreshed)
         stats = build.plan_stats(current, refreshed, runs)
-        self.assertEqual((stats['total'], stats['fresh'], stats['week'], stats['never_changed']), (4, 1, 1, 2))
+        # the no-plan page asked an hour before counts as checked, like a confirmed plan
+        self.assertEqual((stats['total'], stats['fresh'], stats['week'], stats['never_changed']), (4, 2, 1, 2))
         wcy = dict(stats['faculties'])['WCY']
         self.assertEqual((wcy['fr1'], wcy['fr3']), (1, 1))  # 30 h is "1-3 dni"
         self.assertEqual((wcy['frx'], wcy['frn']), (1, 0))  # the faculty shows another semester: no plan to confirm
@@ -266,6 +271,7 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn('<a href="../WCY26KY3S1/">WCY26KY3S1</a>', page)
         self.assertIn('role="img" aria-label="WCY: do 6 h: 1, 1–3 dni: 1, wydział nie ma planu: 1"', page)  # each says itself
         self.assertIn('<summary>Liczby w tabeli</summary>', page)
+        self.assertIn('<span class="fval">2 z 3</span>', page)  # WCY: one plan and one no-plan page checked lately
         self.assertNotIn('style=', page)  # the page's CSP allows no inline style attribute
         # the same page whenever it is built: no "now" in it
         self.assertEqual(page, build.render_plan_stats(build.plan_stats(current, refreshed, runs)))
@@ -285,6 +291,8 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(scripts, [])
         self.assertIn('Brak zapisanych przebiegów', page)
         self.assertNotIn('<ol class="runs">', page)
+        self.assertNotIn('<script', page)
+        self.assertIn('<a class="tool" href="../prywatnosc/">', page)  # the shared footer
         # no README.md on the data branch yet: link the workflow's runs instead of a page that does not exist
         self.assertIn('href="https://github.com/kilerdevs/PlanWAT/actions/workflows/refresh.yml"', page)
         self.assertNotIn('blob/data/README.md', page)
@@ -333,6 +341,16 @@ class FacultyTest(unittest.TestCase):
         self.assertEqual(build.plural_grup(2), '2 grupy')
         self.assertEqual(build.plural_grup(5), '5 grup')
         self.assertEqual(build.plural_grup(186), '186 grup')
+
+    def test_the_root_names_the_shared_term_once_and_only_odd_rows_carry_theirs(self):
+        def term(term_id, label=''):
+            return types.SimpleNamespace(term_id=term_id, meta={'term': label})
+        current = {'WCY26KY3S1': term('2026-27-zima', 'semestr zimowy 2026/27'), 'WCY26KY1S1': term('2026-27-zima'),
+                   'WEL24AB1S1': term('2025-26-lato')}
+        page = build.render_index('@@STATS@@\n@@GROUPS@@\n@@FACULTIES@@', current)[0]
+        self.assertIn('3 grupy &middot; 2 wydziały &middot; semestr zimowy 2026/27', page)
+        self.assertEqual(page.count('class="term"'), 1)
+        self.assertIn('<span class="code">WEL24AB1S1</span><span class="term">Lato 2025/26</span>', page)
 
 
 class PickTermTest(unittest.TestCase):
@@ -431,15 +449,14 @@ class BuildRealSiteTest(unittest.TestCase):
                 self.assertTrue(icon['src'].startswith('../icons/'), icon['src'])
                 self.assertTrue((group_dir / icon['src']).resolve().is_file(), icon['src'])
 
-    def test_root_offers_a_faculty_year_group_finder(self):
+    def test_root_leads_from_faculty_cards_to_intake_years_and_groups(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
-        for marker in ('id="findGroup"', 'aria-controls="groupFinder"', 'id="groupFinder"',
-                       'aria-labelledby="finderTitle"', 'aria-describedby="finderLead"',
-                       'id="finderStep"', 'id="finderBack"', 'id="finderBody"'):
+        for marker in ('id="overview"', 'id="facHead"', 'id="facBack"', 'id="facTitle"', 'id="years"'):
             self.assertIn(marker, html)
-        self.assertIn('Nie znasz kodu grupy?', html)
-        self.assertIn('Znajdź ją po wydziale i roku naboru', html)
-        self.assertIn('Krok 1 z 3', html)
+        self.assertIn('<button class="fac-card" type="button" data-fac-card="WCY">', html)
+        self.assertIn('<span class="fac-name">Wydział Bezpieczeństwa, Logistyki i Zarządzania</span>', html)
+        self.assertNotIn('groupFinder', html)
+        self.assertNotIn('<details', html)
         for group in self.groups():
             row = re.search(r'<li class="row" data-group="' + re.escape(group) +
                             r'" data-fac="([A-Z]+)" data-year="(\d{4}|)">', html)
@@ -467,6 +484,10 @@ class BuildRealSiteTest(unittest.TestCase):
             self.assertIn('nigdy nie poprosi Cię o adres e-mail', html, rel)
             self.assertRegex(html, r'href="(\.\./)?prywatnosc/"', rel)
         self.assertNotIn('nofollow', privacy)  # only the dev preview asks not to be indexed
+        self.assertNotIn('<script', privacy)
+        # the contents name every section, and a phone's comparison cards label every value
+        self.assertEqual(re.findall(r'<a href="#([a-z]+)">', privacy), re.findall(r'<section class="sec" id="([a-z]+)">', privacy))
+        self.assertEqual(privacy.count('<td role="cell" data-label="'), privacy.count('<td'))
         status = (self.out / build.STATUS_DIR / 'index.html').read_text(encoding='utf-8')
         self.assertIn("script-src 'none'", self.meta_csp(f'{build.STATUS_DIR}/index.html'))
         self.assertIn('Brak zapisanych przebiegów', status)  # no refresh-runs.json in a plain checkout
@@ -544,7 +565,7 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn('window.PlanICS', html)
         self.assertIn("connect-src 'self'", html)
 
-    def test_root_lists_collapsed_faculty_sections_and_a_group_search(self):
+    def test_root_lists_hidden_faculty_sections_and_a_group_search(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
         self.assertNotIn('data-facbtn', html)
         self.assertNotIn('@@', html)
@@ -552,10 +573,9 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn('id="noResults"', html)
         self.assertIn('data-fac-section="WCY"', html)
         self.assertIn('data-fac-section="WLO"', html)
-        self.assertIn('WLO &middot; Wydział Bezpieczeństwa, Logistyki i Zarządzania', html)
-        self.assertIn('<details class="fac-sec"', html)
-        self.assertNotIn('<details class="fac-sec" open', html)
-        self.assertNotIn('<details open', html)
+        self.assertIn('<h3 class="fac-title">WLO &middot; Wydział Bezpieczeństwa, Logistyki i Zarządzania</h3>', html)
+        self.assertIn('<section class="fac" data-fac-section="WCY" hidden>', html)  # the script shows a faculty on demand
+        self.assertNotIn('<section class="fac" data-fac-section="WCY">', html)
         for group in self.groups():
             self.assertIn(f'data-group="{group}"', html)
 
@@ -994,7 +1014,7 @@ class BuildManyGroupsTest(unittest.TestCase):
         self.assertTrue((out / 'WCY25IY1S1' / 'index.html').is_file())  # the good refreshed one went live
         self.assertFalse((self.tt / '2026-27-zima' / 'WCY23LN1S1.ics').exists())
         stan = (out / 'stan' / 'index.html').read_text(encoding='utf-8')
-        self.assertIn('Pominięte kalendarze', stan)
+        self.assertIn('<div class="card skipped"><h3 class="sub first">Pominięte kalendarze</h3>', stan)
         self.assertIn('<a href="../WCY26KY3S1/">WCY26KY3S1</a><span>2026-27-zima: URL is not allowed', stan)
         self.assertIn('WCY24AA1S1<span>2026-27-zima: must start with BEGIN:VCALENDAR', stan)
         self.assertIn('WCY23LN1S1<span>2026-27-zima: not a regular file', stan)

@@ -823,9 +823,10 @@
   }
   @media (hover: none) { .hint .kb { display: none; } }
   @media (hover: hover) { .hint .touch { display: none; } }
-  .hint.pledge { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
-  /* only the very last line has to clear the floating "current week" pill */
-  body[data-view="week"] .hint.pledge { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .footwrap { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .footwrap .sitefoot { margin-top: var(--sp-4); }
+  /* only the very end of the page has to clear the floating "current week" pill */
+  body[data-view="week"] .footwrap { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 
   /* ================= floating "current week" pill ================= */
   .todaypill {
@@ -1037,10 +1038,7 @@
   .seg button[aria-pressed="true"] { background: var(--s4); color: var(--t1); }
   body[data-view="list"] #nav, body[data-view="month"] #nav,
   body[data-view="list"] #weekBody, body[data-view="month"] #weekBody,
-  body[data-view="list"] .todaypill, body[data-view="month"] .todaypill, body[data-view] .hint { display: none; }
-  body[data-view="week"] .hint, body[data-view] .hint.pledge { display: block; }
-  .pledge strong { color: var(--t2); font-weight: 600; }
-  .pledge a { color: var(--accent-text); }
+  body[data-view="list"] .todaypill, body[data-view="month"] .todaypill { display: none; }
 
   /* ================= gaps between classes ================= */
   .gap {
@@ -1092,6 +1090,8 @@
   }
   .mday:disabled { background: transparent; box-shadow: none; color: var(--t4); cursor: default; }
   .mday.is-past { --t1: var(--past-1); }
+  /* a highlighted subject: days without it step back, as lessons do in the week and the list */
+  .mday.is-dim .mdots, .mday.is-dim .mcount { opacity: 0.22; }
   .mday.is-today { box-shadow: var(--edge), 0 0 0 1px var(--accent-line); }
   .mday .mnum { font-size: var(--fs-13); font-weight: 600; }
   .mday.is-today .mnum { color: var(--accent-text); }
@@ -1619,9 +1619,10 @@
   /* demo 3: tap a class, see where else the same meeting takes place */
   .tm-pick { position: absolute; left: 50%; top: 12px; width: 256px; height: 54px; margin-left: -128px; gap: 7px; --c: #0a84ff; animation: tm-press 4.2s var(--ease-out) infinite; }
   .tm-tap { position: absolute; left: 50%; top: 21px; width: 36px; height: 36px; margin-left: 20px; border-radius: 50%; background: rgba(var(--hl), 0.22); box-shadow: 0 0 0 1px rgba(var(--hl), 0.35); opacity: 0; animation: tm-tap 4.2s var(--ease-out) infinite; }
-  .tm-found { position: absolute; left: 50%; bottom: 12px; width: 256px; margin-left: -128px; padding: 8px 6px 6px; border-radius: 16px; background: var(--s2); box-shadow: var(--edge); animation: tm-list 4.2s var(--ease-out) infinite; }
+  /* as wide as its rows need in any font (never narrower than the card above it), centred in the art */
+  .tm-found { position: absolute; left: 0; right: 0; bottom: 12px; width: max-content; min-width: 256px; max-width: calc(100% - 16px); margin: 0 auto; padding: 8px 6px 6px; border-radius: 16px; background: var(--s2); box-shadow: var(--edge); animation: tm-list 4.2s var(--ease-out) infinite; }
   .tm-found b { display: block; padding: 0 10px 4px; font-size: 0.75rem; font-weight: 650; color: var(--t3); letter-spacing: 0.01em; }
-  .tm-found span { display: flex; justify-content: space-between; gap: 8px; padding: 5px 10px; white-space: nowrap; border-radius: 10px; font-size: var(--fs-13); color: var(--t2); font-variant-numeric: tabular-nums; }
+  .tm-found span { display: flex; justify-content: space-between; gap: 12px; padding: 5px 10px; white-space: nowrap; border-radius: 10px; font-size: var(--fs-13); color: var(--t2); font-variant-numeric: tabular-nums; }
   .tm-found span + span { background: rgba(var(--hl), 0.07); }
   .tm-found em { font-style: normal; color: var(--t1); font-weight: 600; }
   @keyframes tm-tap { 0%, 12% { opacity: 0; transform: scale(1.3); } 18% { opacity: 1; transform: scale(1); } 28% { opacity: 1; transform: scale(0.88); } 40%, 100% { opacity: 0; transform: scale(1.3); } }
@@ -1972,7 +1973,7 @@
     /* what a sheet of paper does not need */
     .page::before, .backlink, .semprog, .tools, .notice, .viewbar, .live, .skel, .hint, .themeswitch, .toast, .todaypill,
     .bar .round, .weekbtn .i, .month-head .round, #progress, .legend-tip, .gap, .gaptag, .daymap, .count, .today-pill, .colbg,
-    .st, .dur, .tick, .room .i, .room svg, .bar::before, .legend { display: none !important; }
+    .st, .dur, .tick, .room .i, .room svg, .bar::before, .legend, .footwrap { display: none !important; }
     .wrap { max-width: none; padding-left: 0; padding-right: 0; margin: 0; }
 
     /* header: group, term and facts on three quiet lines */
@@ -2199,13 +2200,23 @@
     </details>
   </div>
 
-  <div class="themerow wrap"><div class="themeswitch" role="group" aria-label="Motyw"><button type="button" data-theme-set="auto" aria-pressed="true">Auto</button><button type="button" data-theme-set="dark" aria-pressed="false">Ciemny</button><button type="button" data-theme-set="light" aria-pressed="false">Jasny</button></div></div>
   <p class="hint wrap" id="pageHint">
     <span class="kb"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> zmieniają tydzień &middot; <kbd>T</kbd> bieżący tydzień &middot; <kbd>Esc</kbd> czyści wyróżnienie</span>
     <span class="touch">Przesuń palcem w bok, aby zmienić tydzień</span>
   </p>
-  <p class="hint wrap pledge">PlanWAT jest nieoficjalnym projektem studentów. Jego opiekun zobowiązuje się, że serwis pozostanie darmowy dla wszystkich.<br>
-    <strong>PlanWAT nigdy nie poprosi Cię o adres e-mail</strong> ani żadne inne dane osobowe. <a href="../prywatnosc/">Prywatność i zasady</a></p>
+  <div class="wrap footwrap">
+    <footer class="sitefoot">
+      <p class="legal">PlanWAT to nieoficjalna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Plany pochodzą z ogólnodostępnych stron wydziałów; zmiany i terminy dodatkowe sprawdzaj w e-dziekanacie.</p>
+      <p class="legal"><strong>PlanWAT nigdy nie poprosi Cię o adres e-mail</strong> ani inne dane osobowe, a serwis pozostanie darmowy dla wszystkich.</p>
+      <nav class="foottools" id="footTools" aria-label="Więcej">
+        <a class="tool" href="../prywatnosc/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10z"/></svg><span>Prywatność</span></a>
+        <a class="tool" href="../stan/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg><span>Odświeżanie</span></a>
+        <a class="tool" href="https://github.com/kilerdevs/PlanWAT/issues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v4M12 14h.01"/></svg><span>Zgłoś błąd</span></a>
+        <button class="tool themebtn" id="themeBtn" type="button" data-mode="auto" aria-expanded="false" aria-controls="themeSwitch" aria-label="Motyw: automatyczny"><svg class="i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z"/></svg><svg class="i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></svg><svg class="i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Motyw</span></button>
+      </nav>
+      <div class="themerow" id="themeRow" hidden><div class="themeswitch" id="themeSwitch" role="group" aria-label="Motyw"><button type="button" data-theme-set="auto" aria-pressed="true">Auto</button><button type="button" data-theme-set="dark" aria-pressed="false">Ciemny</button><button type="button" data-theme-set="light" aria-pressed="false">Jasny</button></div></div>
+    </footer>
+  </div>
 </main>
 
 <button class="todaypill" id="todayBtn" type="button"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"/></svg>Bieżący tydzień</button>
@@ -2880,6 +2891,7 @@
     for (var i = 0; i < rows.length; i++) {
       rows[i].classList.toggle('is-dim', !!state.focus && rows[i].getAttribute('data-subject') !== state.focus);
     }
+    if (state.view === 'month') renderMonth();
     var items = $('legendGrid').querySelectorAll('.chip');
     for (var j = 0; j < items.length; j++) {
       items[j].setAttribute('aria-pressed', String(items[j].getAttribute('data-subject') === state.focus));
@@ -3030,16 +3042,23 @@
     while (node) { y += node.offsetTop; node = node.offsetParent; }
     return y;
   }
-  function firstOpenLesson() {
+  function firstOpenLesson(box) {
     var now = new Date();
     var today = isoOf(now);
     var mins = now.getHours() * 60 + now.getMinutes();
-    var rows = $('weekBody').querySelectorAll('.lesson');
+    var rows = (box || $('weekBody')).querySelectorAll('.lesson');
     for (var i = 0; i < rows.length; i++) {
       var d = rows[i].getAttribute('data-date');
       if (d > today || (d === today && toMin(rows[i].getAttribute('data-end')) > mins)) return rows[i];
     }
     return null;
+  }
+  /* the list's T: glide to the class on now, or the next one, and flash it */
+  function listToNow() {
+    var row = firstOpenLesson($('listView'));
+    if (!row) return;
+    row.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+    restartAnim(row, 'flash');
   }
   function autoScrollToNow() {
     if (isGrid() || location.hash || window.scrollY > 0) return;
@@ -3541,6 +3560,29 @@
   }
 
   /* ---------- views: week, list, month ---------- */
+  /* the hint line under the plan names the keys (or the gesture) of the view on screen */
+  var HINT_KEYS = {
+    week: [[['\u2190', '\u2192'], 'zmieniają tydzień'], [['T'], 'bieżący tydzień'], [['Esc'], 'czyści wyróżnienie']],
+    month: [[['\u2190', '\u2192'], 'zmieniają miesiąc'], [['T'], 'bieżący miesiąc'], [['Esc'], 'czyści wyróżnienie']],
+    list: [[['T'], 'bieżące zajęcia'], [['Esc'], 'czyści wyróżnienie']]
+  };
+  var HINT_TOUCH = { week: 'Przesuń palcem w bok, aby zmienić tydzień', month: 'Dotknij dnia, aby zobaczyć jego tydzień', list: '' };
+  function updateHint() {
+    var hint = $('pageHint');
+    var kb = hint.querySelector('.kb');
+    kb.replaceChildren();
+    HINT_KEYS[state.view].forEach(function (h, i) {
+      if (i) kb.appendChild(document.createTextNode(' \u00b7 '));
+      h[0].forEach(function (k, j) {
+        if (j) kb.appendChild(document.createTextNode(' '));
+        kb.appendChild(el('kbd', null, k));
+      });
+      kb.appendChild(document.createTextNode(' ' + h[1]));
+    });
+    var touch = hint.querySelector('.touch');
+    touch.textContent = HINT_TOUCH[state.view];
+    touch.hidden = !HINT_TOUCH[state.view];
+  }
   function setView(v, keepScroll) {
     if (['week', 'list', 'month'].indexOf(v) < 0) v = 'week';
     var changed = state.booted && state.view !== v;
@@ -3558,6 +3600,7 @@
     /* the view that comes in settles in softly; the first one at load is part of the page entrance */
     if (changed) settleIn($(v === 'week' ? 'weekBody' : v + 'View'));
     store.set('view', v);
+    updateHint();
     applyFocus();
     updateLive(true);
     if (!keepScroll && window.scrollY > $('hero').offsetHeight) window.scrollTo({ top: $('hero').offsetHeight, behavior: 'auto' });
@@ -3631,12 +3674,22 @@
     var first = isoToLocalDate(weeks[0].monday), last = addDays(isoToLocalDate(weeks[weeks.length - 1].monday), 6);
     return { first: first.getFullYear() * 12 + first.getMonth(), last: last.getFullYear() * 12 + last.getMonth() };
   }
+  /* months slide the way weeks do: towards the side of the arrow that was pressed */
+  function showMonth(target) {
+    var b = monthBounds();
+    target = Math.max(b.first, Math.min(b.last, target));
+    if (target === state.month) return;
+    var dir = target > state.month ? 1 : -1;
+    state.month = target;
+    renderMonth();
+    $('monthView').setAttribute('data-dir', dir > 0 ? 'next' : 'prev');
+    restartAnim($('monthGrid'), 'is-entering');
+    restartAnim($('monthTitle'), 'is-entering');
+  }
+  function thisMonth() { var t = new Date(); return t.getFullYear() * 12 + t.getMonth(); }
   function renderMonth() {
     var bounds = monthBounds();
-    if (state.month == null) {
-      var t = new Date();
-      state.month = Math.max(bounds.first, Math.min(bounds.last, t.getFullYear() * 12 + t.getMonth()));
-    }
+    if (state.month == null) state.month = Math.max(bounds.first, Math.min(bounds.last, thisMonth()));
     var y = Math.floor(state.month / 12), m = state.month % 12;
     $('monthTitle').textContent = MONTHS_PL[m] + ' ' + y;
     $('monthPrev').disabled = state.month <= bounds.first;
@@ -3661,6 +3714,7 @@
         else if (iso < today) cell.classList.add('is-past');
         var wi = weekIndexOf(iso);
         if (wi < 0) cell.disabled = true;
+        if (state.focus && !list.some(function (l) { return l.subject_full === state.focus; })) cell.classList.add('is-dim');
         if (list.length) {
           var dots = el('span', 'mdots');
           var seen = {};
@@ -5056,16 +5110,8 @@
     for (var i = 0; i < seg.length; i++) {
       seg[i].addEventListener('click', function (e) { setView(e.currentTarget.getAttribute('data-view')); });
     }
-    /* months slide the way weeks do: towards the side of the arrow that was pressed */
-    var stepMonth = function (dir) {
-      state.month += dir;
-      renderMonth();
-      $('monthView').setAttribute('data-dir', dir > 0 ? 'next' : 'prev');
-      restartAnim($('monthGrid'), 'is-entering');
-      restartAnim($('monthTitle'), 'is-entering');
-    };
-    $('monthPrev').addEventListener('click', function () { stepMonth(-1); });
-    $('monthNext').addEventListener('click', function () { stepMonth(1); });
+    $('monthPrev').addEventListener('click', function () { showMonth(state.month - 1); });
+    $('monthNext').addEventListener('click', function () { showMonth(state.month + 1); });
     /* the tool rows scroll sideways on phones: mark them so the cut edge fades instead of looking broken */
     ['tp-plan', 'tp-export', 'tp-analysis'].forEach(function (id) { edgeFade($(id)); });
   }
@@ -5100,13 +5146,20 @@
 
     document.addEventListener('keydown', function (e) {
       if (e.altKey || e.ctrlKey || e.metaKey || sheet.open || tool.open || $('tourSheet').open || $('tools').classList.contains('open')) return;
-      if (state.view !== 'week' && e.key !== 'Escape') return;
       var tag = e.target && e.target.tagName;
       if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return;
-      if (e.key === 'ArrowLeft') { go(-1); e.preventDefault(); }
-      else if (e.key === 'ArrowRight') { go(1); e.preventDefault(); }
-      else if (e.key === 't' || e.key === 'T') setWeek(state.currentIndex);
-      else if (e.key === 'Escape' && state.focus) { state.focus = null; applyFocus(); }
+      /* each view's keys, as its hint line says: arrows step its unit (the list has none), T goes to now */
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        var dir = e.key === 'ArrowLeft' ? -1 : 1;
+        if (state.view === 'week') go(dir);
+        else if (state.view === 'month') showMonth(state.month + dir);
+        else return;
+        e.preventDefault();
+      } else if (e.key === 't' || e.key === 'T') {
+        if (state.view === 'week') setWeek(state.currentIndex);
+        else if (state.view === 'month') showMonth(thisMonth());
+        else listToNow();
+      } else if (e.key === 'Escape' && state.focus) { state.focus = null; applyFocus(); }
     });
 
     var touch = null;

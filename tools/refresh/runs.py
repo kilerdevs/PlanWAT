@@ -235,7 +235,10 @@ def coverage_point(state, at):
         if not isinstance(g, dict) or not (g.get('checked') or g.get('not_ready')) or isinstance(g.get('gone'), dict):
             continue  # a group the faculty took down is no plan on record any more
         total += 1
-        checked = build.utc_moment(g['checked']) if g.get('checked') else None
+        mark = g.get('not_ready') if isinstance(g.get('not_ready'), dict) else {}
+        # a page found still showing another semester was checked too, as of that ask
+        seen = max((s for s in (g.get('checked'), mark.get('at')) if isinstance(s, str) and s), default=None)
+        checked = build.utc_moment(seen) if seen else None
         fresh += checked is not None and since <= checked <= at + SLACK
     return [_iso(at), fresh, total]
 

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 import unittest.mock
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -2649,10 +2650,45 @@ class QuietStretch(unittest.TestCase):
         self.assertEqual(core.quiet_interval({'streak': 'x'}, 1.0, 4.0), 1.0)
         self.assertEqual(core.quiet_interval({'streak': -1}, 1.0, 4.0), 1.0)
 
+    def test_a_group_comes_due_on_its_own_grid_never_late_and_spread(self):
+        since = dt.datetime(2026, 11, 24, 6, 25)
+        codes = [f'WCY26X{n:04d}S1' for n in range(1000)]
+
+        def due(hours_later):
+            return sum(core.recheck_due(c, since, since + dt.timedelta(hours=hours_later), 4.0, 1.0) for c in codes)
+        self.assertEqual(due(0.9), 0)       # never within the floor
+        self.assertEqual(due(4.0), 1000)    # never later than the gap
+        self.assertTrue(400 < due(2.0) < 600, due(2.0))  # half-way, about half: they spread
+
+    def test_groups_checked_together_share_the_passes_evenly(self):
+        # 1000 groups checked in one pass, a pass every 2 h, a 4 h gap: from the next pass on each pass takes about
+        # half of them (not all of them every other pass), and none later than the plain "older than the gap" rule.
+        codes = [f'WEL24X{n:04d}S0' for n in range(1000)]
+        start = dt.datetime(2026, 11, 24, 6, 23)
+        checked = {c: start + dt.timedelta(seconds=n) for n, c in enumerate(codes)}
+        loads = []
+        for k in range(1, 13):
+            now = start + dt.timedelta(hours=2 * k)
+            due = [c for c in codes if core.recheck_due(c, checked[c], now, 4.0, 1.0)]
+            self.assertLessEqual({c for c in codes if now - checked[c] >= dt.timedelta(hours=4)}, set(due))
+            for c in due:
+                checked[c] = now + dt.timedelta(minutes=3)
+            loads.append(len(due))
+        self.assertTrue(all(350 < n < 650 for n in loads), loads)
+
     def test_a_group_inside_its_stretched_gap_is_not_fetched_at_all(self):
         # Two quiet checks sit behind this one (streak 2 = a 4 h gap); the last check is
-        # 3 h old, so the faculty lists its groups but the group page stays untouched.
-        (changed, blocked, complete), state, session = self.run_faculty(self.entry(2, age_hours=3.0), adaptive=4.0)
+        # 3 h old and no point of the group's grid passed since, so the faculty lists its
+        # groups but the group page stays untouched.
+        span = 4 * 3600
+        phase = zlib.crc32(b'WLO26AX1S1') / 2 ** 32 * span
+        base = (dt.datetime(2026, 11, 24) - core._GRID_EPOCH).total_seconds()
+        point = core._GRID_EPOCH + dt.timedelta(seconds=base - (base - phase) % span)
+        now = point + dt.timedelta(hours=3.5)
+        groups = {'WLO26AX1S1': {'checked': (now - dt.timedelta(hours=3)).isoformat(), 'hash': 'x',
+                                 'term': '2026-27-zima', 'streak': 2}}
+        with unittest.mock.patch.object(core, 'now_utc', return_value=now):
+            (changed, blocked, complete), state, session = self.run_faculty(groups, adaptive=4.0)
         self.assertEqual((changed, blocked, complete), ([], False, True))
         self.assertEqual([u for u in session.seen if 'WLO26AX1S1' in u], [])
         self.assertEqual(state.groups['WLO26AX1S1']['streak'], 2)
@@ -3333,11 +3369,13 @@ class RunHistory(unittest.TestCase):
     def test_coverage_counts_the_plans_checked_in_the_last_six_hours_and_keeps_two_weeks(self):
         at = dt.datetime(2026, 11, 14, 12, 0, tzinfo=dt.timezone.utc)
         state = {'groups': {'A': {'checked': '2026-11-14T11:00:00'}, 'B': {'checked': '2026-11-14T05:00:00'},
-                            'C': {'not_ready': {'term': 'x'}}, 'D': {}, 'E': 'junk'}}
-        self.assertEqual(runs.coverage_point(state, at), ['2026-11-14T12:00:00', 1, 3])  # D was never on record
+                            'C': {'not_ready': {'term': 'x'}}, 'D': {}, 'E': 'junk',
+                            'G': {'not_ready': {'term': 'x', 'at': '2026-11-14T10:00:00'}}}}
+        # D was never on record; G's page showed another semester when asked 2 h ago: checked as well
+        self.assertEqual(runs.coverage_point(state, at), ['2026-11-14T12:00:00', 2, 4])
         self.assertEqual(runs.coverage_point({}, at), ['2026-11-14T12:00:00', 0, 0])
         gone = {'groups': dict(state['groups'], F={'checked': '2026-10-13T20:00:00', 'gone': {'term': 'x'}})}
-        self.assertEqual(runs.coverage_point(gone, at)[2], 3)  # a page the faculty took down is no plan on record
+        self.assertEqual(runs.coverage_point(gone, at)[2], 4)  # a page the faculty took down is no plan on record
         series = []
         for day in range(20):
             series = runs.add_coverage(series, runs.coverage_point(state, at + dt.timedelta(days=day)))

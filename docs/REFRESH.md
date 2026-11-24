@@ -35,8 +35,9 @@ Sam `schedule:` GitHuba nie wystarcza: w listopadzie 2026 uruchamiał `refresh.y
 więc zegar (`tools/refresh/ticker.py`) na każdym stale włączonym serwerze: oracle1, oracle2 i oracle3 oraz plebania,
 każdy o kilka minut po poprzednim (`PLANWAT_TICKER_DELAY`: 0, 4, 8, 12), i tylko wtedy, gdy przebieg tej pory jeszcze nie
 ruszył. Wystarczy jeden włączony serwer, a cron GitHuba zostaje ostatnią rezerwą. Pierwszy krok zadania `plan` w
-`refresh.yml` puszcza tylko najwcześniejszy pełny przebieg z ostatnich 90 minut (tytuł `Refresh timetables`); późniejszy
-kończy się od razu i oddaje pracę tamtemu. Przebiegi ręczne i doganiające nie są wstrzymywane. Zegar ma własny kontener
+`refresh.yml` puszcza tylko najwcześniejszy pełny przebieg od początku bieżącej pory (:23 parzystej godziny UTC, tytuł
+`Refresh timetables`); późniejszy kończy się od razu i oddaje pracę tamtemu. Liczą się tylko przebiegi tej samej pory,
+więc spóźniony cron, który ustąpił poprzedniej porze, nie blokuje następnej. Przebiegi ręczne i doganiające nie są wstrzymywane. Zegar ma własny kontener
 z tokenem *Actions: read and write*, którego runner ani jego zadania nie widzą (`deploy/runner/README.md`, „Zegar”).
 
 ## Jak zachowuje się przebieg
@@ -104,6 +105,12 @@ z tokenem *Actions: read and write*, którego runner ani jego zadania nie widzą
   miesiącami ich przerwa podwaja się od `--fresh-hours` do 12 h (`NOT_READY_CAP_HOURS`), bo inaczej 38 takich grup WCY
   kosztowało kilka minut najdłuższej ścieżki w każdym przebiegu. Wciąż liczą się jako niegotowe, a strona, która znów
   pokazuje bieżący semestr, kasuje znacznik.
+- **Każda grupa ma własną siatkę terminów, więc przebiegi dzielą pracę po równo** (`core.recheck_due`). Wewnątrz przerwy
+  grupa wraca do sprawdzenia, gdy minie punkt jej siatki: punkty co tyle, ile wynosi przerwa, przesunięte o stały skrót
+  kodu grupy. Termin wypada więc najpóźniej po pełnej przerwie, nigdy później, a nigdy przed `--fresh-hours`. Bez tego
+  grupy sprawdzone razem (pierwszy przebieg semestru, przebieg po awarii) wracały razem i co trzeci przebieg brał prawie
+  wszystkie, a dwa następne prawie nic, bo przerwa mijała kilka minut po starcie przebiegu i grupa czekała na kolejny.
+  Teraz każdy przebieg bierze podobną część. To samo dotyczy przerw grup „jeszcze nieopublikowanych”.
 - Strona jest publikowana tylko wtedy, gdy kalendarz przechodzi własną walidację serwisu (`build.load_term`), nosi kod grupy
   swojego pliku i nie stracił więcej niż 40% zdarzeń. W przeciwnym razie stary kalendarz zostaje, a grupa trafia do logu.
   Wyjątek: plan, który stracił więcej, ale wraca dokładnie taki sam w co najmniej 3 przebiegach rozłożonych na 12 h

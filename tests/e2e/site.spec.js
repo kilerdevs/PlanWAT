@@ -65,42 +65,34 @@ test('the root lists the groups (or goes straight to the only one) and links to 
   }).toPass();
   if (!ON_GROUP.test(page.url())) {
     await expect(page.locator('a.group')).toHaveCount(GROUPS.length);
-    await page.locator('details[data-fac-section="WCY"] > summary').click();
+    await page.locator('.fac-card[data-fac-card="WCY"]').click();
     await link.click();
   }
   await expect(page).toHaveURL(ON_GROUP);
   await expect(page.locator('.lesson').first()).toBeVisible();
 });
 
-test('the root searches groups in faculty sections collapsed by default', async ({ page }) => {
+test('the root shows faculty cards, and its search reaches every group', async ({ page }) => {
   await page.clock.setFixedTime(THURSDAY_1030);
   await page.goto('/');
-  const sections = page.locator('details[data-fac-section]');
-  expect(await sections.count()).toBeGreaterThan(0);
-  for (const sec of await sections.all()) {
-    await expect(sec).not.toHaveAttribute('open', '');
-  }
+  await expect(page.locator('#overview')).toBeVisible();
+  await expect(page.locator('.fac-card[data-fac-card="WCY"]')).toBeVisible();
+  await expect(page.locator('section[data-fac-section]:not([hidden])')).toHaveCount(0);
 
   const search = page.locator('#groupSearch');
   await search.fill('wcy26ky3s1');
   await expect(page.locator('a.group[href="WCY26KY3S1/"]')).toBeVisible();
   await expect(page.locator('#resultCount')).toContainText('1 grupa');
-  await expect(page.locator('details[data-fac-section="WCY"]')).toHaveAttribute('open', '');
+  await expect(page.locator('#overview')).toBeHidden();
 
   await search.fill('zzz-no-such-group');
   await expect(page.locator('#noResults')).toBeVisible();
 
   await search.fill('');
   await expect(page.locator('#noResults')).toBeHidden();
-  await expect(page.locator('#resultCount')).toContainText(String(GROUPS.length));
-  for (const sec of await sections.all()) {
-    await expect(sec).not.toHaveAttribute('open', '');
-  }
-
-  // sections still open by hand
-  await page.locator('details[data-fac-section="WCY"] > summary').click();
-  await expect(page.locator('details[data-fac-section="WCY"]')).toHaveAttribute('open', '');
-  await expect(page.locator('a.group[href="WCY26KY3S1/"]')).toBeVisible();
+  await expect(page.locator('#resultCount')).toBeHidden();
+  await expect(page.locator('#overview')).toBeVisible();
+  await expect(page.locator('section[data-fac-section]:not([hidden])')).toHaveCount(0);
 });
 
 test('the root page has no serious or critical accessibility violations', async ({ page }) => {
@@ -141,6 +133,12 @@ test('the privacy page is linked from the footer, accessible and runs no script'
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
   expect(serious).toEqual([]);
+  // a phone reads the comparison as cards, never a table scrolled sideways; the contents jump to a section
+  await page.setViewportSize({ width: 360, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.locator('.toc a[href="#hosting"]').click();
+  await expect(page).toHaveURL(/#hosting$/);
+  await expect(page.locator('#hosting h2')).toBeInViewport();
 });
 
 test('the refresh history is linked from the footer, names each pass\'s servers and runs no script', async ({ page }) => {
@@ -180,6 +178,14 @@ test('the refresh history is linked from the footer, names each pass\'s servers 
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
   expect(serious).toEqual([]);
+  // a phone never scrolls sideways; a wide screen puts the plans and the passes side by side
+  await page.setViewportSize({ width: 360, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const plans = await page.locator('#plansTitle').boundingBox();
+  const passes = await page.locator('#runsTitle').boundingBox();
+  expect(passes.x).toBeGreaterThan(plans.x + plans.width);
+  expect(Math.abs(passes.y - plans.y)).toBeLessThan(2);
 });
 
 test('pages draw with Inter from the site itself and ask no other host for fonts', async ({ page, browserName }) => {
@@ -467,6 +473,25 @@ test('the month view opens the week of a picked day', async ({ page }) => {
   await page.locator('.mday', { hasText: /^21/ }).click();
   await expect(page.locator('#monthView')).toBeHidden();
   await expect(weekLabel(page)).toHaveText('19.10–24.10');
+});
+
+test('each view takes its own keys, and the hint line names them', async ({ page }) => {
+  const problems = await openGroup(page);
+  const hint = page.locator('#pageHint .kb');
+  await expect(hint).toContainText('zmieniają tydzień');
+  await page.locator('#viewSeg button[data-view="month"]').click();
+  await expect(hint).toContainText('zmieniają miesiąc');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#monthTitle')).toHaveText('Listopad 2026');
+  await page.keyboard.press('t');
+  await expect(page.locator('#monthTitle')).toHaveText('Październik 2026');
+  await page.locator('#viewSeg button[data-view="list"]').click();
+  await expect(hint).toHaveText('T bieżące zajęcia · Esc czyści wyróżnienie');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('t');
+  await expect(page.locator('#listView .lesson.flash')).toBeInViewport();
+  expect(problems).toEqual([]);
 });
 
 test('the Live card leads back to the week view from the other views', async ({ page }) => {
@@ -938,11 +963,11 @@ test('the front page holds a favourite group\'s card in place while its plan loa
   await expect(page.locator('#liveCards')).not.toHaveAttribute('aria-busy');
 });
 
-test('a star on a group row adds it to the favourites, and the faculty chips filter the list', async ({ page }) => {
+test('a star on a group tile adds it to the favourites, and a faculty narrows to an intake year', async ({ page }) => {
   await page.clock.setFixedTime(THURSDAY_1030);
   await page.goto('/');
   await expect(page.locator('#saved')).toBeHidden();
-  await page.locator('details[data-fac-section="WCY"] > summary').click();
+  await page.locator('.fac-card[data-fac-card="WCY"]').click();
   const star = page.locator('button.star[data-star="WCY26KY3S1"]');
   await expect(star).toHaveAttribute('aria-pressed', 'false');
   await star.click();
@@ -952,12 +977,18 @@ test('a star on a group row adds it to the favourites, and the faculty chips fil
   await star.click();
   await expect(page.locator('#saved')).toBeHidden();
 
-  await page.locator('#filters .chip[data-fac="WCY"]').click();
-  await expect(page.locator('#filters .chip[data-fac="WCY"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('details[data-fac-section="WCY"]')).toHaveAttribute('open', '');
-  await expect(page.locator('details[data-fac-section]:not([hidden])')).toHaveCount(1);
-  await page.locator('#filters .chip[data-fac=""]').click();
-  await expect(page.locator('details[data-fac-section]:not([hidden])')).toHaveCount(await page.locator('details[data-fac-section]').count());
+  // the faculty view: its title, its intake years, only its groups; the back button returns to the cards
+  await expect(page.locator('#facTitle')).toContainText('WCY');
+  await expect(page.locator('section[data-fac-section]:not([hidden])')).toHaveCount(1);
+  await page.locator('#years .chip[data-year="2026"]').click();
+  await expect(page.locator('#years .chip[data-year="2026"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(/[?&]w=WCY&r=2026/);
+  const years = await page.locator('#groupList li.row:not([hidden])').evaluateAll((rows) => rows.map((r) => r.dataset.year));
+  expect(new Set(years)).toEqual(new Set(['2026']));
+  await page.locator('#facBack').click();
+  await expect(page.locator('#overview')).toBeVisible();
+  await expect(page.locator('.fac-card[data-fac-card="WCY"]')).toBeFocused();
+  await expect(page.locator('section[data-fac-section]:not([hidden])')).toHaveCount(0);
 });
 
 test('the front page search takes the "/" key and a ?q= link', async ({ page }) => {
@@ -971,31 +1002,22 @@ test('the front page search takes the "/" key and a ?q= link', async ({ page }) 
   await expect(page.locator('#groupSearch')).toBeFocused();
 });
 
-test('the group finder walks from faculty and intake year to a group', async ({ page }) => {
+test('a faculty and intake year lead to a group, and coming back restores them', async ({ page }) => {
   await page.clock.setFixedTime(THURSDAY_1030);
   await page.goto('/');
-  const opener = page.locator('#findGroup');
-  const dialog = page.locator('#groupFinder');
-  await opener.click();
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toHaveAttribute('aria-labelledby', 'finderTitle');
-  await expect(page.locator('#finderStep')).toContainText('Krok 1 z 3');
-  await expect(dialog.locator('.finder-opt').first()).toBeFocused();
-  // Escape closes the sheet and hands focus back to the button that opened it
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  await expect(opener).toBeFocused();
-
-  await opener.click();
-  await dialog.locator('.finder-opt[data-fac="WCY"]').click();
-  await expect(page.locator('#finderStep')).toContainText('Krok 2 z 3');
-  await dialog.locator('.finder-opt[data-year="2026"]').click();
-  await expect(page.locator('#finderStep')).toContainText('Krok 3 z 3');
-  const link = dialog.locator('a.finder-group[href="WCY26KY3S1/"]');
-  await expect(link).toBeVisible();
-  await link.click();
+  await page.locator('.fac-card[data-fac-card="WCY"]').click();
+  await expect(page.locator('#facTitle')).toBeFocused();
+  await page.locator('#years .chip[data-year="2026"]').click();
+  await page.locator('a.group[href="WCY26KY3S1/"]').click();
   await expect(page).toHaveURL(ON_GROUP);
   await expect(page.locator('.lesson').first()).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('#facHead')).toBeVisible();
+  await expect(page.locator('#years .chip[data-year="2026"]')).toHaveAttribute('aria-pressed', 'true');
+  // the back gesture leaves the faculty for the cards
+  await page.goBack();
+  await expect(page.locator('#overview')).toBeVisible();
+  await expect(page.locator('#facHead')).toBeHidden();
 });
 
 test('each class shows which meeting of its subject and type it is', async ({ page }) => {
@@ -1176,6 +1198,8 @@ test('the system light theme is followed, and a stored choice wins and survives 
   const problems = await openGroup(page);
   const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(await bg()).toBe('rgb(242, 242, 247)');
+  // the footer's Motyw swaps its row of tools for the three choices
+  await page.locator('#themeBtn').click();
   await page.locator('[data-theme-set="dark"]').click();
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
   // a chosen theme fades over for a moment, so wait for its final colour
@@ -1184,6 +1208,7 @@ test('the system light theme is followed, and a stored choice wins and survives 
   await expect(page.locator('.lesson').first()).toBeVisible();
   expect(await bg()).toBe('rgb(0, 0, 0)');
   await expect(page.locator('[data-theme-set="dark"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#themeBtn').click();
   await page.locator('[data-theme-set="auto"]').click();
   await expect.poll(bg).toBe('rgb(242, 242, 247)');
   expect(problems).toEqual([]);

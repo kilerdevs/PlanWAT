@@ -1102,14 +1102,15 @@ def render_index(template, current, ics_js='', assets=None, site_url=''):
     names = {code: pl for code, pl in FACULTIES}
     order = {code: i for i, (code, _) in enumerate(FACULTIES)}
     groups = sorted(current.items(), key=lambda kv: (order.get(faculty_of(kv[0]), len(order)), kv[0]))
-    labels = {code: term.meta['term'] or term.term_id for code, term in groups}
-    uniform = len(set(labels.values())) == 1  # one term for everyone: say it once, not on every row
+    labels = {code: term.meta['term'] or term_label(term.term_id) for code, term in groups}
+    # the term most groups share is said once, up top; a row names its term only when it differs
+    common = collections.Counter(t.term_id for _, t in groups).most_common(1)[0][0] if groups else ''
 
     def intake(code):
         m = INTAKE_RE.match(code)
         return 2000 + int(m.group(1)) if m else None
 
-    sections, chips, fac, rows = [], [], None, []
+    sections, cards, fac, rows = [], [], None, []
     totals = {}
     for code, _ in groups:
         totals[faculty_of(code)] = totals.get(faculty_of(code), 0) + 1
@@ -1117,12 +1118,12 @@ def render_index(template, current, ics_js='', assets=None, site_url=''):
     def flush():
         if rows:
             if fac == 'OTHER':
-                title, short = 'Pozostałe grupy', 'Pozostałe'
+                title, short, name = 'Pozostałe grupy', 'Inne', 'Pozostałe grupy'
             else:
-                title, short = f'{fac} &middot; {html.escape(names[fac])}', fac
-            full = html.escape(names.get(fac, 'Pozostałe grupy'), quote=True)
-            chips.append(f'    <button class="chip" type="button" data-fac="{fac}" aria-pressed="false" title="{full}">'
-                         f'{short}<span class="n">{totals[fac]}</span></button>')
+                title, short, name = f'{fac} &middot; {html.escape(names[fac])}', fac, html.escape(names[fac])
+            cards.append(f'    <li><button class="fac-card" type="button" data-fac-card="{fac}">'
+                         f'<span class="fac-code">{short}</span><span class="fac-name">{name}</span>'
+                         f'<span class="fac-n">{plural_grup(totals[fac])}</span></button></li>')
             lis, last = [], None
             years = {intake(c) for c, _ in rows_src}
             for code, row in rows_src:
@@ -1131,23 +1132,19 @@ def render_index(template, current, ics_js='', assets=None, site_url=''):
                     lis.append(f'    <li class="yr">Rocznik {year}</li>' if year else '    <li class="yr">Pozostałe</li>')
                     last = year
                 lis.append(row)
-            sections.append(f'  <details class="fac-sec" data-fac-section="{fac}">\n'
-                            f'    <summary><span class="fac-title">{title}</span>'
-                            f'<span class="fac-n">{plural_grup(len(rows))}</span>'
-                            '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true">'
-                            '<path d="m9 18 6-6-6-6"/></svg></summary>\n'
-                            '  <ul>\n' + '\n'.join(lis) + '\n  </ul>\n  </details>')
+            sections.append(f'  <section class="fac" data-fac-section="{fac}" hidden>\n'
+                            f'    <h3 class="fac-title">{title}</h3>\n'
+                            '  <ul class="tiles">\n' + '\n'.join(lis) + '\n  </ul>\n  </section>')
 
     rows_src = []
     for code, term in groups:
         if faculty_of(code) != fac:
             flush()
             fac, rows, rows_src = faculty_of(code), [], []
-        term_html = '' if uniform else f'<span class="term">{html.escape(labels[code])}</span>'
+        term_html = '' if term.term_id == common else f'<span class="term">{html.escape(labels[code])}</span>'
         intake_year = intake(code)
         row = (f'    <li class="row" data-group="{code}" data-fac="{faculty_of(code)}" data-year="{intake_year or ""}">'
-               f'<a class="group" href="{code}/"><span><span class="code">{code}</span>{term_html}</span>'
-               '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>'
+               f'<a class="group" href="{code}/"><span class="code">{code}</span>{term_html}</a>'
                f'<button class="star" type="button" data-star="{code}" aria-pressed="false" '
                f'aria-label="Dodaj {code} do ulubionych">{STAR_SVG}</button></li>')
         rows.append(row)
@@ -1155,15 +1152,13 @@ def render_index(template, current, ics_js='', assets=None, site_url=''):
     flush()
     facs = [f for f in totals if f != 'OTHER']
     stats = plural_grup(len(groups)) + ' &middot; ' + plural_wydzial(len(facs))
-    if uniform and groups:
-        stats += ' &middot; ' + html.escape(next(iter(labels.values())))
+    if common:
+        said = next((t.meta['term'] for _, t in groups if t.term_id == common and t.meta['term']), term_label(common))
+        stats += ' &middot; ' + html.escape(said)
     redirect = f'<meta http-equiv="refresh" content="0; url={groups[0][0]}/">' if len(groups) == 1 else ''
-    all_chip = (f'    <button class="chip" type="button" data-fac="" aria-pressed="true">Wszystkie'
-                f'<span class="n">{len(groups)}</span></button>')
-    chips_html = '\n'.join([all_chip] + chips)
     page = template.replace('@@ICS_JS@@', ics_js)  # first: the script's own text is never substituted into
     page = page.replace('@@GROUPS@@', '\n'.join(sections))
-    page = page.replace('@@CHIPS@@', chips_html)
+    page = page.replace('@@FACULTIES@@', '\n'.join(cards))
     page = page.replace('@@STATS@@', stats)
     page = page.replace('@@REDIRECT@@', redirect)
     title, description = index_seo(current)
@@ -1657,21 +1652,24 @@ def render_status_runs(runs):
     strip = ''.join(f'<li class="{run_tone(r)}" title="{e(run_when(r["planned"]))}: {e(run_result_label(r))}">'
                     f'<span class="vh">{e(run_when(r["planned"]))}: {e(run_result_label(r))}</span></li>'
                     for r in reversed(runs))
+    # two parts: the verdict, its numbers and the strip of the last passes, then who crawled what (on a phone the strip
+    # is read before the tall graph)
     latest = (
-        '<section class="latest" aria-labelledby="latestTitle">'
+        '<section class="latest" aria-labelledby="latestTitle"><div class="lsum">'
         f'<p class="lstatus"><span class="dot {run_tone(last)}" aria-hidden="true"></span>'
         f'Ostatni przebieg · {e(run_when(last["planned"]))}</p>'
         f'<h2 class="verdict" id="latestTitle">{e(run_result_label(last))}</h2>'
         f'<p class="lead2">{e(run_explanation(last))}</p>'
         '<dl class="stats">' + ''.join(f'<div><dt>{k}</dt><dd>{v}</dd></div>' for k, v in stats) + '</dl>'
+        + f'<div class="striprow"><span class="striplabel">{e(latest_label(len(runs)))}'
+        + (', najnowszy z prawej' if len(runs) > 1 else '') + '</span>'
+        f'<ol class="strip" aria-label="Wyniki od najstarszego">{strip}</ol></div>'
+        '</div><div class="lmap">'
         '<h3 class="sub">Kto co sprawdził</h3>' + _status_graph(last, e) + GRAPH_LEGEND
         + '<details class="tview"><summary>Szczegóły</summary>'
         + _status_section('Serwery', _status_parts(last, e)) + _status_section('Wydziały', _status_faculties(last, e))
         + '</details>'
-        + f'<div class="striprow"><span class="striplabel">{e(latest_label(len(runs)))}'
-        + (', najnowszy z prawej' if len(runs) > 1 else '') + '</span>'
-        f'<ol class="strip" aria-label="Wyniki od najstarszego">{strip}</ol></div>'
-        + '</section>')
+        + '</div></section>')
     rows = []
     for run in runs:
         tone = run_tone(run)
@@ -1727,7 +1725,7 @@ def plan_stats(current, refreshed, runs):
     is on record): how long ago each faculty's plans were confirmed, when plans last changed, and the extremes.
     None when nothing was ever checked. Every age is against that moment, not the build's clock, so a page rebuilt
     later without a new pass says the same."""
-    stamps, noplan = {}, set()
+    stamps, noplan = {}, {}
     for g in sorted(current):
         entry = refreshed.get(g) if isinstance(refreshed.get(g), dict) else {}
         if isinstance(entry.get('gone'), dict):
@@ -1736,17 +1734,20 @@ def plan_stats(current, refreshed, runs):
                      utc_moment(entry.get('changed')) if entry.get('changed') else None)
         mark, term = entry.get('not_ready'), getattr(current[g], 'term_id', None)
         if isinstance(mark, dict) and (term is None or mark.get('term') == term):
-            noplan.add(g)  # tools/refresh: the page still shows another semester
+            # tools/refresh: the page still shows another semester, as of the last ask
+            noplan[g] = utc_moment(mark['at']) if isinstance(mark.get('at'), str) else None
     ref = utc_moment(runs[0]['ended']) if runs and runs[0].get('ended') else None
     ref = ref or max((c for c, _ in stamps.values() if c), default=None)
     if ref is None or not stamps:
         return None
-    faculties = {}
+    faculties, asked = {}, {}
     for g, (checked, _) in stamps.items():
         row = faculties.setdefault(faculty_of(g), {k: 0 for k, _, _ in FRESH_BUCKETS}
                                    | {FRESH_NOPLAN[0]: 0, FRESH_NONE[0]: 0})
         if checked is None:
             row[(FRESH_NOPLAN if g in noplan else FRESH_NONE)[0]] += 1
+            if noplan.get(g) and noplan[g] <= ref and (ref - noplan[g]).total_seconds() <= FRESH_BUCKETS[0][2] * 3600:
+                asked[faculty_of(g)] = asked.get(faculty_of(g), 0) + 1  # asked lately: a check like any other
             continue
         hours = (ref - checked).total_seconds() / 3600
         row[next(k for k, _, limit in FRESH_BUCKETS if limit is None or hours <= limit)] += 1
@@ -1762,7 +1763,8 @@ def plan_stats(current, refreshed, runs):
     week = ref - dt.timedelta(days=7)
     return {
         'ref': ref, 'total': len(stamps),
-        'fresh': sum(row['fr1'] for row in faculties.values()),
+        'fresh': sum(row['fr1'] for row in faculties.values()) + sum(asked.values()),
+        'asked': asked,  # per faculty, the no-plan pages asked in the last 6 h (they count as checked)
         'week': sum(1 for c, _ in dated if c >= week),
         'faculties': [(code, faculties[code]) for code in order],
         'days': [(day, per_day[day]) for day in days],
@@ -1861,7 +1863,7 @@ def render_plan_stats(stats, coverage=()):
         rows.append(f'<li><abbr class="fcode" title="{e(name)}">{e(code if code != "OTHER" else "inne")}</abbr>'
                     f'<svg class="fbar" viewBox="0 0 100 10" preserveAspectRatio="none" role="img" '
                     f'aria-label="{e(code)}: {e(said)}">{_bar_rects(parts, n)}</svg>'
-                    f'<span class="fval">{row["fr1"]} z {n}</span></li>')
+                    f'<span class="fval">{row["fr1"] + stats["asked"].get(code, 0)} z {n}</span></li>')
         table.append(f'<tr><th scope="row">{e(code)}</th>' + ''.join(f'<td>{row[k]}</td>' for k, _ in buckets) + '</tr>')
     fresh_table = ('<details class="tview"><summary>Liczby w tabeli</summary><table><thead><tr><th>Wydział</th>'
                    + ''.join(f'<th>{e(label)}</th>' for _, label in buckets) + '</tr></thead><tbody>'
@@ -1968,8 +1970,9 @@ def render_skipped(skipped):
         name = f'<a href="../{e(s["group"])}/">{e(s["group"])}</a>' if s['kept'] else e(s['group'])
         fate = 'zostaje poprzednia wersja' if s['kept'] else 'grupa bez planu'
         rows += f'<li>{name}<span>{e(s["term"])}: {e(s["why"][:200])} · {fate}</span></li>'
-    return ('<h3 class="sub">Pominięte kalendarze</h3><p class="quietnote">Odświeżony plan nie przeszedł sprawdzenia '
-            f'albo wydział zdjął stronę grupy, więc nowej wersji nie opublikowano.</p><ol class="glist">{rows}</ol>')
+    return ('<div class="card skipped"><h3 class="sub first">Pominięte kalendarze</h3><p class="quietnote">Odświeżony '
+            'plan nie przeszedł sprawdzenia albo wydział zdjął stronę grupy, więc nowej wersji nie opublikowano.</p>'
+            f'<ol class="glist stacked">{rows}</ol></div>')
 
 
 def render_status(template, runs, site_url='', assets=None, current=None, refreshed=None, coverage=(), skipped=()):

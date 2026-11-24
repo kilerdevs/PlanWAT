@@ -197,6 +197,30 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Nowa strona główna** (`src/index.html`, `build.render_index`): zamiast chipów wydziałów, rozwijanych list i arkusza
+  „Nie znasz kodu grupy?” jest jedna droga: karty wydziałów, potem roczniki, potem grupy jako kafelki z gwiazdką.
+  Wybrany wydział i rocznik siedzą w adresie (`?w=WCY&r=2026`), więc gest wstecz wraca do kart, a powrót ze strony grupy
+  przywraca widok. Wyszukiwarka trzyma się góry ekranu i zawsze przeszukuje wszystkie grupy, a jej podpowiedź skraca
+  się, gdy pole jest wąskie. Semestr większości grup stoi raz w nagłówku; kafelek podaje swój tylko wtedy, gdy jest inny.
+  Na komputerze strona jest szersza (cztery kolumny).
+- **Wspólna stopka** (`.sitefoot` w `src/theme.css`, przycisk motywu w `src/theme.js`): strona główna i strony grup mają
+  tę samą krótką, wyśrodkowaną stopkę. Jej linki i motyw to jeden rząd ikon, a „Motyw” zamienia go w miejscu w
+  przełącznik Auto / Ciemny / Jasny.
+- **Nowa strona prywatności** (`src/prywatnosc.html`): obietnica bez e-maila w wyróżnionej karcie, cztery kafelki „W
+  skrócie” i spis treści z linkami do sekcji (na komputerze przyklejony obok tekstu). Porównanie z serwisem z logowaniem
+  na telefonie to karty zamiast tabeli przewijanej w bok, a listy ustawień i zasad są pogrupowanymi wierszami. Strona
+  ma wspólną stopkę (bez przycisku motywu, bo nadal nie uruchamia żadnego skryptu), a data ostatniej zmiany stoi pod
+  tytułem. Stopka na wszystkich stronach ma równe kolumny, więc jej rząd jest dokładnie wyśrodkowany.
+- **Nowa strona odświeżania** (`src/stan.html`, `build.render_status_runs`): na komputerze ostatni przebieg zajmuje całą
+  szerokość (werdykt obok kafelków z liczbami, pasek ostatnich przebiegów pod nimi, graf „Kto co sprawdził” z legendą
+  z boku), a niżej obok siebie stoją „Plany na stronie” i „Ostatnie przebiegi”. Na telefonie pasek przebiegów jest tuż
+  pod liczbami, przed grafem. Serwery przebiegu to jedna cicha linia zamiast pigułek, pominięte kalendarze mają własną
+  kartę, śródtytuły są zwykłymi zdaniami zamiast kapitalików, rozwijane tabele mają strzałkę, a strona ma wspólną
+  stopkę.
+- **Przebiegi dzielą ponowne sprawdzenia po równo** (`core.recheck_due`, [`docs/REFRESH.md`](docs/REFRESH.md)): każda
+  grupa wraca do sprawdzenia na punkcie własnej siatki, najpóźniej po pełnej przerwie, nigdy później. Wcześniej prawie
+  wszystkie grupy wracały razem co trzeci przebieg (około 800 stron i 10 minut), a dwa następne nie miały prawie nic do
+  zrobienia.
 - **Tabela porównawcza (README i `/prywatnosc/`) zgodna z aktualną polityką serwisu z logowaniem kodem:** pełne nazwy
   i sale tylko po zalogowaniu, rejestr pobrań z grupą i adresem IP, `.ics` tylko w Premium (14,99 zł za rok), analityka
   po zgodzie.
@@ -273,6 +297,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Klawisze w widokach Miesiąc i Lista** (`src/group.html`): strzałki, `T` i `Esc` działały tylko w tygodniu. Teraz w
+  miesiącu strzałki zmieniają miesiąc, a `T` wraca do bieżącego; na liście `T` przewija do trwających albo najbliższych
+  zajęć. Wyróżniony przedmiot przygasza w miesiącu dni bez niego, więc `Esc` ma tam co czyścić. Podpowiedź pod planem
+  zmienia się razem z widokiem i podaje jego klawisze (albo gest).
+- **Ilustracja „Gdzie odrobić?” w samouczku**: przy szerszej czcionce systemowej godzina wychodziła poza kartę; karta
+  rośnie teraz do szerokości swoich wierszy.
 - **Kalendarze, które przestały się odświeżać**:
   - trzy grupy WLO były odrzucane w każdym przebiegu od 29 października, bo uwaga wydziału przy zajęciach wymieniała
     prowadzącego; konwerter ucina ją teraz przed tytułem (`wlo2ics.public_note`);

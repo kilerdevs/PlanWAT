@@ -659,14 +659,15 @@ def todo_of(name, cfg, args, state, today, items, ahead=False, only=None):
     # a group that keeps coming back unchanged stretches its gap (--adaptive-hours),
     # so a quiet semester costs about half of yesterday's requests.
     fresh_hours = core.effective_fresh_hours(max(1, cfg.get('fresh_hours', args.fresh_hours)), today)
+    # Inside that gap each group comes due on its own grid (core.recheck_due), so the passes share the work evenly.
     todo = [i for i in items if args.force or not state.fresh(
         key(i.code), now, core.quiet_interval(state.groups.get(key(i.code), {}),
-                                              fresh_hours, args.adaptive_hours), tid)]
+                                              fresh_hours, args.adaptive_hours), tid, floor=fresh_hours)]
     # A page that still showed another semester is asked again later and later (up to core.NOT_READY_CAP_HOURS),
     # except while the faculties publish: it still counts as not ready.
     real_day = getattr(args, 'today', None) or now.date()
     waiting = set() if args.force else {i.code for i in todo if core.still_not_ready(
-        state.groups.get(key(i.code), {}), tid, now, fresh_hours, real_day)}
+        state.groups.get(key(i.code), {}), tid, now, fresh_hours, real_day, key(i.code))}
     todo = [i for i in todo if i.code not in waiting]
     # Stalest first: a run cut short by --max-minutes, --limit or a block refreshes the groups
     # unseen the longest. Never-checked ('') sorts before any ISO timestamp; the code breaks ties
