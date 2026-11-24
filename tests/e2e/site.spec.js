@@ -1198,6 +1198,8 @@ test('the system light theme is followed, and a stored choice wins and survives 
   const problems = await openGroup(page);
   const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(await bg()).toBe('rgb(242, 242, 247)');
+  // the footer's Motyw swaps its row of tools for the three choices
+  await page.locator('#themeBtn').click();
   await page.locator('[data-theme-set="dark"]').click();
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
   // a chosen theme fades over for a moment, so wait for its final colour
@@ -1206,6 +1208,7 @@ test('the system light theme is followed, and a stored choice wins and survives 
   await expect(page.locator('.lesson').first()).toBeVisible();
   expect(await bg()).toBe('rgb(0, 0, 0)');
   await expect(page.locator('[data-theme-set="dark"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#themeBtn').click();
   await page.locator('[data-theme-set="auto"]').click();
   await expect.poll(bg).toBe('rgb(242, 242, 247)');
   expect(problems).toEqual([]);
