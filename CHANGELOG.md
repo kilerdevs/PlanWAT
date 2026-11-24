@@ -206,6 +206,17 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 - **Wspólna stopka** (`.sitefoot` w `src/theme.css`, przycisk motywu w `src/theme.js`): strona główna i strony grup mają
   tę samą krótką, wyśrodkowaną stopkę. Jej linki i motyw to jeden rząd ikon, a „Motyw” zamienia go w miejscu w
   przełącznik Auto / Ciemny / Jasny.
+- **Nowa strona prywatności** (`src/prywatnosc.html`): obietnica bez e-maila w wyróżnionej karcie, cztery kafelki „W
+  skrócie” i spis treści z linkami do sekcji (na komputerze przyklejony obok tekstu). Porównanie z serwisem z logowaniem
+  na telefonie to karty zamiast tabeli przewijanej w bok, a listy ustawień i zasad są pogrupowanymi wierszami. Strona
+  ma wspólną stopkę (bez przycisku motywu, bo nadal nie uruchamia żadnego skryptu), a data ostatniej zmiany stoi pod
+  tytułem. Stopka na wszystkich stronach ma równe kolumny, więc jej rząd jest dokładnie wyśrodkowany.
+- **Nowa strona odświeżania** (`src/stan.html`, `build.render_status_runs`): na komputerze ostatni przebieg zajmuje całą
+  szerokość (werdykt obok kafelków z liczbami, pasek ostatnich przebiegów pod nimi, graf „Kto co sprawdził” z legendą
+  z boku), a niżej obok siebie stoją „Plany na stronie” i „Ostatnie przebiegi”. Na telefonie pasek przebiegów jest tuż
+  pod liczbami, przed grafem. Serwery przebiegu to jedna cicha linia zamiast pigułek, pominięte kalendarze mają własną
+  kartę, śródtytuły są zwykłymi zdaniami zamiast kapitalików, rozwijane tabele mają strzałkę, a strona ma wspólną
+  stopkę.
 - **Przebiegi dzielą ponowne sprawdzenia po równo** (`core.recheck_due`, [`docs/REFRESH.md`](docs/REFRESH.md)): każda
   grupa wraca do sprawdzenia na punkcie własnej siatki, najpóźniej po pełnej przerwie, nigdy później. Wcześniej prawie
   wszystkie grupy wracały razem co trzeci przebieg (około 800 stron i 10 minut), a dwa następne nie miały prawie nic do

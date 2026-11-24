@@ -1652,21 +1652,24 @@ def render_status_runs(runs):
     strip = ''.join(f'<li class="{run_tone(r)}" title="{e(run_when(r["planned"]))}: {e(run_result_label(r))}">'
                     f'<span class="vh">{e(run_when(r["planned"]))}: {e(run_result_label(r))}</span></li>'
                     for r in reversed(runs))
+    # two parts: the verdict, its numbers and the strip of the last passes, then who crawled what (on a phone the strip
+    # is read before the tall graph)
     latest = (
-        '<section class="latest" aria-labelledby="latestTitle">'
+        '<section class="latest" aria-labelledby="latestTitle"><div class="lsum">'
         f'<p class="lstatus"><span class="dot {run_tone(last)}" aria-hidden="true"></span>'
         f'Ostatni przebieg · {e(run_when(last["planned"]))}</p>'
         f'<h2 class="verdict" id="latestTitle">{e(run_result_label(last))}</h2>'
         f'<p class="lead2">{e(run_explanation(last))}</p>'
         '<dl class="stats">' + ''.join(f'<div><dt>{k}</dt><dd>{v}</dd></div>' for k, v in stats) + '</dl>'
+        + f'<div class="striprow"><span class="striplabel">{e(latest_label(len(runs)))}'
+        + (', najnowszy z prawej' if len(runs) > 1 else '') + '</span>'
+        f'<ol class="strip" aria-label="Wyniki od najstarszego">{strip}</ol></div>'
+        '</div><div class="lmap">'
         '<h3 class="sub">Kto co sprawdził</h3>' + _status_graph(last, e) + GRAPH_LEGEND
         + '<details class="tview"><summary>Szczegóły</summary>'
         + _status_section('Serwery', _status_parts(last, e)) + _status_section('Wydziały', _status_faculties(last, e))
         + '</details>'
-        + f'<div class="striprow"><span class="striplabel">{e(latest_label(len(runs)))}'
-        + (', najnowszy z prawej' if len(runs) > 1 else '') + '</span>'
-        f'<ol class="strip" aria-label="Wyniki od najstarszego">{strip}</ol></div>'
-        + '</section>')
+        + '</div></section>')
     rows = []
     for run in runs:
         tone = run_tone(run)
@@ -1967,8 +1970,9 @@ def render_skipped(skipped):
         name = f'<a href="../{e(s["group"])}/">{e(s["group"])}</a>' if s['kept'] else e(s['group'])
         fate = 'zostaje poprzednia wersja' if s['kept'] else 'grupa bez planu'
         rows += f'<li>{name}<span>{e(s["term"])}: {e(s["why"][:200])} · {fate}</span></li>'
-    return ('<h3 class="sub">Pominięte kalendarze</h3><p class="quietnote">Odświeżony plan nie przeszedł sprawdzenia '
-            f'albo wydział zdjął stronę grupy, więc nowej wersji nie opublikowano.</p><ol class="glist">{rows}</ol>')
+    return ('<div class="card skipped"><h3 class="sub first">Pominięte kalendarze</h3><p class="quietnote">Odświeżony '
+            'plan nie przeszedł sprawdzenia albo wydział zdjął stronę grupy, więc nowej wersji nie opublikowano.</p>'
+            f'<ol class="glist stacked">{rows}</ol></div>')
 
 
 def render_status(template, runs, site_url='', assets=None, current=None, refreshed=None, coverage=(), skipped=()):

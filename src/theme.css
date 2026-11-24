@@ -58,7 +58,9 @@ footer .themerow { padding: 0; }
 .sitefoot .legal { max-width: 62ch; margin-left: auto; margin-right: auto; line-height: 1.55; }
 .sitefoot .legal strong { color: var(--t2); font-weight: 600; }
 .sitefoot .legal a { color: var(--accent-text); }
-.foottools { display: flex; justify-content: center; gap: clamp(2px, 2.5vw, 20px); margin: 14px auto 0; }
+/* equal columns, each as wide as the widest label, so the row is symmetric about the page's centre; on the
+   narrowest phones a long label may take a little more than its share rather than be cut */
+.foottools { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); width: max-content; max-width: 100%; gap: clamp(2px, 2.5vw, 20px); margin: 14px auto 0; }
 .sitefoot .tool {
   flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0; min-height: 56px;
   padding: 8px 10px; border: 0; border-radius: 14px; background: transparent; color: var(--t2);
@@ -86,5 +88,5 @@ footer .themerow { padding: 0; }
 @media (prefers-reduced-motion: reduce) { .sitefoot .tool { transition: none; } .sitefoot .tool:active { transform: none; } }
 @media (hover: hover) and (pointer: fine) { .sitefoot .tool:hover { background: var(--s2); color: var(--t1); } }
 @media (max-width: 400px) { .sitefoot .tool { padding-left: 4px; padding-right: 4px; } }
-@media (max-width: 359px) { .sitefoot .tool { font-size: 0.6875rem; } }
+@media (max-width: 359px) { .foottools { gap: 0; } .sitefoot .tool { font-size: 0.6875rem; } }
 @media print { .sitefoot { display: none !important; } }

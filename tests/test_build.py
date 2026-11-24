@@ -151,6 +151,9 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn('<h3 class="sub">Wydziały</h3><ul class="facs"', rows)
         self.assertIn('<a href="https://github.com/kilerdevs/PlanWAT/actions/runs/7">Przebieg #512 na GitHubie</a>', rows)
         self.assertIn('class="dot bad"', rows)
+        # the verdict, its numbers and the strip of the last passes come before the tall graph
+        at = [latest.index(m) for m in ('<div class="lsum">', 'class="strip"', '<div class="lmap">', 'class="graph')]
+        self.assertEqual(at, sorted(at))
 
     def test_a_takeover_shows_whose_faculty_each_server_took(self):
         run = self.run_record(
@@ -288,6 +291,8 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(scripts, [])
         self.assertIn('Brak zapisanych przebiegów', page)
         self.assertNotIn('<ol class="runs">', page)
+        self.assertNotIn('<script', page)
+        self.assertIn('<a class="tool" href="../prywatnosc/">', page)  # the shared footer
         # no README.md on the data branch yet: link the workflow's runs instead of a page that does not exist
         self.assertIn('href="https://github.com/kilerdevs/PlanWAT/actions/workflows/refresh.yml"', page)
         self.assertNotIn('blob/data/README.md', page)
@@ -479,6 +484,10 @@ class BuildRealSiteTest(unittest.TestCase):
             self.assertIn('nigdy nie poprosi Cię o adres e-mail', html, rel)
             self.assertRegex(html, r'href="(\.\./)?prywatnosc/"', rel)
         self.assertNotIn('nofollow', privacy)  # only the dev preview asks not to be indexed
+        self.assertNotIn('<script', privacy)
+        # the contents name every section, and a phone's comparison cards label every value
+        self.assertEqual(re.findall(r'<a href="#([a-z]+)">', privacy), re.findall(r'<section class="sec" id="([a-z]+)">', privacy))
+        self.assertEqual(privacy.count('<td role="cell" data-label="'), privacy.count('<td'))
         status = (self.out / build.STATUS_DIR / 'index.html').read_text(encoding='utf-8')
         self.assertIn("script-src 'none'", self.meta_csp(f'{build.STATUS_DIR}/index.html'))
         self.assertIn('Brak zapisanych przebiegów', status)  # no refresh-runs.json in a plain checkout
@@ -1005,7 +1014,7 @@ class BuildManyGroupsTest(unittest.TestCase):
         self.assertTrue((out / 'WCY25IY1S1' / 'index.html').is_file())  # the good refreshed one went live
         self.assertFalse((self.tt / '2026-27-zima' / 'WCY23LN1S1.ics').exists())
         stan = (out / 'stan' / 'index.html').read_text(encoding='utf-8')
-        self.assertIn('Pominięte kalendarze', stan)
+        self.assertIn('<div class="card skipped"><h3 class="sub first">Pominięte kalendarze</h3>', stan)
         self.assertIn('<a href="../WCY26KY3S1/">WCY26KY3S1</a><span>2026-27-zima: URL is not allowed', stan)
         self.assertIn('WCY24AA1S1<span>2026-27-zima: must start with BEGIN:VCALENDAR', stan)
         self.assertIn('WCY23LN1S1<span>2026-27-zima: not a regular file', stan)

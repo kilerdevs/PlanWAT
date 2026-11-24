@@ -19,9 +19,12 @@
     --bg: #000000;
     --s1: #111113;
     --s2: #1c1c1e;
+    --s3: #2c2c2e;
     --line: #2c2c2e;
     --t1: #f5f5f7;
     --t2: #a1a1a6;
+    --t3: #86868b;
+    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.06);
     --accent: #0a84ff;
     --accent-text: #4da3ff;
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
@@ -38,37 +41,95 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  ::selection { background: rgba(10, 132, 255, 0.45); color: #fff; }
   main {
     max-width: calc(680px + 32px);
     margin: 0 auto;
-    padding: calc(env(safe-area-inset-top) + 32px) max(16px, env(safe-area-inset-right)) 64px max(16px, env(safe-area-inset-left));
+    padding: calc(env(safe-area-inset-top) + 24px) max(16px, env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
-  .back { display: inline-flex; align-items: center; min-height: 44px; color: var(--t2); font-size: 0.9375rem; text-decoration: none;transition: color var(--dur-fast); }
+  .back { display: inline-flex; align-items: center; min-height: 44px; color: var(--t2); font-size: 0.9375rem; text-decoration: none; transition: color var(--dur-fast); }
   .back:hover { color: var(--t1); }
-  h1 { margin: 8px 0 0; font-size: 2.25rem; font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; }
-  h2 { margin: 36px 0 0; font-size: 1.25rem; font-weight: 650; letter-spacing: -0.01em; }
+  h1 { margin: 4px 0 0; font-size: 2.5rem; font-weight: 700; line-height: 1.04; letter-spacing: -0.035em; }
+  .lead { margin: 8px 0 0; font-size: 1.0625rem; color: var(--t2); }
+  .updated { margin: 10px 0 0; font-size: 0.8125rem; color: var(--t3); }
+  h2 { margin: 0; font-size: 1.25rem; font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; }
+  .label { margin: 0 0 10px 4px; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0; color: var(--t3); }
   p, li { color: var(--t2); font-size: 1rem; }
   p { margin: 10px 0 0; }
-  ul { margin: 10px 0 0; padding-left: 20px; }
-  li + li { margin-top: 6px; }
   strong { color: var(--t1); font-weight: 600; }
   code { font-size: 0.875em; color: var(--t1); }
   a { color: var(--accent-text); }
   a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-  .callout { margin-top: 24px; padding: 14px 16px; border-radius: 14px; background: var(--s2); color: var(--t1); }
-  .cmp-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--s1); }
-  .cmp-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  /* below this width the table is wider than the screen: say so, without a line of JavaScript on a privacy page */
-  .cmp-hint { display: none; margin: 6px 2px 0; font-size: 0.8125rem; color: var(--t3); }
-  @media (max-width: 580px) { .cmp-hint { display: block; } }
-  .cmp { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 0.9375rem; }
-  .cmp th, .cmp td { padding: 10px 14px; text-align: left; vertical-align: top; border-top: 1px solid var(--line); color: var(--t2); }
-  .cmp thead th { border-top: 0; color: var(--t1); font-weight: 600; font-size: 0.875rem; }
-  .cmp thead th:nth-child(2), .cmp td:nth-child(2) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
-  .cmp tbody th { color: var(--t1); font-weight: 600; width: 26%; }
-  .cmp td strong { color: var(--accent-text); }
   .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .updated { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 0.875rem; }
+
+  /* ---------- the promise, then the four facts a reader came for ---------- */
+  .pledge {
+    display: flex; gap: 12px; align-items: flex-start; margin-top: 24px; padding: 16px;
+    border-radius: 20px; background: color-mix(in srgb, var(--accent) 10%, var(--s2));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .pledge svg { flex: none; width: 24px; height: 24px; margin-top: 1px; fill: none; stroke: var(--accent-text); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .pledge p { margin: 0; color: var(--t1); }
+  .brief { margin-top: 28px; }
+  .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .facts li {
+    display: flex; flex-direction: column; gap: 4px; min-height: 96px; padding: 14px 16px;
+    border-radius: 16px; background: var(--s2); box-shadow: var(--edge);
+  }
+  .facts strong { font-size: 1.0625rem; font-weight: 700; line-height: 1.2; letter-spacing: -0.015em; }
+  .facts span { font-size: 0.875rem; line-height: 1.4; color: var(--t2); }
+
+  /* ---------- table of contents: plain anchors, a hairline grid on phones, a sticky column on wide screens ---------- */
+  .toc { margin-top: 28px; }
+  .toc ol {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 0; padding: 0; list-style: none;
+    border-radius: 16px; overflow: hidden; background: var(--line); box-shadow: var(--edge);
+  }
+  .toc li { display: flex; background: var(--s2); }
+  .toc a {
+    display: flex; align-items: center; width: 100%; min-height: 44px; padding: 10px 14px;
+    color: var(--t1); font-size: 0.9375rem; font-weight: 500; line-height: 1.25; text-decoration: none;
+    outline-offset: -2px; transition: background-color var(--dur-fast), color var(--dur-fast);
+  }
+  .toc a:focus-visible { border-radius: 0; }
+  .toc a:active { background: var(--s3); }
+  /* an odd count would leave a hole in the grid; this one has eight */
+
+  /* ---------- sections ---------- */
+  .sec { margin-top: 32px; scroll-margin-top: 24px; }
+  .sec + .sec { padding-top: 32px; border-top: 1px solid var(--line); }
+  .rows { margin: 14px 0 0; padding: 0; list-style: none; border-radius: 20px; background: var(--s2); box-shadow: var(--edge); }
+  .rows li { margin-left: 16px; padding: 12px 16px 12px 0; line-height: 1.45; }
+  .rows li + li { border-top: 1px solid var(--line); }
+
+  /* ---------- comparison: a table on wide screens, one card per row on phones ---------- */
+  .cmp-wrap { margin-top: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--s1); overflow: hidden; }
+  .cmp { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.9375rem; }
+  .cmp th, .cmp td { padding: 12px 14px; text-align: left; vertical-align: top; border-top: 1px solid var(--line); color: var(--t2); line-height: 1.45; }
+  .cmp thead th { border-top: 0; color: var(--t1); font-weight: 600; font-size: 0.875rem; }
+  .cmp thead th:nth-child(1) { width: 24%; }
+  .cmp thead th:nth-child(2) { width: 30%; }
+  .cmp thead th:nth-child(2), .cmp td:nth-child(2) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .cmp tbody th { color: var(--t1); font-weight: 600; }
+  .cmp td strong { color: var(--accent-text); }
+  .cmp td:nth-child(2) strong::before { content: "✓\00a0" / ""; }
+  @media (max-width: 639px) {
+    .cmp-wrap { border: 0; border-radius: 0; background: none; overflow: visible; }
+    .cmp, .cmp tbody, .cmp tr, .cmp th, .cmp td { display: block; width: auto; }
+    .cmp thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .cmp tbody { display: grid; gap: 8px; }
+    .cmp tr { padding: 14px 16px; border-radius: 16px; background: var(--s2); box-shadow: var(--edge); }
+    .cmp th, .cmp td { padding: 0; border: 0; }
+    .cmp tbody th { font-size: 1rem; }
+    .cmp td { margin-top: 10px; }
+    .cmp td:nth-child(2) { background: none; }
+    .cmp td::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: 0.75rem; font-weight: 600; color: var(--t3); }
+  }
+
+  /* ---------- the shared footer (theme.css), without the theme button: this page runs no script ---------- */
+  .sitefoot { margin-top: 56px; }
+  .foottools { margin-top: 0; }
+
   /* motion, the project's own (group.html, stan/): one entrance with a 60 ms stagger (a softer rise with a blur on a
      desktop pointer), then each section rises as it comes into view, its heading first. The scroll only pulls the
      trigger (--seen flips once a section's heading is in view, as on /stan/) and the rise runs on the clock, so
@@ -77,11 +138,14 @@
   :root { --rise-y: 16px; --rise-blur: 0px; }
   @property --seen { syntax: '<integer>'; inherits: false; initial-value: 0; }
   @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
     @keyframes rise { from { opacity: 0; transform: translateY(var(--rise-y)); filter: blur(var(--rise-blur)); } }
     @keyframes seen { to { --seen: 1; } }
-    .enter, .sec > *, .cmp tbody tr { animation: rise var(--dur-slow) var(--ease-out) backwards; }
+    .enter, .facts li, .sec > *, .cmp tbody tr { animation: rise var(--dur-slow) var(--ease-out) backwards; }
     .enter { animation-delay: calc(var(--d, 0) * 60ms); }
-    .d1 { --d: 1; } .d2 { --d: 2; }
+    .d1 { --d: 1; } .d2 { --d: 2; } .d3 { --d: 3; } .d4 { --d: 4; } .d5 { --d: 5; }
+    .facts li { animation-delay: calc(240ms + var(--f, 0) * 40ms); }
+    .facts li:nth-child(2) { --f: 1; } .facts li:nth-child(3) { --f: 2; } .facts li:nth-child(4) { --f: 3; }
     /* a section's own stagger: heading, then each block 40 ms apart; the table's rows follow one by one */
     .sec > * { animation-delay: calc(180ms + var(--i, 0) * 40ms); }
     .sec > :nth-child(2) { --i: 1; } .sec > :nth-child(3) { --i: 2; } .sec > :nth-child(4) { --i: 3; } .sec > :nth-child(n+5) { --i: 4; }
@@ -101,99 +165,159 @@
   @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
     :root { --rise-y: 20px; --rise-blur: 8px; }
   }
-  @media (min-width: 768px) { main { padding-top: 64px; } h1 { font-size: 3rem; letter-spacing: -0.035em; } }
+  @media (hover: hover) and (pointer: fine) { .toc a:hover { background: var(--s3); } }
+  @media (min-width: 768px) {
+    main { padding-top: calc(env(safe-area-inset-top) + 48px); }
+    h1 { font-size: 3rem; }
+    .lead { font-size: 1.1875rem; }
+    .facts, .toc ol { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+  /* wide screens: the text stays centred on the page and the contents ride beside it in the left margin */
+  @media (min-width: 1240px) {
+    main { max-width: none; display: grid; grid-template-columns: minmax(0, 1fr) 680px minmax(0, 1fr); column-gap: 48px; align-items: start; }
+    main > *, .layout > * { grid-column: 2; }
+    .layout { display: contents; }
+    .toc { grid-column: 1; grid-row: 3; justify-self: end; width: 200px; position: sticky; top: 24px; margin-top: 32px; }
+    .toc ol { display: block; border-radius: 0; overflow: visible; background: none; box-shadow: none; border-left: 1px solid var(--line); }
+    .toc li { background: none; }
+    .toc a { min-height: 36px; padding: 6px 14px; color: var(--t2); border-radius: 0 10px 10px 0; }
+    .toc a:active { background: var(--s2); }
+  }
+  @media (min-width: 1240px) and (hover: hover) and (pointer: fine) { .toc a:hover { background: var(--s2); color: var(--t1); } }
 /*@@THEME_CSS@@*/
 </style>
 </head>
 <body>
 <main>
-  <a class="back enter" href="../">‹ PlanWAT</a>
-  <h1 class="enter d1">Prywatność i zasady</h1>
+  <div class="top">
+    <a class="back enter" href="../">‹ PlanWAT</a>
+    <h1 class="enter d1">Prywatność i zasady</h1>
+    <p class="lead enter d1">Bez kont, bez e-maila, bez śledzenia.</p>
+    <p class="updated enter d2">Ostatnia zmiana: 19 listopada 2026</p>
 
-  <p class="callout enter d2"><strong>PlanWAT nigdy nie poprosi Cię o adres e-mail</strong> ani żadne inne dane osobowe. Serwis nie ma kont ani formularzy logowania, więc nie ma też miejsca, w którym takie dane mogłyby zostać zapisane. Jeśli ktoś podaje się za PlanWAT i prosi o Twój adres e-mail, to szemrane zachowanie: nie podawaj go i zgłoś to opiekunowi projektu.</p>
-
-  <section class="sec">
-    <h2>Kto prowadzi serwis</h2>
-    <p>PlanWAT to prywatna, nieoficjalna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Prowadzi go opiekun projektu <a href="https://github.com/kilerdevs/PlanWAT">kilerdevs/PlanWAT</a> na GitHubie. Plany zajęć pochodzą z ogólnodostępnych stron wydziałów.</p>
-  </section>
-
-  <section class="sec">
-    <h2>Jakie dane zbieramy</h2>
-    <p><strong>Żadnych danych osobowych.</strong> Nie ma kont, formularzy, plików cookie, reklam ani narzędzi analitycznych czy śledzących. Serwis nie wie, kim jesteś ani które plany oglądasz.</p>
-  </section>
-
-  <section class="sec">
-    <h2>Dlaczego bez logowania</h2>
-    <p>Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to chowają pełne nazwy przedmiotów i sale za logowaniem (kodem wysyłanym na adres uczelniany). Ta droga ma kilka słabych punktów, których u nas po prostu nie ma:</p>
-    <p class="cmp-hint">Przesuń tabelę w bok, aby zobaczyć wszystkie kolumny.</p>
-    <div class="cmp-wrap" tabindex="0" role="region" aria-label="Porównanie PlanWAT z serwisem z logowaniem kodem">
-      <table class="cmp">
-        <thead>
-          <tr><th scope="col"><span class="vh">Cecha</span></th><th scope="col">PlanWAT</th><th scope="col">Serwis z logowaniem kodem na adres uczelniany</th></tr>
-        </thead>
-        <tbody>
-          <tr><th scope="row">Logowanie</th><td><strong>Nie ma i nie będzie</strong></td><td>Bez niego tylko godziny i skróty przedmiotów; pełne nazwy i sale dopiero po zalogowaniu, choć plan jest publiczny</td></tr>
-          <tr><th scope="row">Co o Tobie wiemy</th><td><strong>Nic: ani adresu, ani konta</strong></td><td>Adres uczelniany, stały identyfikator przeglądarki, daty ostatniego logowania i aktywności, przy każdym pobraniu planu grupa, adres IP i godzina, a przy zakupie imię, nazwisko i adres</td></tr>
-          <tr><th scope="row">Co wycieknie przy włamaniu</th><td><strong>Nie ma czego wykradać</strong></td><td>Adresy uczelniane z datami aktywności i historią płatności oraz rejestr pobrań planów z grupami i adresami IP z ostatnich 90 dni</td></tr>
-          <tr><th scope="row">Phishing</th><td><strong>Nikt nie prosi Cię o kod, więc nie ma czego podrobić</strong></td><td>Przyzwyczaja do wpisywania kodów z poczty uczelnianej na stronie osoby trzeciej, czyli dokładnie tak, jak działają wyłudzacze</td></tr>
-          <tr><th scope="row">Obowiązki wobec RODO</th><td><strong>Żadne: nie zbieramy danych osobowych</strong></td><td>Zgody, polityka przetwarzania, obsługa próśb o wgląd i usunięcie danych</td></tr>
-          <tr><th scope="row">Eksport i subskrypcja kalendarza (<code>.ics</code>)</th><td><strong>Za darmo, dla każdego</strong></td><td>Tylko w płatnym Premium (eksportu nie ma nawet w 7-dniowym okresie próbnym)</td></tr>
-          <tr><th scope="row">Reklamy, śledzenie, cookies</th><td><strong>Brak</strong></td><td>Analityka zachowania po zgodzie w banerze, zdarzenia z pseudonimizowanym IP trzymane 365 dni</td></tr>
-          <tr><th scope="row">Cena</th><td><strong>0 zł, na zawsze</strong></td><td>Premium 14,99 zł za rok, kartą odnawiane automatycznie</td></tr>
-          <tr><th scope="row">Kod źródłowy</th><td><strong>Otwarty, na licencji MIT</strong></td><td>Zamknięty: opis z polityki prywatności trzeba przyjąć na słowo (trust me bro)</td></tr>
-        </tbody>
-      </table>
+    <div class="pledge enter d2">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+      <p><strong>PlanWAT nigdy nie poprosi Cię o adres e-mail</strong> ani żadne inne dane osobowe. Serwis nie ma kont ani formularzy logowania, więc nie ma też miejsca, w którym takie dane mogłyby zostać zapisane. Jeśli ktoś podaje się za PlanWAT i prosi o Twój adres e-mail, to szemrane zachowanie: nie podawaj go i zgłoś to opiekunowi projektu.</p>
     </div>
-  </section>
+  </div>
 
-  <section class="sec">
-    <h2>Co zostaje w Twojej przeglądarce</h2>
-    <p>Kilka ustawień zapisuje się wyłącznie na Twoim urządzeniu (<code>localStorage</code>) i nigdy nie jest nigdzie wysyłane:</p>
-    <ul>
-      <li data-storage="favs recent">ulubione i ostatnio oglądane grupy,</li>
-      <li data-storage="view">wybrany widok planu (tydzień, lista, miesiąc),</li>
-      <li data-storage="toolTab">ostatnio otwarta zakładka narzędzi,</li>
-      <li data-storage="theme">wybrany motyw (jasny lub ciemny),</li>
-      <li data-storage="tour">informacja, że przewodnik został już pokazany,</li>
-      <li data-storage="seen">wersja planu z ostatniej wizyty, żeby pokazać, że plan się zmienił,</li>
-      <li data-storage="compare">grupy wybrane do porównania,</li>
-      <li data-storage="hide">przedmioty i rodzaje zajęć ukryte w „Moich przedmiotach”,</li>
-      <li data-storage="extras">Twoje dodatkowe zajęcia (nazwa, dzień, godziny i miejsce, które sam wpiszesz).</li>
-    </ul>
-    <p>Aby plan działał bez internetu, przeglądarka przechowuje też kopię odwiedzonych stron i plików planu (Service Worker, Cache Storage). Wszystko to usuniesz, czyszcząc dane witryny w ustawieniach przeglądarki.</p>
-  </section>
-
-  <section class="sec">
-    <h2>Hosting i usługi zewnętrzne</h2>
-    <p>Jak każda strona internetowa, serwer otrzymuje Twój adres IP i podstawowe dane żądania (adres strony, czas, rodzaj przeglądarki), bo bez nich nie mógłby odesłać strony. Robią to:</p>
-    <ul>
-      <li><strong>hosting:</strong> GitHub Pages (GitHub, Inc.), który może przez ograniczony czas przechowywać logi w celach technicznych i ochrony przed nadużyciami, na zasadach swojej polityki prywatności.</li>
-    </ul>
-    <p>Nic więcej: krój pisma i cała mapa kampusu (silnik, kafelki i ikony; dane © współtwórcy OpenStreetMap) są serwowane z tej samej strony, więc żadna strona PlanWAT nie łączy się z innymi serwerami.</p>
-    <p>Strony wysyłają nagłówek „no-referrer”, więc te usługi nie dostają adresu strony, z której przychodzisz. Linki do Google Calendar, Map Google czy e-dziekanatu otwierają zewnętrzne serwisy dopiero wtedy, gdy je klikniesz.</p>
-  </section>
-
-  <section class="sec">
-    <h2>Twoje prawa</h2>
-    <p>Ponieważ PlanWAT nie zbiera danych, które pozwalają Cię zidentyfikować, nie mamy czego udostępnić ani usunąć. W sprawie logów hostingu możesz zwrócić się do GitHub. Masz też prawo wnieść skargę do Prezesa Urzędu Ochrony Danych Osobowych.</p>
-  </section>
-
-  <section class="sec">
-    <h2>Zasady korzystania</h2>
-    <ul>
-      <li>Serwis jest darmowy i udostępniany „tak jak jest”, bez gwarancji poprawności i dostępności.</li>
-      <li>Wiążący jest oficjalny plan uczelni: zmiany i terminy dodatkowe zawsze sprawdzaj w e-dziekanacie.</li>
-      <li>Nie odpowiadamy za skutki opierania się wyłącznie na tym serwisie, np. spóźnienia czy nieobecności.</li>
-      <li>Kod jest otwarty; licencje użytego oprogramowania i danych opisuje plik THIRD-PARTY-NOTICES w repozytorium.</li>
+  <section class="brief" aria-labelledby="briefTitle">
+    <h2 class="label enter d3" id="briefTitle">W skrócie</h2>
+    <ul class="facts">
+      <li><strong>0 danych osobowych</strong><span>bez kont, e-maila i formularzy</span></li>
+      <li><strong>Bez cookies</strong><span>ani reklam, analityki i śledzenia</span></li>
+      <li><strong>Tylko u Ciebie</strong><span>ustawienia zostają w przeglądarce</span></li>
+      <li><strong>0 zł na zawsze</strong><span>otwarty kod na licencji MIT</span></li>
     </ul>
   </section>
 
-  <section class="sec">
-    <h2>Kontakt i bezpieczeństwo</h2>
-    <p>Błąd w planie lub w serwisie zgłoś w <a href="https://github.com/kilerdevs/PlanWAT/issues">zgłoszeniach na GitHubie</a>. Lukę bezpieczeństwa zgłoś prywatnie przez <a href="https://github.com/kilerdevs/PlanWAT/security/advisories/new">GitHub Security Advisories</a> (szczegóły w <a href="../.well-known/security.txt">security.txt</a>).</p>
+  <div class="layout">
+    <nav class="toc enter d4" aria-labelledby="tocTitle">
+      <h2 class="label" id="tocTitle">Na tej stronie</h2>
+      <ol>
+        <li><a href="#kto">Kto prowadzi</a></li>
+        <li><a href="#dane">Jakie dane</a></li>
+        <li><a href="#logowanie">Bez logowania</a></li>
+        <li><a href="#przegladarka">W przeglądarce</a></li>
+        <li><a href="#hosting">Hosting</a></li>
+        <li><a href="#prawa">Twoje prawa</a></li>
+        <li><a href="#zasady">Zasady</a></li>
+        <li><a href="#kontakt">Kontakt</a></li>
+      </ol>
+    </nav>
 
-    <p class="updated">Ostatnia zmiana: 19 listopada 2026</p>
-  </section>
+    <div class="content">
+      <section class="sec" id="kto">
+        <h2>Kto prowadzi serwis</h2>
+        <p>PlanWAT to prywatna, nieoficjalna inicjatywa studentów, niezwiązana z Wojskową Akademią Techniczną. Prowadzi go opiekun projektu <a href="https://github.com/kilerdevs/PlanWAT">kilerdevs/PlanWAT</a> na GitHubie. Plany zajęć pochodzą z ogólnodostępnych stron wydziałów.</p>
+      </section>
+
+      <section class="sec" id="dane">
+        <h2>Jakie dane zbieramy</h2>
+        <p><strong>Żadnych danych osobowych.</strong> Nie ma kont, formularzy, plików cookie, reklam ani narzędzi analitycznych czy śledzących. Serwis nie wie, kim jesteś ani które plany oglądasz.</p>
+      </section>
+
+      <section class="sec" id="logowanie">
+        <h2>Dlaczego bez logowania</h2>
+        <p>Plan zajęć jest publiczny, więc nie ma czego chronić logowaniem. Są serwisy, które mimo to chowają pełne nazwy przedmiotów i sale za logowaniem (kodem wysyłanym na adres uczelniany). Ta droga ma kilka słabych punktów, których u nas po prostu nie ma:</p>
+        <div class="cmp-wrap">
+          <!-- the roles keep it a table for screen readers when a phone restacks the rows into cards -->
+          <table class="cmp" role="table">
+            <caption class="vh">Porównanie PlanWAT z serwisem z logowaniem kodem</caption>
+            <thead role="rowgroup">
+              <tr role="row"><th scope="col" role="columnheader"><span class="vh">Cecha</span></th><th scope="col" role="columnheader">PlanWAT</th><th scope="col" role="columnheader">Serwis z logowaniem kodem na adres uczelniany</th></tr>
+            </thead>
+            <tbody role="rowgroup">
+              <tr role="row"><th scope="row" role="rowheader">Logowanie</th><td role="cell" data-label="PlanWAT"><strong>Nie ma i nie będzie</strong></td><td role="cell" data-label="Serwis z logowaniem kodem">Publiczny plan wzięty jako zakładnik: bez logowania tylko godziny i skróty, a pełne nazwy i sale dopiero po oddaniu adresu. Ten sam plan, który uczelnia daje każdemu za darmo i bez pytania</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Co o Tobie wiemy</th><td role="cell" data-label="PlanWAT"><strong>Nic: ani adresu, ani konta</strong></td><td role="cell" data-label="Serwis z logowaniem kodem">Sporo jak na plan zajęć: adres uczelniany, stały identyfikator przeglądarki, daty ostatniego logowania i aktywności, przy każdym pobraniu planu grupa, adres IP i godzina, a przy zakupie jeszcze imię, nazwisko i adres. Wszystko po to, żeby pokazać Ci salę</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Co wycieknie przy włamaniu</th><td role="cell" data-label="PlanWAT"><strong>Nie ma czego wykradać</strong></td><td role="cell" data-label="Serwis z logowaniem kodem">Gotowa paczka dla wyłudzaczy: adresy uczelniane z datami aktywności i historią płatności oraz rejestr pobrań planów z grupami i adresami IP z ostatnich 90 dni. Wystarczy jedna dziura</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Phishing</th><td role="cell" data-label="PlanWAT"><strong>Nikt nie prosi Cię o kod, więc nie ma czego podrobić</strong></td><td role="cell" data-label="Serwis z logowaniem kodem">Uczy dokładnie tego, przed czym ostrzega każde szkolenie z bezpieczeństwa: wpisywania kodów z poczty uczelnianej na stronie osoby trzeciej. Wyłudzacze dziękują za darmowy trening</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Obowiązki wobec RODO</th><td role="cell" data-label="PlanWAT"><strong>Żadne: nie zbieramy danych osobowych</strong></td><td role="cell" data-label="Serwis z logowaniem kodem">Zgody, polityka przetwarzania, prośby o wgląd i usunięcie danych: cała biurokracja, którą trzeba było sobie zafundować, żeby pokazać publiczny plan zza logowania</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Eksport i subskrypcja kalendarza (<code>.ics</code>)</th><td role="cell" data-label="PlanWAT"><strong>Za darmo, dla każdego</strong></td><td role="cell" data-label="Serwis z logowaniem kodem">Za paywallem Premium, tak szczelnym, że eksportu nie ma nawet w 7-dniowym okresie próbnym. Twój własny plan w Twoim własnym kalendarzu jako płatny dodatek</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Reklamy, śledzenie, cookies</th><td role="cell" data-label="PlanWAT"><strong>Brak</strong></td><td role="cell" data-label="Serwis z logowaniem kodem">Najpierw baner zgody, za nim analityka zachowania, a zdarzenia z pseudonimizowanym IP leżą 365 dni. Cały rok pamięci o tym, jak sprawdzałeś salę</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Cena</th><td role="cell" data-label="PlanWAT"><strong>0 zł, na zawsze</strong></td><td role="cell" data-label="Serwis z logowaniem kodem">14,99 zł rocznie za dostęp do publicznego planu, kartą, odnawiane automatycznie, bo a nuż zapomnisz anulować</td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Kod źródłowy</th><td role="cell" data-label="PlanWAT"><strong>Otwarty, na licencji MIT</strong></td><td role="cell" data-label="Serwis z logowaniem kodem">Zamknięty. Co naprawdę dzieje się z Twoimi danymi, wiesz tylko z ich polityki prywatności, a tę trzeba przyjąć na słowo (trust me bro)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="sec" id="przegladarka">
+        <h2>Co zostaje w Twojej przeglądarce</h2>
+        <p>Kilka ustawień zapisuje się wyłącznie na Twoim urządzeniu (<code>localStorage</code>) i nigdy nie jest nigdzie wysyłane:</p>
+        <ul class="rows">
+          <li data-storage="favs recent">Ulubione i ostatnio oglądane grupy</li>
+          <li data-storage="view">Wybrany widok planu (tydzień, lista, miesiąc)</li>
+          <li data-storage="toolTab">Ostatnio otwarta zakładka narzędzi</li>
+          <li data-storage="theme">Wybrany motyw (jasny lub ciemny)</li>
+          <li data-storage="tour">Informacja, że przewodnik został już pokazany</li>
+          <li data-storage="seen">Wersja planu z ostatniej wizyty, żeby pokazać, że plan się zmienił</li>
+          <li data-storage="compare">Grupy wybrane do porównania</li>
+          <li data-storage="hide">Przedmioty i rodzaje zajęć ukryte w „Moich przedmiotach”</li>
+          <li data-storage="extras">Twoje dodatkowe zajęcia (nazwa, dzień, godziny i miejsce, które sam wpiszesz)</li>
+        </ul>
+        <p>Aby plan działał bez internetu, przeglądarka przechowuje też kopię odwiedzonych stron i plików planu (Service Worker, Cache Storage). Wszystko to usuniesz, czyszcząc dane witryny w ustawieniach przeglądarki.</p>
+      </section>
+
+      <section class="sec" id="hosting">
+        <h2>Hosting i usługi zewnętrzne</h2>
+        <p>Jak każda strona internetowa, serwer otrzymuje Twój adres IP i podstawowe dane żądania (adres strony, czas, rodzaj przeglądarki), bo bez nich nie mógłby odesłać strony. Robią to:</p>
+        <ul class="rows">
+          <li><strong>Hosting:</strong> GitHub Pages (GitHub, Inc.), który może przez ograniczony czas przechowywać logi w celach technicznych i ochrony przed nadużyciami, na zasadach swojej polityki prywatności.</li>
+        </ul>
+        <p>Nic więcej: krój pisma i cała mapa kampusu (silnik, kafelki i ikony; dane © współtwórcy OpenStreetMap) są serwowane z tej samej strony, więc żadna strona PlanWAT nie łączy się z innymi serwerami.</p>
+        <p>Strony wysyłają nagłówek „no-referrer”, więc te usługi nie dostają adresu strony, z której przychodzisz. Linki do Google Calendar, Map Google czy e-dziekanatu otwierają zewnętrzne serwisy dopiero wtedy, gdy je klikniesz.</p>
+      </section>
+
+      <section class="sec" id="prawa">
+        <h2>Twoje prawa</h2>
+        <p>Ponieważ PlanWAT nie zbiera danych, które pozwalają Cię zidentyfikować, nie mamy czego udostępnić ani usunąć. W sprawie logów hostingu możesz zwrócić się do GitHub. Masz też prawo wnieść skargę do Prezesa Urzędu Ochrony Danych Osobowych.</p>
+      </section>
+
+      <section class="sec" id="zasady">
+        <h2>Zasady korzystania</h2>
+        <ul class="rows">
+          <li>Serwis jest darmowy i udostępniany „tak jak jest”, bez gwarancji poprawności i dostępności.</li>
+          <li>Wiążący jest oficjalny plan uczelni: zmiany i terminy dodatkowe zawsze sprawdzaj w e-dziekanacie.</li>
+          <li>Nie odpowiadamy za skutki opierania się wyłącznie na tym serwisie, np. spóźnienia czy nieobecności.</li>
+          <li>Kod jest otwarty; licencje użytego oprogramowania i danych opisuje plik THIRD-PARTY-NOTICES w repozytorium.</li>
+        </ul>
+      </section>
+
+      <section class="sec" id="kontakt">
+        <h2>Kontakt i bezpieczeństwo</h2>
+        <p>Błąd w planie lub w serwisie zgłoś w <a href="https://github.com/kilerdevs/PlanWAT/issues">zgłoszeniach na GitHubie</a>. Lukę bezpieczeństwa zgłoś prywatnie przez <a href="https://github.com/kilerdevs/PlanWAT/security/advisories/new">GitHub Security Advisories</a> (szczegóły w <a href="../.well-known/security.txt">security.txt</a>).</p>
+      </section>
+    </div>
+
+    <footer class="sitefoot">
+      <nav class="foottools" aria-label="Więcej">
+        <a class="tool" href="../"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11h14V9"/><path d="M10 20v-6h4v6"/></svg><span>Strona główna</span></a>
+        <a class="tool" href="../stan/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg><span>Odświeżanie</span></a>
+        <a class="tool" href="https://github.com/kilerdevs/PlanWAT/issues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v4M12 14h.01"/></svg><span>Zgłoś błąd</span></a>
+      </nav>
+    </footer>
+  </div>
 </main>
 </body>
 </html>

@@ -133,6 +133,12 @@ test('the privacy page is linked from the footer, accessible and runs no script'
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
   expect(serious).toEqual([]);
+  // a phone reads the comparison as cards, never a table scrolled sideways; the contents jump to a section
+  await page.setViewportSize({ width: 360, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.locator('.toc a[href="#hosting"]').click();
+  await expect(page).toHaveURL(/#hosting$/);
+  await expect(page.locator('#hosting h2')).toBeInViewport();
 });
 
 test('the refresh history is linked from the footer, names each pass\'s servers and runs no script', async ({ page }) => {
@@ -172,6 +178,14 @@ test('the refresh history is linked from the footer, names each pass\'s servers 
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
   expect(serious).toEqual([]);
+  // a phone never scrolls sideways; a wide screen puts the plans and the passes side by side
+  await page.setViewportSize({ width: 360, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const plans = await page.locator('#plansTitle').boundingBox();
+  const passes = await page.locator('#runsTitle').boundingBox();
+  expect(passes.x).toBeGreaterThan(plans.x + plans.width);
+  expect(Math.abs(passes.y - plans.y)).toBeLessThan(2);
 });
 
 test('pages draw with Inter from the site itself and ask no other host for fonts', async ({ page, browserName }) => {
