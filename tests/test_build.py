@@ -10,6 +10,7 @@ import re
 import shutil
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -336,6 +337,16 @@ class FacultyTest(unittest.TestCase):
         self.assertEqual(build.plural_grup(5), '5 grup')
         self.assertEqual(build.plural_grup(186), '186 grup')
 
+    def test_the_root_names_the_shared_term_once_and_only_odd_rows_carry_theirs(self):
+        def term(term_id, label=''):
+            return types.SimpleNamespace(term_id=term_id, meta={'term': label})
+        current = {'WCY26KY3S1': term('2026-27-zima', 'semestr zimowy 2026/27'), 'WCY26KY1S1': term('2026-27-zima'),
+                   'WEL24AB1S1': term('2025-26-lato')}
+        page = build.render_index('@@STATS@@\n@@GROUPS@@\n@@FACULTIES@@', current)[0]
+        self.assertIn('3 grupy &middot; 2 wydziały &middot; semestr zimowy 2026/27', page)
+        self.assertEqual(page.count('class="term"'), 1)
+        self.assertIn('<span class="code">WEL24AB1S1</span><span class="term">Lato 2025/26</span>', page)
+
 
 class PickTermTest(unittest.TestCase):
     TERMS = [
@@ -433,15 +444,14 @@ class BuildRealSiteTest(unittest.TestCase):
                 self.assertTrue(icon['src'].startswith('../icons/'), icon['src'])
                 self.assertTrue((group_dir / icon['src']).resolve().is_file(), icon['src'])
 
-    def test_root_offers_a_faculty_year_group_finder(self):
+    def test_root_leads_from_faculty_cards_to_intake_years_and_groups(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
-        for marker in ('id="findGroup"', 'aria-controls="groupFinder"', 'id="groupFinder"',
-                       'aria-labelledby="finderTitle"', 'aria-describedby="finderLead"',
-                       'id="finderStep"', 'id="finderBack"', 'id="finderBody"'):
+        for marker in ('id="overview"', 'id="facHead"', 'id="facBack"', 'id="facTitle"', 'id="years"'):
             self.assertIn(marker, html)
-        self.assertIn('Nie znasz kodu grupy?', html)
-        self.assertIn('Znajdź ją po wydziale i roku naboru', html)
-        self.assertIn('Krok 1 z 3', html)
+        self.assertIn('<button class="fac-card" type="button" data-fac-card="WCY">', html)
+        self.assertIn('<span class="fac-name">Wydział Bezpieczeństwa, Logistyki i Zarządzania</span>', html)
+        self.assertNotIn('groupFinder', html)
+        self.assertNotIn('<details', html)
         for group in self.groups():
             row = re.search(r'<li class="row" data-group="' + re.escape(group) +
                             r'" data-fac="([A-Z]+)" data-year="(\d{4}|)">', html)
@@ -546,7 +556,7 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn('window.PlanICS', html)
         self.assertIn("connect-src 'self'", html)
 
-    def test_root_lists_collapsed_faculty_sections_and_a_group_search(self):
+    def test_root_lists_hidden_faculty_sections_and_a_group_search(self):
         html = (self.out / 'index.html').read_text(encoding='utf-8')
         self.assertNotIn('data-facbtn', html)
         self.assertNotIn('@@', html)
@@ -554,10 +564,9 @@ class BuildRealSiteTest(unittest.TestCase):
         self.assertIn('id="noResults"', html)
         self.assertIn('data-fac-section="WCY"', html)
         self.assertIn('data-fac-section="WLO"', html)
-        self.assertIn('WLO &middot; Wydział Bezpieczeństwa, Logistyki i Zarządzania', html)
-        self.assertIn('<details class="fac-sec"', html)
-        self.assertNotIn('<details class="fac-sec" open', html)
-        self.assertNotIn('<details open', html)
+        self.assertIn('<h3 class="fac-title">WLO &middot; Wydział Bezpieczeństwa, Logistyki i Zarządzania</h3>', html)
+        self.assertIn('<section class="fac" data-fac-section="WCY" hidden>', html)  # the script shows a faculty on demand
+        self.assertNotIn('<section class="fac" data-fac-section="WCY">', html)
         for group in self.groups():
             self.assertIn(f'data-group="{group}"', html)
 

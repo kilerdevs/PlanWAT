@@ -1102,14 +1102,15 @@ def render_index(template, current, ics_js='', assets=None, site_url=''):
     names = {code: pl for code, pl in FACULTIES}
     order = {code: i for i, (code, _) in enumerate(FACULTIES)}
     groups = sorted(current.items(), key=lambda kv: (order.get(faculty_of(kv[0]), len(order)), kv[0]))
-    labels = {code: term.meta['term'] or term.term_id for code, term in groups}
-    uniform = len(set(labels.values())) == 1  # one term for everyone: say it once, not on every row
+    labels = {code: term.meta['term'] or term_label(term.term_id) for code, term in groups}
+    # the term most groups share is said once, up top; a row names its term only when it differs
+    common = collections.Counter(t.term_id for _, t in groups).most_common(1)[0][0] if groups else ''
 
     def intake(code):
         m = INTAKE_RE.match(code)
         return 2000 + int(m.group(1)) if m else None
 
-    sections, chips, fac, rows = [], [], None, []
+    sections, cards, fac, rows = [], [], None, []
     totals = {}
     for code, _ in groups:
         totals[faculty_of(code)] = totals.get(faculty_of(code), 0) + 1
@@ -1117,12 +1118,12 @@ def render_index(template, current, ics_js='', assets=None, site_url=''):
     def flush():
         if rows:
             if fac == 'OTHER':
-                title, short = 'Pozostałe grupy', 'Pozostałe'
+                title, short, name = 'Pozostałe grupy', 'Inne', 'Pozostałe grupy'
             else:
-                title, short = f'{fac} &middot; {html.escape(names[fac])}', fac
-            full = html.escape(names.get(fac, 'Pozostałe grupy'), quote=True)
-            chips.append(f'    <button class="chip" type="button" data-fac="{fac}" aria-pressed="false" title="{full}">'
-                         f'{short}<span class="n">{totals[fac]}</span></button>')
+                title, short, name = f'{fac} &middot; {html.escape(names[fac])}', fac, html.escape(names[fac])
+            cards.append(f'    <li><button class="fac-card" type="button" data-fac-card="{fac}">'
+                         f'<span class="fac-code">{short}</span><span class="fac-name">{name}</span>'
+                         f'<span class="fac-n">{plural_grup(totals[fac])}</span></button></li>')
             lis, last = [], None
             years = {intake(c) for c, _ in rows_src}
             for code, row in rows_src:
@@ -1131,23 +1132,19 @@ def render_index(template, current, ics_js='', assets=None, site_url=''):
                     lis.append(f'    <li class="yr">Rocznik {year}</li>' if year else '    <li class="yr">Pozostałe</li>')
                     last = year
                 lis.append(row)
-            sections.append(f'  <details class="fac-sec" data-fac-section="{fac}">\n'
-                            f'    <summary><span class="fac-title">{title}</span>'
-                            f'<span class="fac-n">{plural_grup(len(rows))}</span>'
-                            '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true">'
-                            '<path d="m9 18 6-6-6-6"/></svg></summary>\n'
-                            '  <ul>\n' + '\n'.join(lis) + '\n  </ul>\n  </details>')
+            sections.append(f'  <section class="fac" data-fac-section="{fac}" hidden>\n'
+                            f'    <h3 class="fac-title">{title}</h3>\n'
+                            '  <ul class="tiles">\n' + '\n'.join(lis) + '\n  </ul>\n  </section>')
 
     rows_src = []
     for code, term in groups:
         if faculty_of(code) != fac:
             flush()
             fac, rows, rows_src = faculty_of(code), [], []
-        term_html = '' if uniform else f'<span class="term">{html.escape(labels[code])}</span>'
+        term_html = '' if term.term_id == common else f'<span class="term">{html.escape(labels[code])}</span>'
         intake_year = intake(code)
         row = (f'    <li class="row" data-group="{code}" data-fac="{faculty_of(code)}" data-year="{intake_year or ""}">'
-               f'<a class="group" href="{code}/"><span><span class="code">{code}</span>{term_html}</span>'
-               '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>'
+               f'<a class="group" href="{code}/"><span class="code">{code}</span>{term_html}</a>'
                f'<button class="star" type="button" data-star="{code}" aria-pressed="false" '
                f'aria-label="Dodaj {code} do ulubionych">{STAR_SVG}</button></li>')
         rows.append(row)
@@ -1155,15 +1152,13 @@ def render_index(template, current, ics_js='', assets=None, site_url=''):
     flush()
     facs = [f for f in totals if f != 'OTHER']
     stats = plural_grup(len(groups)) + ' &middot; ' + plural_wydzial(len(facs))
-    if uniform and groups:
-        stats += ' &middot; ' + html.escape(next(iter(labels.values())))
+    if common:
+        said = next((t.meta['term'] for _, t in groups if t.term_id == common and t.meta['term']), term_label(common))
+        stats += ' &middot; ' + html.escape(said)
     redirect = f'<meta http-equiv="refresh" content="0; url={groups[0][0]}/">' if len(groups) == 1 else ''
-    all_chip = (f'    <button class="chip" type="button" data-fac="" aria-pressed="true">Wszystkie'
-                f'<span class="n">{len(groups)}</span></button>')
-    chips_html = '\n'.join([all_chip] + chips)
     page = template.replace('@@ICS_JS@@', ics_js)  # first: the script's own text is never substituted into
     page = page.replace('@@GROUPS@@', '\n'.join(sections))
-    page = page.replace('@@CHIPS@@', chips_html)
+    page = page.replace('@@FACULTIES@@', '\n'.join(cards))
     page = page.replace('@@STATS@@', stats)
     page = page.replace('@@REDIRECT@@', redirect)
     title, description = index_seo(current)

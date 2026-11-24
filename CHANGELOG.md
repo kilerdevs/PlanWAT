@@ -197,6 +197,15 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Nowa strona główna** (`src/index.html`, `build.render_index`): zamiast chipów wydziałów, rozwijanych list i arkusza
+  „Nie znasz kodu grupy?” jest jedna droga: karty wydziałów, potem roczniki, potem grupy jako kafelki z gwiazdką.
+  Wybrany wydział i rocznik siedzą w adresie (`?w=WCY&r=2026`), więc gest wstecz wraca do kart, a powrót ze strony grupy
+  przywraca widok. Wyszukiwarka trzyma się góry ekranu i zawsze przeszukuje wszystkie grupy, a jej podpowiedź skraca
+  się, gdy pole jest wąskie. Semestr większości grup stoi raz w nagłówku; kafelek podaje swój tylko wtedy, gdy jest inny.
+  Na komputerze strona jest szersza (cztery kolumny).
+- **Wspólna stopka** (`.sitefoot` w `src/theme.css`, przycisk motywu w `src/theme.js`): strona główna i strony grup mają
+  tę samą krótką, wyśrodkowaną stopkę. Jej linki i motyw to jeden rząd ikon, a „Motyw” zamienia go w miejscu w
+  przełącznik Auto / Ciemny / Jasny.
 - **Przebiegi dzielą ponowne sprawdzenia po równo** (`core.recheck_due`, [`docs/REFRESH.md`](docs/REFRESH.md)): każda
   grupa wraca do sprawdzenia na punkcie własnej siatki, najpóźniej po pełnej przerwie, nigdy później. Wcześniej prawie
   wszystkie grupy wracały razem co trzeci przebieg (około 800 stron i 10 minut), a dwa następne nie miały prawie nic do
@@ -277,6 +286,12 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Klawisze w widokach Miesiąc i Lista** (`src/group.html`): strzałki, `T` i `Esc` działały tylko w tygodniu. Teraz w
+  miesiącu strzałki zmieniają miesiąc, a `T` wraca do bieżącego; na liście `T` przewija do trwających albo najbliższych
+  zajęć. Wyróżniony przedmiot przygasza w miesiącu dni bez niego, więc `Esc` ma tam co czyścić. Podpowiedź pod planem
+  zmienia się razem z widokiem i podaje jego klawisze (albo gest).
+- **Ilustracja „Gdzie odrobić?” w samouczku**: przy szerszej czcionce systemowej godzina wychodziła poza kartę; karta
+  rośnie teraz do szerokości swoich wierszy.
 - **Kalendarze, które przestały się odświeżać**:
   - trzy grupy WLO były odrzucane w każdym przebiegu od 29 października, bo uwaga wydziału przy zajęciach wymieniała
     prowadzącego; konwerter ucina ją teraz przed tytułem (`wlo2ics.public_note`);

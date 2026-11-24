@@ -46,5 +46,26 @@
       });
     }
     mark();
+    /* the footer's Motyw: swaps the row of tools for the three choices, shows the one in force, swaps back once picked */
+    var btn = document.getElementById('themeBtn'), row = document.getElementById('themeRow'), tools = document.getElementById('footTools');
+    if (!btn || !row || !tools) return;
+    var NAMES = { auto: 'automatyczny', dark: 'ciemny', light: 'jasny' };
+    function show(t) { btn.setAttribute('data-mode', t); btn.setAttribute('aria-label', 'Motyw: ' + NAMES[t]); }
+    function open(on) {
+      row.hidden = !on;
+      tools.hidden = on;
+      tools.classList.toggle('again', !on);
+      btn.setAttribute('aria-expanded', String(on));
+    }
+    show(stored());
+    btn.addEventListener('click', function () { open(true); (row.querySelector('[aria-pressed="true"]') || row.querySelector('button')).focus(); });
+    row.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-theme-set]');
+      if (!b) return;
+      show(b.getAttribute('data-theme-set'));
+      setTimeout(function () { open(false); btn.focus(); }, 220);
+    });
+    row.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.stopPropagation(); open(false); btn.focus(); } });
+    document.addEventListener('click', function (e) { if (!row.hidden && !row.contains(e.target) && !btn.contains(e.target)) open(false); });
   });
 })();
