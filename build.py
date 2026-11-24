@@ -1727,7 +1727,7 @@ def plan_stats(current, refreshed, runs):
     is on record): how long ago each faculty's plans were confirmed, when plans last changed, and the extremes.
     None when nothing was ever checked. Every age is against that moment, not the build's clock, so a page rebuilt
     later without a new pass says the same."""
-    stamps, noplan = {}, set()
+    stamps, noplan = {}, {}
     for g in sorted(current):
         entry = refreshed.get(g) if isinstance(refreshed.get(g), dict) else {}
         if isinstance(entry.get('gone'), dict):
@@ -1736,17 +1736,20 @@ def plan_stats(current, refreshed, runs):
                      utc_moment(entry.get('changed')) if entry.get('changed') else None)
         mark, term = entry.get('not_ready'), getattr(current[g], 'term_id', None)
         if isinstance(mark, dict) and (term is None or mark.get('term') == term):
-            noplan.add(g)  # tools/refresh: the page still shows another semester
+            # tools/refresh: the page still shows another semester, as of the last ask
+            noplan[g] = utc_moment(mark['at']) if isinstance(mark.get('at'), str) else None
     ref = utc_moment(runs[0]['ended']) if runs and runs[0].get('ended') else None
     ref = ref or max((c for c, _ in stamps.values() if c), default=None)
     if ref is None or not stamps:
         return None
-    faculties = {}
+    faculties, asked = {}, {}
     for g, (checked, _) in stamps.items():
         row = faculties.setdefault(faculty_of(g), {k: 0 for k, _, _ in FRESH_BUCKETS}
                                    | {FRESH_NOPLAN[0]: 0, FRESH_NONE[0]: 0})
         if checked is None:
             row[(FRESH_NOPLAN if g in noplan else FRESH_NONE)[0]] += 1
+            if noplan.get(g) and noplan[g] <= ref and (ref - noplan[g]).total_seconds() <= FRESH_BUCKETS[0][2] * 3600:
+                asked[faculty_of(g)] = asked.get(faculty_of(g), 0) + 1  # asked lately: a check like any other
             continue
         hours = (ref - checked).total_seconds() / 3600
         row[next(k for k, _, limit in FRESH_BUCKETS if limit is None or hours <= limit)] += 1
@@ -1762,7 +1765,8 @@ def plan_stats(current, refreshed, runs):
     week = ref - dt.timedelta(days=7)
     return {
         'ref': ref, 'total': len(stamps),
-        'fresh': sum(row['fr1'] for row in faculties.values()),
+        'fresh': sum(row['fr1'] for row in faculties.values()) + sum(asked.values()),
+        'asked': asked,  # per faculty, the no-plan pages asked in the last 6 h (they count as checked)
         'week': sum(1 for c, _ in dated if c >= week),
         'faculties': [(code, faculties[code]) for code in order],
         'days': [(day, per_day[day]) for day in days],
@@ -1861,7 +1865,7 @@ def render_plan_stats(stats, coverage=()):
         rows.append(f'<li><abbr class="fcode" title="{e(name)}">{e(code if code != "OTHER" else "inne")}</abbr>'
                     f'<svg class="fbar" viewBox="0 0 100 10" preserveAspectRatio="none" role="img" '
                     f'aria-label="{e(code)}: {e(said)}">{_bar_rects(parts, n)}</svg>'
-                    f'<span class="fval">{row["fr1"]} z {n}</span></li>')
+                    f'<span class="fval">{row["fr1"] + stats["asked"].get(code, 0)} z {n}</span></li>')
         table.append(f'<tr><th scope="row">{e(code)}</th>' + ''.join(f'<td>{row[k]}</td>' for k, _ in buckets) + '</tr>')
     fresh_table = ('<details class="tview"><summary>Liczby w tabeli</summary><table><thead><tr><th>Wydział</th>'
                    + ''.join(f'<th>{e(label)}</th>' for _, label in buckets) + '</tr></thead><tbody>'

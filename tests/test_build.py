@@ -254,7 +254,8 @@ class StatusPageTest(unittest.TestCase):
         }
         current = dict.fromkeys(refreshed)
         stats = build.plan_stats(current, refreshed, runs)
-        self.assertEqual((stats['total'], stats['fresh'], stats['week'], stats['never_changed']), (4, 1, 1, 2))
+        # the no-plan page asked an hour before counts as checked, like a confirmed plan
+        self.assertEqual((stats['total'], stats['fresh'], stats['week'], stats['never_changed']), (4, 2, 1, 2))
         wcy = dict(stats['faculties'])['WCY']
         self.assertEqual((wcy['fr1'], wcy['fr3']), (1, 1))  # 30 h is "1-3 dni"
         self.assertEqual((wcy['frx'], wcy['frn']), (1, 0))  # the faculty shows another semester: no plan to confirm
@@ -266,6 +267,7 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn('<a href="../WCY26KY3S1/">WCY26KY3S1</a>', page)
         self.assertIn('role="img" aria-label="WCY: do 6 h: 1, 1–3 dni: 1, wydział nie ma planu: 1"', page)  # each says itself
         self.assertIn('<summary>Liczby w tabeli</summary>', page)
+        self.assertIn('<span class="fval">2 z 3</span>', page)  # WCY: one plan and one no-plan page checked lately
         self.assertNotIn('style=', page)  # the page's CSP allows no inline style attribute
         # the same page whenever it is built: no "now" in it
         self.assertEqual(page, build.render_plan_stats(build.plan_stats(current, refreshed, runs)))

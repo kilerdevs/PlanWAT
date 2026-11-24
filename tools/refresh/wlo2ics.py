@@ -112,6 +112,10 @@ TYPE_LABELS = {
     "Zp.S": "Zp.S",
     "Zp.Pr": "Zp.Pr",
     "Zp (II)": "Zp (II)",
+    "Zp (III)": "Zp (III)",
+    "ZP": "ZP",
+    "Zp. (lab. proj.)": "Zp. (lab. proj.)",
+    "Ep III": "Ep III",
     "z. popr. lab.": "z. popr. lab.",
     "wyk zal": "wyk zal",
 }
@@ -763,7 +767,7 @@ def parse_lessons(date_blocks, week_rows, subjects, subj_type_lect,
             if (wml or ioe) and looks_like_person(full):
                 warn("subject %r resolves to staff (%r); lesson skipped" % (subj, full))
                 continue
-            if typ not in TYPE_LABELS and typ not in type_warned:
+            if typ and typ not in TYPE_LABELS and typ not in type_warned:  # no code at all reads "Zajęcia"
                 warn("unknown type code %r; using it verbatim" % typ)
                 type_warned.add(typ)
             label = TYPE_LABELS.get(typ, typ or "Zajęcia")

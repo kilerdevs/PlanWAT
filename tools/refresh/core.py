@@ -10,6 +10,7 @@ import re
 import sys
 import tempfile
 import threading
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -197,7 +198,7 @@ def not_ready_wait(entry, tid, base_hours, today):
     return min(NOT_READY_CAP_HOURS, base_hours * 2 ** min(streak, 16))
 
 
-def still_not_ready(entry, tid, now, base_hours, today):
+def still_not_ready(entry, tid, now, base_hours, today, code=''):
     """Whether a group found not ready for `tid` is still inside its wait (not_ready_wait) at `now`."""
     hours = not_ready_wait(entry, tid, base_hours, today)
     if not hours:
@@ -206,7 +207,29 @@ def still_not_ready(entry, tid, now, base_hours, today):
         at = dt.datetime.fromisoformat(entry['not_ready']['at'])
     except (KeyError, TypeError, ValueError):
         return False
-    return at <= now and now - at < dt.timedelta(hours=hours)
+    return at <= now and not recheck_due(code, at, now, hours, base_hours)
+
+
+_GRID_EPOCH = dt.datetime(2000, 1, 1)
+
+
+def recheck_due(code, since, now, hours, floor):
+    """Whether a group last asked at `since` is to be asked again at `now`, its gap being `hours` (naive UTC times).
+
+    Each group's asks fall on a grid of its own: points `hours` apart, shifted by a stable hash of its code. It is due
+    once one of its points has passed since its last ask, which is never later than `since + hours`, only earlier, and
+    never within `floor` hours. Groups asked together (the first pass of a term, a pass after an outage, a plan
+    published for everyone at once) so come due spread over the passes by their points, instead of all together in
+    one pass every `hours`, and stay spread: each pass carries an even share instead of a wave every few passes.
+    """
+    age = (now - since).total_seconds()
+    span = hours * 3600
+    if age >= span:
+        return True
+    if age < floor * 3600:
+        return False
+    phase = zlib.crc32(code.encode()) / 2 ** 32 * span
+    return ((now - _GRID_EPOCH).total_seconds() - phase) // span > ((since - _GRID_EPOCH).total_seconds() - phase) // span
 
 
 def quiet_interval(entry, base_hours, cap_hours):
@@ -394,10 +417,11 @@ class State:
     def faculties(self):
         return self.data['faculties']
 
-    def fresh(self, code, now, hours, tid=None):
+    def fresh(self, code, now, hours, tid=None, floor=None):
         """True when the group was checked recently enough to skip. False when the checked
         stamp lies in the future (clock skew: recheck rather than trust it) and, when `tid`
-        is given, when the entry belongs to another term (stale-term entries recheck once)."""
+        is given, when the entry belongs to another term (stale-term entries recheck once).
+        With `floor`, the group's own grid decides inside the gap (recheck_due)."""
         entry = self.groups.get(code, {})
         seen = entry.get('checked')
         if tid is not None and entry.get('term') != tid:
@@ -416,6 +440,8 @@ class State:
             return False
         if checked > now:
             return False
+        if floor is not None:
+            return not recheck_due(code, checked, now, hours, floor)
         return now - checked < dt.timedelta(hours=hours)
 
     def save(self):

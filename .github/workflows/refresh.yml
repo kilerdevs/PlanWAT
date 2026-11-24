@@ -66,8 +66,9 @@ jobs:
       skip: ${{ steps.guard.outputs.skip }}
     steps:
       # Several clocks start passes (GitHub's cron, often hours late or not at all, and a ticker on each of the
-      # always-up servers, tools/refresh/ticker.py): the earliest full pass of the last 90 minutes is the slot's, and
-      # a later one leaves it the work. Manual runs and catch-ups are never held back.
+      # always-up servers, tools/refresh/ticker.py): the earliest full pass since the slot began (:23 of an even hour,
+      # the cron below) is the slot's, and a later one leaves it the work. Only this slot's runs count: a late cron run
+      # that held back for the previous slot must not hold back this one. Manual runs and catch-ups are never held back.
       - name: Is this slot's pass already under way?
         id: guard
         if: github.event_name == 'schedule' || inputs.tick != ''
@@ -77,7 +78,8 @@ jobs:
           earlier=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow refresh.yml --limit 20 \
               --json databaseId,createdAt,displayTitle \
               --jq "[.[] | select(.displayTitle == \"Refresh timetables\" and .databaseId < $GITHUB_RUN_ID
-                                   and (.createdAt | fromdateiso8601) > (now - 5400))][0].databaseId // empty") \
+                                   and (.createdAt | fromdateiso8601) >= ((now - 1380) / 7200 | floor) * 7200 + 1380)
+                              ][0].databaseId // empty") \
             || earlier=''
           if [ -n "$earlier" ]; then
             echo "::notice::run $earlier already took this slot; leaving the work to it"

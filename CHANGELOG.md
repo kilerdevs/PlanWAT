@@ -197,6 +197,10 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   uruchamia, więc żaden tekst nie zostaje w połowie przezroczysty; strona dalej nie uruchamia skryptu.
 
 ### Zmieniono
+- **Przebiegi dzielą ponowne sprawdzenia po równo** (`core.recheck_due`, [`docs/REFRESH.md`](docs/REFRESH.md)): każda
+  grupa wraca do sprawdzenia na punkcie własnej siatki, najpóźniej po pełnej przerwie, nigdy później. Wcześniej prawie
+  wszystkie grupy wracały razem co trzeci przebieg (około 800 stron i 10 minut), a dwa następne nie miały prawie nic do
+  zrobienia.
 - **Tabela porównawcza (README i `/prywatnosc/`) zgodna z aktualną polityką serwisu z logowaniem kodem:** pełne nazwy
   i sale tylko po zalogowaniu, rejestr pobrań z grupą i adresem IP, `.ics` tylko w Premium (14,99 zł za rok), analityka
   po zgodzie.
