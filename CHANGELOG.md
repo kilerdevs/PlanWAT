@@ -15,6 +15,8 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-24
+
 ### Dodano
 - **Zegar poza GitHubem** (`tools/refresh/ticker.py`, usługa `ticker` w `deploy/runner/compose.yml` i we fragmencie
   plebanii, [`deploy/runner/README.md`](deploy/runner/README.md) „Zegar”): harmonogram GitHuba uruchamiał przebiegi
@@ -297,6 +299,9 @@ Wszystkie istotne zmiany w PlanWAT są opisane tutaj. Format opiera się na
   zapytań i timerów.
 
 ### Naprawiono
+- **Historia przebiegu ginęła przy awarii GitHuba** (`refresh.yml`, akcja `refresh`): zapis na gałąź `data` próbował
+  pięć razy w ciągu ok. 40 s, więc minuta błędów 500 po stronie GitHuba gubiła wpis przebiegu. Teraz sześć prób z
+  rosnącą przerwą (łącznie do 3 min).
 - **Klawisze w widokach Miesiąc i Lista** (`src/group.html`): strzałki, `T` i `Esc` działały tylko w tygodniu. Teraz w
   miesiącu strzałki zmieniają miesiąc, a `T` wraca do bieżącego; na liście `T` przewija do trwających albo najbliższych
   zajęć. Wyróżniony przedmiot przygasza w miesiącu dni bez niego, więc `Esc` ma tam co czyścić. Podpowiedź pod planem
@@ -771,7 +776,8 @@ Pierwsze publiczne wydanie.
 - CI: testy czytnika kalendarza z progami pokrycia, testy budowy, testy przeglądarkowe Playwright (Chromium, Firefox, WebKit;
   pulpit i telefon) ze skanem WCAG axe, skan obrazu Docker (Grype) i test dymny, CodeQL oraz Dependabot.
 
-[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/kilerdevs/PlanWAT/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.1...v2.0.0
 [1.1.1]: https://github.com/kilerdevs/PlanWAT/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/kilerdevs/PlanWAT/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/kilerdevs/PlanWAT/releases/tag/v1.0.0
