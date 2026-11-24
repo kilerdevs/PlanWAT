@@ -4,7 +4,7 @@ name: Pages
 # commits, required CI checks), so whatever reaches it has passed CI.
 #
 # Two trees are published: production from master at the site root, and a
-# preview of dev under /dev/ (linked from the production front page).
+# preview of dev under /dev/.
 # Production is always built from master no matter which ref started the run,
 # so a push to dev refreshes the preview without ever promoting dev content
 # to the root.
@@ -232,7 +232,6 @@ jobs:
                   assert '</footer>' in html
                   html = html.replace('</footer>', ' ' + link + '</footer>', 1)
               p.write_text(html, encoding='utf-8')
-          add('site/index.html', '<a href="dev/">Wersja testowa (dev)</a>')
           add('site/dev/index.html', '<a href="../">Wersja stabilna</a>')
           print('linked production <-> dev preview')
           EOF
