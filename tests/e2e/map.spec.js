@@ -8,6 +8,8 @@ const THURSDAY_1030 = new Date('2026-10-15T10:30:00+02:00');
 
 /* Open a page; collect uncaught errors and CSP violations. engine: false blocks the vendored MapLibre. */
 async function open(page, url, { engine = true } = {}) {
+  // software WebGL on CI runners is slow; a map test can need more than the default 30 s
+  if (engine) test.slow();
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   if (!engine) await page.route('**/mapa/lib/**', (r) => r.abort());
