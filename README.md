@@ -1,13 +1,14 @@
 # Odświeżanie planów: ostatnie przebiegi
 
 > [!TIP]
-> **Ostatni przebieg: zmiany w 5 planach.** 27 lis 2026 · 13:23 · **plebania** · **oracle1** · **oracle2** · **oracle3** · **northflank1** · **northflank2** · 13 min · [przebieg #251](https://github.com/kilerdevs/PlanWAT/actions/runs/45998173416)
-> Pobrano nowe wersje 5 planów.
+> **Ostatni przebieg: zmiany w 3 planach.** 27 lis 2026 · 15:23 · **plebania** · **oracle1** · **oracle2** · **oracle3** · **northflank1** · **northflank2** · 16 min · [przebieg #252](https://github.com/kilerdevs/PlanWAT/actions/runs/46015426788)
+> Pobrano nowe wersje 3 planów.
 
 Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w czasie warszawskim. Przekreślony serwer był wtedy wyłączony. Ten plik pisze sam przebieg (`tools/refresh/runs.py`, opis w [docs/REFRESH.md](https://github.com/kilerdevs/PlanWAT/blob/master/docs/REFRESH.md)). Ta sama lista jest na stronie: [https://kilerdevs.github.io/PlanWAT/stan/](https://kilerdevs.github.io/PlanWAT/stan/).
 
 | Kiedy | Wynik | Serwery | Sprawdzono | Czas | Przebieg |
 |---|---|---|--:|--:|---|
+| 27 lis · 15:23 | Zmiany w 3 planach | **plebania** (WEL, WLO, WML, WTC, WIM (pomoc dla oracle2), WCY (pomoc dla oracle2), IOE (pomoc dla oracle1)) · **oracle1** (IOE, WIG, WEL (pomoc dla plebania), WCY (pomoc dla oracle2)) · **oracle2** (WCY, WIM, WEL (pomoc dla plebania)) · **oracle3** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2), WEL (pomoc dla plebania), IOE (pomoc dla oracle1)) · **northflank1** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1)) · **northflank2** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1)) | 417 | 16 min | [#252](https://github.com/kilerdevs/PlanWAT/actions/runs/46015426788) |
 | 27 lis · 13:23 | Zmiany w 5 planach | **plebania** (WEL, WLO, WML, WTC, WCY (pomoc dla oracle3)) · **oracle1** (IOE, WIG, WCY (pomoc dla oracle3), WEL (pomoc dla plebania)) · **oracle2** (WIM (pomoc dla oracle3), WCY (pomoc dla oracle3), IOE (pomoc dla oracle1), WEL (pomoc dla plebania), WIG (pomoc dla oracle1)) · **oracle3** (WCY, WIM, WEL (pomoc dla plebania)) · **northflank1** (WIM (pomoc dla oracle3), WCY (pomoc dla oracle3 przez proxy), WIG (pomoc dla oracle1)) · **northflank2** (WIM (pomoc dla oracle3), WCY (pomoc dla oracle3 przez proxy), IOE (pomoc dla oracle1), WIG (pomoc dla oracle1)) | 434 | 13 min | [#251](https://github.com/kilerdevs/PlanWAT/actions/runs/45998173416) |
 | 27 lis · 11:23 | Zmiany w 5 planach | **oracle1** (IOE, WIG, WEL (pomoc dla oracle2), WCY (pomoc dla oracle2), WML (pomoc dla oracle3 przez proxy)) · **oracle2** (WCY, WEL, WIM, WIG (pomoc dla oracle1), WML (pomoc dla oracle3 przez proxy), WLO (pomoc dla northflank1 przez proxy)) · **oracle3** (WML przez proxy, WTC przez proxy, WCY (pomoc dla oracle2), WEL (pomoc dla oracle2), WIM (pomoc dla oracle2), IOE (pomoc dla oracle1), WIG (pomoc dla oracle1), WLO (pomoc dla northflank1 przez proxy)) · **northflank1** (WLO przez proxy, WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WTC (pomoc dla oracle3 przez proxy), WML (pomoc dla oracle3 przez proxy)) · **northflank2** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WLO (pomoc dla northflank1 przez proxy), WML (pomoc dla oracle3 przez proxy)) · ~~plebania~~ | 422 | 9 min | [#250](https://github.com/kilerdevs/PlanWAT/actions/runs/45981628677) |
 | 27 lis · 09:23 | Zmiana w 1 planie | **oracle1** (IOE, WIG, WTC przez proxy, WIM (pomoc dla oracle3), WCY (pomoc dla oracle3), WEL (pomoc dla oracle3)) · **oracle2** (WIM (pomoc dla oracle3), WEL (pomoc dla oracle3), WCY (pomoc dla oracle3), IOE (pomoc dla oracle1), WTC (pomoc dla oracle1 przez proxy), WML (pomoc dla northflank1 przez proxy)) · **oracle3** (WCY, WEL, WIM, IOE (pomoc dla oracle1), WML (pomoc dla northflank1 przez proxy), WIG (pomoc dla oracle1)) · **northflank1** (WLO przez proxy, WML przez proxy, WIM (pomoc dla oracle3), WCY (pomoc dla oracle3 przez proxy), IOE (pomoc dla oracle1), WTC (pomoc dla oracle1 przez proxy), WIG (pomoc dla oracle1)) · **northflank2** (WIM (pomoc dla oracle3), WCY (pomoc dla oracle3 przez proxy), IOE (pomoc dla oracle1), WIG (pomoc dla oracle1), WML (pomoc dla northflank1 przez proxy), WLO (pomoc dla northflank1 przez proxy)) · ~~plebania~~ | 427 | 7 min | [#248](https://github.com/kilerdevs/PlanWAT/actions/runs/45965231525) |
@@ -17,9 +18,35 @@ Ostatnie 10 przebiegów workflow „Refresh timetables”, od najnowszego, w cza
 | 27 lis · 01:23 | Zmiany w 20 planach | **oracle1** (IOE, WIG, WCY (pomoc dla oracle2), WEL (pomoc dla oracle2)) · **oracle2** (WCY, WEL, WIM, WML (pomoc dla oracle3 przez proxy), WTC (pomoc dla oracle3 przez proxy)) · **oracle3** (WML przez proxy, WTC przez proxy, WEL (pomoc dla oracle2), WCY (pomoc dla oracle2), WIM (pomoc dla oracle2), IOE (pomoc dla oracle1), WIG (pomoc dla oracle1)) · **northflank1** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1), WML (pomoc dla oracle3 przez proxy), WLO (pomoc dla northflank2 przez proxy)) · **northflank2** (WLO przez proxy, WIM (pomoc dla oracle2), IOE (pomoc dla oracle1), WCY (pomoc dla oracle2 przez proxy), WML (pomoc dla oracle3 przez proxy), WIG (pomoc dla oracle1), WTC (pomoc dla oracle3 przez proxy)) · ~~plebania~~ | 436 | 7 min | [#244](https://github.com/kilerdevs/PlanWAT/actions/runs/45916387928) |
 | 26 lis · 23:23 | Zmiany w 4 planach | **plebania** (WEL, WLO, WML, WTC, WCY (pomoc dla oracle2), IOE (pomoc dla oracle1)) · **oracle1** (IOE, WIG, WIM (pomoc dla oracle2), WEL (pomoc dla plebania)) · **oracle2** (WCY, WIM, WEL (pomoc dla plebania), WIG (pomoc dla oracle1)) · **oracle3** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2), WEL (pomoc dla plebania), IOE (pomoc dla oracle1)) · **northflank1** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1)) · **northflank2** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1)) | 419 | 12 min | [#242](https://github.com/kilerdevs/PlanWAT/actions/runs/45904430747) |
 | 26 lis · 21:23 | Zmiany w 5 planach | **plebania** (WEL, WLO, WML, WTC, WIM (pomoc dla oracle2), WCY (pomoc dla oracle2), WIG (pomoc dla oracle1)) · **oracle1** (IOE, WIG, WEL (pomoc dla plebania)) · **oracle2** (WCY, WIM, IOE (pomoc dla oracle1), WEL (pomoc dla plebania), WIG (pomoc dla oracle1)) · **oracle3** (WCY (pomoc dla oracle2), WIM (pomoc dla oracle2), IOE (pomoc dla oracle1), WEL (pomoc dla plebania), WIG (pomoc dla oracle1)) · **northflank1** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), IOE (pomoc dla oracle1), WIG (pomoc dla oracle1)) · **northflank2** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1)) | 442 | 11 min | [#241](https://github.com/kilerdevs/PlanWAT/actions/runs/45890631713) |
-| 26 lis · 19:23 | Zmiany w 7 planach | **plebania** (WEL, WLO, WML, WTC) · **oracle1** (IOE, WIG, WIM (pomoc dla oracle2), WEL (pomoc dla plebania)) · **oracle2** (WCY, WIM, WEL (pomoc dla plebania)) · **oracle3** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2), IOE (pomoc dla oracle1), WEL (pomoc dla plebania), WIG (pomoc dla oracle1)) · **northflank1** (WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1)) · **northflank2** (WIM (pomoc dla oracle2), IOE (pomoc dla oracle1), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1)) | 428 | 16 min | [#240](https://github.com/kilerdevs/PlanWAT/actions/runs/45875467983) |
 
 ## Szczegóły
+
+<details>
+<summary><b>27 lis · 15:23</b> · Zmiany w 3 planach · plebania · oracle1 · oracle2 · oracle3 · northflank1 · northflank2</summary>
+
+Pobrano nowe wersje 3 planów. Przebieg uruchomiony ręcznie [#252](https://github.com/kilerdevs/PlanWAT/actions/runs/46015426788), od planu do raportu 16 min.
+
+| Serwer | Wydziały | Zmienione | Stan |
+|---|---|--:|---|
+| **plebania** | WEL, WLO, WML, WTC, WIM (pomoc dla oracle2), WCY (pomoc dla oracle2), IOE (pomoc dla oracle1) | 3 | 15 min |
+| **oracle1** | IOE, WIG, WEL (pomoc dla plebania), WCY (pomoc dla oracle2) | 0 | 14 min, zablokowany na WTC, WML, WLO |
+| **oracle2** | WCY, WIM, WEL (pomoc dla plebania) | 0 | 14 min, zablokowany na WML, WTC, WLO |
+| **oracle3** | WIM (pomoc dla oracle2), WCY (pomoc dla oracle2), WEL (pomoc dla plebania), IOE (pomoc dla oracle1) | 0 | 14 min, zablokowany na WLO, WML, WTC |
+| **northflank1** | WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1) | 0 | 14 min |
+| **northflank2** | WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1) | 0 | 14 min |
+
+| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
+|---|---|--:|--:|---|
+| WLO | plebania | 72 | 1 | blokada dla oracle1, oracle2, oracle3 |
+| WEL | plebania | 98 | 0 | z pomocą oracle2, oracle3, oracle1 |
+| WIM | oracle2 | 50 | 0 | z pomocą northflank2, northflank1, plebania, oracle3 |
+| IOE | oracle1 | 6 | 0 | z pomocą plebania, oracle3 |
+| WCY | oracle2 | 55 | 0 | z pomocą northflank2, oracle3, oracle1, plebania, northflank1, przez proxy (pula) na northflank1, northflank2, bez planu na ten semestr: 51 |
+| WML | plebania | 104 | 2 | blokada dla oracle1, oracle2, oracle3 |
+| WTC | plebania | 11 | 0 | blokada dla oracle1, oracle2, oracle3 |
+| WIG | oracle1 | 21 | 0 | z pomocą northflank2, northflank1 |
+
+</details>
 
 <details>
 <summary><b>27 lis · 13:23</b> · Zmiany w 5 planach · plebania · oracle1 · oracle2 · oracle3 · northflank1 · northflank2</summary>
@@ -261,32 +288,5 @@ Pobrano nowe wersje 5 planów. Przebieg uruchomiony ręcznie [#241](https://gith
 | WML | plebania | 84 | 5 | blokada dla oracle1, oracle2, oracle3 |
 | WTC | plebania | 13 | 0 | blokada dla oracle1, oracle2, oracle3 |
 | WIG | oracle1 | 29 | 0 | z pomocą oracle3, northflank2, northflank1, plebania, oracle2 |
-
-</details>
-
-<details>
-<summary><b>26 lis · 19:23</b> · Zmiany w 7 planach · plebania · oracle1 · oracle2 · oracle3 · northflank1 · northflank2</summary>
-
-Pobrano nowe wersje 7 planów. Przebieg uruchomiony ręcznie [#240](https://github.com/kilerdevs/PlanWAT/actions/runs/45875467983), od planu do raportu 16 min.
-
-| Serwer | Wydziały | Zmienione | Stan |
-|---|---|--:|---|
-| **plebania** | WEL, WLO, WML, WTC | 6 | 15 min |
-| **oracle1** | IOE, WIG, WIM (pomoc dla oracle2), WEL (pomoc dla plebania) | 0 | 15 min, zablokowany na WLO, WTC, WML |
-| **oracle2** | WCY, WIM, WEL (pomoc dla plebania) | 0 | 15 min, zablokowany na WML, WLO, WTC |
-| **oracle3** | WIM (pomoc dla oracle2), WCY (pomoc dla oracle2), IOE (pomoc dla oracle1), WEL (pomoc dla plebania), WIG (pomoc dla oracle1) | 1 | 15 min, zablokowany na WLO, WML, WTC |
-| **northflank1** | WIM (pomoc dla oracle2), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1) | 0 | 15 min |
-| **northflank2** | WIM (pomoc dla oracle2), IOE (pomoc dla oracle1), WCY (pomoc dla oracle2 przez proxy), WIG (pomoc dla oracle1) | 0 | 15 min |
-
-| Wydział | Serwer | Sprawdzono | Zmieniono | Uwagi |
-|---|---|--:|--:|---|
-| WLO | plebania | 77 | 0 | blokada dla oracle1, oracle2, oracle3 |
-| WEL | plebania | 99 | 0 | z pomocą oracle3, oracle2, oracle1 |
-| WIM | oracle2 | 50 | 0 | z pomocą oracle3, northflank2, oracle1, northflank1 |
-| IOE | oracle1 | 6 | 1 | z pomocą northflank2, oracle3 |
-| WCY | oracle2 | 60 | 0 | z pomocą oracle3, northflank1, northflank2, przez proxy (pula) na northflank1, northflank2, bez planu na ten semestr: 50 |
-| WML | plebania | 110 | 6 | blokada dla oracle1, oracle2, oracle3 |
-| WTC | plebania | 10 | 0 | blokada dla oracle1, oracle2, oracle3 |
-| WIG | oracle1 | 16 | 0 | z pomocą northflank2, oracle3, northflank1 |
 
 </details>
