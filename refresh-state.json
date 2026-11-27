@@ -1,8 +1,8 @@
 {
  "blocks": {
   "wat-edge": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-11-27T04:25:44",
+   "cause": "wall",
    "durations": [
     {
      "at_iso": "2026-10-16T15:35:04",
@@ -110,8 +110,8 @@
    ]
   },
   "wtc": {
-   "blocked_at": null,
-   "cause": null,
+   "blocked_at": "2026-11-27T04:23:48",
+   "cause": "wall",
    "durations": []
   }
  },
@@ -136,14 +136,14 @@
   "wcy": {
    "blocked_at": null,
    "last_count": 186,
-   "last_ok": "2026-11-27T02:26:02",
+   "last_ok": "2026-11-27T04:26:54",
    "run": {
     "ahead": false,
-    "at": "2026-11-27T02:26:02",
+    "at": "2026-11-27T04:26:54",
     "blocked": false,
     "cause": null,
-    "changed": 5,
-    "checked": 27,
+    "changed": 0,
+    "checked": 37,
     "degraded": false,
     "not_ready": 51,
     "skipped": 0,
@@ -152,15 +152,15 @@
   },
   "wel": {
    "blocked_at": null,
-   "last_count": 197,
-   "last_ok": "2026-11-27T02:28:14",
+   "last_count": 198,
+   "last_ok": "2026-11-27T04:28:55",
    "run": {
     "ahead": false,
-    "at": "2026-11-27T02:28:14",
+    "at": "2026-11-27T04:28:55",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 31,
+    "checked": 33,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
@@ -187,14 +187,14 @@
   "wim": {
    "blocked_at": null,
    "last_count": 89,
-   "last_ok": "2026-11-27T02:24:56",
+   "last_ok": "2026-11-27T04:24:51",
    "run": {
     "ahead": false,
-    "at": "2026-11-27T02:24:56",
+    "at": "2026-11-27T04:24:51",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 21,
+    "checked": 12,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
@@ -244,19 +244,25 @@
   "wtc": {
    "blocked_at": null,
    "last_count": 23,
-   "last_ok": "2026-11-27T02:25:40",
+   "last_ok": "2026-11-27T04:25:35",
    "run": {
     "ahead": false,
-    "at": "2026-11-27T02:25:40",
+    "at": "2026-11-27T04:25:35",
     "blocked": false,
     "cause": null,
     "changed": 0,
-    "checked": 3,
+    "checked": 6,
     "degraded": false,
     "not_ready": 0,
     "skipped": 0,
     "term": "2026-27-zima"
-   }
+   },
+   "wait": {
+    "probes": 0,
+    "recovered": false,
+    "waited": 0
+   },
+   "walled_at": "2026-11-27T04:23:48"
   }
  },
  "found": {
@@ -463,15 +469,15 @@
   },
   "WCY21KX1S0": {
    "not_ready": {
-    "at": "2026-11-26T16:23:55",
-    "streak": 51,
+    "at": "2026-11-27T04:23:52",
+    "streak": 52,
     "term": "2026-27-zima"
    }
   },
   "WCY21KX5S0": {
    "not_ready": {
-    "at": "2026-11-26T16:23:58",
-    "streak": 51,
+    "at": "2026-11-27T04:23:55",
+    "streak": 52,
     "term": "2026-27-zima"
    }
   },
@@ -567,11 +573,11 @@
   },
   "WCY23IJ1N1": {
    "changed": "2026-11-17T03:03:19",
-   "checked": "2026-11-27T00:25:20",
-   "etag": "\"1795739114-0-gzip\"",
-   "hash": "878282785f0c2a76ebd0104b8f5d4b4d3dbc0cbdd66ab88d52374b33b5491f16",
-   "modified": "Fri, 27 Nov 2026 00:25:14 GMT",
-   "streak": 37,
+   "checked": "2026-11-27T04:26:54",
+   "etag": "\"1795753612-0-gzip\"",
+   "hash": "c56cf9c2e6e4bf54b0d000ca1fac5b6b9db3015ff2e76e3013d418da6179cbc4",
+   "modified": "Fri, 27 Nov 2026 04:26:52 GMT",
+   "streak": 38,
    "term": "2026-27-zima"
   },
   "WCY23IJ1S1": {
@@ -662,11 +668,11 @@
   },
   "WCY23KC1S1": {
    "changed": "2026-10-22T20:22:15",
-   "checked": "2026-11-27T00:24:53",
-   "etag": "\"1795739091-0-gzip\"",
-   "hash": "1bd28a772fac6ba10d9a9812725bfb2abd3d1ce2dffd1658026d5cb193451c21",
-   "modified": "Fri, 27 Nov 2026 00:24:51 GMT",
-   "streak": 112,
+   "checked": "2026-11-27T04:24:50",
+   "etag": "\"1795753488-0-gzip\"",
+   "hash": "9761d5d95b1909435fee218362458c5fdcfd98a114174ebebf9232756a9b49b1",
+   "modified": "Fri, 27 Nov 2026 04:24:48 GMT",
+   "streak": 113,
    "term": "2026-27-zima"
   },
   "WCY23KC2S0": {
@@ -680,11 +686,11 @@
   },
   "WCY23KC2S1": {
    "changed": "2026-10-22T20:22:22",
-   "checked": "2026-11-27T00:25:03",
-   "etag": "\"1795739101-0-gzip\"",
-   "hash": "90bda188717133e6961acec7225df329b566ac1272cab69b293af5e909e36c56",
-   "modified": "Fri, 27 Nov 2026 00:25:01 GMT",
-   "streak": 112,
+   "checked": "2026-11-27T04:25:23",
+   "etag": "\"1795753522-0-gzip\"",
+   "hash": "22e6e8098b370f8cde59b49be1738b9de2b2149279e69cf5aece8ae805e89510",
+   "modified": "Fri, 27 Nov 2026 04:25:22 GMT",
+   "streak": 113,
    "term": "2026-27-zima"
   },
   "WCY23KC3S1": {
@@ -751,8 +757,8 @@
   },
   "WCY24IB1S4": {
    "not_ready": {
-    "at": "2026-11-26T16:24:02",
-    "streak": 51,
+    "at": "2026-11-27T04:24:00",
+    "streak": 52,
     "term": "2026-27-zima"
    }
   },
@@ -853,11 +859,11 @@
   },
   "WCY24IY1S1": {
    "changed": "2026-10-22T20:23:07",
-   "checked": "2026-11-27T00:25:04",
-   "etag": "\"1795739102-0-gzip\"",
-   "hash": "3c38982dfd475ca5e189bc62867d32b9e5e8d732613cb6b3561cc1e23bc26c8c",
-   "modified": "Fri, 27 Nov 2026 00:25:02 GMT",
-   "streak": 110,
+   "checked": "2026-11-27T04:25:34",
+   "etag": "\"1795753533-0-gzip\"",
+   "hash": "90bbd32d71b5e15fc39d8fee0b4e4019fbe8b3f751a8df77700e6986eb8dc4e0",
+   "modified": "Fri, 27 Nov 2026 04:25:33 GMT",
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WCY24IY2S1": {
@@ -871,11 +877,11 @@
   },
   "WCY24IY3S1": {
    "changed": "2026-10-22T20:23:18",
-   "checked": "2026-11-27T00:24:27",
-   "etag": "\"1795739061-0-gzip\"",
-   "hash": "560ccf11457358919bc9c87e92c50e08e0ff4da15cba7cf2e679a333063f48dc",
-   "modified": "Fri, 27 Nov 2026 00:24:21 GMT",
-   "streak": 112,
+   "checked": "2026-11-27T04:24:11",
+   "etag": "\"1795753450-0-gzip\"",
+   "hash": "f7eaad72fcb162c16b104644cc4a53b53bb7acc7b5545ea165d7eb1000802bdc",
+   "modified": "Fri, 27 Nov 2026 04:24:10 GMT",
+   "streak": 113,
    "term": "2026-27-zima"
   },
   "WCY24IY4S1": {
@@ -894,11 +900,11 @@
   },
   "WCY24KC1S1": {
    "changed": "2026-11-13T01:25:18",
-   "checked": "2026-11-27T00:25:09",
-   "etag": "\"1795739107-0-gzip\"",
-   "hash": "b3f2c226fe337f7c8b82ba2a8f317bfbc401fddf2c0f8ae834845a4586a296be",
-   "modified": "Fri, 27 Nov 2026 00:25:07 GMT",
-   "streak": 52,
+   "checked": "2026-11-27T04:26:13",
+   "etag": "\"1795753571-0-gzip\"",
+   "hash": "df1b55512a216e006d61d3d205d3d67c615cf39db860285fca477d8b82394bab",
+   "modified": "Fri, 27 Nov 2026 04:26:11 GMT",
+   "streak": 53,
    "term": "2026-27-zima"
   },
   "WCY24KC1S4": {
@@ -910,11 +916,11 @@
   },
   "WCY24KC2S1": {
    "changed": "2026-11-26T04:25:22",
-   "checked": "2026-11-27T00:24:58",
-   "etag": "\"1795736969-0-gzip\"",
-   "hash": "7e92100ded25b5108b4c6c04ae63eb5f3c3e3e9bc4b519d914b9c9ff2dd6b77b",
-   "modified": "Thu, 26 Nov 2026 23:49:29 GMT",
-   "streak": 6,
+   "checked": "2026-11-27T04:25:05",
+   "etag": "\"1795753504-0-gzip\"",
+   "hash": "8d12af3fbd7c9aaaefe9e3b3be143bbc69288d637e7f9260455e00066d297bbe",
+   "modified": "Fri, 27 Nov 2026 04:25:04 GMT",
+   "streak": 7,
    "term": "2026-27-zima"
   },
   "WCY24KC3S1": {
@@ -946,11 +952,11 @@
   },
   "WCY24KX2S0": {
    "changed": "2026-11-24T00:26:15",
-   "checked": "2026-11-27T00:24:50",
-   "etag": "\"1795739087-0-gzip\"",
-   "hash": "d097b1de989b391743abb1468ecb27b8c97741eba4642dd1530282a470099def",
-   "modified": "Fri, 27 Nov 2026 00:24:47 GMT",
-   "streak": 18,
+   "checked": "2026-11-27T04:24:41",
+   "etag": "\"1795753480-0-gzip\"",
+   "hash": "96f39556e32364ad696047cf8c37f6f1e925fa2949d623c9c228a8eb0fb735af",
+   "modified": "Fri, 27 Nov 2026 04:24:40 GMT",
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WCY24KX3S0": {
@@ -964,38 +970,38 @@
   },
   "WCY24KY1S1": {
    "changed": "2026-10-22T20:23:23",
-   "checked": "2026-11-27T00:24:58",
-   "etag": "\"1795739096-0-gzip\"",
-   "hash": "2380f12f2f9a29d90686aee985cc08f9ee50455a8681906f94bd137842442cae",
-   "modified": "Fri, 27 Nov 2026 00:24:56 GMT",
-   "streak": 110,
+   "checked": "2026-11-27T04:25:08",
+   "etag": "\"1795753507-0-gzip\"",
+   "hash": "d693bd25e7beeec927ee27ec95f64d84a60183b12f3114a411d30e76631883c5",
+   "modified": "Fri, 27 Nov 2026 04:25:07 GMT",
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WCY24KY2S1": {
    "changed": "2026-10-22T20:23:28",
-   "checked": "2026-11-27T00:24:50",
-   "etag": "\"1795739087-0-gzip\"",
-   "hash": "e73fecddbd06a9f08c211110c9edf2c31c1284537fa2de0e448c57c71ea8d01f",
-   "modified": "Fri, 27 Nov 2026 00:24:47 GMT",
-   "streak": 110,
+   "checked": "2026-11-27T04:24:46",
+   "etag": "\"1795753484-0-gzip\"",
+   "hash": "62d0716a2541bf2f5cdb8e8b188805c4b87f725868a1c33371662f9836c35ebe",
+   "modified": "Fri, 27 Nov 2026 04:24:44 GMT",
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WCY24KY3S1": {
    "changed": "2026-10-22T20:23:32",
-   "checked": "2026-11-27T00:24:53",
-   "etag": "\"1795739091-0-gzip\"",
-   "hash": "143c3923f35b9a082d4528feedfdccd3d60d11106bad460f26b6d9ff66f5e31d",
-   "modified": "Fri, 27 Nov 2026 00:24:51 GMT",
-   "streak": 112,
+   "checked": "2026-11-27T04:24:53",
+   "etag": "\"1795753491-0-gzip\"",
+   "hash": "c3e422be712133f38f0860a97d2a73211ebaf74215cac0c1e54dc5e3090ae862",
+   "modified": "Fri, 27 Nov 2026 04:24:51 GMT",
+   "streak": 113,
    "term": "2026-27-zima"
   },
   "WCY24KY4S1": {
    "changed": "2026-10-22T20:23:36",
-   "checked": "2026-11-27T00:25:01",
-   "etag": "\"1795739099-0-gzip\"",
-   "hash": "6667294df60e92db57f1928b2cfaace732c3a6478f5a72c75d2614810f544d6b",
-   "modified": "Fri, 27 Nov 2026 00:24:59 GMT",
-   "streak": 111,
+   "checked": "2026-11-27T04:25:15",
+   "etag": "\"1795753514-0-gzip\"",
+   "hash": "2aba0266e5e4e3837371ce75cd2b5caeddc0e92d02b83555a128874babe172f6",
+   "modified": "Fri, 27 Nov 2026 04:25:14 GMT",
+   "streak": 112,
    "term": "2026-27-zima"
   },
   "WCY25IB1N2": {
@@ -1098,11 +1104,11 @@
   },
   "WCY25IX1S4": {
    "changed": "2026-10-22T20:23:59",
-   "checked": "2026-11-27T00:25:09",
-   "etag": "\"1795739107-0-gzip\"",
-   "hash": "a641b3b02a2dd2dbd21f76b54b3ee9aee8817b9382dd0826677e7bf9281da8dc",
-   "modified": "Fri, 27 Nov 2026 00:25:07 GMT",
-   "streak": 111,
+   "checked": "2026-11-27T04:26:16",
+   "etag": "\"1795753575-0-gzip\"",
+   "hash": "5ebf20ec367c58e929d0475a41e5920c3fa953d3ba409c2e683de82368b81534",
+   "modified": "Fri, 27 Nov 2026 04:26:15 GMT",
+   "streak": 112,
    "term": "2026-27-zima"
   },
   "WCY25IX2N1": {
@@ -1116,20 +1122,20 @@
   },
   "WCY25IX2S0": {
    "changed": "2026-11-26T04:25:37",
-   "checked": "2026-11-27T00:25:15",
-   "etag": "\"1795736780-0-gzip\"",
-   "hash": "53dc1bfb61bf2ba3fbee59af1e7e932184ce6e0e26eeb13d6a107b81537d3679",
-   "modified": "Thu, 26 Nov 2026 23:46:20 GMT",
-   "streak": 6,
+   "checked": "2026-11-27T04:26:46",
+   "etag": "\"1795753604-0-gzip\"",
+   "hash": "c13cb985bb379ca8b721e6999b127de36a26b3f6324eb89e440fcd4789c3ef1b",
+   "modified": "Fri, 27 Nov 2026 04:26:44 GMT",
+   "streak": 7,
    "term": "2026-27-zima"
   },
   "WCY25IX2S4": {
    "changed": "2026-10-22T20:24:11",
-   "checked": "2026-11-27T00:25:05",
-   "etag": "\"1795739102-0-gzip\"",
-   "hash": "85fcacb6f3655f55923bdd43d529fbbb9eeb52fa95f1980a3ae08b25cdac011c",
-   "modified": "Fri, 27 Nov 2026 00:25:02 GMT",
-   "streak": 111,
+   "checked": "2026-11-27T04:25:38",
+   "etag": "\"1795753537-0-gzip\"",
+   "hash": "4417b1e3c715104e3376902a7660d7ca7e563bb079a5c763d292dc7e63e67ee8",
+   "modified": "Fri, 27 Nov 2026 04:25:37 GMT",
+   "streak": 112,
    "term": "2026-27-zima"
   },
   "WCY25IX3S0": {
@@ -1143,11 +1149,11 @@
   },
   "WCY25IX3S4": {
    "changed": "2026-10-22T20:24:17",
-   "checked": "2026-11-27T00:25:14",
-   "etag": "\"1795739112-0-gzip\"",
-   "hash": "eda779ac2183f7388b1e5b953ab92f1f3cb7cf1187d3a0be70e8068e44d2f6b3",
-   "modified": "Fri, 27 Nov 2026 00:25:12 GMT",
-   "streak": 111,
+   "checked": "2026-11-27T04:26:31",
+   "etag": "\"1795753590-0-gzip\"",
+   "hash": "950e9fb4df6323661723d408d36017a8659d5458c535932a08252c7e1dde727d",
+   "modified": "Fri, 27 Nov 2026 04:26:30 GMT",
+   "streak": 112,
    "term": "2026-27-zima"
   },
   "WCY25IX4S0": {
@@ -1233,20 +1239,20 @@
   },
   "WCY25KX1S4": {
    "changed": "2026-10-22T20:24:56",
-   "checked": "2026-11-27T00:25:19",
-   "etag": "\"1795739116-0-gzip\"",
-   "hash": "5a30e553048d473d2482a5f49c0f8fab08e6623931909f8616983532c9a646a8",
-   "modified": "Fri, 27 Nov 2026 00:25:16 GMT",
-   "streak": 111,
+   "checked": "2026-11-27T04:26:49",
+   "etag": "\"1795753608-0-gzip\"",
+   "hash": "08198da322b6c678d390bfe8a1cd21818cf3d353fde1d52962a584aa14fe9d7a",
+   "modified": "Fri, 27 Nov 2026 04:26:48 GMT",
+   "streak": 112,
    "term": "2026-27-zima"
   },
   "WCY25KX2S0": {
    "changed": "2026-11-26T00:25:44",
-   "checked": "2026-11-27T00:25:14",
-   "etag": "\"1795739111-0-gzip\"",
-   "hash": "64754a55d449fec701121c41837cb685f3443418d3d174f16b5673df94f16476",
-   "modified": "Fri, 27 Nov 2026 00:25:11 GMT",
-   "streak": 7,
+   "checked": "2026-11-27T04:26:35",
+   "etag": "\"1795753594-0-gzip\"",
+   "hash": "a13d6f70c5cacbcf8942d657f03a3abeaad95d05250ea2e9eacbe4fdc3ce3363",
+   "modified": "Fri, 27 Nov 2026 04:26:34 GMT",
+   "streak": 8,
    "term": "2026-27-zima"
   },
   "WCY25KX2S4": {
@@ -1276,20 +1282,20 @@
   },
   "WCY25KY2S1": {
    "changed": "2026-11-24T00:25:31",
-   "checked": "2026-11-27T00:24:45",
-   "etag": "\"1795739083-0-gzip\"",
-   "hash": "1d0dcd72816c16b2f5a862a4bc4c2637cb9b34800ff3bb148c00aa604aa71b2e",
-   "modified": "Fri, 27 Nov 2026 00:24:43 GMT",
-   "streak": 18,
+   "checked": "2026-11-27T04:24:30",
+   "etag": "\"1795753468-0-gzip\"",
+   "hash": "3ca4ee03b026e6d88cf55a0feafa2d3927e3438bc7851a52af8df7d046e9a681",
+   "modified": "Fri, 27 Nov 2026 04:24:28 GMT",
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WCY25KY3S1": {
    "changed": "2026-11-24T00:26:36",
-   "checked": "2026-11-27T00:24:48",
-   "etag": "\"1795739085-0-gzip\"",
-   "hash": "b2afc700d96331d8633e91ca8ca9a2f3ac6018696ef4443791654d8bcf1bfb45",
-   "modified": "Fri, 27 Nov 2026 00:24:45 GMT",
-   "streak": 18,
+   "checked": "2026-11-27T04:24:38",
+   "etag": "\"1795753476-0-gzip\"",
+   "hash": "5525315a91928c47d5bc62836aa0341971aaa404359b3f58a30d710052e86bcd",
+   "modified": "Fri, 27 Nov 2026 04:24:36 GMT",
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WCY25KY4S1": {
@@ -1303,11 +1309,11 @@
   },
   "WCY25KY5S1": {
    "changed": "2026-11-24T00:26:08",
-   "checked": "2026-11-27T00:24:57",
-   "etag": "\"1795739091-0-gzip\"",
-   "hash": "77866b3244f0219a677dcd1c0ef49286e0e6782cac63ab8e07fbf9b14c4ea2ab",
-   "modified": "Fri, 27 Nov 2026 00:24:51 GMT",
-   "streak": 18,
+   "checked": "2026-11-27T04:25:01",
+   "etag": "\"1795753500-0-gzip\"",
+   "hash": "387d0a7b75512acc1c7e16af6082cf53dab02072225ae02676d916c62650e77f",
+   "modified": "Fri, 27 Nov 2026 04:25:00 GMT",
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WCY25KY6S1": {
@@ -1426,11 +1432,11 @@
   },
   "WCY26IMBA2N5": {
    "changed": "2026-10-15T19:19:52",
-   "checked": "2026-11-27T00:24:38",
-   "etag": "\"1795739075-0-gzip\"",
-   "hash": "ab6972d8d925cf51d6ea0d8f71f50cb5df0f46bffada010afaa1ec2cb42c4db5",
-   "modified": "Fri, 27 Nov 2026 00:24:35 GMT",
-   "streak": 116,
+   "checked": "2026-11-27T04:24:19",
+   "etag": "\"1795753458-0-gzip\"",
+   "hash": "5a9bc265a8b92b83b358e0b6ec9341f9afae60024541fe623781d2e1621cd66a",
+   "modified": "Fri, 27 Nov 2026 04:24:18 GMT",
+   "streak": 117,
    "term": "2026-27-zima"
   },
   "WCY26IMBA3N5": {
@@ -1444,11 +1450,11 @@
   },
   "WCY26IMBA4N5": {
    "changed": "2026-10-15T19:20:05",
-   "checked": "2026-11-27T00:25:06",
-   "etag": "\"1795739100-0-gzip\"",
-   "hash": "b5cf97700f729f9bffeceabcba642087ba33819ed4191199b5bb1fb16f721a43",
-   "modified": "Fri, 27 Nov 2026 00:25:00 GMT",
-   "streak": 117,
+   "checked": "2026-11-27T04:25:46",
+   "etag": "\"1795753545-0-gzip\"",
+   "hash": "0152354c762792a69e9509df200fd0a8b626a34879acaf09f561fc96267f4301",
+   "modified": "Fri, 27 Nov 2026 04:25:45 GMT",
+   "streak": 118,
    "term": "2026-27-zima"
   },
   "WCY26IS1S6": {
@@ -1548,11 +1554,11 @@
   },
   "WCY26IY3S1": {
    "changed": "2026-11-24T00:25:28",
-   "checked": "2026-11-27T00:24:32",
-   "etag": "\"1795739070-0-gzip\"",
-   "hash": "a8756e3a753ac16da53a58aa02a733283a7b6f2f517f3ff82b99b6adc46bb30a",
-   "modified": "Fri, 27 Nov 2026 00:24:30 GMT",
-   "streak": 18,
+   "checked": "2026-11-27T04:24:14",
+   "etag": "\"1795753453-0-gzip\"",
+   "hash": "4f2da1b9b11a1a04c54cc7c01257640b302a0091c5bcb542b6c20fa131452860",
+   "modified": "Fri, 27 Nov 2026 04:24:13 GMT",
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WCY26IY4S1": {
@@ -1624,11 +1630,11 @@
   },
   "WCY26KC1N2": {
    "changed": "2026-10-30T00:21:15",
-   "checked": "2026-11-27T00:25:02",
-   "etag": "\"1795739099-0-gzip\"",
-   "hash": "07e106907c037ad37cb0b3d0e75a1c45a7e7fdecac68865dd1e8726eb413fdf6",
-   "modified": "Fri, 27 Nov 2026 00:24:59 GMT",
-   "streak": 95,
+   "checked": "2026-11-27T04:25:20",
+   "etag": "\"1795753519-0-gzip\"",
+   "hash": "12bfc45bb9bf94300dc24e2608e411a11a2f7d86db2596305ddaaadfee9f8f7b",
+   "modified": "Fri, 27 Nov 2026 04:25:19 GMT",
+   "streak": 96,
    "term": "2026-27-zima"
   },
   "WCY26KC2N2": {
@@ -1641,11 +1647,11 @@
    "term": "2026-27-zima"
   },
   "WCY26KX1N1": {
-   "checked": "2026-11-27T00:25:13",
-   "etag": "\"1795739108-0-gzip\"",
-   "hash": "221b19370298c0fc2823257e4e3a77cb92fafbf26324831e606f1577e5996b9d",
-   "modified": "Fri, 27 Nov 2026 00:25:08 GMT",
-   "streak": 118,
+   "checked": "2026-11-27T04:26:28",
+   "etag": "\"1795753586-0-gzip\"",
+   "hash": "76d3e9435be0ca19061bd06c8ac294b15f326898b52c3ad0a11da5c09f138e7c",
+   "modified": "Fri, 27 Nov 2026 04:26:26 GMT",
+   "streak": 119,
    "term": "2026-27-zima"
   },
   "WCY26KX1S0": {
@@ -1740,20 +1746,20 @@
   },
   "WCY26KYAS1": {
    "changed": "2026-11-17T03:04:23",
-   "checked": "2026-11-27T00:24:42",
-   "etag": "\"1795739079-0-gzip\"",
-   "hash": "5d68d9e90b7465b593fabecbd82bee140d8375746ab75a8a625a8348f8dc668d",
-   "modified": "Fri, 27 Nov 2026 00:24:39 GMT",
-   "streak": 37,
+   "checked": "2026-11-27T04:24:23",
+   "etag": "\"1795753462-0-gzip\"",
+   "hash": "f4326ea343d36c2d90f09f8dffbe367f1e276d8ac1d40ced7bd1d689a7c9f31c",
+   "modified": "Fri, 27 Nov 2026 04:24:22 GMT",
+   "streak": 38,
    "term": "2026-27-zima"
   },
   "WCY26TC1N5": {
    "changed": "2026-11-04T09:47:23",
-   "checked": "2026-11-27T00:25:05",
-   "etag": "\"1795739102-0-gzip\"",
-   "hash": "6339f8f6dad76d2b1b22c8f48b12cd9f26bfceaaf286271e38932c407304e932",
-   "modified": "Fri, 27 Nov 2026 00:25:02 GMT",
-   "streak": 80,
+   "checked": "2026-11-27T04:25:42",
+   "etag": "\"1795753541-0-gzip\"",
+   "hash": "974b94bff71bd829b723a8eb595f4ac50a9e234065fdb139d6327e8753252d03",
+   "modified": "Fri, 27 Nov 2026 04:25:41 GMT",
+   "streak": 81,
    "term": "2026-27-zima"
   },
   "WCY26TC2N5": {
@@ -1781,11 +1787,11 @@
   },
   "WCY26_BD": {
    "changed": "2026-11-24T00:24:30",
-   "checked": "2026-11-27T00:24:19",
-   "etag": "\"1795739053-0-gzip\"",
-   "hash": "7a4cbfe2d5361999140b5ff49a56fe33d024e41cf4afa771a38cf395ac2360a3",
-   "modified": "Fri, 27 Nov 2026 00:24:13 GMT",
-   "streak": 18,
+   "checked": "2026-11-27T04:24:07",
+   "etag": "\"1795746329-0-gzip\"",
+   "hash": "9ee523744fb95512f2a9d4293232cf838db1ef8183c9a8593234634bed86a608",
+   "modified": "Fri, 27 Nov 2026 02:25:29 GMT",
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WCY26_Bd": {
@@ -1799,8 +1805,8 @@
   },
   "WCY26_Fiz1a": {
    "not_ready": {
-    "at": "2026-11-26T16:24:06",
-    "streak": 50,
+    "at": "2026-11-27T04:24:03",
+    "streak": 51,
     "term": "2026-27-zima"
    }
   },
@@ -1829,11 +1835,11 @@
   },
   "WCY26_Fiz2n": {
    "changed": "2026-11-10T04:29:48",
-   "checked": "2026-11-27T00:25:07",
-   "etag": "\"1795739105-0-gzip\"",
-   "hash": "0cef671411272677cfa2a2144297d9de114b06a35373ceffbe24b4eb762e1d71",
-   "modified": "Fri, 27 Nov 2026 00:25:05 GMT",
-   "streak": 63,
+   "checked": "2026-11-27T04:26:07",
+   "etag": "\"1795753566-0-gzip\"",
+   "hash": "d78345c84f718af67fc9a03cbc65e9a0319ad930132395c3ad2582d8a21ca919",
+   "modified": "Fri, 27 Nov 2026 04:26:06 GMT",
+   "streak": 64,
    "term": "2026-27-zima"
   },
   "WCY26_KDM": {
@@ -1865,11 +1871,11 @@
   },
   "WCY26_Md": {
    "changed": "2026-10-27T20:55:48",
-   "checked": "2026-11-27T00:24:59",
-   "etag": "\"1795739096-0-gzip\"",
-   "hash": "42fedb600ee9a512aa94de4b199ba80a6cfe5380230589f626dbab3df6637a14",
-   "modified": "Fri, 27 Nov 2026 00:24:56 GMT",
-   "streak": 101,
+   "checked": "2026-11-27T04:25:11",
+   "etag": "\"1795753510-0-gzip\"",
+   "hash": "eb47793a54259756a7782c4bff5488900830eb6e41fee0d23ad711ac6a3c024d",
+   "modified": "Fri, 27 Nov 2026 04:25:10 GMT",
+   "streak": 102,
    "term": "2026-27-zima"
   },
   "WCY26_WdA": {
@@ -1883,11 +1889,11 @@
   },
   "WCY26_WdP": {
    "changed": "2026-10-27T20:56:05",
-   "checked": "2026-11-27T00:24:55",
-   "etag": "\"1795739093-0-gzip\"",
-   "hash": "52998616543e56f6523482d6856a294b3a686806e5074eb98a9ac5fe77eaf6c6",
-   "modified": "Fri, 27 Nov 2026 00:24:53 GMT",
-   "streak": 102,
+   "checked": "2026-11-27T04:24:56",
+   "etag": "\"1795753495-0-gzip\"",
+   "hash": "3e12214f2a457b1af5b99ee112ff8ab28905c207461375078bbb4aef94b34524",
+   "modified": "Fri, 27 Nov 2026 04:24:55 GMT",
+   "streak": 103,
    "term": "2026-27-zima"
   },
   "WCY26_ZkSTa": {
@@ -1915,11 +1921,11 @@
   },
   "WCY27IE1S6": {
    "changed": "2026-11-06T07:11:05",
-   "checked": "2026-11-27T00:24:42",
-   "etag": "\"1795739075-0-gzip\"",
-   "hash": "fd2d1a0383e552bb103d96cae551f573e0a188d3b1678380ce6c79bfa6fcf7de",
-   "modified": "Fri, 27 Nov 2026 00:24:35 GMT",
-   "streak": 72,
+   "checked": "2026-11-27T04:24:27",
+   "etag": "\"1795753465-0-gzip\"",
+   "hash": "326e7ce886e72c780212d021f827d4bbbb8a237eb38d768fba94281635308329",
+   "modified": "Fri, 27 Nov 2026 04:24:25 GMT",
+   "streak": 73,
    "term": "2026-27-zima"
   },
   "WEL1PL26KP": {
@@ -2005,11 +2011,11 @@
   },
   "WEL22EV1S0": {
    "changed": "2026-11-25T12:28:31",
-   "checked": "2026-11-27T00:24:13",
+   "checked": "2026-11-27T04:24:13",
    "etag": "\"31528-660b126c22700\"",
-   "hash": "079883df391bc50e57b610b8232c77f4054bd288e1cd28509a4af0ec20223bdf",
+   "hash": "271f8d475189e0bac50cb97e72ff62f46e2893545d57187c9701d17b6814daa4",
    "modified": "Thu, 26 Nov 2026 14:02:30 GMT",
-   "streak": 10,
+   "streak": 11,
    "term": "2026-27-zima"
   },
   "WEL23DE1N1": {
@@ -2050,20 +2056,20 @@
   },
   "WEL23EB1S1": {
    "changed": "2026-11-23T18:31:49",
-   "checked": "2026-11-27T00:24:21",
+   "checked": "2026-11-27T04:24:20",
    "etag": "\"19d68-660b126ff3000\"",
-   "hash": "475503fa8644a94e735110c57f3f2b505c039126dfc5dcdfd68b458a3192b66b",
+   "hash": "31f8d69e5a7d5ae22477e8ad65a6fa733731cd886059db565c33820bbebbae39",
    "modified": "Thu, 26 Nov 2026 14:02:33 GMT",
-   "streak": 19,
+   "streak": 20,
    "term": "2026-27-zima"
   },
   "WEL23EC1S1": {
    "changed": "2026-11-24T16:28:23",
-   "checked": "2026-11-27T00:24:54",
+   "checked": "2026-11-27T04:25:27",
    "etag": "\"19f43-66119da12b640\"",
-   "hash": "3379f8b0f081d16c91ce9f940626fc406a24ff2e5d42d8b2a1f943d633e97fd0",
+   "hash": "c2b33101a7c3001183b0ec19776d1484e2244ad231b94d1edd4a9283c9d91899",
    "modified": "Thu, 26 Nov 2026 14:02:34 GMT",
-   "streak": 15,
+   "streak": 16,
    "term": "2026-27-zima"
   },
   "WEL23EE1S0": {
@@ -2122,11 +2128,11 @@
   },
   "WEL23EV1S0": {
    "changed": "2026-11-24T16:28:41",
-   "checked": "2026-11-27T00:24:05",
+   "checked": "2026-11-27T04:24:04",
    "etag": "\"29f31-66119da8cc840\"",
-   "hash": "da1b31818d24db40a2eee7e8851579566b2a24060187402650707b8691187729",
+   "hash": "6c0a3dc3156ed54205aabaa8f2149d45d7235f486cde69759fade3ff4e407033",
    "modified": "Thu, 26 Nov 2026 14:02:42 GMT",
-   "streak": 15,
+   "streak": 16,
    "term": "2026-27-zima"
   },
   "WEL23TX1S0": {
@@ -2167,11 +2173,11 @@
   },
   "WEL24EA1S0": {
    "changed": "2026-11-24T16:26:06",
-   "checked": "2026-11-27T00:24:00",
+   "checked": "2026-11-27T04:23:54",
    "etag": "\"2bc07-660b127d4cf80\"",
-   "hash": "7e25c6cb182d254c82b5685c31ccffc22482fc0573a7ae13c08cfbf14685c21c",
+   "hash": "762400ce9635620d57acf3f266baf16f9c963bcf4e442bad43df145ad1f37da6",
    "modified": "Thu, 26 Nov 2026 14:02:49 GMT",
-   "streak": 15,
+   "streak": 16,
    "term": "2026-27-zima"
   },
   "WEL24EB1S1": {
@@ -2212,11 +2218,11 @@
   },
   "WEL24EI1S0": {
    "changed": "2026-11-24T16:28:57",
-   "checked": "2026-11-27T00:25:05",
+   "checked": "2026-11-27T04:26:14",
    "etag": "\"315ce-660b128211ac0\"",
-   "hash": "98ed064b140ae4c5457bfece2c98637271864953cee602e22c612adc562b07fa",
+   "hash": "8386cf902ee464ad1820cef8af70127dccc718569688c92df971957a60270de4",
    "modified": "Thu, 26 Nov 2026 14:02:54 GMT",
-   "streak": 15,
+   "streak": 16,
    "term": "2026-27-zima"
   },
   "WEL24EL1S0": {
@@ -2302,11 +2308,11 @@
   },
   "WEL24EX3S0": {
    "changed": "2026-11-24T00:24:31",
-   "checked": "2026-11-27T00:24:25",
+   "checked": "2026-11-27T04:24:31",
    "etag": "\"195c2-6602908831d40\"",
-   "hash": "f3c96715b87c525f3baab05562194636f465ef910b0cba46ac64db3e4ec56837",
+   "hash": "c92bc5fa769251553313bb255bd15546f293235f2152f6d0d391d464176f030b",
    "modified": "Thu, 26 Nov 2026 14:03:05 GMT",
-   "streak": 18,
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WEL24EX4S0": {
@@ -2329,11 +2335,11 @@
   },
   "WEL24EX6S0": {
    "changed": "2026-10-13T20:18:01",
-   "checked": "2026-11-27T00:24:39",
+   "checked": "2026-11-27T04:24:47",
    "etag": "\"197f0-65db84a689f00\"",
-   "hash": "3e3adbb5957c39efc03784f7806f2aed240683a14dfd088fb1bc8c04c42b4fd0",
+   "hash": "fa946c5469d5408489f7e4f407298944a9a2b973c78a9f600c41b39d7c8f2714",
    "modified": "Thu, 15 Oct 2026 13:51:24 GMT",
-   "streak": 21,
+   "streak": 22,
    "term": "2026-27-zima"
   },
   "WEL24EX7S0": {
@@ -2788,11 +2794,11 @@
   },
   "WEL25MX1S4": {
    "changed": "2026-11-24T16:29:07",
-   "checked": "2026-11-27T00:24:33",
+   "checked": "2026-11-27T04:24:40",
    "etag": "\"25326-660b12aee4480\"",
-   "hash": "ef944846619dc7e889b4fc7b78d59615090f2a9f7014f60922ad3855471d751f",
+   "hash": "0c7321aff92e041a4b8e16e2f8a36125733697db653a17bcfbe0e3a3c672ff8b",
    "modified": "Thu, 26 Nov 2026 14:03:42 GMT",
-   "streak": 15,
+   "streak": 16,
    "term": "2026-27-zima"
   },
   "WEL25TL1S0": {
@@ -2806,11 +2812,11 @@
   },
   "WEL25TL2S0": {
    "changed": "2026-11-02T16:39:16",
-   "checked": "2026-11-27T00:25:44",
+   "checked": "2026-11-27T04:27:20",
    "etag": "\"29378-660b12b0cc900\"",
-   "hash": "44abc2a9b571db86313688f2b73cdc3232d0e423d527d2871c168988fa0017be",
+   "hash": "34726b61e81c764ac5f4dbc48bad30e2bef348ccaa9042a73975a404711f8219",
    "modified": "Thu, 26 Nov 2026 14:03:44 GMT",
-   "streak": 86,
+   "streak": 87,
    "term": "2026-27-zima"
   },
   "WEL25TL3S0": {
@@ -2896,20 +2902,20 @@
   },
   "WEL25TY1S0": {
    "changed": "2026-10-22T20:25:03",
-   "checked": "2026-11-27T00:25:29",
+   "checked": "2026-11-27T04:26:48",
    "etag": "\"19790-6612e698556c0\"",
-   "hash": "c81aaa43e64ad36c03a029da0df7692173560472cbefb830011737df5c8d8324",
+   "hash": "74bf1351107e9dc30c7e4576a9b058ceb58ed9fb1edf90409dd94b0963cd8cfb",
    "modified": "Thu, 26 Nov 2026 14:03:47 GMT",
-   "streak": 123,
+   "streak": 124,
    "term": "2026-27-zima"
   },
   "WEL25TY2S0": {
    "changed": "2026-10-22T20:25:06",
-   "checked": "2026-11-27T00:25:13",
+   "checked": "2026-11-27T04:26:33",
    "etag": "\"19790-660b12b49d200\"",
-   "hash": "1ed78e1ec5afe787dc5e69f8c3d278ff33a9047700815b5e76f24f7ef08f606e",
+   "hash": "3c52e19b851119c94d60281de0596150a3b441df8d301a48445e8b27f742e781",
    "modified": "Thu, 26 Nov 2026 14:03:47 GMT",
-   "streak": 123,
+   "streak": 124,
    "term": "2026-27-zima"
   },
   "WEL25TY3S0": {
@@ -2941,11 +2947,11 @@
   },
   "WEL26DX1S1": {
    "changed": "2026-11-09T21:08:34",
-   "checked": "2026-11-27T00:25:34",
+   "checked": "2026-11-27T04:26:58",
    "etag": "\"1f526-660b12b7798c0\"",
-   "hash": "b8ea51ce815362186e545916dc7b26d00db8ade61d1a3504af84edecd963a296",
+   "hash": "cb83e7a9912b6c35dd66d2261385ff366e0f16cac60c6c50f64b0d4b3a444790",
    "modified": "Thu, 26 Nov 2026 14:03:49 GMT",
-   "streak": 64,
+   "streak": 65,
    "term": "2026-27-zima"
   },
   "WEL26DX2N1": {
@@ -3004,20 +3010,20 @@
   },
   "WEL26ELTS6": {
    "changed": "2026-10-13T20:23:24",
-   "checked": "2026-11-27T00:25:17",
+   "checked": "2026-11-27T04:26:42",
    "etag": "\"2690e-6612e69f02680\"",
-   "hash": "3f85217d717e4e0ba01255b007ea193c1d3a8d1f8bd0331a5ba09b32e16d0583",
+   "hash": "a4edc9622452b5dcf50b0784372cd15141dbda73eab727e759fb9f9c6daa4ce4",
    "modified": "Thu, 26 Nov 2026 14:03:54 GMT",
-   "streak": 129,
+   "streak": 130,
    "term": "2026-27-zima"
   },
   "WEL26EQ1S1": {
    "changed": "2026-11-26T16:24:21",
-   "checked": "2026-11-27T00:25:45",
+   "checked": "2026-11-27T04:27:26",
    "etag": "\"1fbf0-660b12bc3e400\"",
-   "hash": "4abd12196e3a091809d97dcee4b9bf50fba0b5d098527259ae879c20c3efcf34",
+   "hash": "528cffb233352c8ce5b44581a740b4cda50bc66adc96edbd949646b89c32018d",
    "modified": "Thu, 26 Nov 2026 14:03:55 GMT",
-   "streak": 3,
+   "streak": 4,
    "term": "2026-27-zima"
   },
   "WEL26EQ2S1": {
@@ -3040,11 +3046,11 @@
   },
   "WEL26EQ4S1": {
    "changed": "2026-11-23T18:24:39",
-   "checked": "2026-11-27T00:24:51",
+   "checked": "2026-11-27T04:25:17",
    "etag": "\"2010e-660b12be26880\"",
-   "hash": "5a86cbf475d938a7f835218189f399f7009ebc6a7347af61d7d8d261c4c690d1",
+   "hash": "b13cde47132fd998ec7a0393245b87642fd1beb9ea9409b51a914a399e2b48a7",
    "modified": "Thu, 26 Nov 2026 14:03:57 GMT",
-   "streak": 19,
+   "streak": 20,
    "term": "2026-27-zima"
   },
   "WEL26EX1N1": {
@@ -3067,11 +3073,11 @@
   },
   "WEL26EX1S0": {
    "changed": "2026-11-10T21:01:41",
-   "checked": "2026-11-27T00:25:42",
+   "checked": "2026-11-27T04:27:14",
    "etag": "\"31a12-6612e6a5af640\"",
-   "hash": "1dff139085e9352f88ea4cf6952c0277e73c3ba68a039719c5f211564a7c8efa",
+   "hash": "b50a2eb84c8db06eb5c74dd7ca9af127e30338bc06f1a8d2cbe7a5c3e9530f74",
    "modified": "Thu, 26 Nov 2026 14:04:01 GMT",
-   "streak": 60,
+   "streak": 61,
    "term": "2026-27-zima"
   },
   "WEL26EX2N1": {
@@ -3166,20 +3172,20 @@
   },
   "WEL26EY2S0": {
    "changed": "2026-11-13T18:00:34",
-   "checked": "2026-11-27T00:24:40",
+   "checked": "2026-11-27T04:24:56",
    "etag": "\"31732-660b12d321a00\"",
-   "hash": "ea35990bda01529c1440212601f61dc30a82d6c9cac64a5d27b31e48a341adc8",
+   "hash": "5aad4704404372d020653216603eef967f5fd56b035ca01e3743fb3f3f9f69d6",
    "modified": "Thu, 26 Nov 2026 14:04:21 GMT",
-   "streak": 52,
+   "streak": 53,
    "term": "2026-27-zima"
   },
   "WEL26EY3S0": {
    "changed": "2026-11-25T12:28:43",
-   "checked": "2026-11-27T00:25:34",
+   "checked": "2026-11-27T04:27:04",
    "etag": "\"312d6-66119dfdad080\"",
-   "hash": "c73d2f2c1e984bd64291a819899dcf99d4b6ae0245ad2e5e5754a03e73ee252f",
+   "hash": "c3d5ab146251d8abd62fa2d74bdc28c9eb3db441416768058e63a87a2875b84c",
    "modified": "Thu, 26 Nov 2026 14:04:23 GMT",
-   "streak": 10,
+   "streak": 11,
    "term": "2026-27-zima"
   },
   "WEL26EY4S0": {
@@ -3193,11 +3199,11 @@
   },
   "WEL26EY5S0": {
    "changed": "2026-11-25T12:26:36",
-   "checked": "2026-11-27T00:24:59",
+   "checked": "2026-11-27T04:26:05",
    "etag": "\"31c9f-6612e6bd86e80\"",
-   "hash": "f54109bc7f4efda621037e26920ec411aedfd60fb86f10ba4b285a56c24997c4",
+   "hash": "cccef9a9a0d2eb5fb5b62f2a9d30a6286b4c74195fe4a8c2955826abcb0fc6a5",
    "modified": "Thu, 26 Nov 2026 14:04:26 GMT",
-   "streak": 10,
+   "streak": 11,
    "term": "2026-27-zima"
   },
   "WEL26EY6S0": {
@@ -3274,11 +3280,11 @@
   },
   "WEL26TX1S0": {
    "changed": "2026-11-05T16:53:11",
-   "checked": "2026-11-27T00:25:54",
+   "checked": "2026-11-27T04:28:06",
    "etag": "\"2e574-6612e6c710500\"",
-   "hash": "eec881070953166dfbfb09d188c8ca7b5fa82551c5891e03cfd9d00de3da8355",
+   "hash": "d3e5db0cbe92f06975216ccd0b24117a6fb288d997bb41f460a988979b55c3c0",
    "modified": "Thu, 26 Nov 2026 14:04:36 GMT",
-   "streak": 76,
+   "streak": 77,
    "term": "2026-27-zima"
   },
   "WEL26TX2S0": {
@@ -3292,11 +3298,11 @@
   },
   "WEL26TX3S0": {
    "changed": "2026-11-25T12:26:39",
-   "checked": "2026-11-27T00:24:50",
+   "checked": "2026-11-27T04:25:07",
    "etag": "\"2e7aa-660b12e44c280\"",
-   "hash": "e1d2890c4d8acf951576a45abf713f6fec41e5ef0636b6f6dca3b3189f40e0a9",
+   "hash": "2aa3bcc504d942d83a559180b7cddc79d663105243bc868266608a5dee0f4b2f",
    "modified": "Thu, 26 Nov 2026 14:04:39 GMT",
-   "streak": 10,
+   "streak": 11,
    "term": "2026-27-zima"
   },
   "WEL26TX4S0": {
@@ -3364,11 +3370,11 @@
   },
   "WEL2PL26KP": {
    "changed": "2026-10-13T20:13:38",
-   "checked": "2026-11-27T00:25:54",
+   "checked": "2026-11-27T04:28:16",
    "etag": "\"1b9f2-660b12581b7c0\"",
    "hash": "b05cf44acd5bb4b67630307f279684456730be6e023890475551538e2a7f37b9",
    "modified": "Thu, 26 Nov 2026 14:02:07 GMT",
-   "streak": 129,
+   "streak": 130,
    "term": "2026-27-zima"
   },
   "WEL2PL27KP": {
@@ -3580,19 +3586,23 @@
   },
   "WIG26AX4S0": {
    "changed": "2026-10-26T22:50:23",
-   "checked": "2026-11-27T04:25:35",
+   "checked": "2026-11-27T00:25:56",
+   "gone": {
+    "at": "2026-11-27T04:28:29",
+    "term": "2026-27-zima"
+   },
    "hash": "45156224fc6e6661c9729c4afef820a0409d228430f3297140e1b841c5b2e29e",
    "modified": "Thu, 01 Oct 2026 07:37:34 GMT",
-   "streak": 112,
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WIG26BW1S0": {
    "changed": "2026-11-20T22:00:43",
-   "checked": "2026-11-27T00:25:11",
+   "checked": "2026-11-27T04:26:24",
    "etag": "\"2a77f-660b12efbdd80\"",
-   "hash": "98de6342fc8ed12d255e2c3df505fc161ec063c0595a61d8774dbc52f2812a08",
+   "hash": "697f73e84512c21bf6d6640ca0f9f0f1f8b8ecca4418e0870d7b6f97e4fbc914",
    "modified": "Thu, 26 Nov 2026 14:04:53 GMT",
-   "streak": 27,
+   "streak": 28,
    "term": "2026-27-zima"
   },
   "WIG26BW2S0": {
@@ -3632,14 +3642,10 @@
   },
   "WIG26BX1S1": {
    "changed": "2026-10-26T22:50:30",
-   "checked": "2026-11-27T02:25:26",
-   "gone": {
-    "at": "2026-11-27T04:24:45",
-    "term": "2026-27-zima"
-   },
+   "checked": "2026-11-27T04:25:43",
    "hash": "221a9af12dadd4a0505bea57948b567a68831beb0ca5d34b5ff0216d1ae57b7b",
    "modified": "Thu, 01 Oct 2026 07:35:53 GMT",
-   "streak": 111,
+   "streak": 112,
    "term": "2026-27-zima"
   },
   "WIG26BX2N1": {
@@ -3652,10 +3658,14 @@
   },
   "WIG26BX2S1": {
    "changed": "2026-10-26T22:50:37",
-   "checked": "2026-11-27T04:25:56",
+   "checked": "2026-11-27T00:25:58",
+   "gone": {
+    "at": "2026-11-27T04:28:40",
+    "term": "2026-27-zima"
+   },
    "hash": "6843be3333c90927497201e1d6e9c7be3c83a6413896023bf4c0bba9668506c7",
    "modified": "Thu, 01 Oct 2026 07:35:57 GMT",
-   "streak": 112,
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WIG26BX3N1": {
@@ -3676,22 +3686,22 @@
   },
   "WIG26BX4S1": {
    "changed": "2026-10-26T22:50:49",
-   "checked": "2026-11-27T04:25:29",
+   "checked": "2026-11-27T00:25:52",
+   "gone": {
+    "at": "2026-11-27T04:27:51",
+    "term": "2026-27-zima"
+   },
    "hash": "646de03a2f166f7e006581472d092e69db66ce50e4e5416d158363d1493de78f",
    "modified": "Thu, 01 Oct 2026 07:36:09 GMT",
-   "streak": 112,
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WIG26BX5S1": {
    "changed": "2026-10-26T22:50:53",
-   "checked": "2026-11-27T02:25:36",
-   "gone": {
-    "at": "2026-11-27T04:24:58",
-    "term": "2026-27-zima"
-   },
+   "checked": "2026-11-27T04:25:48",
    "hash": "0c9f12eef151ba79a1c075c2d104c257b782b0d5a8b65f13037617e3a96b3edd",
    "modified": "Thu, 01 Oct 2026 07:36:12 GMT",
-   "streak": 111,
+   "streak": 112,
    "term": "2026-27-zima"
   },
   "WIG26BX6S1": {
@@ -3768,30 +3778,34 @@
   },
   "WIG26IX1S1": {
    "changed": "2026-10-26T22:51:28",
-   "checked": "2026-11-27T04:25:20",
+   "checked": "2026-11-27T00:25:47",
+   "gone": {
+    "at": "2026-11-27T04:27:38",
+    "term": "2026-27-zima"
+   },
    "hash": "81c0620a3e5068bfd54469c9d5e7bf87810af5671345ecea5d1be642e87081b8",
    "modified": "Thu, 01 Oct 2026 07:38:07 GMT",
-   "streak": 112,
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WIG26IX2S1": {
    "changed": "2026-10-26T22:51:32",
-   "checked": "2026-11-27T04:26:07",
+   "checked": "2026-11-27T00:25:56",
+   "gone": {
+    "at": "2026-11-27T04:28:31",
+    "term": "2026-27-zima"
+   },
    "hash": "a3c11b37184bdc051d39fea20efb86881348b83c59a80f49f5d6a936dd479eba",
    "modified": "Thu, 01 Oct 2026 07:38:11 GMT",
-   "streak": 112,
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WIG26IX3S1": {
    "changed": "2026-10-26T22:51:36",
-   "checked": "2026-11-27T02:25:33",
-   "gone": {
-    "at": "2026-11-27T04:24:51",
-    "term": "2026-27-zima"
-   },
+   "checked": "2026-11-27T04:25:44",
    "hash": "25801c2ced657c502392025f64ef8adeee4efe2f06d91126d3469dc88d36fc51",
    "modified": "Thu, 01 Oct 2026 07:38:14 GMT",
-   "streak": 111,
+   "streak": 112,
    "term": "2026-27-zima"
   },
   "WIG26KX1S1": {
@@ -3804,34 +3818,50 @@
   },
   "WIG26KX2S1": {
    "changed": "2026-10-26T22:51:42",
-   "checked": "2026-11-27T04:25:22",
+   "checked": "2026-11-27T00:25:50",
+   "gone": {
+    "at": "2026-11-27T04:27:45",
+    "term": "2026-27-zima"
+   },
    "hash": "25fe91204e5dd656e65712c8b9b19cd5bd6b14643fcf166e24cb79918ed62e89",
    "modified": "Thu, 01 Oct 2026 07:36:55 GMT",
-   "streak": 112,
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WIG26KX3S1": {
    "changed": "2026-10-26T22:51:45",
-   "checked": "2026-11-27T04:26:00",
+   "checked": "2026-11-27T00:25:58",
+   "gone": {
+    "at": "2026-11-27T04:28:50",
+    "term": "2026-27-zima"
+   },
    "hash": "ca994791f13f80e68fc301a678df61d2391ef2bdae59891b6520b0804e5143be",
    "modified": "Thu, 01 Oct 2026 07:36:57 GMT",
-   "streak": 112,
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WIG26KX4S1": {
    "changed": "2026-10-26T22:51:48",
-   "checked": "2026-11-27T04:26:03",
+   "checked": "2026-11-27T00:26:00",
+   "gone": {
+    "at": "2026-11-27T04:28:55",
+    "term": "2026-27-zima"
+   },
    "hash": "69e2f77bfadb4727b26883433659cf3e80d21cff5899f29473ff1f1a04e085ac",
    "modified": "Thu, 01 Oct 2026 07:37:00 GMT",
-   "streak": 112,
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WIG26KX5S1": {
    "changed": "2026-10-26T22:51:51",
-   "checked": "2026-11-27T04:25:33",
+   "checked": "2026-11-27T00:25:52",
+   "gone": {
+    "at": "2026-11-27T04:28:01",
+    "term": "2026-27-zima"
+   },
    "hash": "1eb5fa34402c5532015df064bfb576a50f522f04c4f03fb3af6f058ad60008fb",
    "modified": "Thu, 01 Oct 2026 07:37:03 GMT",
-   "streak": 112,
+   "streak": 111,
    "term": "2026-27-zima"
   },
   "WIG26MX1S0": {
@@ -4984,11 +5014,11 @@
   },
   "WME23BM1S1": {
    "changed": "2026-11-23T10:24:13",
-   "checked": "2026-11-27T00:23:53",
+   "checked": "2026-11-27T04:24:07",
    "etag": "\"1635f-65db84fe46e00\"",
-   "hash": "233ef8b296edf7647a455e9df0bc1f83760a7264b99c92c4c0c56cc493ebd738",
+   "hash": "3cb03efcb56ab5d47918682f9e59366b4a988a7f43f43473d693d17a9540f66f",
    "modified": "Thu, 26 Nov 2026 07:57:13 GMT",
-   "streak": 20,
+   "streak": 21,
    "term": "2026-27-zima"
   },
   "WME23MC1S0": {
@@ -5105,10 +5135,10 @@
   },
   "WME23TC1S1": {
    "changed": "2026-11-18T17:24:26",
-   "checked": "2026-11-27T00:23:57",
-   "hash": "fa317f9e7023ec873c9ef6c2201e7a327664ab5f562a7804b6b8e9cfac72dde3",
+   "checked": "2026-11-27T04:24:13",
+   "hash": "15fadc86451ca2ecace00f83e7ae4de0c349aaf8296cdadae6367ec2fa0dc1a0",
    "modified": "Thu, 26 Nov 2026 07:57:58 GMT",
-   "streak": 33,
+   "streak": 34,
    "term": "2026-27-zima"
   },
   "WME24BM1S1": {
@@ -5143,10 +5173,10 @@
   },
   "WME24MC1S0": {
    "changed": "2026-11-18T07:47:15",
-   "checked": "2026-11-27T00:23:55",
-   "hash": "aba6a590aa4074f257bc6bbe4baa80753ae16c3fc745c36cc83f2b2e887df8f6",
+   "checked": "2026-11-27T04:24:09",
+   "hash": "63acc287ecbd305772fec4ecaeab5001044ba5b8c1bba9658aac6556ab770f66",
    "modified": "Thu, 26 Nov 2026 07:58:08 GMT",
-   "streak": 34,
+   "streak": 35,
    "term": "2026-27-zima"
   },
   "WME24MD1N1": {
@@ -5183,10 +5213,10 @@
   },
   "WME24MS1S1": {
    "changed": "2026-11-25T14:23:53",
-   "checked": "2026-11-27T00:24:01",
-   "hash": "46b1966f5e8294a328fe3d61748bd60ecc7d23fbef3a695cf72e151704a07b9d",
+   "checked": "2026-11-27T04:24:29",
+   "hash": "fc59d7c3a7e975545695f3a88c4e66290721678cdff3bc230323f07deac26245",
    "modified": "Thu, 26 Nov 2026 07:58:26 GMT",
-   "streak": 10,
+   "streak": 11,
    "term": "2026-27-zima"
   },
   "WME24MT1S0": {
@@ -5272,10 +5302,10 @@
   },
   "WME25DX1S1": {
    "changed": "2026-11-26T12:24:11",
-   "checked": "2026-11-27T00:24:04",
-   "hash": "dc6c4f0ef1c7147d3596e97edf57523282384a6b7f04eda9675861e312fe64f4",
+   "checked": "2026-11-27T04:24:35",
+   "hash": "dbf076abea71583efd87285a8243304696acc7a720d147c64b7ca9a5a028905a",
    "modified": "Thu, 26 Nov 2026 07:58:55 GMT",
-   "streak": 4,
+   "streak": 5,
    "term": "2026-27-zima"
   },
   "WME25MC1S0": {
@@ -5312,10 +5342,10 @@
   },
   "WME25MR1S4": {
    "changed": "2026-11-26T12:24:26",
-   "checked": "2026-11-27T00:24:07",
-   "hash": "ec9f8dc911f844d9e41cd99125935916699dd193539b42f386120e5909c6541b",
+   "checked": "2026-11-27T04:24:40",
+   "hash": "35c79d6b0e8dea1ffd4a1cb6eac9c7c7dbaee906ffcb946c6b2a86633a8ec68a",
    "modified": "Thu, 26 Nov 2026 07:59:14 GMT",
-   "streak": 4,
+   "streak": 5,
    "term": "2026-27-zima"
   },
   "WME25MT1S0": {
@@ -5392,18 +5422,18 @@
   },
   "WME26BX1S1": {
    "changed": "2026-11-26T12:23:57",
-   "checked": "2026-11-27T00:24:08",
-   "hash": "b90e91d6ba1d9139706ec11db33afd8fbc05a3e4533af353a4e50800a690cb3a",
+   "checked": "2026-11-27T04:24:46",
+   "hash": "26e200194f01726fce41bd20b2eb9d068499f5c5eab09afb2f22e3d732db7f7b",
    "modified": "Thu, 26 Nov 2026 07:59:52 GMT",
-   "streak": 4,
+   "streak": 5,
    "term": "2026-27-zima"
   },
   "WME26BX2S1": {
    "changed": "2026-11-26T12:23:54",
-   "checked": "2026-11-27T00:23:57",
-   "hash": "acbf3b844c9697a1083197ec4051963e173da6bcb6ac9b3a98c1cfbab8970b36",
+   "checked": "2026-11-27T04:24:28",
+   "hash": "9fcdb8d480ca418612fbb93ee09dc68e186378d087495ab9a2436e7837aec2ab",
    "modified": "Thu, 26 Nov 2026 07:59:55 GMT",
-   "streak": 4,
+   "streak": 5,
    "term": "2026-27-zima"
   },
   "WME26BX3S1": {
@@ -5424,10 +5454,10 @@
   },
   "WME26DX1N1": {
    "changed": "2026-10-13T17:38:44",
-   "checked": "2026-11-27T00:24:09",
-   "hash": "e1bcce1d97e133f73e8667b6e494a039f754505a932a8c82732cfe1087d087b9",
+   "checked": "2026-11-27T04:24:49",
+   "hash": "a224558340f51bf13f810a2d3a8607b8b8ab46afdde904751cf0121f75a41ba5",
    "modified": "Thu, 26 Nov 2026 08:00:07 GMT",
-   "streak": 117,
+   "streak": 118,
    "term": "2026-27-zima"
   },
   "WME26DX1S1": {
@@ -5488,10 +5518,10 @@
   },
   "WME26MX1S7": {
    "changed": "2026-11-09T13:45:34",
-   "checked": "2026-11-27T00:24:04",
-   "hash": "1479faad018f0253b276a734e7070304b43722f7787f56f42b94c6b658df0b4e",
+   "checked": "2026-11-27T04:24:36",
+   "hash": "944cd889e2dd46d13c903fad3e34d0e3a398d1879eae3dab3639b1bd28f20606",
    "modified": "Thu, 26 Nov 2026 08:00:39 GMT",
-   "streak": 64,
+   "streak": 65,
    "term": "2026-27-zima"
   },
   "WME26MX2N1": {
@@ -5576,10 +5606,10 @@
   },
   "WME26MX4S7": {
    "changed": "2026-11-13T17:54:40",
-   "checked": "2026-11-27T00:24:01",
-   "hash": "afac93616c8cd21ef58becf07355052c076f979f4ce3f41d4455d28f63c2cde3",
+   "checked": "2026-11-27T04:24:32",
+   "hash": "d9ff230fa158510e651cabc2a0b9b1e6acf00549ce2f98a663262cf79f2981ff",
    "modified": "Thu, 26 Nov 2026 08:01:16 GMT",
-   "streak": 52,
+   "streak": 53,
    "term": "2026-27-zima"
   },
   "WME26MX5S0": {
@@ -5600,10 +5630,10 @@
   },
   "WME26MX5S7": {
    "changed": "2026-11-25T12:24:13",
-   "checked": "2026-11-27T00:24:10",
-   "hash": "25c09e5b0acd30562129aae15ee2a17b1595374e89b79fdef46a6bef4ed63efb",
+   "checked": "2026-11-27T04:24:51",
+   "hash": "027c6ee28081afd09a2279b5e4997060d6dc5278f024f899fd0d1a6b644f52ee",
    "modified": "Thu, 26 Nov 2026 08:01:25 GMT",
-   "streak": 10,
+   "streak": 11,
    "term": "2026-27-zima"
   },
   "WME26MX6S0": {
@@ -5776,10 +5806,10 @@
   },
   "WMT22LL2S0": {
    "changed": "2026-11-27T00:25:39",
-   "checked": "2026-11-27T02:26:44",
-   "hash": "22cc1f104d1efb71bfbbfd7d3c2c0a72fb3b6fc2b040ec1fcbc22d7a5e5b1a61",
+   "checked": "2026-11-27T04:26:27",
+   "hash": "58db47723287665b5df106cc65ea6b603cd4f376a80cfdf955bd24d30218418b",
    "modified": "Thu, 26 Nov 2026 12:31:19 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WMT22LL3S0": {
@@ -5848,18 +5878,18 @@
   },
   "WMT23AE1S0": {
    "changed": "2026-11-26T20:28:29",
-   "checked": "2026-11-27T00:25:56",
-   "hash": "7e42ab5e88723ad18e77fd1fde45957c5292a5c1289ed70bdf08f6ff09692d36",
+   "checked": "2026-11-27T04:27:16",
+   "hash": "b0af63beea553d63bababe5e697d62f98c76095bf71489c913a8f39ad280cf8a",
    "modified": "Thu, 26 Nov 2026 12:31:24 GMT",
-   "streak": 2,
+   "streak": 3,
    "term": "2026-27-zima"
   },
   "WMT23AG1S0": {
    "changed": "2026-11-12T18:45:02",
-   "checked": "2026-11-27T00:26:12",
-   "hash": "74686320a6bdba1a5ff5934c0b677fe56f28a91d7c108d0fc8b7a40d27287469",
+   "checked": "2026-11-27T04:27:14",
+   "hash": "cb4b2eedbeb396f1c985d23622700f74047fa36ca709ace49485543b263f3a2a",
    "modified": "Thu, 26 Nov 2026 12:31:25 GMT",
-   "streak": 52,
+   "streak": 53,
    "term": "2026-27-zima"
   },
   "WMT23AH1S0": {
@@ -6072,34 +6102,34 @@
   },
   "WMT23LW4S0": {
    "changed": "2026-10-22T20:23:17",
-   "checked": "2026-11-27T00:26:34",
-   "hash": "cf09992d19f91cd89b9625f741c3d0698bed136b20bc93745df973914fab9310",
+   "checked": "2026-11-27T04:26:38",
+   "hash": "85458df1997ac741633c2466170d4de343d7c8d37d22853e2b79b4f2cd28e14b",
    "modified": "Thu, 26 Nov 2026 12:31:38 GMT",
-   "streak": 79,
+   "streak": 80,
    "term": "2026-27-zima"
   },
   "WMT23LW5S0": {
    "changed": "2026-10-22T20:23:19",
-   "checked": "2026-11-27T00:26:23",
-   "hash": "caa2c246b11151b643ad239f2b24c618bd271e5ab0c49775384226d35c3821a6",
+   "checked": "2026-11-27T04:27:03",
+   "hash": "0c9b20e2e6c59b59a5a1ae040f40c4ad15f90b1a2e451064bf2809b828a0c1e5",
    "modified": "Thu, 26 Nov 2026 12:31:38 GMT",
-   "streak": 79,
+   "streak": 80,
    "term": "2026-27-zima"
   },
   "WMT23LW6S0": {
    "changed": "2026-10-22T20:23:23",
-   "checked": "2026-11-27T00:26:41",
-   "hash": "de6bc275f20947767930310342347efa95b34609a753fa5a1419677383000dac",
+   "checked": "2026-11-27T04:26:48",
+   "hash": "7f991d46cbebe276a6792085bf0c405776912552b1e1e80a1a56987b8ce3b151",
    "modified": "Thu, 26 Nov 2026 12:31:38 GMT",
-   "streak": 79,
+   "streak": 80,
    "term": "2026-27-zima"
   },
   "WMT23LW7S0": {
    "changed": "2026-10-22T20:23:26",
-   "checked": "2026-11-27T00:26:22",
-   "hash": "9952a07d95f446c78e87ff132f64cd7a94bfeb48f66340639bda129b31412d13",
+   "checked": "2026-11-27T04:26:59",
+   "hash": "7074bc648fa7a53e19bd524ac0e8d14eb65cf573eddcacfc9e2c04cefd69b910",
    "modified": "Thu, 26 Nov 2026 12:31:39 GMT",
-   "streak": 79,
+   "streak": 80,
    "term": "2026-27-zima"
   },
   "WMT23LY1S1": {
@@ -6152,10 +6182,10 @@
   },
   "WMT24AG1S0": {
    "changed": "2026-11-25T08:26:17",
-   "checked": "2026-11-27T00:27:36",
-   "hash": "043f8b5ec1cab126c289710dd4c9575287e2692426c4b6a4ea2a3c682743a256",
+   "checked": "2026-11-27T04:26:16",
+   "hash": "d698734af700eacffe00b4180e9d0e2492aaa47859818f2c21885e6854594007",
    "modified": "Thu, 26 Nov 2026 12:31:44 GMT",
-   "streak": 11,
+   "streak": 12,
    "term": "2026-27-zima"
   },
   "WMT24AH1S0": {
@@ -6304,10 +6334,10 @@
   },
   "WMT24IP1S1": {
    "changed": "2026-11-24T00:27:35",
-   "checked": "2026-11-27T00:27:40",
-   "hash": "5bcb8963145b59495091b0d470cdab971d70ca2e32c46b717651d2dfc6a7c06d",
+   "checked": "2026-11-27T04:26:19",
+   "hash": "509a382551d85c3a001e829748120463f008fc212be64cd5e43bbdc9d559b5f3",
    "modified": "Thu, 26 Nov 2026 12:31:49 GMT",
-   "streak": 18,
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WMT24LA1S1": {
@@ -6424,26 +6454,26 @@
   },
   "WMT24LW6S0": {
    "changed": "2026-11-23T22:26:17",
-   "checked": "2026-11-27T00:27:34",
-   "hash": "9eb8cb5a528c1596f91fb73ced4ddb227815e907014910c46a34c35c7e3e4b19",
+   "checked": "2026-11-27T04:26:13",
+   "hash": "427f299fb309e9d880ac2651ae53bd84f8c6194ddc73698df3e0885406615c50",
    "modified": "Tue, 20 Oct 2026 12:01:24 GMT",
-   "streak": 18,
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WMT24LW7S0": {
    "changed": "2026-11-23T22:26:19",
-   "checked": "2026-11-27T00:25:50",
-   "hash": "85da5156431926ba7c62a427bdb1f6139db85d434e1cec6e379b12358028371d",
+   "checked": "2026-11-27T04:27:29",
+   "hash": "42936a77554ffa6f43cfa4723ef65d55f6d44cf709d7c7c3a4dc28711ab6008a",
    "modified": "Tue, 20 Oct 2026 12:01:24 GMT",
-   "streak": 18,
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WMT24LW8S0": {
    "changed": "2026-11-23T22:26:23",
-   "checked": "2026-11-27T00:27:43",
-   "hash": "33106b9528d85ed0c3d9b17bd9d55dc6b5e03276fe5d3c174da42d47ade9a619",
+   "checked": "2026-11-27T04:26:21",
+   "hash": "5c69074ee343f2e8b74637df9d80345e22e391a952008a8386a2ffd47d1b8936",
    "modified": "Tue, 20 Oct 2026 12:01:25 GMT",
-   "streak": 18,
+   "streak": 19,
    "term": "2026-27-zima"
   },
   "WMT24LW9S0": {
@@ -6504,10 +6534,10 @@
   },
   "WMT25AG1S0": {
    "changed": "2026-11-10T12:42:17",
-   "checked": "2026-11-27T00:26:24",
-   "hash": "5127c698bd4460ef74d88523d3a656f7c13ec92f60b21bfe7d470af50690fb4d",
+   "checked": "2026-11-27T04:27:05",
+   "hash": "a840abe96100e1ac70f81be58cf9f7c920e042a00932bb331b9dfe0ff6e9891b",
    "modified": "Thu, 26 Nov 2026 12:32:00 GMT",
-   "streak": 55,
+   "streak": 56,
    "term": "2026-27-zima"
   },
   "WMT25AH1S0": {
@@ -6536,10 +6566,10 @@
   },
   "WMT25AL1S4": {
    "changed": "2026-11-26T16:26:08",
-   "checked": "2026-11-27T00:25:59",
-   "hash": "aa8fe4f46debb3b188c86e9abfc681bfdb34aa0fa87d4b5cffa3f68cf6f84de8",
+   "checked": "2026-11-27T04:27:23",
+   "hash": "7bcf14e57eab52ef40d315a4be17ede5197ef746876b3c9ce7abb4897886884f",
    "modified": "Thu, 26 Nov 2026 12:32:02 GMT",
-   "streak": 3,
+   "streak": 4,
    "term": "2026-27-zima"
   },
   "WMT25AO1S0": {
@@ -6560,10 +6590,10 @@
   },
   "WMT25AP1S4": {
    "changed": "2026-11-25T12:26:59",
-   "checked": "2026-11-27T00:27:30",
-   "hash": "d4645c631acadc36df20eb8020296b31fd8366bd1753d2e0ebd803dec9bb1bb8",
+   "checked": "2026-11-27T04:26:07",
+   "hash": "958a892768351854b57e1bd2cabf188775305179d169996cc86c243db78641c6",
    "modified": "Thu, 26 Nov 2026 12:32:03 GMT",
-   "streak": 10,
+   "streak": 11,
    "term": "2026-27-zima"
   },
   "WMT25AS1S0": {
@@ -6576,10 +6606,10 @@
   },
   "WMT25AS2S0": {
    "changed": "2026-10-22T20:25:21",
-   "checked": "2026-11-27T00:26:06",
-   "hash": "2c49c3f299c24f0842e8260d3a7904b886af90d86dcbf686bc3e9e7ee346718e",
+   "checked": "2026-11-27T04:27:09",
+   "hash": "c5a378a5ad1e85f4986ac68652a7315d5654922b36f72eb6615f7e1708bd2733",
    "modified": "Thu, 26 Nov 2026 12:32:06 GMT",
-   "streak": 79,
+   "streak": 80,
    "term": "2026-27-zima"
   },
   "WMT25AW1S0": {
@@ -6656,10 +6686,10 @@
   },
   "WMT25AX1S1": {
    "changed": "2026-11-19T20:54:40",
-   "checked": "2026-11-27T00:27:30",
-   "hash": "bf5781167c968444101f9bc3a674b78f742b059936ea8b79f181a47f38c6b3ec",
+   "checked": "2026-11-27T04:26:10",
+   "hash": "be92be3e812ed4b02ba0e0f605cfef2979553b9b2b4cea718fce2bd8b415cc19",
    "modified": "Thu, 26 Nov 2026 12:32:09 GMT",
-   "streak": 30,
+   "streak": 31,
    "term": "2026-27-zima"
   },
   "WMT25AX2S1": {
@@ -6704,10 +6734,10 @@
   },
   "WMT25LB1S4": {
    "changed": "2026-11-19T20:54:08",
-   "checked": "2026-11-27T00:26:21",
-   "hash": "7494bc66e820e0f8efd50621907b0230e34c9de988faee95103d02632430f054",
+   "checked": "2026-11-27T04:26:57",
+   "hash": "cddbfd690e9995225101a9e7abd0ace0cf4019a9a78410bc23b10d68b9888fc1",
    "modified": "Thu, 26 Nov 2026 12:32:12 GMT",
-   "streak": 30,
+   "streak": 31,
    "term": "2026-27-zima"
   },
   "WMT25LC1S4": {
@@ -6848,10 +6878,10 @@
   },
   "WMT26AV2S0": {
    "changed": "2026-11-05T16:40:57",
-   "checked": "2026-11-27T00:27:27",
-   "hash": "b1c93d2f3d43438643149e2ae4876294ca2509ae088a2aab02158f3bda8038fe",
+   "checked": "2026-11-27T04:26:00",
+   "hash": "5f5f695ce3dbdf68c6eea4e087c493b0fa5f832312d8f903cffcc17bc1f47e7c",
    "modified": "Thu, 26 Nov 2026 12:32:28 GMT",
-   "streak": 60,
+   "streak": 61,
    "term": "2026-27-zima"
   },
   "WMT26AW1S0": {
@@ -6864,10 +6894,10 @@
   },
   "WMT26AW2S0": {
    "changed": "2026-11-23T10:26:09",
-   "checked": "2026-11-27T00:26:09",
-   "hash": "1642af2f1f02b90526c239cf92ab9828a33d68a3a22c71c8c58d256fa33159f6",
+   "checked": "2026-11-27T04:27:12",
+   "hash": "fbf45bdebb6f40a55aa59712b30135e8b254881ba1c7d2a90530ec6eb33e559b",
    "modified": "Thu, 26 Nov 2026 12:32:30 GMT",
-   "streak": 20,
+   "streak": 21,
    "term": "2026-27-zima"
   },
   "WMT26AW3S0": {
@@ -6896,10 +6926,10 @@
   },
   "WMT26AW6S0": {
    "changed": "2026-11-27T00:25:28",
-   "checked": "2026-11-27T02:26:36",
-   "hash": "3b994284ba58f8c8375d1d5d75575e20a77f2f05be2aa36aaa19322aa40af905",
+   "checked": "2026-11-27T04:26:25",
+   "hash": "30a0f71a4a7490850b2adf8dce8d6203810d229d161b90656cd51d0c245a7c77",
    "modified": "Thu, 26 Nov 2026 12:32:35 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WMT26AW7S0": {
@@ -6912,18 +6942,18 @@
   },
   "WMT26AW8S0": {
    "changed": "2026-11-27T00:25:48",
-   "checked": "2026-11-27T02:26:58",
-   "hash": "ea9c8c72b02aca0706997b3a42b038cec4635e242d1a8cc5f0c99ac1dd396282",
+   "checked": "2026-11-27T04:26:30",
+   "hash": "c6862d53b41cfd38bcf519143c48b5701fd1ee8b2deb20b6318578dd2d9cac02",
    "modified": "Thu, 26 Nov 2026 12:32:38 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WMT26AW9S0": {
    "changed": "2026-11-26T20:26:04",
-   "checked": "2026-11-27T00:25:52",
-   "hash": "33e92d9ef41b5db15ea7696bb544f478dbc174dced659aefaf355d745c6973fd",
+   "checked": "2026-11-27T04:27:30",
+   "hash": "ec33ac4aa663ec1274ba00f52c33d8024cd26298c7b050c403685704ae417c0a",
    "modified": "Thu, 26 Nov 2026 12:32:39 GMT",
-   "streak": 2,
+   "streak": 3,
    "term": "2026-27-zima"
   },
   "WMT26AX1E1": {
@@ -6936,10 +6966,10 @@
   },
   "WMT26AX1S1": {
    "changed": "2026-11-27T02:26:59",
-   "checked": "2026-11-27T02:26:59",
-   "hash": "8f6c1ac1d8482cfbf0bd3b97101cf7aaea45ab73ee4dfe8c88aba56637a507f3",
+   "checked": "2026-11-27T04:26:32",
+   "hash": "d84da37a06824394e3b9de90ec2e8792ea9985e33a5606186c1ce5be62b311b2",
    "modified": "Thu, 26 Nov 2026 12:32:41 GMT",
-   "streak": 0,
+   "streak": 1,
    "term": "2026-27-zima"
   },
   "WMT26AX2S1": {
@@ -6960,10 +6990,10 @@
   },
   "WMT26AY1S1": {
    "changed": "2026-11-23T10:27:45",
-   "checked": "2026-11-27T00:27:27",
-   "hash": "72ca4ea4dc7190463c3f40c19d577e53d31211a4b8e365106c90be798503b19b",
+   "checked": "2026-11-27T04:26:03",
+   "hash": "b1d908ae782a7c2b4f76e988508d5afd1a463528bdf153cfddfa0f867905e63c",
    "modified": "Thu, 26 Nov 2026 12:32:42 GMT",
-   "streak": 20,
+   "streak": 21,
    "term": "2026-27-zima"
   },
   "WMT26IX1S1": {
@@ -6976,18 +7006,18 @@
   },
   "WMT26IX2S1": {
    "changed": "2026-11-17T13:44:42",
-   "checked": "2026-11-27T00:27:23",
-   "hash": "2e7e75853dec3a37faca4068a7b2493fc0dd28f95a8f2064a472ace3387daeb9",
+   "checked": "2026-11-27T04:25:56",
+   "hash": "b3716768143faab8b09ac63a39de9840f5ea90d77c053199a05fafbb266081e1",
    "modified": "Thu, 26 Nov 2026 12:32:43 GMT",
-   "streak": 36,
+   "streak": 37,
    "term": "2026-27-zima"
   },
   "WMT26LW1S0": {
    "changed": "2026-11-09T20:58:22",
-   "checked": "2026-11-27T00:26:38",
-   "hash": "98dfd20c46929005368fd3626e9592e4fa204b98cfc4255f20d8cc92adc838c0",
+   "checked": "2026-11-27T04:26:46",
+   "hash": "5c4c8dd146ac3edcf13a09ed37ad14af324ed379c69871eeff71c01dcf055822",
    "modified": "Thu, 26 Nov 2026 12:32:44 GMT",
-   "streak": 56,
+   "streak": 57,
    "term": "2026-27-zima"
   },
   "WMT26LW2S0": {
@@ -7008,10 +7038,10 @@
   },
   "WMT26LW4S0": {
    "changed": "2026-11-25T16:31:42",
-   "checked": "2026-11-27T00:25:58",
-   "hash": "9afc1513ff446ba861a9c28acd4ca3a8268cd539882b73e701e445c677db4b44",
+   "checked": "2026-11-27T04:27:20",
+   "hash": "a0ab6ff0f59b9c5a31286d99e1ef02162c8c5cc13699f4840d900816d6fd5403",
    "modified": "Thu, 26 Nov 2026 12:32:48 GMT",
-   "streak": 9,
+   "streak": 10,
    "term": "2026-27-zima"
   },
   "WMT26LW5S0": {
@@ -7024,10 +7054,10 @@
   },
   "WMT26LW6S0": {
    "changed": "2026-11-26T16:25:41",
-   "checked": "2026-11-27T00:25:49",
-   "hash": "8605db507eb0d5a7e067fc2472ad3d1a9f9d5b078ddc74c65352abd1f6f39035",
+   "checked": "2026-11-27T04:27:26",
+   "hash": "838e003e6db1913e75cd829fdd63e7a1e830965e42286d56fbe2e6fcafedee53",
    "modified": "Thu, 26 Nov 2026 12:32:51 GMT",
-   "streak": 3,
+   "streak": 4,
    "term": "2026-27-zima"
   },
   "WMT26LW7S0": {
@@ -7056,10 +7086,10 @@
   },
   "WMT26LX1S1": {
    "changed": "2026-11-17T13:44:00",
-   "checked": "2026-11-27T00:26:37",
-   "hash": "fe1f073b0c81a3b3fa971792c46429b65340a2858d855feddf636e81ad030d46",
+   "checked": "2026-11-27T04:26:42",
+   "hash": "1a5f65576e961ce6c61d0d17bab0254eae18d19bff974ba698d22951e1e82087",
    "modified": "Thu, 26 Nov 2026 12:32:54 GMT",
-   "streak": 36,
+   "streak": 37,
    "term": "2026-27-zima"
   },
   "WMT26LX2S1": {
@@ -7072,10 +7102,10 @@
   },
   "WMT26LX3S1": {
    "changed": "2026-11-27T00:27:12",
-   "checked": "2026-11-27T02:27:04",
-   "hash": "fec38b817d11de54494268d1fe45e90e0efca9df8b74075fcdf84cabb5f65769",
+   "checked": "2026-11-27T04:26:35",
+   "hash": "9cf3428506234c2102f99804da18f4b7f71ebd9fa98972cd156d97c0717e7e4a",
    "modified": "Thu, 26 Nov 2026 12:32:55 GMT",
-   "streak": 1,
+   "streak": 2,
    "term": "2026-27-zima"
   },
   "WMT26LY1S1": {
@@ -7088,10 +7118,10 @@
   },
   "WMT26SW1S0": {
    "changed": "2026-11-23T10:26:18",
-   "checked": "2026-11-27T00:26:41",
-   "hash": "fa879c6c27f50603d77cd800730fe39ab827f40582dfccfd40e500773fd19ff3",
+   "checked": "2026-11-27T04:26:50",
+   "hash": "af4dd704e40ec240a1212a8a7707a24ab181c6f3438eb18bad51d195111ba86c",
    "modified": "Thu, 26 Nov 2026 12:32:57 GMT",
-   "streak": 20,
+   "streak": 21,
    "term": "2026-27-zima"
   },
   "WMT26SX1S1": {
@@ -7208,18 +7238,18 @@
   },
   "WTC25CR1S0": {
    "changed": "2026-11-19T20:52:41",
-   "checked": "2026-11-27T00:25:55",
+   "checked": "2026-11-27T04:25:17",
    "hash": "39b6a439abd2b4277388ecda2bdd3d9287457f006883ebe1ec523af1900d2e81",
    "modified": "Thu, 26 Nov 2026 09:26:47 GMT",
-   "streak": 29,
+   "streak": 30,
    "term": "2026-27-zima"
   },
   "WTC25CX1S1": {
    "changed": "2026-11-19T20:53:21",
-   "checked": "2026-11-27T00:26:02",
+   "checked": "2026-11-27T04:25:22",
    "hash": "3331cd585aa01fa1132ad398538151680936b5ba463a5dfa8cffd479cf48365e",
    "modified": "Thu, 26 Nov 2026 09:26:55 GMT",
-   "streak": 29,
+   "streak": 30,
    "term": "2026-27-zima"
   },
   "WTC25NK1S4": {
@@ -7264,34 +7294,34 @@
   },
   "WTC26M1": {
    "changed": "2026-10-17T10:23:51",
-   "checked": "2026-11-27T00:26:34",
+   "checked": "2026-11-27T04:25:31",
    "hash": "1108abe5bf9b41bc91467388ed0f9b42dc40eddfbb945ab07dc8c2d1c219370b",
    "modified": "Thu, 26 Nov 2026 09:27:42 GMT",
-   "streak": 85,
+   "streak": 86,
    "term": "2026-27-zima"
   },
   "WTC26M2": {
    "changed": "2026-10-17T10:24:01",
-   "checked": "2026-11-27T00:25:58",
+   "checked": "2026-11-27T04:25:20",
    "hash": "b2b7d2bbf24c102f33abb92dbb6b4d9382ac67922ca06efec37e07dc4c1d2dc3",
    "modified": "Thu, 26 Nov 2026 09:27:49 GMT",
-   "streak": 85,
+   "streak": 86,
    "term": "2026-27-zima"
   },
   "WTC26NX1S1": {
    "changed": "2026-11-20T21:56:37",
-   "checked": "2026-11-27T00:26:37",
+   "checked": "2026-11-27T04:25:35",
    "hash": "dfa2d7c449901b89817d8a9597489423fb792bcbd4f97cb4f234acf5de7d6b1a",
    "modified": "Thu, 26 Nov 2026 09:27:56 GMT",
-   "streak": 27,
+   "streak": 28,
    "term": "2026-27-zima"
   },
   "WTC26NX2S1": {
    "changed": "2026-11-17T22:32:48",
-   "checked": "2026-11-27T00:26:31",
+   "checked": "2026-11-27T04:25:29",
    "hash": "a227dc4f30c643e71bdd688971e38ed2536db1caa5743439a6a7ef0875fc5c62",
    "modified": "Thu, 26 Nov 2026 09:28:03 GMT",
-   "streak": 34,
+   "streak": 35,
    "term": "2026-27-zima"
   },
   "WTC26TX1S1": {
@@ -7305,12 +7335,12 @@
  },
  "pacing": {
   "ioe": 1.0,
-  "wat-edge": 1.5943230000000004,
+  "wat-edge": 3.0,
   "wcy": 1.0,
   "wig": 1.0,
   "wim": 1.0,
   "wml": 3.0,
-  "wtc": 2.7
+  "wtc": 3.0
  },
  "robots": {
   "ioe.wat.edu.pl": {
